@@ -81,6 +81,7 @@ const directions = [
  * This guarantees 100% solvable puzzles
  * @param {number} yOffset - Y offset for this layer (0 for level 1, cubeSize for level 2, etc.)
  * @param {Set} lowerLayerCells - Cells occupied by blocks in lower layers (for level 2+ to prevent overlapping and floating)
+ * @returns {Array} Array of blocks to be placed (not yet added to scene)
  */
 function createSolvableBlocks(yOffset = 0, lowerLayerCells = null) {
     // Note: We don't clear blocks here - that's done in generateSolvablePuzzle
@@ -88,6 +89,7 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null) {
     
     const totalCells = gridSize * gridSize;
     const occupiedCells = new Set();
+    const blocksToPlace = []; // Store blocks to be placed sequentially
     
     // For level 2+, also check cells occupied by lower layers to prevent overlapping
     function isCellOccupied(x, z) {
@@ -166,8 +168,9 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null) {
                     const block = new Block(length, x, 0, direction, isVertical, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset);
                     // Check if block has support (for level 2+)
                     if (hasSupport(block)) {
+                        scene.remove(block.group); // Remove from scene, will be added with animation
                         edgeBlocks.push(block);
-                        blocks.push(block);
+                        blocksToPlace.push(block);
                         occupyCells(block);
                     } else {
                         scene.remove(block.group);
@@ -188,8 +191,9 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null) {
                 if (!isCellOccupied(x, gridSize - 1)) {
                     const block = new Block(length, x, gridSize - 1, direction, isVertical, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset);
                     if (hasSupport(block)) {
+                        scene.remove(block.group); // Remove from scene, will be added with animation
                         edgeBlocks.push(block);
-                        blocks.push(block);
+                        blocksToPlace.push(block);
                         occupyCells(block);
                     } else {
                         scene.remove(block.group);
@@ -210,8 +214,9 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null) {
                 if (!isCellOccupied(0, z)) {
                     const block = new Block(length, 0, z, direction, isVertical, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset);
                     if (hasSupport(block)) {
+                        scene.remove(block.group); // Remove from scene, will be added with animation
                         edgeBlocks.push(block);
-                        blocks.push(block);
+                        blocksToPlace.push(block);
                         occupyCells(block);
                     } else {
                         scene.remove(block.group);
@@ -232,8 +237,9 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null) {
                 if (!isCellOccupied(gridSize - 1, z)) {
                     const block = new Block(length, gridSize - 1, z, direction, isVertical, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset);
                     if (hasSupport(block)) {
+                        scene.remove(block.group); // Remove from scene, will be added with animation
                         edgeBlocks.push(block);
-                        blocks.push(block);
+                        blocksToPlace.push(block);
                         occupyCells(block);
                     } else {
                         scene.remove(block.group);
@@ -403,9 +409,10 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null) {
                 continue;
             }
             
-            blocks.push(testBlock);
+            scene.remove(testBlock.group); // Remove from scene, will be added with animation
+            blocksToPlace.push(testBlock);
             occupyCells(testBlock); // Use helper function to mark cells as occupied
-            
+
             // Block is valid - keep it
             blockAdded = true;
             break;
@@ -490,7 +497,8 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null) {
                         continue;
                     }
                     
-                    blocks.push(testBlock);
+                    scene.remove(testBlock.group); // Remove from scene, will be added with animation
+                    blocksToPlace.push(testBlock);
                     occupyCells(testBlock);
                     
                     filled = true;
@@ -505,28 +513,89 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null) {
         if (occupiedCells.size === beforeFill) break;
     }
     
-    const singleBlockCount = blocks.filter(b => b.length === 1).length;
-    const totalBlockCount = blocks.length;
+    const singleBlockCount = blocksToPlace.filter(b => b.length === 1).length;
+    const totalBlockCount = blocksToPlace.length;
     const singleBlockPercent = ((singleBlockCount / totalBlockCount) * 100).toFixed(1);
     
-    console.log(`Generated puzzle with ${blocks.length} blocks, ${occupiedCells.size}/${totalCells} cells filled (${((occupiedCells.size/totalCells)*100).toFixed(1)}%)`);
+    console.log(`Generated puzzle with ${blocksToPlace.length} blocks, ${occupiedCells.size}/${totalCells} cells filled (${((occupiedCells.size/totalCells)*100).toFixed(1)}%)`);
     console.log(`  Single blocks: ${singleBlockCount}/${totalBlockCount} (${singleBlockPercent}%)`);
+    
+    return blocksToPlace;
+}
+
+// Place blocks in batches with fast animation
+function placeBlocksBatch(blocksToPlace, batchSize = 10, delayBetweenBatches = 10) {
+    return new Promise((resolve) => {
+        let batchIndex = 0;
+        
+        const placeBatch = () => {
+            const startIdx = batchIndex * batchSize;
+            const endIdx = Math.min(startIdx + batchSize, blocksToPlace.length);
+            
+            if (startIdx >= blocksToPlace.length) {
+                resolve();
+                return;
+            }
+            
+            // Add all blocks in this batch to scene immediately
+            for (let i = startIdx; i < endIdx; i++) {
+                const block = blocksToPlace[i];
+                block.group.scale.set(0, 0, 0);
+                scene.add(block.group);
+                blocks.push(block);
+            }
+            
+            // Animate all blocks in batch simultaneously - very fast
+            const startTime = performance.now();
+            const duration = 50; // Very fast animation
+            
+            const animate = () => {
+                const elapsed = performance.now() - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                
+                // Ease-out cubic for smooth animation
+                const eased = 1 - Math.pow(1 - progress, 3);
+                
+                // Update all blocks in batch
+                for (let i = startIdx; i < endIdx; i++) {
+                    blocksToPlace[i].group.scale.set(eased, eased, eased);
+                }
+                
+                if (progress < 1) {
+                    requestAnimationFrame(animate);
+                } else {
+                    // Finalize scale
+                    for (let i = startIdx; i < endIdx; i++) {
+                        blocksToPlace[i].group.scale.set(1, 1, 1);
+                    }
+                    
+                    // Move to next batch
+                    batchIndex++;
+                    setTimeout(placeBatch, delayBetweenBatches);
+                }
+            };
+            
+            animate();
+        };
+        
+        placeBatch();
+    });
 }
 
 // Generate solvable puzzle using reverse generation (guaranteed solvable)
-function generateSolvablePuzzle() {
+async function generateSolvablePuzzle() {
     // Clear existing blocks first
     for (const block of blocks) {
         scene.remove(block.group);
     }
     blocks.length = 0;
     
-    // Generate level 1 (base layer at Y=0)
-    createSolvableBlocks(0);
+    // Generate level 1 (base layer at Y=0) - returns blocks to place
+    const level1Blocks = createSolvableBlocks(0);
     
     // Get cells occupied by level 1 blocks (to prevent overlapping and ensure level 2 blocks have support)
     const level1OccupiedCells = new Set();
-    for (const block of blocks) {
+    for (const block of level1Blocks) {
         if (block.yOffset === 0) { // Only level 1 blocks
             if (block.isVertical) {
                 level1OccupiedCells.add(`${block.gridX},${block.gridZ}`);
@@ -542,7 +611,14 @@ function generateSolvablePuzzle() {
     }
     
     // Generate level 2 (on top at Y=cubeSize) - only on top of level 1 blocks
-    createSolvableBlocks(cubeSize, level1OccupiedCells);
+    const level2Blocks = createSolvableBlocks(cubeSize, level1OccupiedCells);
+    
+    // Place all blocks in batches - fast
+    const allBlocks = [...level1Blocks, ...level2Blocks];
+    await placeBlocksBatch(allBlocks, 10, 10); // 10 blocks per batch, 10ms between batches
+    
+    console.log(`✓ Generated puzzle (2 levels) using reverse generation`);
+    console.log(`  Total blocks: ${blocks.length}`);
     
     console.log(`✓ Generated puzzle (2 levels) using reverse generation`);
     console.log(`  Total blocks: ${blocks.length}`);
@@ -662,12 +738,29 @@ window.addEventListener('resize', () => {
 let lastTime = performance.now();
 let physicsUpdatedThisFrame = false; // Track if physics was updated this frame
 
+// FPS tracking
+let fpsFrameCount = 0;
+let fpsLastUpdate = performance.now();
+let fpsUpdateInterval = 500; // Update FPS display every 500ms
+const fpsElement = document.getElementById('fps-counter');
+
 function animate() {
     requestAnimationFrame(animate);
     
     const currentTime = performance.now();
     const deltaTime = (currentTime - lastTime) / 1000;
     lastTime = currentTime;
+    
+    // Update FPS counter
+    fpsFrameCount++;
+    if (currentTime - fpsLastUpdate >= fpsUpdateInterval) {
+        const fps = Math.round((fpsFrameCount * 1000) / (currentTime - fpsLastUpdate));
+        if (fpsElement) {
+            fpsElement.textContent = `FPS: ${fps}`;
+        }
+        fpsFrameCount = 0;
+        fpsLastUpdate = currentTime;
+    }
     
     // Reset frame flag
     physicsUpdatedThisFrame = false;

@@ -1404,17 +1404,31 @@ export class Block {
         
         // Smooth easing function (ease-out cubic for smooth deceleration)
         const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+        // Catapult easing: fast acceleration then maintain speed
+        const easeInQuad = (t) => t * t;
+        const catapultEase = (t) => {
+            // Quick wind-up (0-15%), then explosive launch (15-100%)
+            if (t < 0.15) {
+                return easeInQuad(t / 0.15) * 0.05; // Compress/wind-up phase
+            }
+            return 0.05 + (t - 0.15) / 0.85 * 0.95; // Linear launch phase
+        };
         
         // Animation parameters
         const totalDistance = Math.sqrt((finalX - startX) ** 2 + (finalZ - startZ) ** 2);
         
         // Check if we have a head-on collision - make it slower and more visible
         const hasHeadOnCollision = headOnCollision !== null;
+        const isCatapult = hitEdge && !hasHeadOnCollision; // Catapult when flying off edge
         let duration;
         if (hasHeadOnCollision) {
             // Head-on collision: much slower animation (3x slower) and more visible
             duration = (150 + Math.sqrt(totalDistance) * 40) * 3;
+        } else if (isCatapult) {
+            // Catapult: fast and snappy
+            duration = 80 + Math.sqrt(totalDistance) * 20;
         } else {
+            // Normal movement: original speed for quick flicking, but with visual effects
             duration = 150 + Math.sqrt(totalDistance) * 40;
         }
         
@@ -1518,10 +1532,49 @@ export class Block {
                     // Reset scale
                     this.group.scale.set(1, 1, 1);
                 }
+            } else if (isCatapult) {
+                // CATAPULT: explosive launch off the edge
+                const catapultProgress = catapultEase(progress);
+                this.group.position.x = startX + (finalX - startX) * catapultProgress;
+                this.group.position.z = startZ + (finalZ - startZ) * catapultProgress;
+                
+                // Wind-up compression then explosive stretch
+                let scaleX, scaleY, scaleZ;
+                if (progress < 0.15) {
+                    // Compression phase: squash in movement direction, bulge perpendicular
+                    const compressAmount = Math.sin((progress / 0.15) * Math.PI) * 0.25;
+                    const isXMovement = Math.abs(finalX - startX) > Math.abs(finalZ - startZ);
+                    if (isXMovement) {
+                        scaleX = 1 - compressAmount * 0.5;
+                        scaleZ = 1 + compressAmount * 0.3;
+                    } else {
+                        scaleX = 1 + compressAmount * 0.3;
+                        scaleZ = 1 - compressAmount * 0.5;
+                    }
+                    scaleY = 1 + compressAmount * 0.2;
+                } else {
+                    // Launch phase: stretch in movement direction
+                    const launchProgress = (progress - 0.15) / 0.85;
+                    const stretchAmount = Math.sin(launchProgress * Math.PI * 0.5) * 0.15;
+                    const isXMovement = Math.abs(finalX - startX) > Math.abs(finalZ - startZ);
+                    if (isXMovement) {
+                        scaleX = 1 + stretchAmount;
+                        scaleZ = 1 - stretchAmount * 0.3;
+                    } else {
+                        scaleX = 1 - stretchAmount * 0.3;
+                        scaleZ = 1 + stretchAmount;
+                    }
+                    scaleY = 1;
+                }
+                this.group.scale.set(scaleX, scaleY, scaleZ);
             } else {
-                // Normal movement
+                // Normal movement with visual feedback
                 this.group.position.x = startX + (finalX - startX) * eased;
                 this.group.position.z = startZ + (finalZ - startZ) * eased;
+                
+                // Add pronounced scale effect during movement for more visible animation
+                const scaleEffect = Math.sin(progress * Math.PI) * 0.2 + 1.0; // Scale between 1.0 and 1.2
+                this.group.scale.set(scaleEffect, scaleEffect, scaleEffect);
             }
             
             if (progress < 1) {
@@ -1536,21 +1589,41 @@ export class Block {
                     // Position is already correct from animation, don't recalculate
                     this.isAnimating = false;
                     
-                    // Calculate horizontal velocity from animation to maintain momentum
-                    // Calculate average velocity during animation for natural continuation
-                    // Ease-out cubic: v(t) = 3(1-t)^2 * distance / duration
-                    // Average velocity over animation: integrate and average, or use midpoint velocity
-                    const midProgress = 0.5; // Use midpoint for more representative velocity
-                    const easeDerivative = 3 * Math.pow(1 - midProgress, 2); // Derivative at midpoint
-                    const velocityScale = easeDerivative * (1000 / duration); // Convert to units per second
+                    let velX, velZ, velY;
                     
-                    // Calculate velocity components in direction of movement
-                    const velX = (finalX - startX) * velocityScale;
-                    const velZ = (finalZ - startZ) * velocityScale;
-                    
-                    this.fall(velX, velZ);
+                    if (isCatapult) {
+                        // CATAPULT: explosive launch with high velocity and upward arc
+                        const catapultSpeed = 8.0; // Much faster horizontal speed
+                        const launchAngle = 0.3; // Upward arc (radians, ~17 degrees)
+                        
+                        // Direction of movement
+                        const dx = finalX - startX;
+                        const dz = finalZ - startZ;
+                        const dist = Math.sqrt(dx * dx + dz * dz);
+                        const dirX = dist > 0 ? dx / dist : this.direction.x;
+                        const dirZ = dist > 0 ? dz / dist : this.direction.z;
+                        
+                        velX = dirX * catapultSpeed;
+                        velZ = dirZ * catapultSpeed;
+                        velY = Math.sin(launchAngle) * catapultSpeed * 0.6; // Upward velocity for arc
+                        
+                        this.fall(velX, velZ, velY);
+                    } else {
+                        // Normal fall: calculate horizontal velocity from animation to maintain momentum
+                        // Ease-out cubic: v(t) = 3(1-t)^2 * distance / duration
+                        const midProgress = 0.5;
+                        const easeDerivative = 3 * Math.pow(1 - midProgress, 2);
+                        const velocityScale = easeDerivative * (1000 / duration);
+                        
+                        velX = (finalX - startX) * velocityScale;
+                        velZ = (finalZ - startZ) * velocityScale;
+                        
+                        this.fall(velX, velZ);
+                    }
             } else {
                 // Normal completion - snap to exact grid position
+                // Reset scale before snapping
+                this.group.scale.set(1, 1, 1);
                 this.updateWorldPosition();
                 this.isAnimating = false;
             }
@@ -1704,11 +1777,14 @@ export class Block {
         bounce();
     }
     
-    fall(horizontalVelX = null, horizontalVelZ = null) {
+    fall(horizontalVelX = null, horizontalVelZ = null, verticalVelY = null) {
         if (this.isFalling) return;
         
         this.isFalling = true;
         this.fallingStartTime = Date.now();
+        
+        // Check if this is a catapult launch (has upward velocity)
+        const isCatapult = verticalVelY !== null && verticalVelY > 0;
         
         // Calculate initial velocities for natural tumbling
         const isXAligned = Math.abs(this.direction.x) > 0;
@@ -1720,35 +1796,39 @@ export class Block {
         let angularVelY = 0;
         let angularVelZ = 0;
         
+        // Catapult gets more dramatic spin
+        const spinMultiplier = isCatapult ? 1.8 : 1.0;
+        
         if (this.isVertical) {
             // Vertical blocks: tumble around horizontal axis in direction of movement
             if (isXAligned) {
-                angularVelZ = moveDir * 3.5; // Primary: roll forward/backward
-                angularVelX = (Math.random() - 0.5) * 2.5; // Secondary: side wobble
+                angularVelZ = moveDir * 3.5 * spinMultiplier;
+                angularVelX = (Math.random() - 0.5) * 2.5 * spinMultiplier;
             } else {
-                angularVelX = -moveDir * 3.5; // Primary: roll forward/backward
-                angularVelZ = (Math.random() - 0.5) * 2.5; // Secondary: side wobble
+                angularVelX = -moveDir * 3.5 * spinMultiplier;
+                angularVelZ = (Math.random() - 0.5) * 2.5 * spinMultiplier;
             }
-            angularVelY = (Math.random() - 0.5) * 1.5; // Tertiary: spin around vertical
+            angularVelY = (Math.random() - 0.5) * 1.5 * spinMultiplier;
         } else {
             // Horizontal blocks: tumble around axis perpendicular to movement
             if (isXAligned) {
-                angularVelZ = moveDir * 4.5; // Primary: roll like a wheel
-                angularVelY = (Math.random() - 0.5) * 2.0; // Secondary: yaw wobble
-                angularVelX = (Math.random() - 0.5) * 1.5; // Tertiary: pitch variation
+                angularVelZ = moveDir * 4.5 * spinMultiplier;
+                angularVelY = (Math.random() - 0.5) * 2.0 * spinMultiplier;
+                angularVelX = (Math.random() - 0.5) * 1.5 * spinMultiplier;
             } else {
-                angularVelX = -moveDir * 4.5; // Primary: roll like a wheel
-                angularVelY = (Math.random() - 0.5) * 2.0; // Secondary: yaw wobble
-                angularVelZ = (Math.random() - 0.5) * 1.5; // Tertiary: pitch variation
+                angularVelX = -moveDir * 4.5 * spinMultiplier;
+                angularVelY = (Math.random() - 0.5) * 2.0 * spinMultiplier;
+                angularVelZ = (Math.random() - 0.5) * 1.5 * spinMultiplier;
             }
         }
         
         // Store velocities to apply after body creation
         this.pendingAngularVel = { x: angularVelX, y: angularVelY, z: angularVelZ };
         
-        // Use provided horizontal velocity if available (from animation), otherwise use direction-based default
+        // Use provided velocities if available (from animation), otherwise use direction-based default
         if (horizontalVelX !== null && horizontalVelZ !== null) {
-            this.pendingLinearVel = { x: horizontalVelX, y: 0, z: horizontalVelZ };
+            const yVel = verticalVelY !== null ? verticalVelY : 0;
+            this.pendingLinearVel = { x: horizontalVelX, y: yVel, z: horizontalVelZ };
         } else {
             // Fallback: use direction with moderate speed for natural continuation
             this.pendingLinearVel = { x: this.direction.x * 3.5, y: 0, z: this.direction.z * 3.5 };

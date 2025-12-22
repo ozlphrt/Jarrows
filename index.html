@@ -13,9 +13,23 @@
         canvas {
             display: block;
         }
+        #fps-counter {
+            position: fixed;
+            bottom: 10px;
+            right: 10px;
+            color: white;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 14px;
+            font-family: 'Courier New', monospace;
+            pointer-events: none;
+            z-index: 1000;
+        }
     </style>
 </head>
 <body>
+    <div id="fps-counter">FPS: --</div>
     <script type="module" src="/src/main.js"></script>
 </body>
 </html>
