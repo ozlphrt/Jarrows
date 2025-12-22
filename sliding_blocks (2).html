@@ -49,6 +49,37 @@
         controls.target.set(3, 0, 3);
         controls.update();
 
+        // Track camera drag state to prevent block clicks during camera movement
+        let isCameraDragging = false;
+        let mouseDownPos = null;
+        const DRAG_THRESHOLD = 3; // pixels - minimum movement to consider it a drag
+
+        renderer.domElement.addEventListener('mousedown', (event) => {
+            mouseDownPos = { x: event.clientX, y: event.clientY };
+            isCameraDragging = false;
+        });
+
+        renderer.domElement.addEventListener('mousemove', (event) => {
+            if (mouseDownPos) {
+                const dx = event.clientX - mouseDownPos.x;
+                const dy = event.clientY - mouseDownPos.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                if (distance > DRAG_THRESHOLD) {
+                    isCameraDragging = true;
+                }
+            }
+        });
+
+        renderer.domElement.addEventListener('mouseup', () => {
+            mouseDownPos = null;
+            // Keep isCameraDragging true until next mousedown to prevent click after drag
+        });
+
+        renderer.domElement.addEventListener('mouseleave', () => {
+            mouseDownPos = null;
+            isCameraDragging = false;
+        });
+
         // Lighting
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
         scene.add(ambientLight);
@@ -480,6 +511,36 @@
                 const isXAligned = Math.abs(this.direction.x) > 0;
                 const centerOffset = (this.length - 1) * cubeSize / 2;
                 
+                // Calculate arrow center offset for each style
+                // Arrow geometries extend from negative Y (tail) to positive Y (head)
+                // Origin is at y=0, center is at (tail + head) / 2
+                let arrowCenterOffset = 0;
+                if (style === 1) {
+                    // Tail: -0.105, Head: 0.35, Center: (-0.105 + 0.35) / 2 = 0.1225
+                    arrowCenterOffset = 0.1225;
+                } else if (style === 2) {
+                    // Tail: -0.25, Head: 0.35, Center: (-0.25 + 0.35) / 2 = 0.05
+                    arrowCenterOffset = 0.05;
+                } else if (style === 3) {
+                    // Tail: -0.2, Head: 0.35, Center: (-0.2 + 0.35) / 2 = 0.075
+                    arrowCenterOffset = 0.075;
+                } else if (style === 4) {
+                    // Tail: -0.25, Head: 0.3, Center: (-0.25 + 0.3) / 2 = 0.025
+                    arrowCenterOffset = 0.025;
+                } else if (style === 5) {
+                    // Tail: -0.25, Head: 0.35, Center: (-0.25 + 0.35) / 2 = 0.05
+                    arrowCenterOffset = 0.05;
+                } else if (style === 6) {
+                    // Tail: -0.28, Head: 0.38, Center: (-0.28 + 0.38) / 2 = 0.05
+                    arrowCenterOffset = 0.05;
+                } else if (style === 7) {
+                    // Tail: -0.27, Head: 0.36, Center: (-0.27 + 0.36) / 2 = 0.045
+                    arrowCenterOffset = 0.045;
+                } else if (style === 8) {
+                    // Tail: -0.24, Head: 0.4, Center: (-0.24 + 0.4) / 2 = 0.08
+                    arrowCenterOffset = 0.08;
+                }
+                
                 // TOP ARROW
                 const topArrow = new THREE.Group();
                 const topArrowData = createArrowGeometry(style);
@@ -493,6 +554,10 @@
                 else if (style === 7) topArrowMesh.position.z = -0.025;
                 else if (style === 8) topArrowMesh.position.z = -0.0275;
                 
+                // Offset arrow mesh in local Y direction to center it
+                // Arrow center is at arrowCenterOffset in local +Y, so move it back by that amount
+                topArrowMesh.position.y = -arrowCenterOffset;
+                
                 topArrow.add(topArrowMesh);
                 
                 if (this.isVertical) {
@@ -500,6 +565,7 @@
                     topArrow.position.set(0, this.length * cubeSize + 0.02, 0);
                 } else {
                     // Arrow on top of horizontal block
+                    // Position arrow group at block center
                     if (isXAligned) {
                         topArrow.position.set(centerOffset, cubeSize + 0.02, 0);
                     } else {
@@ -901,6 +967,12 @@
         const mouse = new THREE.Vector2();
         
         function onMouseClick(event) {
+            // Don't process block clicks if camera was being dragged
+            if (isCameraDragging) {
+                isCameraDragging = false; // Reset for next interaction
+                return;
+            }
+            
             mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
             mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
             
