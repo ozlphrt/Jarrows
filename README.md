@@ -29,3 +29,9 @@ npm run build
 - **Rapier.js** - Physics simulation
 - **Vite** - Build tool and dev server
 
+## Releases
+
+### v1.0.0 - Stable Release
+- **Tree**: https://github.com/ozlphrt/Jarrows/tree/v1.0.0
+- **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v1.0.0
+
