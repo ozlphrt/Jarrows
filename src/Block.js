@@ -3,7 +3,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { createPhysicsBlock, removePhysicsBody, isPhysicsStepping, deferBodyCreation, deferBodyModification } from './physics.js';
 
 export class Block {
-    constructor(length, gridX, gridZ, direction, isVertical, arrowStyle, scene, physics, gridSize, cubeSize, yOffset = 0) {
+    constructor(length, gridX, gridZ, direction, isVertical, arrowStyle, scene, physics, gridSize, cubeSize, yOffset = 0, level = 1) {
         this.length = length;
         this.gridX = gridX;
         this.gridZ = gridZ;
@@ -18,6 +18,7 @@ export class Block {
         this.gridSize = gridSize;
         this.cubeSize = cubeSize;
         this.yOffset = yOffset;
+        this.level = level; // Track which level this block belongs to
         
         this.group = new THREE.Group();
         
@@ -65,6 +66,8 @@ export class Block {
         blockMesh.receiveShadow = true;
         
         // Position block mesh (centered at origin in group, vertically at half height)
+        // For horizontal blocks: mesh bottom should be at yOffset, so position at half height
+        // For vertical blocks: mesh bottom should be at yOffset, so position at half height
         blockMesh.position.set(0, blockHeight / 2, 0);
         
         // Store mesh for raycasting
@@ -492,8 +495,9 @@ export class Block {
             if (newGridX < 0 || newGridX >= gridSize || newGridZ < 0 || newGridZ >= gridSize) {
                 return true;
             }
+            // Only check blocks at the same Y level
             for (const other of blocks) {
-                if (other === this || other === collidedBlock || other.isFalling) continue;
+                if (other === this || other === collidedBlock || other.isFalling || other.yOffset !== this.yOffset) continue;
                 if (other.isVertical) {
                     if (newGridX === other.gridX && newGridZ === other.gridZ) {
                         return false;
@@ -518,8 +522,9 @@ export class Block {
                 if (checkX < 0 || checkX >= gridSize || checkZ < 0 || checkZ >= gridSize) {
                     return true;
                 }
+                // Only check blocks at the same Y level
                 for (const other of blocks) {
-                    if (other === this || other === collidedBlock || other.isFalling) continue;
+                    if (other === this || other === collidedBlock || other.isFalling || other.yOffset !== this.yOffset) continue;
                     if (other.isVertical) {
                         if (checkX === other.gridX && checkZ === other.gridZ) {
                             return false;
@@ -561,8 +566,9 @@ export class Block {
             }
             
             // Check collision with other blocks (excluding this block and the collided block)
+            // Only check blocks at the same Y level
             for (const other of blocks) {
-                if (other === this || other === collidedBlock || other.isFalling) continue;
+                if (other === this || other === collidedBlock || other.isFalling || other.yOffset !== this.yOffset) continue;
                 
                 if (other.isVertical) {
                     if (newGridX === other.gridX && newGridZ === other.gridZ) {
@@ -603,8 +609,9 @@ export class Block {
                 }
                 
                 // Check collision with other blocks (excluding this block and the collided block)
+                // Only check blocks at the same Y level
                 for (const other of blocks) {
-                    if (other === this || other === collidedBlock || other.isFalling) continue;
+                    if (other === this || other === collidedBlock || other.isFalling || other.yOffset !== this.yOffset) continue;
                     
                     if (other.isVertical) {
                         if (checkX === other.gridX && checkZ === other.gridZ) {
@@ -820,8 +827,9 @@ export class Block {
                 return 'fall';
             }
             
+            // Only check collisions with blocks at the same Y level
             for (const other of blocks) {
-                if (other === this || other.isFalling) continue;
+                if (other === this || other.isFalling || other.yOffset !== this.yOffset) continue;
                 
                 if (other.isVertical) {
                     if (newGridX === other.gridX && newGridZ === other.gridZ) {
@@ -865,8 +873,9 @@ export class Block {
                 return 'fall';
             }
             
+            // Only check collisions with blocks at the same Y level
             for (const other of blocks) {
-                if (other === this || other.isFalling) continue;
+                if (other === this || other.isFalling || other.yOffset !== this.yOffset) continue;
                 
                 if (other.isVertical) {
                     if (checkX === other.gridX && checkZ === other.gridZ) {
@@ -915,9 +924,10 @@ export class Block {
             const nextGridZ = tempGridZ + this.direction.z;
             
             // Check for collisions with other blocks first
+            // Only check blocks at the same Y level (blocks on top can move independently)
             let blocked = false;
             for (const other of blocks) {
-                if (other === this || other.isFalling) continue;
+                if (other === this || other.isFalling || other.yOffset !== this.yOffset) continue;
                 
                 if (this.isVertical) {
                     if (other.isVertical) {
@@ -1194,9 +1204,10 @@ export class Block {
                 }
                 
                 // Check for collisions
+                // Only check blocks at the same Y level (blocks on top can move independently)
                 let blocked = false;
                 for (const other of blocks) {
-                    if (other === this || other.isFalling || other === headOnCollision.block) continue;
+                    if (other === this || other.isFalling || other === headOnCollision.block || other.yOffset !== this.yOffset) continue;
                     
                     if (this.isVertical) {
                         if (other.isVertical) {
@@ -1371,6 +1382,10 @@ export class Block {
             }
         }
         
+        // Calculate start position first (needed for extension calculation)
+        const startX = this.group.position.x;
+        const startZ = this.group.position.z;
+        
         // Calculate final world position (centered on block)
         let finalX, finalZ;
         if (this.isVertical) {
@@ -1398,9 +1413,28 @@ export class Block {
             }
         }
         
-        // Calculate start position
-        const startX = this.group.position.x;
-        const startZ = this.group.position.z;
+        // Check if we have a head-on collision (define early, used in extension calculation)
+        const hasHeadOnCollision = headOnCollision !== null;
+        
+        // If block is going off the board, extend final position far enough to completely disappear
+        // Calculate direction vector for extension
+        if (hitEdge && !hasHeadOnCollision) {
+            const directionX = finalX - startX;
+            const directionZ = finalZ - startZ;
+            const directionLength = Math.sqrt(directionX * directionX + directionZ * directionZ);
+            
+            if (directionLength > 0) {
+                // Normalize direction
+                const normalizedX = directionX / directionLength;
+                const normalizedZ = directionZ / directionLength;
+                
+                // Extend final position by at least 2x the board size to ensure complete disappearance
+                // Use block's maximum dimension (length * cubeSize) to ensure it's fully off screen
+                const extensionDistance = Math.max(gridSize * this.cubeSize * 2, this.length * this.cubeSize * 3);
+                finalX = finalX + normalizedX * extensionDistance;
+                finalZ = finalZ + normalizedZ * extensionDistance;
+            }
+        }
         
         // Smooth easing function (ease-out cubic for smooth deceleration)
         const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
@@ -1417,37 +1451,51 @@ export class Block {
         // Animation parameters
         const totalDistance = Math.sqrt((finalX - startX) ** 2 + (finalZ - startZ) ** 2);
         
-        // Check if we have a head-on collision - make it slower and more visible
-        const hasHeadOnCollision = headOnCollision !== null;
+        // Recalculate total distance after potential extension for blocks going off board
+        const recalculatedTotalDistance = Math.sqrt((finalX - startX) ** 2 + (finalZ - startZ) ** 2);
         const isCatapult = hitEdge && !hasHeadOnCollision; // Catapult when flying off edge
-        let duration;
-        if (hasHeadOnCollision) {
-            // Head-on collision: much slower animation (3x slower) and more visible
-            duration = (150 + Math.sqrt(totalDistance) * 40) * 3;
-        } else if (isCatapult) {
-            // Catapult: fast and snappy
-            duration = 80 + Math.sqrt(totalDistance) * 20;
-        } else {
-            // Normal movement: original speed for quick flicking, but with visual effects
-            duration = 150 + Math.sqrt(totalDistance) * 40;
-        }
         
-        const startTime = performance.now();
+        // Constant speed for all block movements (linear interpolation)
+        // Speed: pixels per millisecond (adjust for desired speed)
+        const constantSpeed = 0.05; // pixels per ms (50 pixels per second) - slow, visible motion
         
-        // For head-on collision, calculate collision position
+        // For head-on collision, calculate collision position first (needed for duration calculation)
         let collisionX, collisionZ, collisionGridX, collisionGridZ, collisionProgress = 0;
         let rotationStartAngle = 0;
         let rotationEndAngle = 0;
-        let rotationPauseDuration = 0.35; // 35% of total duration for rotation pause (increased from 15%)
+        let rotationPauseDuration = 500; // Fixed 500ms pause for rotation (in milliseconds)
         let rotationApplied = false; // Track if direction has been rotated
         if (hasHeadOnCollision) {
             collisionGridX = headOnCollision.position.x;
             collisionGridZ = headOnCollision.position.z;
             collisionX = collisionGridX * this.cubeSize + this.cubeSize / 2;
             collisionZ = collisionGridZ * this.cubeSize + this.cubeSize / 2;
+        }
+        
+        // All movements use constant speed (linear interpolation)
+        let duration;
+        if (hasHeadOnCollision) {
+            // Head-on collision: use constant speed, but account for rotation pause
+            // Calculate distance to collision + distance after rotation
             const distanceToCollision = Math.sqrt((collisionX - startX) ** 2 + (collisionZ - startZ) ** 2);
-            collisionProgress = distanceToCollision / totalDistance; // When collision happens (0-1)
-            
+            const distanceAfterCollision = Math.sqrt((finalX - collisionX) ** 2 + (finalZ - collisionZ) ** 2);
+            const totalDistanceWithCollision = distanceToCollision + distanceAfterCollision;
+            // Duration = time to travel distances + rotation pause time
+            duration = (totalDistanceWithCollision / constantSpeed) + rotationPauseDuration;
+            // Calculate collision progress (when collision happens in the animation)
+            collisionProgress = (distanceToCollision / constantSpeed) / duration;
+        } else if (isCatapult) {
+            // Blocks going off board: use constant speed (linear) - no easing
+            duration = recalculatedTotalDistance / constantSpeed;
+        } else {
+            // Normal movement: use constant speed (linear) - no easing
+            duration = recalculatedTotalDistance / constantSpeed;
+        }
+        
+        const startTime = performance.now();
+        
+        // Calculate rotation angles for head-on collision (if applicable)
+        if (hasHeadOnCollision) {
             // Calculate rotation angles for smooth arrow animation
             // Current arrow rotation (before rotation)
             rotationStartAngle = Math.atan2(originalDirection.x, originalDirection.z) + Math.PI;
@@ -1470,14 +1518,13 @@ export class Block {
             let eased = easeOutCubic(progress);
             
             if (hasHeadOnCollision && progress < collisionProgress) {
-                // Before collision: move normally but slower
+                // Before collision: use linear interpolation (constant speed)
                 const preCollisionProgress = progress / collisionProgress;
-                const preCollisionEased = easeOutCubic(preCollisionProgress);
-                this.group.position.x = startX + (collisionX - startX) * preCollisionEased;
-                this.group.position.z = startZ + (collisionZ - startZ) * preCollisionEased;
+                this.group.position.x = startX + (collisionX - startX) * preCollisionProgress;
+                this.group.position.z = startZ + (collisionZ - startZ) * preCollisionProgress;
                 } else if (hasHeadOnCollision && progress >= collisionProgress) {
                 // At collision: pause at collision position and rotate
-                const timeSinceCollision = progress - collisionProgress;
+                const timeSinceCollision = (progress - collisionProgress) * duration;
                 if (timeSinceCollision < rotationPauseDuration) {
                     // Pause at collision for rotation animation (35% of total duration)
                     this.group.position.x = collisionX;
@@ -1509,15 +1556,15 @@ export class Block {
                         rotationApplied = true;
                     }
                     
-                    // Subtle visual feedback during collision pause (reduced bounce)
-                    const bounce = Math.sin(rotationProgress * Math.PI) * 0.08;
+                    // Subtle visual feedback during collision pause (slightly increased bounce)
+                    const bounce = Math.sin(rotationProgress * Math.PI) * 0.10;
                     this.group.scale.set(1 + bounce, 1 + bounce, 1 + bounce);
                 } else {
-                    // After rotation pause: continue to final position with new direction
-                    const postCollisionProgress = (progress - collisionProgress - rotationPauseDuration) / (1 - collisionProgress - rotationPauseDuration);
-                    const postCollisionEased = easeOutCubic(postCollisionProgress);
-                    this.group.position.x = collisionX + (finalX - collisionX) * postCollisionEased;
-                    this.group.position.z = collisionZ + (finalZ - collisionZ) * postCollisionEased;
+                    // After rotation pause: continue to final position with new direction (constant speed)
+                    const postCollisionProgress = (timeSinceCollision - rotationPauseDuration) / (duration - (collisionProgress * duration) - rotationPauseDuration);
+                    const clampedPostProgress = Math.max(0, Math.min(1, postCollisionProgress));
+                    this.group.position.x = collisionX + (finalX - collisionX) * clampedPostProgress;
+                    this.group.position.z = collisionZ + (finalZ - collisionZ) * clampedPostProgress;
                     
                     // Update grid position to final position after collision
                     this.gridX = finalGridX;
@@ -1533,48 +1580,20 @@ export class Block {
                     this.group.scale.set(1, 1, 1);
                 }
             } else if (isCatapult) {
-                // CATAPULT: explosive launch off the edge
-                const catapultProgress = catapultEase(progress);
-                this.group.position.x = startX + (finalX - startX) * catapultProgress;
-                this.group.position.z = startZ + (finalZ - startZ) * catapultProgress;
+                // Blocks going off board: constant speed (linear interpolation) - no easing
+                // Use linear progress for constant speed throughout
+                this.group.position.x = startX + (finalX - startX) * progress;
+                this.group.position.z = startZ + (finalZ - startZ) * progress;
                 
-                // Wind-up compression then explosive stretch
-                let scaleX, scaleY, scaleZ;
-                if (progress < 0.15) {
-                    // Compression phase: squash in movement direction, bulge perpendicular
-                    const compressAmount = Math.sin((progress / 0.15) * Math.PI) * 0.25;
-                    const isXMovement = Math.abs(finalX - startX) > Math.abs(finalZ - startZ);
-                    if (isXMovement) {
-                        scaleX = 1 - compressAmount * 0.5;
-                        scaleZ = 1 + compressAmount * 0.3;
-                    } else {
-                        scaleX = 1 + compressAmount * 0.3;
-                        scaleZ = 1 - compressAmount * 0.5;
-                    }
-                    scaleY = 1 + compressAmount * 0.2;
-                } else {
-                    // Launch phase: stretch in movement direction
-                    const launchProgress = (progress - 0.15) / 0.85;
-                    const stretchAmount = Math.sin(launchProgress * Math.PI * 0.5) * 0.15;
-                    const isXMovement = Math.abs(finalX - startX) > Math.abs(finalZ - startZ);
-                    if (isXMovement) {
-                        scaleX = 1 + stretchAmount;
-                        scaleZ = 1 - stretchAmount * 0.3;
-                    } else {
-                        scaleX = 1 - stretchAmount * 0.3;
-                        scaleZ = 1 + stretchAmount;
-                    }
-                    scaleY = 1;
-                }
-                this.group.scale.set(scaleX, scaleY, scaleZ);
+                // Keep scale normal (no compression/stretch effects)
+                this.group.scale.set(1, 1, 1);
             } else {
-                // Normal movement with visual feedback
-                this.group.position.x = startX + (finalX - startX) * eased;
-                this.group.position.z = startZ + (finalZ - startZ) * eased;
+                // Normal movement: use linear interpolation (constant speed)
+                this.group.position.x = startX + (finalX - startX) * progress;
+                this.group.position.z = startZ + (finalZ - startZ) * progress;
                 
-                // Add pronounced scale effect during movement for more visible animation
-                const scaleEffect = Math.sin(progress * Math.PI) * 0.2 + 1.0; // Scale between 1.0 and 1.2
-                this.group.scale.set(scaleEffect, scaleEffect, scaleEffect);
+                // Keep scale normal (no visual effects for constant speed)
+                this.group.scale.set(1, 1, 1);
             }
             
             if (progress < 1) {
@@ -1638,7 +1657,7 @@ export class Block {
         const bounceDistance = 0.08; // Small bounce distance
         const bounceDuration = 200; // Quick bounce
         const shakeCount = 3;
-        const shakeAmplitude = 0.06; // Increased from 0.02
+        const shakeAmplitude = 0.08; // Increased from 0.06 for slightly more visible shake
         const surroundingBlockAmplitude = 0.04; // Reduced amplitude for surrounding blocks
         
         // Get cells occupied by this block

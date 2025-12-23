@@ -98,14 +98,22 @@ function buildOccupiedCells(blocks, excludeBlock = null) {
 
 /**
  * Validate structural correctness (no overlaps, valid positions)
+ * Updated to support 3D stacking - checks Y levels for overlaps
  */
 export function validateStructure(blocks, gridSize) {
-    const occupiedCells = new Map();
+    // Track occupied cells with their Y ranges
+    const occupiedCells = new Map(); // key: "x,z" -> array of {block, yBottom, yTop}
     
     for (const block of blocks) {
-        if (block.isFalling || block.isAnimating) continue;
+        if (block.isFalling || block.isAnimating || block.isRemoved) continue;
         
         const cells = getBlockCells(block);
+        
+        // Calculate block height (use cubeSize from block if available, otherwise default to 1)
+        const cubeSize = block.cubeSize || 1;
+        const blockHeight = block.isVertical ? block.length * cubeSize : cubeSize;
+        const yBottom = block.yOffset || 0;
+        const yTop = yBottom + blockHeight;
         
         // Check bounds
         for (const cell of cells) {
@@ -114,13 +122,25 @@ export function validateStructure(blocks, gridSize) {
             }
         }
         
-        // Check overlaps
+        // Check overlaps (3D - including Y levels)
         for (const cell of cells) {
             const key = `${cell.x},${cell.z}`;
+            
             if (occupiedCells.has(key)) {
-                return { valid: false, reason: `Overlap at (${cell.x}, ${cell.z})` };
+                // Check if Y ranges overlap with any existing block at this X,Z
+                const existingBlocks = occupiedCells.get(key);
+                for (const existing of existingBlocks) {
+                    // Check if Y ranges overlap
+                    if (!(yTop <= existing.yBottom || yBottom >= existing.yTop)) {
+                        return { valid: false, reason: `Overlap at (${cell.x}, ${cell.z})` };
+                    }
+                }
+                // Add this block to the list at this position
+                existingBlocks.push({block, yBottom, yTop});
+            } else {
+                // First block at this X,Z position
+                occupiedCells.set(key, [{block, yBottom, yTop}]);
             }
-            occupiedCells.set(key, block);
         }
     }
     
