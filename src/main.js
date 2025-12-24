@@ -2041,12 +2041,17 @@ function animate() {
         // Smooth camera position
         camera.position.lerp(new THREE.Vector3(cameraX, cameraY, cameraZ), 0.1);
         
+        // CRITICAL: Update controls.target to tower top center FIRST
+        // This ensures the camera targets the center of the tower top
+        controls.target.copy(smoothedLookAt);
+        
         // Update camera to look at tower top center
         camera.lookAt(smoothedLookAt);
         
-        // Update controls target to match (for OrbitControls state)
-        controls.target.copy(smoothedLookAt);
-        controls.update();
+        // IMPORTANT: Don't call controls.update() here when in auto-rotation mode
+        // controls.update() would recalculate camera position based on OrbitControls' internal state
+        // and override our manual positioning. We only update controls.target so that
+        // when user takes control, OrbitControls knows where to start from.
         
         // Track when we last updated for auto-rotation (to distinguish from user input)
         lastAutoRotationTime = currentTime;
@@ -2056,7 +2061,9 @@ function animate() {
         previousCameraTarget.copy(controls.target);
     } else {
         // User has control - let OrbitControls handle everything
-        // Don't override camera position - let OrbitControls manage it
+        // Update OrbitControls so it can apply damping and user input
+        controls.update();
+        
         // Just update previous positions for tracking
         previousCameraPosition.copy(camera.position);
         previousCameraTarget.copy(controls.target);
@@ -2146,7 +2153,10 @@ function animate() {
         
     }
     
-    controls.update();
+    // Only call controls.update() if user has control (already done above in else block)
+    // When auto-rotating, we manually control camera, so no need to call controls.update()
+    // controls.update() would override our manual camera.lookAt() positioning
+    
     renderer.render(scene, camera);
 }
 
