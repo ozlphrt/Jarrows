@@ -1664,6 +1664,24 @@ function onMouseClick(event) {
     const structureCheck = validateStructure(blocks, gridSize);
     if (!structureCheck.valid) {
         console.warn('Puzzle structure invalid before move, skipping:', structureCheck.reason);
+        // Debug: Log all blocks at the problematic position
+        const [x, z] = structureCheck.reason.match(/\((\d+),\s*(\d+)\)/)?.[1, 2] || [];
+        if (x && z) {
+            const blocksAtPos = blocks.filter(b => {
+                if (b.isFalling || b.isAnimating || b.isRemoved) return false;
+                const cells = getBlockCells(b);
+                return cells.some(c => c.x === parseInt(x) && c.z === parseInt(z));
+            });
+            console.warn(`Blocks at (${x}, ${z}):`, blocksAtPos.map(b => ({
+                id: b.id || 'unknown',
+                gridX: b.gridX,
+                gridZ: b.gridZ,
+                length: b.length,
+                isVertical: b.isVertical,
+                yOffset: b.yOffset,
+                yTop: (b.yOffset || 0) + (b.isVertical ? b.length * (b.cubeSize || 1) : (b.cubeSize || 1))
+            })));
+        }
         return;
     }
     
