@@ -2031,7 +2031,10 @@ function animate() {
         // Calculate camera position around the tower center
         // Maintain 30-45 degree angle above the tower top
         const angle = 35 * (Math.PI / 180); // 35 degrees in radians
-        const distance = (towerTopHeight + 5) / Math.sin(angle); // Distance to maintain angle
+        // More zoomed in: reduce base offset and apply zoom factor
+        const zoomFactor = 0.6; // Zoom in by 40% (0.6 = 60% of original distance)
+        const baseOffset = 2; // Reduced from 5 to zoom in more
+        const distance = ((towerTopHeight + baseOffset) / Math.sin(angle)) * zoomFactor;
         const radius = distance * Math.cos(angle); // Horizontal radius
         
         const cameraX = smoothedLookAt.x + radius * Math.cos(cameraRotationAngle);
