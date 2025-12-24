@@ -1,7 +1,14 @@
 import * as RAPIER from '@dimforge/rapier3d';
 
 export async function initPhysics() {
-    // Rapier 0.12.0 doesn't require explicit init() - WASM initializes automatically
+    // Ensure Rapier WASM is fully loaded before creating worlds
+    // Rapier 0.12.0 initializes automatically, but we should wait for it
+    if (RAPIER.init) {
+        await RAPIER.init();
+    }
+    
+    // Wait a bit to ensure WASM is ready
+    await new Promise(resolve => setTimeout(resolve, 100));
     
     const gravity = new RAPIER.Vector3(0.0, -9.81, 0.0);
     

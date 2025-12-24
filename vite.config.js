@@ -22,13 +22,13 @@ export default {
         start_url: '/Jarrows/',
         icons: [
           {
-            src: '/192.png',
+            src: '/Jarrows/192.png',
             sizes: '192x192',
             type: 'image/png',
             purpose: 'any maskable'
           },
           {
-            src: '/512.png',
+            src: '/Jarrows/512.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'any maskable'
