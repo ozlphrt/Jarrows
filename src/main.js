@@ -2032,7 +2032,7 @@ function animate() {
         // Maintain 30-45 degree angle above the tower top
         const angle = 35 * (Math.PI / 180); // 35 degrees in radians
         // More zoomed in: reduce base offset and apply zoom factor
-        const zoomFactor = 0.6; // Zoom in by 40% (0.6 = 60% of original distance)
+        const zoomFactor = 0.7; // Slightly zoomed out from 0.6 (0.7 = 70% of original distance)
         const baseOffset = 2; // Reduced from 5 to zoom in more
         const distance = ((towerTopHeight + baseOffset) / Math.sin(angle)) * zoomFactor;
         const radius = distance * Math.cos(angle); // Horizontal radius
