@@ -1,37 +1,38 @@
-import * as RAPIER from '@dimforge/rapier3d';
+// Use dynamic import to ensure Rapier loads correctly
+let RAPIER = null;
+
+async function loadRapier() {
+    if (!RAPIER) {
+        // Dynamic import ensures WASM is loaded properly
+        const rapierModule = await import('@dimforge/rapier3d');
+        RAPIER = rapierModule.default || rapierModule;
+        
+        // Wait for WASM to be fully initialized
+        // Rapier 0.12.0 initializes automatically, but we need to ensure it's ready
+        if (RAPIER.init) {
+            await RAPIER.init();
+        }
+        
+        // Additional wait to ensure WASM is fully loaded
+        await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    return RAPIER;
+}
 
 export async function initPhysics() {
-    // Ensure Rapier WASM is fully loaded before creating worlds
-    // Rapier 0.12.0 requires explicit initialization
+    // Load Rapier with dynamic import to ensure WASM is ready
+    const RAPIER = await loadRapier();
+    
+    // Verify WASM is ready by testing a simple operation
     try {
-        // Try to initialize if the method exists
-        if (typeof RAPIER.init === 'function') {
-            await RAPIER.init();
-        } else if (RAPIER.default && typeof RAPIER.default.init === 'function') {
-            await RAPIER.default.init();
+        const testVector = new RAPIER.Vector3(0, 0, 0);
+        if (!testVector) {
+            throw new Error('Rapier Vector3 creation failed');
         }
     } catch (e) {
-        console.warn('Rapier init() not available or already initialized:', e);
-    }
-    
-    // Wait for WASM to be fully ready - try creating a simple vector first
-    let retries = 10;
-    while (retries > 0) {
-        try {
-            // Test if WASM is ready by creating a simple object
-            const testVector = new RAPIER.Vector3(0, 0, 0);
-            if (testVector) {
-                break; // WASM is ready
-            }
-        } catch (e) {
-            // WASM not ready yet, wait a bit
-            await new Promise(resolve => setTimeout(resolve, 50));
-            retries--;
-        }
-    }
-    
-    if (retries === 0) {
-        throw new Error('Rapier WASM failed to initialize after multiple attempts');
+        console.error('Rapier WASM not ready:', e);
+        // Wait a bit more and retry
+        await new Promise(resolve => setTimeout(resolve, 500));
     }
     
     const gravity = new RAPIER.Vector3(0.0, -9.81, 0.0);
