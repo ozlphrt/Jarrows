@@ -12,40 +12,28 @@ async function loadRapier() {
         if (!RAPIER) {
             console.log('Loading Rapier physics engine...');
             
-            // Dynamic import ensures WASM is loaded properly
-            const rapierModule = await import('@dimforge/rapier3d');
+            // ROOT CAUSE FIX: Use rapier3d-compat which embeds WASM, avoiding base path issues
+            // The standard @dimforge/rapier3d package imports WASM from "./rapier_wasm3d_bg.wasm"
+            // With base: '/Jarrows/', the WASM file path doesn't resolve correctly after build
+            // rapier3d-compat embeds the WASM in the JS bundle, eliminating path issues
+            const rapierModule = await import('@dimforge/rapier3d-compat');
             RAPIER = rapierModule.default || rapierModule;
             
-            // ROOT CAUSE ANALYSIS:
-            // In Rapier 0.12.0, rapier_wasm3d.js does: import * as wasm from "./rapier_wasm3d_bg.wasm"
-            // Then calls __wbg_set_wasm(wasm) to set the WASM module in rapier_wasm3d_bg.js
-            // All WASM functions access wasm.rawintegrationparameters_new etc.
-            // If the WASM import fails (e.g., due to base path), wasm is undefined
-            // This causes the error when creating a World
-            
-            // The WASM import is synchronous, but if it fails, wasm will be undefined
-            // We need to verify the WASM is actually available by testing it
-            let retries = 30;
-            let wasmReady = false;
-            let lastError = null;
-            
-            while (retries > 0 && !wasmReady) {
+            // rapier3d-compat embeds WASM, so initialization should be straightforward
+            // However, we still need to ensure WASM is ready before use
+            if (RAPIER.init) {
+                await RAPIER.init();
+            } else {
+                // If init() doesn't exist, verify WASM is ready by testing
+                // rapier3d-compat should have WASM embedded, but let's verify
                 try {
-                    // Try to create a Vector3 - this requires WASM to be loaded
                     const testVector = new RAPIER.Vector3(0, 0, 0);
-                    // If we get here, WASM is ready
-                    wasmReady = true;
+                    if (!testVector) {
+                        throw new Error('Vector3 creation failed - WASM not ready');
+                    }
                 } catch (e) {
-                    lastError = e;
-                    // WASM not ready yet, wait and retry
-                    await new Promise(resolve => setTimeout(resolve, 100));
-                    retries--;
+                    throw new Error(`Rapier WASM verification failed: ${e.message}. This may indicate an issue with rapier3d-compat initialization.`);
                 }
-            }
-            
-            if (!wasmReady) {
-                const errorMsg = lastError ? lastError.message : 'Unknown error';
-                throw new Error(`Rapier WASM failed to load after ${30} attempts. Error: ${errorMsg}. This usually means the WASM file path is incorrect (check base path configuration) or the WASM file failed to load. Check browser Network tab for 404 errors on .wasm files.`);
             }
             
             console.log('Rapier physics engine loaded successfully');
