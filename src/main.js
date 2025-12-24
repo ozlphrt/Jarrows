@@ -2035,9 +2035,9 @@ function animate() {
         // Steeper angle to fill upper screen with tower and reduce gap
         // Higher angle (steeper) = camera looks more down = shows more tower, less sky
         const angle = 45 * (Math.PI / 180); // 45 degrees (steeper) - fills upper screen with tower
-        // More zoomed in: reduce base offset and apply zoom factor
-        const zoomFactor = 0.7; // Slightly zoomed out from 0.6 (0.7 = 70% of original distance)
-        const baseOffset = 2; // Reduced from 5 to zoom in more
+        // Zoom out more: increase zoom factor to reduce zoom
+        const zoomFactor = 1.0; // Increased from 0.7 to 1.0 (100% of original distance) - less zoom
+        const baseOffset = 3; // Increased from 2 to 3 for more base distance
         const distance = ((towerTopHeight + baseOffset) / Math.sin(angle)) * zoomFactor;
         const radius = distance * Math.cos(angle); // Horizontal radius
         
