@@ -19,21 +19,46 @@ async function loadRapier() {
             const rapierModule = await import('@dimforge/rapier3d-compat');
             RAPIER = rapierModule.default || rapierModule;
             
-            // rapier3d-compat embeds WASM, so initialization should be straightforward
-            // However, we still need to ensure WASM is ready before use
-            if (RAPIER.init) {
-                await RAPIER.init();
+            // CRITICAL: rapier3d-compat requires explicit init() call to initialize WASM
+            // Even though WASM is embedded, it still needs to be initialized asynchronously
+            // The init() function is exported from the init module (see exports.d.ts: export * from "./init")
+            // Try multiple ways to access init() since module structure can vary
+            let initFn = null;
+            
+            if (typeof RAPIER.init === 'function') {
+                initFn = RAPIER.init;
+            } else if (typeof rapierModule.init === 'function') {
+                initFn = rapierModule.init;
+            } else if (rapierModule.default && typeof rapierModule.default.init === 'function') {
+                initFn = rapierModule.default.init;
+            }
+            
+            if (initFn) {
+                console.log('Initializing Rapier WASM...');
+                await initFn();
+                console.log('Rapier WASM initialized');
             } else {
-                // If init() doesn't exist, verify WASM is ready by testing
-                // rapier3d-compat should have WASM embedded, but let's verify
-                try {
-                    const testVector = new RAPIER.Vector3(0, 0, 0);
-                    if (!testVector) {
-                        throw new Error('Vector3 creation failed - WASM not ready');
-                    }
-                } catch (e) {
-                    throw new Error(`Rapier WASM verification failed: ${e.message}. This may indicate an issue with rapier3d-compat initialization.`);
-                }
+                // If init() is not found, this is a critical error
+                console.error('Rapier module structure:', {
+                    hasRAPIERInit: typeof RAPIER.init,
+                    hasModuleInit: typeof rapierModule.init,
+                    hasDefaultInit: rapierModule.default && typeof rapierModule.default.init,
+                    RAPIERKeys: Object.keys(RAPIER).slice(0, 10),
+                    moduleKeys: Object.keys(rapierModule).slice(0, 10)
+                });
+                throw new Error('Rapier init() function not found. rapier3d-compat requires explicit initialization. Check console for module structure.');
+            }
+            
+            // Verify WASM is ready by testing World creation (which requires WASM)
+            // Vector3 might work without WASM, so we need to test something that definitely requires it
+            try {
+                // Try to create a minimal World to verify WASM is ready
+                const testGravity = new RAPIER.Vector3(0, 0, 0);
+                const testWorld = new RAPIER.World(testGravity);
+                // If we get here, WASM is ready
+                testWorld.free(); // Clean up test world
+            } catch (e) {
+                throw new Error(`Rapier WASM verification failed: ${e.message}. World creation requires WASM to be fully initialized.`);
             }
             
             console.log('Rapier physics engine loaded successfully');
