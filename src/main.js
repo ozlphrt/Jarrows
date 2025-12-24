@@ -2030,9 +2030,9 @@ function animate() {
         smoothedLookAt.lerp(new THREE.Vector3(targetX, targetY, targetZ), 0.1);
         
         // Calculate camera position around the tower center
-        // Adjust angle and camera height to position tower top higher on screen
-        // Lower angle (less steep) = camera looks more horizontally = tower top appears higher
-        const angle = 30 * (Math.PI / 180); // 30 degrees (less steep) - moves tower top higher on screen
+        // Steeper angle to fill upper screen with tower and reduce gap
+        // Higher angle (steeper) = camera looks more down = shows more tower, less sky
+        const angle = 45 * (Math.PI / 180); // 45 degrees (steeper) - fills upper screen with tower
         // More zoomed in: reduce base offset and apply zoom factor
         const zoomFactor = 0.7; // Slightly zoomed out from 0.6 (0.7 = 70% of original distance)
         const baseOffset = 2; // Reduced from 5 to zoom in more
@@ -2041,9 +2041,8 @@ function animate() {
         
         const cameraX = smoothedLookAt.x + radius * Math.cos(cameraRotationAngle);
         const cameraZ = smoothedLookAt.z + radius * Math.sin(cameraRotationAngle);
-        // Adjust camera Y to be slightly lower relative to target to position tower top higher on screen
-        const cameraYOffset = -1.5; // Negative offset lowers camera, making tower top appear higher
-        const cameraY = smoothedLookAt.y + distance * Math.sin(angle) + cameraYOffset;
+        // Camera Y position - steeper angle already fills upper screen, no offset needed
+        const cameraY = smoothedLookAt.y + distance * Math.sin(angle);
         
         // Smooth camera position
         camera.position.lerp(new THREE.Vector3(cameraX, cameraY, cameraZ), 0.1);
