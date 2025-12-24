@@ -2044,3 +2044,6 @@ function animate() {
 
 animate();
 
+// PWA: Service worker is automatically registered by vite-plugin-pwa
+// The plugin handles offline caching and updates automatically
+
