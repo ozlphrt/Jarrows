@@ -26,134 +26,117 @@
             pointer-events: none;
             z-index: 1000;
         }
-        #block-counter {
+        #top-counters-container {
             position: fixed;
             top: 20px;
             left: 20px;
-            color: white;
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(20px) saturate(180%);
-            -webkit-backdrop-filter: blur(20px) saturate(180%);
-            padding: 20px 28px;
-            border-radius: 16px;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            font-size: 24px;
-            font-weight: 600;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            letter-spacing: 0.5px;
-            pointer-events: none;
-            z-index: 1000;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1),
-                        0 2px 8px rgba(0, 0, 0, 0.05),
-                        inset 0 1px 0 rgba(255, 255, 255, 0.2);
-            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-        }
-        #level-counter {
-            position: fixed;
-            top: 20px;
             right: 20px;
-            color: white;
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(20px) saturate(180%);
-            -webkit-backdrop-filter: blur(20px) saturate(180%);
-            padding: 20px 28px;
-            border-radius: 16px;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            font-size: 24px;
-            font-weight: 600;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            letter-spacing: 0.5px;
+            display: flex;
+            gap: 12px;
+            z-index: 1000;
             pointer-events: none;
-            z-index: 1000;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1),
-                        0 2px 8px rgba(0, 0, 0, 0.05),
-                        inset 0 1px 0 rgba(255, 255, 255, 0.2);
-            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-        }
-        #blocks-slider-container {
-            position: fixed;
-            bottom: 50px;
-            left: 10px;
-            background: rgba(0, 0, 0, 0.6);
-            padding: 12px 16px;
-            border-radius: 4px;
-            z-index: 1000;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .blocks-slider-btn {
-            background: rgba(255, 255, 255, 0.2);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            color: white;
-            width: 32px;
-            height: 32px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 18px;
-            font-family: 'Courier New', monospace;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: background 0.2s, border-color 0.2s;
-            user-select: none;
-        }
-        .blocks-slider-btn:hover {
-            background: rgba(255, 255, 255, 0.3);
-            border-color: rgba(255, 255, 255, 0.5);
-        }
-        .blocks-slider-btn:active {
-            background: rgba(255, 255, 255, 0.4);
-        }
-        #blocks-slider-label {
-            color: white;
-            font-size: 14px;
-            font-family: 'Courier New', monospace;
-            white-space: nowrap;
-        }
-        #blocks-slider {
-            width: 150px;
-            height: 6px;
-            border-radius: 3px;
-            background: rgba(255, 255, 255, 0.3);
-            outline: none;
-            -webkit-appearance: none;
-        }
-        #blocks-slider::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            appearance: none;
-            width: 18px;
-            height: 18px;
-            border-radius: 50%;
-            background: #4ecdc4;
-            cursor: pointer;
-            transition: background 0.2s;
-        }
-        #blocks-slider::-webkit-slider-thumb:hover {
-            background: #45b8b0;
-        }
-        #blocks-slider::-moz-range-thumb {
-            width: 18px;
-            height: 18px;
-            border-radius: 50%;
-            background: #4ecdc4;
-            cursor: pointer;
-            border: none;
-            transition: background 0.2s;
-        }
-        #blocks-slider::-moz-range-thumb:hover {
-            background: #45b8b0;
-        }
-        #blocks-slider-value {
-            color: white;
-            font-size: 14px;
-            font-family: 'Courier New', monospace;
-            min-width: 30px;
-            text-align: right;
         }
         
+        .top-counter {
+            flex: 1;
+            color: white;
+            background: rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            padding: 16px 20px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2),
+                        0 2px 8px rgba(0, 0, 0, 0.1),
+                        inset 0 1px 0 rgba(255, 255, 255, 0.15);
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            align-items: flex-start;
+            min-width: 0;
+            position: relative;
+        }
+        
+        .top-counter-label {
+            font-size: 14px;
+            font-weight: 600;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            opacity: 0.95;
+            margin-bottom: 2px;
+            margin-top: 0;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+            align-self: flex-start;
+            line-height: 1.2;
+        }
+        
+        .top-counter-value {
+            font-size: 72px;
+            font-weight: 700;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            letter-spacing: 0;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+            line-height: 1;
+            white-space: nowrap;
+            align-self: flex-end;
+        }
+        
+        #block-counter .top-counter-label,
+        #level-counter .top-counter-label,
+        #timer-counter .top-counter-label {
+            align-self: flex-start;
+        }
+        
+        #block-counter .top-counter-value {
+            align-self: flex-end;
+        }
+        
+        #level-counter .top-counter-value {
+            align-self: flex-end;
+        }
+        
+        #timer-counter .top-counter-value {
+            align-self: center;
+        }
+        
+        /* Responsive adjustments for smaller screens */
+        @media (max-width: 768px) {
+            #top-counters-container {
+                top: 15px;
+                left: 10px;
+                right: 10px;
+                gap: 8px;
+            }
+            .top-counter {
+                padding: 12px 16px;
+            }
+            .top-counter-label {
+                font-size: 12px;
+            }
+            .top-counter-value {
+                font-size: 54px;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            #top-counters-container {
+                top: 10px;
+                left: 8px;
+                right: 8px;
+                gap: 6px;
+            }
+            .top-counter {
+                padding: 10px 14px;
+            }
+            .top-counter-label {
+                font-size: 11px;
+            }
+            .top-counter-value {
+                font-size: 40px;
+            }
+        }
         /* Level Complete Modal */
         #level-complete-modal {
             display: none;
@@ -250,11 +233,103 @@
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2),
                         inset 0 1px 0 rgba(255, 255, 255, 0.2);
         }
+        
+        /* Game Control Buttons */
+        #game-controls {
+            position: fixed;
+            bottom: 15px;
+            left: 0;
+            right: 0;
+            display: flex;
+            gap: 6px;
+            z-index: 1000;
+            flex-wrap: nowrap;
+            justify-content: center;
+            align-items: stretch;
+            padding: 0 15px;
+            box-sizing: border-box;
+        }
+        
+        .game-button {
+            background: rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            color: white;
+            padding: 10px 14px;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 600;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2),
+                        0 2px 8px rgba(0, 0, 0, 0.1),
+                        inset 0 1px 0 rgba(255, 255, 255, 0.15);
+            white-space: nowrap;
+            line-height: 1.2;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 44px;
+            height: 44px;
+            box-sizing: border-box;
+            flex: 1;
+            max-width: none;
+        }
+        
+        .game-button.two-line {
+            white-space: normal;
+            line-height: 1.2;
+            padding: 8px 12px;
+            font-size: 11px;
+            flex-direction: column;
+            min-height: 44px;
+            height: 44px;
+        }
+        
+        .game-button.two-line > div {
+            margin: 0;
+            line-height: 1.1;
+        }
+        
+        .game-button:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.4);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3),
+                        inset 0 1px 0 rgba(255, 255, 255, 0.3);
+        }
+        
+        .game-button:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2),
+                        inset 0 1px 0 rgba(255, 255, 255, 0.2);
+        }
+        
+        .game-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
     </style>
 </head>
 <body>
-    <div id="block-counter">Blocks: 0</div>
-    <div id="level-counter">Level 1</div>
+    <div id="top-counters-container">
+        <div id="block-counter" class="top-counter">
+            <div class="top-counter-label">Blocks</div>
+            <div class="top-counter-value" id="block-value">0</div>
+        </div>
+        <div id="timer-counter" class="top-counter">
+            <div class="top-counter-label">Timer</div>
+            <div class="top-counter-value" id="timer-value">00:00</div>
+        </div>
+        <div id="level-counter" class="top-counter">
+            <div class="top-counter-label">Level</div>
+            <div class="top-counter-value" id="level-value">0</div>
+        </div>
+    </div>
     
     <!-- Level Complete Modal -->
     <div id="level-complete-modal">
@@ -264,13 +339,21 @@
             <button class="modal-button" id="next-level-button">Next Level</button>
         </div>
     </div>
-    <div id="blocks-slider-container">
-        <label id="blocks-slider-label" for="blocks-slider">Spawn Count:</label>
-        <button id="blocks-slider-decrease" class="blocks-slider-btn">−</button>
-        <input type="range" id="blocks-slider" min="1" max="500" value="1" step="1">
-        <button id="blocks-slider-increase" class="blocks-slider-btn">+</button>
-        <span id="blocks-slider-value">1</span>
+    
+    <!-- Game Control Buttons -->
+    <div id="game-controls">
+        <button class="game-button" id="undo-button">UNDO</button>
+        <button class="game-button" id="remove-button">REMOVE</button>
+        <button class="game-button two-line" id="restart-level-button">
+            <div>RESTART</div>
+            <div>LEVEL</div>
+        </button>
+        <button class="game-button two-line" id="new-game-button">
+            <div>NEW</div>
+            <div>GAME</div>
+        </button>
     </div>
+    
     <script type="module" src="/src/main.js"></script>
 </body>
 </html>
