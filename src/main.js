@@ -4,7 +4,6 @@ import { initPhysics, createPhysicsBlock, updatePhysics, isPhysicsStepping, hasP
 import { Block } from './Block.js';
 import { createLights, createGrid } from './scene.js';
 import { validateStructure, validateSolvability, calculateDifficulty, getBlockCells } from './puzzle_validation.js';
-import { createDebugPanel } from './debug-panel.js';
 
 // Scene setup
 const scene = new THREE.Scene();
@@ -31,6 +30,31 @@ const towerCenterZ = gridSize / 2;
 const towerCenterY = 0; // Ground level
 
 const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+
+// Auto-rotation variables - declare early so calculateDefaultCameraPosition can use them
+// Initial camera setup (before rotation angle is calculated)
+const initialTowerHeight = cubeSize;
+const gridDiagonal = Math.sqrt(gridSize * gridSize + gridSize * gridSize) * cubeSize;
+const cameraAngle = (28 * Math.PI) / 180;
+const fov = camera.fov * (Math.PI / 180);
+const aspect = window.innerWidth / window.innerHeight;
+const verticalFov = 2 * Math.atan(Math.tan(fov / 2) * aspect);
+const distanceToFit = (gridDiagonal / 2) / Math.tan(verticalFov / 2);
+const distance = distanceToFit * 1.1;
+const heightAboveTop = distance * Math.sin(cameraAngle);
+const horizontalDistance = distance * Math.cos(cameraAngle);
+const initialCameraX = towerCenterX + horizontalDistance * 0.707;
+const initialCameraZ = towerCenterZ + horizontalDistance * 0.707;
+const initialCameraY = initialTowerHeight + heightAboveTop;
+
+// Calculate initial rotation angle
+const initialHorizontalOffsetX = initialCameraX - towerCenterX;
+const initialHorizontalOffsetZ = initialCameraZ - towerCenterZ;
+const initialHorizontalDistance = Math.sqrt(initialHorizontalOffsetX * initialHorizontalOffsetX + initialHorizontalOffsetZ * initialHorizontalOffsetZ);
+const initialHorizontalAngle = Math.atan2(initialHorizontalOffsetZ, initialHorizontalOffsetX);
+let cameraRotationAngle = initialHorizontalAngle;
+let cameraRotationTime = 0;
+const ROTATION_SPEED = 0.003;
 
 // Function to calculate tower top height (maximum y position of any block)
 function getTowerTopHeight() {
@@ -85,21 +109,7 @@ function calculateDefaultCameraPosition() {
     };
 }
 
-// Initial camera setup
-const initialTowerHeight = cubeSize;
-const gridDiagonal = Math.sqrt(gridSize * gridSize + gridSize * gridSize) * cubeSize;
-const cameraAngle = (28 * Math.PI) / 180;
-const fov = camera.fov * (Math.PI / 180);
-const aspect = window.innerWidth / window.innerHeight;
-const verticalFov = 2 * Math.atan(Math.tan(fov / 2) * aspect);
-const distanceToFit = (gridDiagonal / 2) / Math.tan(verticalFov / 2);
-const distance = distanceToFit * 1.1;
-const heightAboveTop = distance * Math.sin(cameraAngle);
-const horizontalDistance = distance * Math.cos(cameraAngle);
-const initialCameraX = towerCenterX + horizontalDistance * 0.707;
-const initialCameraZ = towerCenterZ + horizontalDistance * 0.707;
-const initialCameraY = initialTowerHeight + heightAboveTop;
-
+// Set initial camera position
 camera.position.set(initialCameraX, initialCameraY, initialCameraZ);
 camera.lookAt(towerCenterX, initialTowerHeight, towerCenterZ);
 
@@ -142,15 +152,6 @@ const CAMERA_SMOOTHING = 0.03;
 const TOWER_HEIGHT_THRESHOLD = 0.15;
 const CAMERA_UPDATE_INTERVAL = 4;
 let cameraUpdateCounter = 0;
-
-// Auto-rotation during spawn
-const initialHorizontalOffsetX = initialCameraX - towerCenterX;
-const initialHorizontalOffsetZ = initialCameraZ - towerCenterZ;
-const initialHorizontalDistance = Math.sqrt(initialHorizontalOffsetX * initialHorizontalOffsetX + initialHorizontalOffsetZ * initialHorizontalOffsetZ);
-const initialHorizontalAngle = Math.atan2(initialHorizontalOffsetZ, initialHorizontalOffsetX);
-let cameraRotationAngle = initialHorizontalAngle;
-let cameraRotationTime = 0;
-const ROTATION_SPEED = 0.003;
 
 // Unlock camera on user interaction
 renderer.domElement.addEventListener('wheel', (event) => {
@@ -232,8 +233,6 @@ if (cameraLocked) {
     defaultCameraState.target.set(towerCenterX, defaultCameraPos.lookAtY, towerCenterZ);
 }
 
-// Create debug panel for light controls (after blocks array is initialized)
-createDebugPanel(lights, blocks);
 const directions = [
     {x: 1, z: 0},   // East
     {x: -1, z: 0},  // West
@@ -2228,15 +2227,28 @@ function spawnRandomBlock() {
             for (const pos of candidatePositions) {
                 // Use canPlaceBlockAt for accurate checking (handles all blocks including animating ones)
                 if (canPlaceBlockAt(length, pos.x, pos.z, direction, isVertical, yOffset)) {
+                    // CRITICAL: Re-check position immediately before creating block (atomic check)
+                    // This prevents race conditions where multiple spawns happen in the same frame
+                    // We need to check the CURRENT state of blocks array right before we add
+                    if (!canPlaceBlockAt(length, pos.x, pos.z, direction, isVertical, yOffset)) {
+                        // Position became invalid between checks - skip this position
+                        continue;
+                    }
+                    
                     // Found a valid position! Create and place the block
                     const block = new Block(length, pos.x, pos.z, direction, isVertical, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, currentLevel);
                     
                     // Remove from scene temporarily (Block constructor adds it)
                     scene.remove(block.group);
                     
-                    // Re-check position one more time before adding (blocks array might have changed)
-                    if (!canPlaceBlockAt(length, pos.x, pos.z, direction, isVertical, yOffset)) {
-                        // Position became invalid - cleanup and try next
+                    // ATOMIC OPERATION: Check one final time and add in one step
+                    // This prevents race conditions where another spawn happened between creation and adding
+                    // We validate the structure with this block included BEFORE adding to array
+                    const tempBlocks = [...blocks, block];
+                    const structureCheck = validateStructure(tempBlocks, gridSize);
+                    
+                    if (!structureCheck.valid) {
+                        // Overlap detected before adding - cleanup and try next
                         scene.remove(block.group);
                         continue;
                     }
@@ -2249,24 +2261,14 @@ function spawnRandomBlock() {
                         continue;
                     }
                     
-                    // Add to blocks array
+                    // All checks passed - add to blocks array atomically
                     blocks.push(block);
                     
-                    // Final validation check after adding to array
-                    const structureCheck = validateStructure(blocks, gridSize);
-                    if (!structureCheck.valid) {
-                        // Overlap detected! Remove the block immediately
-                        console.warn(`⚠ Overlap detected at (${pos.x}, ${pos.z}), removing block: ${structureCheck.reason}`);
-                        blocks.pop(); // Remove from array
-                        scene.remove(block.group); // Ensure it's removed from scene
-                        continue; // Try next position
-                    }
+                    // Animate the spawn
+                    animateBlockSpawn(block);
+                    // Removed console.log to reduce spam - blocks are spawning successfully
                     
-                // Animate the spawn
-                animateBlockSpawn(block);
-                // Removed console.log to reduce spam - blocks are spawning successfully
-                
-                return true; // Successfully placed
+                    return true; // Successfully placed
                 }
             }
         }
@@ -2428,67 +2430,68 @@ function animate() {
             isAutoSpawning = true;
             lastSpawnTime = currentTime; // Update time immediately to prevent rapid-fire attempts
             
-            (async () => {
-                const blocksBeforeSpawn = blocks.length; // Track count before spawn
-                const success = spawnRandomBlock();
+            // CRITICAL: spawnRandomBlock is synchronous, so we can safely check results immediately
+            // This prevents race conditions from async operations
+            const blocksBeforeSpawn = blocks.length; // Track count before spawn
+            const success = spawnRandomBlock();
+            
+            if (success) {
+                consecutiveFailures = 0; // Reset on success
                 
-                if (success) {
-                    consecutiveFailures = 0; // Reset on success
-                    
-                    // Check if we've reached the target
-                    // Block is added synchronously in spawnRandomBlock, so check immediately
-                    if (blocks.length >= targetBlockCount) {
-                        initialSpawnComplete = true;
-                        console.log(`✓ Initial spawn complete: ${blocks.length} blocks (target: ${targetBlockCount})`);
-                    }
-                    isAutoSpawning = false;
-                } else {
-                    consecutiveFailures++; // Increment on failure
-                    
-                    // Log progress every 10 failures to help debug
-                    if (consecutiveFailures % 10 === 0) {
-                        const progress = ((blocks.length / targetBlockCount) * 100).toFixed(1);
-                        console.log(`Spawn progress: ${blocks.length}/${targetBlockCount} (${progress}%), ${consecutiveFailures} consecutive failures`);
-                    }
-                    
-                    // Check if board might be full by trying a quick scan
-                    // If we've failed many times, do a quick check to see if there are any valid positions left
-                    if (consecutiveFailures > maxConsecutiveFailures * 3 && consecutiveFailures % 20 === 0) {
-                        let foundValidPosition = false;
-                        // Quick scan: try a few single blocks at different positions
-                        for (let testLayer = 0; testLayer < 3 && !foundValidPosition; testLayer++) {
-                            const testYOffset = testLayer * cubeSize;
-                            for (let testZ = 0; testZ < gridSize && !foundValidPosition; testZ += 2) {
-                                for (let testX = 0; testX < gridSize && !foundValidPosition; testX += 2) {
-                                    if (canPlaceBlockAt(1, testX, testZ, {x: 0, z: 1}, true, testYOffset)) {
-                                        foundValidPosition = true;
-                                        break;
-                                    }
+                // Check if we've reached the target
+                // Block is added synchronously in spawnRandomBlock, so check immediately
+                if (blocks.length >= targetBlockCount) {
+                    initialSpawnComplete = true;
+                    console.log(`✓ Initial spawn complete: ${blocks.length} blocks (target: ${targetBlockCount})`);
+                }
+            } else {
+                consecutiveFailures++; // Increment on failure
+                
+                // Log progress every 10 failures to help debug
+                if (consecutiveFailures % 10 === 0) {
+                    const progress = ((blocks.length / targetBlockCount) * 100).toFixed(1);
+                    console.log(`Spawn progress: ${blocks.length}/${targetBlockCount} (${progress}%), ${consecutiveFailures} consecutive failures`);
+                }
+                
+                // Check if board might be full by trying a quick scan
+                // If we've failed many times, do a quick check to see if there are any valid positions left
+                if (consecutiveFailures > maxConsecutiveFailures * 3 && consecutiveFailures % 20 === 0) {
+                    let foundValidPosition = false;
+                    // Quick scan: try a few single blocks at different positions
+                    for (let testLayer = 0; testLayer < 3 && !foundValidPosition; testLayer++) {
+                        const testYOffset = testLayer * cubeSize;
+                        for (let testZ = 0; testZ < gridSize && !foundValidPosition; testZ += 2) {
+                            for (let testX = 0; testX < gridSize && !foundValidPosition; testX += 2) {
+                                if (canPlaceBlockAt(1, testX, testZ, {x: 0, z: 1}, true, testYOffset)) {
+                                    foundValidPosition = true;
+                                    break;
                                 }
                             }
                         }
-                        
-                        if (!foundValidPosition) {
-                            console.log(`⚠ Board appears full - no valid positions found after ${consecutiveFailures} failures`);
-                            // If board is full and we're reasonably close to target, stop
-                            if (blocks.length >= targetBlockCount * 0.6) {
-                                initialSpawnComplete = true;
-                                console.log(`✓ Initial spawn complete: ${blocks.length} blocks (target: ${targetBlockCount}, board appears full)`);
-                            }
-                        }
                     }
                     
-                    // If we've failed many times and are close to target, consider it complete
-                    // This handles cases where we can't reach exact target due to board constraints
-                    // More lenient: need more failures (5x = 50) and higher percentage (98%) before giving up
-                    // This prevents stopping too early when board is getting full but still has space
-                    if (consecutiveFailures > maxConsecutiveFailures * 5 && blocks.length >= targetBlockCount * 0.98) {
-                        initialSpawnComplete = true;
-                        console.log(`✓ Initial spawn complete: ${blocks.length} blocks (target: ${targetBlockCount}, reached ~98% after ${consecutiveFailures} failures)`);
+                    if (!foundValidPosition) {
+                        console.log(`⚠ Board appears full - no valid positions found after ${consecutiveFailures} failures`);
+                        // If board is full and we're reasonably close to target, stop
+                        if (blocks.length >= targetBlockCount * 0.6) {
+                            initialSpawnComplete = true;
+                            console.log(`✓ Initial spawn complete: ${blocks.length} blocks (target: ${targetBlockCount}, board appears full)`);
+                        }
                     }
-                    isAutoSpawning = false;
                 }
-            })();
+                
+                // If we've failed many times and are close to target, consider it complete
+                // This handles cases where we can't reach exact target due to board constraints
+                // More lenient: need more failures (5x = 50) and higher percentage (98%) before giving up
+                // This prevents stopping too early when board is getting full but still has space
+                if (consecutiveFailures > maxConsecutiveFailures * 5 && blocks.length >= targetBlockCount * 0.98) {
+                    initialSpawnComplete = true;
+                    console.log(`✓ Initial spawn complete: ${blocks.length} blocks (target: ${targetBlockCount}, reached ~98% after ${consecutiveFailures} failures)`);
+                }
+            }
+            
+            // Always release the lock after spawn attempt completes
+            isAutoSpawning = false;
         }
     }
     
