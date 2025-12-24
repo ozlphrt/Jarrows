@@ -1214,8 +1214,50 @@ async function generateSolvablePuzzle(level = 1) {
         allBlocks = createSolvableBlocks(0, null, targetBlockCount, level);
     }
     
+    // Validate structure before placing blocks
+    const finalValidation = validateStructure(allBlocks, gridSize);
+    if (!finalValidation.valid) {
+        console.error(`Puzzle generation failed validation: ${finalValidation.reason}`);
+        console.error(`Generated ${allBlocks.length} blocks, but structure is invalid`);
+        // Remove all invalid blocks
+        for (const block of allBlocks) {
+            if (block.group && block.group.parent) {
+                scene.remove(block.group);
+            }
+        }
+        // Regenerate the puzzle
+        console.log('Regenerating puzzle due to validation failure...');
+        await generateSolvablePuzzle(level);
+        return;
+    }
+    
     // Place all blocks in batches
     await placeBlocksBatch(allBlocks, 10, 10); // 10 blocks per batch, 10ms between batches
+    
+    // Validate again after placement to ensure no overlaps were introduced
+    const postPlacementValidation = validateStructure(blocks, gridSize);
+    if (!postPlacementValidation.valid) {
+        console.error(`Puzzle invalid after placement: ${postPlacementValidation.reason}`);
+        // This is a critical error - blocks should not overlap after placement
+        // Log detailed info for debugging
+        const [x, z] = postPlacementValidation.reason.match(/\((\d+),\s*(\d+)\)/)?.[1, 2] || [];
+        if (x && z) {
+            const blocksAtPos = blocks.filter(b => {
+                if (b.isFalling || b.isAnimating || b.isRemoved) return false;
+                const cells = getBlockCells(b);
+                return cells.some(c => c.x === parseInt(x) && c.z === parseInt(z));
+            });
+            console.error(`Blocks at (${x}, ${z}):`, blocksAtPos.map(b => ({
+                id: b.id || 'unknown',
+                gridX: b.gridX,
+                gridZ: b.gridZ,
+                length: b.length,
+                isVertical: b.isVertical,
+                yOffset: b.yOffset,
+                yTop: (b.yOffset || 0) + (b.isVertical ? b.length * (b.cubeSize || 1) : (b.cubeSize || 1))
+            })));
+        }
+    }
     
     // Update level counter display
     const levelValueElement = document.getElementById('level-value');
