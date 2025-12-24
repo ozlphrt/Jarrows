@@ -2,13 +2,37 @@ import * as RAPIER from '@dimforge/rapier3d';
 
 export async function initPhysics() {
     // Ensure Rapier WASM is fully loaded before creating worlds
-    // Rapier 0.12.0 initializes automatically, but we should wait for it
-    if (RAPIER.init) {
-        await RAPIER.init();
+    // Rapier 0.12.0 requires explicit initialization
+    try {
+        // Try to initialize if the method exists
+        if (typeof RAPIER.init === 'function') {
+            await RAPIER.init();
+        } else if (RAPIER.default && typeof RAPIER.default.init === 'function') {
+            await RAPIER.default.init();
+        }
+    } catch (e) {
+        console.warn('Rapier init() not available or already initialized:', e);
     }
     
-    // Wait a bit to ensure WASM is ready
-    await new Promise(resolve => setTimeout(resolve, 100));
+    // Wait for WASM to be fully ready - try creating a simple vector first
+    let retries = 10;
+    while (retries > 0) {
+        try {
+            // Test if WASM is ready by creating a simple object
+            const testVector = new RAPIER.Vector3(0, 0, 0);
+            if (testVector) {
+                break; // WASM is ready
+            }
+        } catch (e) {
+            // WASM not ready yet, wait a bit
+            await new Promise(resolve => setTimeout(resolve, 50));
+            retries--;
+        }
+    }
+    
+    if (retries === 0) {
+        throw new Error('Rapier WASM failed to initialize after multiple attempts');
+    }
     
     const gravity = new RAPIER.Vector3(0.0, -9.81, 0.0);
     
