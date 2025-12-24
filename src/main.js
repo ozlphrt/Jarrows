@@ -613,20 +613,23 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
             const direction = {x: 0, z: 1}; // South
             
             if (isVertical || length === 1) {
-                if (!isCellOccupied(x, gridSize - 1)) {
+                // ATOMIC OPERATION: Try to reserve cells BEFORE creating the block (FIX: was using occupyCells)
+                const reservation = tryReserveCells(x, gridSize - 1, length, isVertical, direction);
+                if (reservation) {
+                    // Cells reserved - create block
                     const block = new Block(length, x, gridSize - 1, direction, isVertical, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level);
+                    // Check if block has support (for level 2+)
                     if (hasSupport(block)) {
-                        // Mark cells as occupied BEFORE adding to blocksToPlace (prevent overlaps)
-                        if (!occupyCells(block)) {
-                            scene.remove(block.group);
-                            continue; // Block overlaps - skip it
-                        }
                         scene.remove(block.group); // Remove from scene, will be added with animation
                         edgeBlocks.push(block);
                         blocksToPlace.push(block);
                         // Stop if we've reached the target block count
                         if (blocksToPlace.length >= targetBlockCount) break;
                     } else {
+                        // Release reserved cells since block can't be placed
+                        for (const cellKey of reservation.cells) {
+                            occupiedCells.delete(cellKey);
+                        }
                         scene.remove(block.group);
                     }
                 }
