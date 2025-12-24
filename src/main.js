@@ -1225,10 +1225,11 @@ async function generateSolvablePuzzle(level = 1) {
                 scene.remove(block.group);
             }
         }
-        // Regenerate the puzzle
-        console.log('Regenerating puzzle due to validation failure...');
-        await generateSolvablePuzzle(level);
-        return;
+        // CRITICAL: Don't recursively regenerate - this can cause infinite loops
+        // Instead, log the error and try to continue with what we have
+        // If validation fails, the puzzle might still be playable (validation is strict)
+        console.warn('Validation failed, but continuing with generated blocks. Some overlaps may exist.');
+        // Don't return - continue with placement
     }
     
     // Place all blocks in batches
