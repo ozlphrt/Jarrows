@@ -74,7 +74,7 @@ export default {
     assetsDir: 'assets'
   },
   optimizeDeps: {
-    exclude: ['@dimforge/rapier3d']
+    exclude: ['@dimforge/rapier3d-compat']
   },
   assetsInclude: ['**/*.wasm']
 }
