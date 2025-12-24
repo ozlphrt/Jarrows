@@ -1,49 +1,96 @@
 // Use dynamic import to ensure Rapier loads correctly
 let RAPIER = null;
+let rapierLoadPromise = null;
 
 async function loadRapier() {
-    if (!RAPIER) {
-        // Dynamic import ensures WASM is loaded properly
-        const rapierModule = await import('@dimforge/rapier3d');
-        RAPIER = rapierModule.default || rapierModule;
-        
-        // Wait for WASM to be fully initialized
-        // Rapier 0.12.0 initializes automatically, but we need to ensure it's ready
-        if (RAPIER.init) {
-            await RAPIER.init();
-        }
-        
-        // Additional wait to ensure WASM is fully loaded
-        await new Promise(resolve => setTimeout(resolve, 200));
+    // Return existing promise if already loading to avoid multiple loads
+    if (rapierLoadPromise) {
+        return rapierLoadPromise;
     }
-    return RAPIER;
+    
+    rapierLoadPromise = (async () => {
+        if (!RAPIER) {
+            console.log('Loading Rapier physics engine...');
+            
+            // Dynamic import ensures WASM is loaded properly
+            const rapierModule = await import('@dimforge/rapier3d');
+            RAPIER = rapierModule.default || rapierModule;
+            
+            // ROOT CAUSE ANALYSIS:
+            // In Rapier 0.12.0, rapier_wasm3d.js does: import * as wasm from "./rapier_wasm3d_bg.wasm"
+            // Then calls __wbg_set_wasm(wasm) to set the WASM module in rapier_wasm3d_bg.js
+            // All WASM functions access wasm.rawintegrationparameters_new etc.
+            // If the WASM import fails (e.g., due to base path), wasm is undefined
+            // This causes the error when creating a World
+            
+            // The WASM import is synchronous, but if it fails, wasm will be undefined
+            // We need to verify the WASM is actually available by testing it
+            let retries = 30;
+            let wasmReady = false;
+            let lastError = null;
+            
+            while (retries > 0 && !wasmReady) {
+                try {
+                    // Try to create a Vector3 - this requires WASM to be loaded
+                    const testVector = new RAPIER.Vector3(0, 0, 0);
+                    // If we get here, WASM is ready
+                    wasmReady = true;
+                } catch (e) {
+                    lastError = e;
+                    // WASM not ready yet, wait and retry
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    retries--;
+                }
+            }
+            
+            if (!wasmReady) {
+                const errorMsg = lastError ? lastError.message : 'Unknown error';
+                throw new Error(`Rapier WASM failed to load after ${30} attempts. Error: ${errorMsg}. This usually means the WASM file path is incorrect (check base path configuration) or the WASM file failed to load. Check browser Network tab for 404 errors on .wasm files.`);
+            }
+            
+            console.log('Rapier physics engine loaded successfully');
+        }
+        return RAPIER;
+    })();
+    
+    return rapierLoadPromise;
 }
 
 export async function initPhysics() {
     // Load Rapier with dynamic import to ensure WASM is ready
     const RAPIER = await loadRapier();
     
-    // Verify WASM is ready by testing a simple operation
+    // Double-check WASM is ready before creating World
+    // Creating a World accesses internal WASM functions immediately
     try {
+        // Test that basic WASM functions are available
         const testVector = new RAPIER.Vector3(0, 0, 0);
         if (!testVector) {
-            throw new Error('Rapier Vector3 creation failed');
+            throw new Error('Rapier Vector3 creation failed - WASM not ready');
         }
     } catch (e) {
-        console.error('Rapier WASM not ready:', e);
-        // Wait a bit more and retry
-        await new Promise(resolve => setTimeout(resolve, 500));
+        console.error('Rapier WASM verification failed:', e);
+        throw new Error('Cannot initialize physics: WASM module not ready. ' + e.message);
     }
     
     const gravity = new RAPIER.Vector3(0.0, -9.81, 0.0);
     
     // Main world (currently unused but kept for future)
-    const world = new RAPIER.World(gravity);
-    const eventQueue = new RAPIER.EventQueue(true);
+    // CRITICAL: World constructor immediately accesses WASM functions
+    // If WASM isn't ready, this will throw the rawintegrationparameters_new error
+    let world, eventQueue, fallingWorld, fallingEventQueue;
     
-    // Separate world for falling blocks to avoid conflicts
-    const fallingWorld = new RAPIER.World(gravity);
-    const fallingEventQueue = new RAPIER.EventQueue(true);
+    try {
+        world = new RAPIER.World(gravity);
+        eventQueue = new RAPIER.EventQueue(true);
+        
+        // Separate world for falling blocks to avoid conflicts
+        fallingWorld = new RAPIER.World(gravity);
+        fallingEventQueue = new RAPIER.EventQueue(true);
+    } catch (e) {
+        console.error('Failed to create Rapier World - WASM not initialized:', e);
+        throw new Error('Failed to create physics world. WASM module may not be loaded correctly. ' + e.message);
+    }
     
     // Create ground plane in falling world (for sliding and falling)
     // Grid is 7x7 with cubeSize 1, so ground should be 3.5 units from center
@@ -56,6 +103,9 @@ export async function initPhysics() {
     
     return { world, eventQueue, fallingWorld, fallingEventQueue, RAPIER };
 }
+
+// Export loadRapier for use in other modules if needed
+export { loadRapier };
 
 export function createPhysicsBlock(physics, position, size, isDynamic = true, useFallingWorld = true) {
     // CRITICAL: This function must ONLY be called when:
