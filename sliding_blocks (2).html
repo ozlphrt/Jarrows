@@ -13,9 +13,37 @@
         canvas {
             display: block;
         }
+        #block-counter {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            color: white;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 14px;
+            font-family: 'Courier New', monospace;
+            pointer-events: none;
+            z-index: 1000;
+        }
+        #fps-counter {
+            position: fixed;
+            bottom: 10px;
+            right: 10px;
+            color: white;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 14px;
+            font-family: 'Courier New', monospace;
+            pointer-events: none;
+            z-index: 1000;
+        }
     </style>
 </head>
 <body>
+    <div id="block-counter">Blocks: --</div>
+    <div id="fps-counter">FPS: --</div>
 
     <script type="importmap">
     {
@@ -1001,8 +1029,30 @@
         });
 
         // Animation loop
+        let lastTime = performance.now();
+        let fpsFrameCount = 0;
+        let fpsLastUpdate = performance.now();
+        const fpsElement = document.getElementById('fps-counter');
+        const blockCountElement = document.getElementById('block-counter');
+
         function animate() {
             requestAnimationFrame(animate);
+            
+            const currentTime = performance.now();
+            fpsFrameCount++;
+            
+            if (currentTime - fpsLastUpdate >= 500) {
+                const fps = Math.round((fpsFrameCount * 1000) / (currentTime - fpsLastUpdate));
+                if (fpsElement) fpsElement.textContent = `FPS: ${fps}`;
+                if (blockCountElement) {
+                    // Filter blocks that are still in scene
+                    const activeBlocks = blocks.filter(b => b.group.parent !== null);
+                    blockCountElement.textContent = `Blocks: ${activeBlocks.length}`;
+                }
+                fpsFrameCount = 0;
+                fpsLastUpdate = currentTime;
+            }
+
             controls.update();
             renderer.render(scene, camera);
         }

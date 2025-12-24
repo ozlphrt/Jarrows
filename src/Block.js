@@ -53,12 +53,11 @@ export class Block {
             radius
         );
         
-        // Use Light palette as default: white blocks with dimmed arrow colors
-        const lightBlockColor = 0xf5f5f5; // White/light grey for all blocks
-        const lightArrowColors = [0xa0281f, 0x1f5a7a, 0xb8730d]; // Dimmed Red, Blue, Orange arrows
+        // Use Classic palette as default: original natural colors
+        const colors = [0xff6b6b, 0x4ecdc4, 0xffe66d]; // Red, Teal, Yellow
         
         const blockMaterial = new THREE.MeshStandardMaterial({ 
-            color: lightBlockColor,
+            color: colors[length - 1],
             roughness: 0.1, // Low roughness for shiny plastic
             metalness: 0.0 // No metalness for plastic
         });
@@ -81,9 +80,8 @@ export class Block {
         this.originalMaterial = blockMaterial;
         this.isHighlighted = false;
         
-        // Create arrow with dimmed colors based on block length
-        const arrowColor = lightArrowColors[length - 1];
-        this.createArrow(arrowStyle, arrowColor);
+        // Create arrow with matching block color
+        this.createArrow(arrowStyle, colors[length - 1]);
         
         // Position block on grid
         this.updateWorldPosition();

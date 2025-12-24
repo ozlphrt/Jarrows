@@ -21,9 +21,87 @@ let currentLevel = 1; // Start at level 1
 let isGeneratingLevel = false; // Prevent multiple simultaneous level generations
 let startWithEmptyBoard = true; // Start with empty board - disable auto-generation on initial load
 
+// Constants - declare early so functions can use them
+const gridSize = 7;
+const cubeSize = 1;
+
+// Calculate tower center (center of the grid)
+const towerCenterX = gridSize / 2;
+const towerCenterZ = gridSize / 2;
+const towerCenterY = 0; // Ground level
+
 const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-camera.position.set(8, 8, 8);
-camera.lookAt(3, 0, 3);
+
+// Function to calculate tower top height (maximum y position of any block)
+function getTowerTopHeight() {
+    if (typeof blocks === 'undefined' || !blocks || blocks.length === 0) {
+        return cubeSize; // Default to ground level + one cube height
+    }
+    
+    let maxHeight = 0;
+    for (const block of blocks) {
+        if (block.isRemoved || block.isFalling) continue;
+        const blockHeight = block.isVertical ? block.length * cubeSize : cubeSize;
+        const blockTop = block.yOffset + blockHeight;
+        if (blockTop > maxHeight) {
+            maxHeight = blockTop;
+        }
+    }
+    return maxHeight || cubeSize;
+}
+
+// Function to calculate camera position for default view
+// Camera should be 30-45 degrees above tower top, zoomed to show 100% of top
+function calculateDefaultCameraPosition() {
+    const towerTopHeight = getTowerTopHeight();
+    const gridDiagonal = Math.sqrt(gridSize * gridSize + gridSize * gridSize) * cubeSize;
+    const cameraAngle = (28 * Math.PI) / 180; // 28 degrees
+    const fov = camera.fov * (Math.PI / 180);
+    const aspect = window.innerWidth / window.innerHeight;
+    const verticalFov = 2 * Math.atan(Math.tan(fov / 2) * aspect);
+    const baseDistanceToFit = (gridDiagonal / 2) / Math.tan(verticalFov / 2);
+    const heightBasedDistance = towerTopHeight * 0.2;
+    const distanceToFit = baseDistanceToFit + heightBasedDistance;
+    const distance = distanceToFit * 0.85; // Maximum zoom
+    
+    const heightAboveTop = distance * Math.sin(cameraAngle);
+    const horizontalDistance = distance * Math.cos(cameraAngle);
+    const cameraX = towerCenterX + horizontalDistance * Math.cos(cameraRotationAngle);
+    const cameraZ = towerCenterZ + horizontalDistance * Math.sin(cameraRotationAngle);
+    const cameraY = towerTopHeight + heightAboveTop;
+    
+    const fovRad = fov;
+    const verticalOffset = distance * Math.tan(fovRad / 2) * 0.4;
+    const lookAtY = towerTopHeight - verticalOffset;
+    
+    return {
+        x: cameraX,
+        y: cameraY,
+        z: cameraZ,
+        lookAtX: towerCenterX,
+        lookAtY: lookAtY,
+        lookAtZ: towerCenterZ,
+        distance: distance
+    };
+}
+
+// Initial camera setup
+const initialTowerHeight = cubeSize;
+const gridDiagonal = Math.sqrt(gridSize * gridSize + gridSize * gridSize) * cubeSize;
+const cameraAngle = (28 * Math.PI) / 180;
+const fov = camera.fov * (Math.PI / 180);
+const aspect = window.innerWidth / window.innerHeight;
+const verticalFov = 2 * Math.atan(Math.tan(fov / 2) * aspect);
+const distanceToFit = (gridDiagonal / 2) / Math.tan(verticalFov / 2);
+const distance = distanceToFit * 1.1;
+const heightAboveTop = distance * Math.sin(cameraAngle);
+const horizontalDistance = distance * Math.cos(cameraAngle);
+const initialCameraX = towerCenterX + horizontalDistance * 0.707;
+const initialCameraZ = towerCenterZ + horizontalDistance * 0.707;
+const initialCameraY = initialTowerHeight + heightAboveTop;
+
+camera.position.set(initialCameraX, initialCameraY, initialCameraZ);
+camera.lookAt(towerCenterX, initialTowerHeight, towerCenterZ);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -31,8 +109,70 @@ renderer.shadowMap.enabled = true;
 document.body.appendChild(renderer.domElement);
 
 const controls = new OrbitControls(camera, renderer.domElement);
-controls.target.set(3, 0, 3);
-controls.update();
+controls.target.set(towerCenterX, towerCenterY, towerCenterZ);
+controls.enableDamping = true;
+controls.dampingFactor = 0.06; // Lower = more inertia (harder to start, harder to stop)
+controls.screenSpacePanning = false;
+controls.enableRotate = true;
+controls.enablePan = true;
+controls.enableZoom = true;
+controls.rotateSpeed = 0.25; // Slower rotation
+controls.panSpeed = 0.5;
+controls.zoomSpeed = 0.5;
+controls.minDistance = 3;
+controls.maxDistance = 100;
+controls.maxPolarAngle = Math.PI * 0.9;
+
+// Camera lock/unlock system
+let cameraLocked = true;
+let defaultCameraState = {
+    position: new THREE.Vector3(initialCameraX, initialCameraY, initialCameraZ),
+    target: new THREE.Vector3(towerCenterX, towerCenterY, towerCenterZ)
+};
+
+// Camera smoothing system
+let cameraTargetPosition = new THREE.Vector3(initialCameraX, initialCameraY, initialCameraZ);
+let cameraTargetLookAt = new THREE.Vector3(towerCenterX, initialTowerHeight, towerCenterZ);
+let smoothedLookAt = new THREE.Vector3(towerCenterX, initialTowerHeight, towerCenterZ);
+let smoothedLookAtY = initialTowerHeight;
+let lastTowerHeight = initialTowerHeight;
+let targetCameraDistance = initialCameraY;
+let smoothedCameraDistance = initialCameraY;
+const CAMERA_SMOOTHING = 0.03;
+const TOWER_HEIGHT_THRESHOLD = 0.15;
+const CAMERA_UPDATE_INTERVAL = 4;
+let cameraUpdateCounter = 0;
+
+// Auto-rotation during spawn
+const initialHorizontalOffsetX = initialCameraX - towerCenterX;
+const initialHorizontalOffsetZ = initialCameraZ - towerCenterZ;
+const initialHorizontalDistance = Math.sqrt(initialHorizontalOffsetX * initialHorizontalOffsetX + initialHorizontalOffsetZ * initialHorizontalOffsetZ);
+const initialHorizontalAngle = Math.atan2(initialHorizontalOffsetZ, initialHorizontalOffsetX);
+let cameraRotationAngle = initialHorizontalAngle;
+let cameraRotationTime = 0;
+const ROTATION_SPEED = 0.003;
+
+// Unlock camera on user interaction
+renderer.domElement.addEventListener('wheel', (event) => {
+    if (cameraLocked) {
+        cameraLocked = false;
+        console.log('Camera unlocked - zoom interaction detected');
+    }
+}, { passive: true });
+
+controls.addEventListener('change', () => {
+    if (cameraLocked) {
+        cameraLocked = false;
+        console.log('Camera unlocked - OrbitControls change detected');
+    }
+});
+
+renderer.domElement.addEventListener('mousedown', (event) => {
+    if (cameraLocked && (event.button === 0 || event.button === 2)) {
+        cameraLocked = false;
+        console.log('Camera unlocked - mouse interaction detected');
+    }
+});
 
 // Track camera drag state to prevent block clicks during camera movement
 let isCameraDragging = false;
@@ -68,14 +208,29 @@ renderer.domElement.addEventListener('mouseleave', () => {
 // Setup scene elements
 const lights = createLights(scene);
 const { base, gridHelper } = createGrid(scene);
-const gridSize = 7;
-const cubeSize = 1;
 
 // Initialize Rapier physics
 const physics = await initPhysics();
 
 // Create random blocks
 const blocks = [];
+
+// Update camera position now that blocks array exists
+if (cameraLocked) {
+    const defaultCameraPos = calculateDefaultCameraPosition();
+    cameraTargetPosition.set(defaultCameraPos.x, defaultCameraPos.y, defaultCameraPos.z);
+    cameraTargetLookAt.set(defaultCameraPos.lookAtX, defaultCameraPos.lookAtY, defaultCameraPos.lookAtZ);
+    smoothedLookAt.set(defaultCameraPos.lookAtX, defaultCameraPos.lookAtY, defaultCameraPos.lookAtZ);
+    smoothedLookAtY = defaultCameraPos.lookAtY;
+    lastTowerHeight = defaultCameraPos.lookAtY;
+    targetCameraDistance = defaultCameraPos.distance || defaultCameraPos.y;
+    smoothedCameraDistance = targetCameraDistance;
+    camera.position.copy(cameraTargetPosition);
+    camera.lookAt(defaultCameraPos.lookAtX, defaultCameraPos.lookAtY, defaultCameraPos.lookAtZ);
+    controls.target.set(towerCenterX, defaultCameraPos.lookAtY, towerCenterZ);
+    defaultCameraState.position.copy(camera.position);
+    defaultCameraState.target.set(towerCenterX, defaultCameraPos.lookAtY, towerCenterZ);
+}
 
 // Create debug panel for light controls (after blocks array is initialized)
 createDebugPanel(lights, blocks);
@@ -2213,6 +2368,13 @@ window.addEventListener('keydown', async (event) => {
 window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
+    
+    // Recalculate camera position on resize
+    if (cameraLocked) {
+        const defaultCameraPos = calculateDefaultCameraPosition();
+        cameraTargetPosition.set(defaultCameraPos.x, defaultCameraPos.y, defaultCameraPos.z);
+        cameraTargetLookAt.set(defaultCameraPos.lookAtX, defaultCameraPos.lookAtY, defaultCameraPos.lookAtZ);
+    }
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
@@ -2488,7 +2650,64 @@ function animate() {
         
     }
     
-    controls.update();
+    // Camera auto-rotation and dynamic adjustments
+    if (cameraLocked) {
+        // Update rotation angle every frame for smooth continuous rotation
+        cameraRotationTime += 1;
+        cameraRotationAngle = initialHorizontalAngle + cameraRotationTime * ROTATION_SPEED;
+        
+        // Recalculate camera position every N frames
+        cameraUpdateCounter++;
+        if (cameraUpdateCounter >= CAMERA_UPDATE_INTERVAL) {
+            cameraUpdateCounter = 0;
+            
+            const currentTowerHeight = getTowerTopHeight();
+            const heightChange = Math.abs(currentTowerHeight - lastTowerHeight);
+            
+            if (heightChange > TOWER_HEIGHT_THRESHOLD) {
+                const newDefaultPos = calculateDefaultCameraPosition();
+                cameraTargetPosition.set(newDefaultPos.x, newDefaultPos.y, newDefaultPos.z);
+                cameraTargetLookAt.set(newDefaultPos.lookAtX, newDefaultPos.lookAtY, newDefaultPos.lookAtZ);
+                targetCameraDistance = newDefaultPos.distance || newDefaultPos.y;
+                lastTowerHeight = currentTowerHeight;
+            }
+        }
+        
+        // Smoothly interpolate camera position
+        camera.position.lerp(cameraTargetPosition, CAMERA_SMOOTHING);
+        smoothedLookAt.lerp(cameraTargetLookAt, CAMERA_SMOOTHING);
+        smoothedLookAtY = smoothedLookAt.y;
+        smoothedCameraDistance += (targetCameraDistance - smoothedCameraDistance) * CAMERA_SMOOTHING;
+        
+        // Manually control camera when locked
+        camera.lookAt(smoothedLookAt.x, smoothedLookAt.y, smoothedLookAt.z);
+        defaultCameraState.position.copy(camera.position);
+        defaultCameraState.target.set(towerCenterX, smoothedLookAt.y, towerCenterZ);
+    } else {
+        // When unlocked: Let OrbitControls handle everything
+        const currentTowerTopHeight = getTowerTopHeight();
+        const heightChange = Math.abs(currentTowerTopHeight - lastTowerHeight);
+        
+        // Update target to tower top
+        if (heightChange > TOWER_HEIGHT_THRESHOLD * 0.3) {
+            lastTowerHeight = currentTowerTopHeight;
+        }
+        
+        // Calculate offset to position tower top at top of screen
+        const fovRad = camera.fov * (Math.PI / 180);
+        const currentDistance = camera.position.distanceTo(new THREE.Vector3(towerCenterX, currentTowerTopHeight, towerCenterZ));
+        const verticalOffset = currentDistance * Math.tan(fovRad / 2) * 0.4;
+        const targetLookAtY = currentTowerTopHeight - verticalOffset;
+        
+        cameraTargetLookAt.set(towerCenterX, targetLookAtY, towerCenterZ);
+        smoothedLookAt.lerp(cameraTargetLookAt, CAMERA_SMOOTHING);
+        smoothedLookAtY = smoothedLookAt.y;
+        
+        // Set controls target to tower top
+        controls.target.set(smoothedLookAt.x, smoothedLookAt.y, smoothedLookAt.z);
+        controls.update();
+    }
+    
     renderer.render(scene, camera);
 }
 

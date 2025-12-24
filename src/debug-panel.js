@@ -638,6 +638,97 @@ export function createDebugPanel(lights, blocks = null) {
         });
         
         blockPaletteFolder.content.appendChild(blockPaletteGrid);
+        
+        // Block Statistics Section
+        const statsFolder = createFolder('Block Statistics', false);
+        contentArea.appendChild(statsFolder.folder);
+        
+        // Create stats display elements
+        const statsContainer = document.createElement('div');
+        statsContainer.style.cssText = `
+            padding: 8px;
+            font-size: 11px;
+            line-height: 1.6;
+        `;
+        
+        const totalBlocksLabel = document.createElement('div');
+        totalBlocksLabel.style.cssText = `margin-bottom: 4px; font-weight: bold; color: #4ecdc4;`;
+        totalBlocksLabel.textContent = 'Total Blocks: 0';
+        
+        const length1Label = document.createElement('div');
+        length1Label.style.cssText = `margin-left: 12px; color: #ff6b6b;`;
+        length1Label.textContent = 'Length 1: 0';
+        
+        const length2Label = document.createElement('div');
+        length2Label.style.cssText = `margin-left: 12px; color: #4ecdc4;`;
+        length2Label.textContent = 'Length 2: 0';
+        
+        const length3Label = document.createElement('div');
+        length3Label.style.cssText = `margin-left: 12px; color: #ffe66d;`;
+        length3Label.textContent = 'Length 3: 0';
+        
+        const length2StatsLabel = document.createElement('div');
+        length2StatsLabel.style.cssText = `margin-top: 8px; margin-left: 12px; color: #4ecdc4; font-size: 10px;`;
+        length2StatsLabel.textContent = 'Length 2: Vertical 0% | Horizontal 0%';
+        
+        const length3StatsLabel = document.createElement('div');
+        length3StatsLabel.style.cssText = `margin-left: 12px; color: #ffe66d; font-size: 10px;`;
+        length3StatsLabel.textContent = 'Length 3: Vertical 0% | Horizontal 0%';
+        
+        statsContainer.appendChild(totalBlocksLabel);
+        statsContainer.appendChild(length1Label);
+        statsContainer.appendChild(length2Label);
+        statsContainer.appendChild(length3Label);
+        statsContainer.appendChild(length2StatsLabel);
+        statsContainer.appendChild(length3StatsLabel);
+        
+        statsFolder.content.appendChild(statsContainer);
+        
+        // Function to update statistics
+        function updateStats() {
+            if (!blocks || !Array.isArray(blocks)) return;
+            
+            // Filter out removed/falling blocks
+            const activeBlocks = blocks.filter(b => !b.isRemoved && !b.isFalling);
+            
+            // Count by length
+            const length1 = activeBlocks.filter(b => b.length === 1).length;
+            const length2 = activeBlocks.filter(b => b.length === 2).length;
+            const length3 = activeBlocks.filter(b => b.length === 3).length;
+            
+            // Count length 2 by orientation
+            const length2Vertical = activeBlocks.filter(b => b.length === 2 && b.isVertical).length;
+            const length2Horizontal = activeBlocks.filter(b => b.length === 2 && !b.isVertical).length;
+            const length2Total = length2Vertical + length2Horizontal;
+            const length2VerticalPct = length2Total > 0 ? ((length2Vertical / length2Total) * 100).toFixed(1) : '0.0';
+            const length2HorizontalPct = length2Total > 0 ? ((length2Horizontal / length2Total) * 100).toFixed(1) : '0.0';
+            
+            // Count length 3 by orientation
+            const length3Vertical = activeBlocks.filter(b => b.length === 3 && b.isVertical).length;
+            const length3Horizontal = activeBlocks.filter(b => b.length === 3 && !b.isVertical).length;
+            const length3Total = length3Vertical + length3Horizontal;
+            const length3VerticalPct = length3Total > 0 ? ((length3Vertical / length3Total) * 100).toFixed(1) : '0.0';
+            const length3HorizontalPct = length3Total > 0 ? ((length3Horizontal / length3Total) * 100).toFixed(1) : '0.0';
+            
+            // Update display
+            totalBlocksLabel.textContent = `Total Blocks: ${activeBlocks.length}`;
+            length1Label.textContent = `Length 1: ${length1}`;
+            length2Label.textContent = `Length 2: ${length2}`;
+            length3Label.textContent = `Length 3: ${length3}`;
+            length2StatsLabel.textContent = `Length 2: Vertical ${length2VerticalPct}% | Horizontal ${length2HorizontalPct}%`;
+            length3StatsLabel.textContent = `Length 3: Vertical ${length3VerticalPct}% | Horizontal ${length3HorizontalPct}%`;
+        }
+        
+        // Update stats initially
+        updateStats();
+        
+        // Update stats periodically (every 500ms)
+        const statsInterval = setInterval(() => {
+            updateStats();
+        }, 500);
+        
+        // Store interval ID on panel for cleanup if needed
+        panel._statsInterval = statsInterval;
     }
     
     document.body.appendChild(panel);
