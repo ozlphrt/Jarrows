@@ -53,11 +53,14 @@ export class Block {
             radius
         );
         
-        const colors = [0xff6b6b, 0x4ecdc4, 0xffe66d];
+        // Use Light palette as default: white blocks with dimmed arrow colors
+        const lightBlockColor = 0xf5f5f5; // White/light grey for all blocks
+        const lightArrowColors = [0xa0281f, 0x1f5a7a, 0xb8730d]; // Dimmed Red, Blue, Orange arrows
+        
         const blockMaterial = new THREE.MeshStandardMaterial({ 
-            color: colors[length - 1],
-            roughness: 0.1,
-            metalness: 0.0
+            color: lightBlockColor,
+            roughness: 0.1, // Low roughness for shiny plastic
+            metalness: 0.0 // No metalness for plastic
         });
         
         // Create single mesh for the entire block
@@ -78,8 +81,9 @@ export class Block {
         this.originalMaterial = blockMaterial;
         this.isHighlighted = false;
         
-        // Create arrow
-        this.createArrow(arrowStyle, colors[length - 1]);
+        // Create arrow with dimmed colors based on block length
+        const arrowColor = lightArrowColors[length - 1];
+        this.createArrow(arrowStyle, arrowColor);
         
         // Position block on grid
         this.updateWorldPosition();
@@ -454,6 +458,34 @@ export class Block {
         
         this.group.add(arrowGroup);
         this.arrow = arrowGroup;
+    }
+    
+    // Update block color (material and arrow)
+    updateBlockColor(newColor, arrowColor = null) {
+        // Update block material color
+        if (this.originalMaterial) {
+            this.originalMaterial.color.setHex(newColor);
+            // Keep shiny plastic properties for all blocks
+            this.originalMaterial.roughness = 0.1; // Shiny plastic
+            this.originalMaterial.metalness = 0.0; // Plastic, not metal
+        }
+        
+        // Update arrow color (use arrowColor if provided, otherwise use block color)
+        const finalArrowColor = arrowColor !== null ? arrowColor : newColor;
+        // Arrow structure: this.arrow (Group) -> topArrow (Group) -> topArrowMesh (Mesh with material)
+        if (this.arrow && this.arrow.children.length > 0) {
+            const topArrow = this.arrow.children[0];
+            if (topArrow && topArrow.children && topArrow.children.length > 0) {
+                const topArrowMesh = topArrow.children[0];
+                if (topArrowMesh && topArrowMesh.material) {
+                    topArrowMesh.material.color.setHex(finalArrowColor);
+                    // Only update emissive if it exists (some arrow styles don't have emissive)
+                    if (topArrowMesh.material.emissive) {
+                        topArrowMesh.material.emissive.setHex(finalArrowColor);
+                    }
+                }
+            }
+        }
     }
     
     // Rotate direction clockwise: East->South->West->North->East

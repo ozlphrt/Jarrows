@@ -4,6 +4,7 @@ import { initPhysics, createPhysicsBlock, updatePhysics, isPhysicsStepping, hasP
 import { Block } from './Block.js';
 import { createLights, createGrid } from './scene.js';
 import { validateStructure, validateSolvability, calculateDifficulty, getBlockCells } from './puzzle_validation.js';
+import { createDebugPanel } from './debug-panel.js';
 
 // Scene setup
 const scene = new THREE.Scene();
@@ -12,7 +13,9 @@ scene.background = new THREE.Color(0x87ceeb);
 // Global arrow style
 let currentArrowStyle = 2;
 
-// Level system: 35 blocks per level
+// Level system: blocks per level
+// This was originally set to 35, but can be adjusted based on grid size and difficulty
+// For a 7x7 grid (49 cells), 35 blocks allows for ~71% fill, leaving room for movement
 const BLOCKS_PER_LEVEL = 35;
 let currentLevel = 1; // Start at level 1
 let isGeneratingLevel = false; // Prevent multiple simultaneous level generations
@@ -63,7 +66,7 @@ renderer.domElement.addEventListener('mouseleave', () => {
 });
 
 // Setup scene elements
-createLights(scene);
+const lights = createLights(scene);
 const { base, gridHelper } = createGrid(scene);
 const gridSize = 7;
 const cubeSize = 1;
@@ -73,6 +76,9 @@ const physics = await initPhysics();
 
 // Create random blocks
 const blocks = [];
+
+// Create debug panel for light controls (after blocks array is initialized)
+createDebugPanel(lights, blocks);
 const directions = [
     {x: 1, z: 0},   // East
     {x: -1, z: 0},  // West
@@ -482,7 +488,7 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
             scene.remove(testBlock.group); // Remove from scene, will be added with animation
             blocksToPlace.push(testBlock);
             occupyCells(testBlock); // Use helper function to mark cells as occupied
-            
+
             // Block is valid - keep it
             blockAdded = true;
             break;
@@ -605,62 +611,17 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
     return blocksToPlace;
 }
 
-// Place blocks in batches with fast animation
-function placeBlocksBatch(blocksToPlace, batchSize = 10, delayBetweenBatches = 10) {
+// Place blocks instantly - no delays or animations
+function placeBlocksBatch(blocksToPlace, batchSize = 10, delayBetweenBatches = 0) {
     return new Promise((resolve) => {
-        let batchIndex = 0;
-        
-        const placeBatch = () => {
-            const startIdx = batchIndex * batchSize;
-            const endIdx = Math.min(startIdx + batchSize, blocksToPlace.length);
-            
-            if (startIdx >= blocksToPlace.length) {
-                resolve();
-                return;
-            }
-            
-            // Add all blocks in this batch to scene immediately
-            for (let i = startIdx; i < endIdx; i++) {
-                const block = blocksToPlace[i];
-                block.group.scale.set(0, 0, 0);
-                scene.add(block.group);
-                blocks.push(block);
-            }
-            
-            // Animate all blocks in batch simultaneously - very fast
-            const startTime = performance.now();
-            const duration = 50; // Very fast animation
-            
-            const animate = () => {
-                const elapsed = performance.now() - startTime;
-                const progress = Math.min(elapsed / duration, 1);
-                
-                // Ease-out cubic for smooth animation
-                const eased = 1 - Math.pow(1 - progress, 3);
-                
-                // Update all blocks in batch
-                for (let i = startIdx; i < endIdx; i++) {
-                    blocksToPlace[i].group.scale.set(eased, eased, eased);
-                }
-                
-                if (progress < 1) {
-                    requestAnimationFrame(animate);
-                } else {
-                    // Finalize scale
-                    for (let i = startIdx; i < endIdx; i++) {
-                        blocksToPlace[i].group.scale.set(1, 1, 1);
-                    }
-                    
-                    // Move to next batch
-                    batchIndex++;
-                    setTimeout(placeBatch, delayBetweenBatches);
-                }
-            };
-            
-            animate();
-        };
-        
-        placeBatch();
+        // Add all blocks to scene immediately with no animation
+        for (let i = 0; i < blocksToPlace.length; i++) {
+            const block = blocksToPlace[i];
+            block.group.scale.set(1, 1, 1); // Set to full scale immediately
+            scene.add(block.group);
+            blocks.push(block);
+        }
+        resolve();
     });
 }
 
@@ -685,6 +646,980 @@ function getOccupiedCellsForLayer(layerNumber) {
     }
     
     return occupiedCells;
+}
+
+// TEST: Reverse generation with visual feedback (multi-layer support)
+// This function demonstrates reverse generation: places blocks at edges, then moves them backward
+async function generateReversePuzzleTest(edgeBlockPercentage = 0.4, maxBackwardMoves = 5, numLayers = 2) {
+    console.log(`🧪 Starting reverse generation test (${numLayers} layer${numLayers > 1 ? 's' : ''})...`);
+    
+    // Clear existing blocks
+    for (const block of blocks) {
+        scene.remove(block.group);
+    }
+    blocks.length = 0;
+    
+    const gridSize = 7;
+    const cubeSize = 1;
+    const targetBlockCount = 15; // Smaller count per layer for testing
+    
+    // Generate layers sequentially (bottom first, then upper layers)
+    let lowerLayerCells = null;
+    
+    for (let layer = 0; layer < numLayers; layer++) {
+        const yOffset = layer * cubeSize;
+        console.log(`\n📦 Generating Layer ${layer + 1}/${numLayers} at Y=${yOffset}...`);
+        
+        // Get blocks for this layer using reverse generation
+        // This will complete ALL backward moves for this layer before returning
+        const layerBlocks = await generateReverseLayer(
+            yOffset, 
+            lowerLayerCells, 
+            targetBlockCount, 
+            edgeBlockPercentage, 
+            maxBackwardMoves,
+            layer === 0 // Show solved state only for first layer
+        );
+        
+        // Wait for all animations to complete before moving to next layer
+        console.log(`  ⏳ Waiting for Layer ${layer + 1} animations to complete...`);
+        await new Promise(resolve => setTimeout(resolve, 500)); // Extra buffer for animations
+        
+        // Update lowerLayerCells for next layer (using final positions after all backward moves)
+        if (layer < numLayers - 1) {
+            lowerLayerCells = new Set();
+            for (const block of layerBlocks) {
+                if (block.isVertical) {
+                    lowerLayerCells.add(`${block.gridX},${block.gridZ}`);
+                } else {
+                    const isXAligned = Math.abs(block.direction.x) > 0;
+                    for (let i = 0; i < block.length; i++) {
+                        const x = block.gridX + (isXAligned ? i : 0);
+                        const z = block.gridZ + (isXAligned ? 0 : i);
+                        lowerLayerCells.add(`${x},${z}`);
+                    }
+                }
+            }
+            console.log(`  ✓ Layer ${layer + 1} complete: ${lowerLayerCells.size} cells available for layer ${layer + 2}`);
+            
+            // Wait before starting next layer
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+    }
+    
+    console.log(`\n✓ Reverse generation complete: ${blocks.length} blocks across ${numLayers} layer${numLayers > 1 ? 's' : ''}`);
+    console.log('💡 Blocks can now be moved forward (in arrow direction) to solve the puzzle!');
+}
+
+// Generate a single layer using reverse generation
+async function generateReverseLayer(yOffset, lowerLayerCells, targetBlockCount, edgeBlockPercentage, maxBackwardMoves, showSolvedState = true) {
+    const gridSize = 7;
+    const cubeSize = 1;
+    
+    // Helper to check if cell has support (for upper layers)
+    function hasSupport(x, z) {
+        if (yOffset === 0) return true; // Ground level always has support
+        return lowerLayerCells && lowerLayerCells.has(`${x},${z}`);
+    }
+    
+    // Helper to check if cell is occupied
+    const occupiedCells = new Set();
+    function isCellOccupied(x, z) {
+        if (occupiedCells.has(`${x},${z}`)) return true;
+        if (lowerLayerCells && lowerLayerCells.has(`${x},${z}`)) return true;
+        return false;
+    }
+    
+    // STEP 1: Place one block at a time, move it backward toward center
+    if (showSolvedState) {
+        console.log('  Step 1: Placing blocks and moving them backward toward center...');
+    }
+    const placedBlocks = [];
+    const centerX = Math.floor(gridSize / 2);
+    const centerZ = Math.floor(gridSize / 2);
+    
+    // Helper to calculate distance from center
+    function distanceFromCenter(x, z) {
+        const dx = x - centerX;
+        const dz = z - centerZ;
+        return Math.sqrt(dx * dx + dz * dz);
+    }
+    
+    // Helper to check if a position is valid for a block
+    function canPlaceBlockAtPosition(length, gridX, gridZ, direction, isVertical, yOffset, occupiedCells, allBlocks) {
+        const testCells = [];
+        
+        if (isVertical) {
+            if (!hasSupport(gridX, gridZ) || isCellOccupied(gridX, gridZ)) {
+                return { valid: false };
+            }
+            testCells.push({ x: gridX, z: gridZ });
+        } else {
+            const isXAligned = Math.abs(direction.x) > 0;
+            for (let j = 0; j < length; j++) {
+                const checkX = gridX + (isXAligned ? j : 0);
+                const checkZ = gridZ + (isXAligned ? 0 : j);
+                if (checkX < 0 || checkX >= gridSize || checkZ < 0 || checkZ >= gridSize) {
+                    return { valid: false };
+                }
+                if (!hasSupport(checkX, checkZ) || isCellOccupied(checkX, checkZ)) {
+                    return { valid: false };
+                }
+                testCells.push({ x: checkX, z: checkZ });
+            }
+        }
+        
+        // Check for overlap with ALL existing blocks
+        for (const existingBlock of allBlocks) {
+            if (existingBlock.yOffset !== yOffset || existingBlock.isRemoved || existingBlock.isFalling) continue;
+            
+            const existingCells = [];
+            if (existingBlock.isVertical) {
+                existingCells.push({ x: existingBlock.gridX, z: existingBlock.gridZ });
+            } else {
+                const existingIsXAligned = Math.abs(existingBlock.direction.x) > 0;
+                for (let i = 0; i < existingBlock.length; i++) {
+                    const x = existingBlock.gridX + (existingIsXAligned ? i : 0);
+                    const z = existingBlock.gridZ + (existingIsXAligned ? 0 : i);
+                    existingCells.push({ x, z });
+                }
+            }
+            
+            for (const testCell of testCells) {
+                for (const existingCell of existingCells) {
+                    if (testCell.x === existingCell.x && testCell.z === existingCell.z) {
+                        return { valid: false };
+                    }
+                }
+            }
+        }
+        
+        return { valid: true, cells: testCells };
+    }
+    
+    // Helper to move a block backward toward center (one step)
+    // Returns: { moved: boolean, newGridX, newGridZ } - doesn't modify block, just checks if move is valid
+    function canMoveBlockBackwardOneStep(block, allBlocks, occupiedCellsSet) {
+        const backwardDirection = {
+            x: -block.direction.x,
+            z: -block.direction.z
+        };
+        
+        const newGridX = block.gridX + backwardDirection.x;
+        const newGridZ = block.gridZ + backwardDirection.z;
+        
+        // Check bounds
+        if (block.isVertical) {
+            if (newGridX < 0 || newGridX >= gridSize || newGridZ < 0 || newGridZ >= gridSize) {
+                return { moved: false };
+            }
+        } else {
+            const isXAligned = Math.abs(block.direction.x) > 0;
+            for (let i = 0; i < block.length; i++) {
+                const checkX = newGridX + (isXAligned ? i : 0);
+                const checkZ = newGridZ + (isXAligned ? 0 : i);
+                if (checkX < 0 || checkX >= gridSize || checkZ < 0 || checkZ >= gridSize) {
+                    return { moved: false };
+                }
+            }
+        }
+        
+        // Get cells that the block would occupy at new position
+        const newCells = [];
+        if (block.isVertical) {
+            newCells.push({ x: newGridX, z: newGridZ });
+        } else {
+            const isXAligned = Math.abs(block.direction.x) > 0;
+            for (let i = 0; i < block.length; i++) {
+                const checkX = newGridX + (isXAligned ? i : 0);
+                const checkZ = newGridZ + (isXAligned ? 0 : i);
+                newCells.push({ x: checkX, z: checkZ });
+            }
+        }
+        
+        // Get cells that the block currently occupies
+        const currentCells = [];
+        if (block.isVertical) {
+            currentCells.push({ x: block.gridX, z: block.gridZ });
+        } else {
+            const isXAligned = Math.abs(block.direction.x) > 0;
+            for (let i = 0; i < block.length; i++) {
+                const checkX = block.gridX + (isXAligned ? i : 0);
+                const checkZ = block.gridZ + (isXAligned ? 0 : i);
+                currentCells.push({ x: checkX, z: checkZ });
+            }
+        }
+        
+        // Check for overlaps with other blocks at same Y level
+        // Use occupiedCellsSet to check, but exclude current block's cells
+        for (const newCell of newCells) {
+            // Skip if this cell is part of the block's current position (it's moving from here)
+            let isCurrentCell = false;
+            for (const currentCell of currentCells) {
+                if (currentCell.x === newCell.x && currentCell.z === newCell.z) {
+                    isCurrentCell = true;
+                    break;
+                }
+            }
+            if (isCurrentCell) continue; // This cell is being vacated, so it's fine
+            
+            // Check if this cell is occupied by another block
+            if (occupiedCellsSet.has(`${newCell.x},${newCell.z}`)) {
+                return { moved: false };
+            }
+        }
+        
+        // Move is valid
+        return { moved: true, newGridX, newGridZ };
+    }
+    
+    // Generate blocks one at a time, place them, then move backward toward center
+    const targetCells = gridSize * gridSize;
+    let blocksPlaced = 0;
+    const maxBlocks = targetBlockCount * 2; // Allow more blocks to ensure 100% fill
+    
+    while (occupiedCells.size < targetCells && blocksPlaced < maxBlocks) {
+        blocksPlaced++;
+        
+        // Generate random block properties
+        const length = Math.floor(Math.random() * 3) + 1; // 1-3
+        const isVertical = Math.random() < 0.3; // 30% vertical
+        const directions = [
+            {x: 1, z: 0},   // East
+            {x: -1, z: 0},  // West
+            {x: 0, z: 1},   // South
+            {x: 0, z: -1}   // North
+        ];
+        const direction = directions[Math.floor(Math.random() * directions.length)];
+        
+        // Find an initial position for this block (try random positions, starting from edges)
+        // We'll place it initially, then move it backward toward center
+        let initialPosition = null;
+        
+        // Try random positions first (prefer positions away from center for backward movement)
+        const candidatePositions = [];
+        for (let z = 0; z < gridSize; z++) {
+            for (let x = 0; x < gridSize; x++) {
+                candidatePositions.push({ x, z, distance: distanceFromCenter(x, z) });
+            }
+        }
+        
+        // Sort by distance from center (furthest first - so we can move backward toward center)
+        candidatePositions.sort((a, b) => b.distance - a.distance);
+        
+        // Shuffle positions with similar distances to add randomness
+        for (let i = 0; i < candidatePositions.length - 1; i++) {
+            const j = Math.floor(Math.random() * (candidatePositions.length - i)) + i;
+            [candidatePositions[i], candidatePositions[j]] = [candidatePositions[j], candidatePositions[i]];
+        }
+        
+        // Try each position until we find a valid one
+        for (const candidate of candidatePositions) {
+            const check = canPlaceBlockAtPosition(length, candidate.x, candidate.z, direction, isVertical, yOffset, occupiedCells, blocks);
+            if (check.valid) {
+                initialPosition = { x: candidate.x, z: candidate.z, cells: check.cells };
+                break;
+            }
+        }
+        
+        // If we found a position, place the block
+        if (!initialPosition) {
+            // Can't place this block configuration - try next iteration
+            continue;
+        }
+        
+        // Mark cells as occupied
+        for (const cell of initialPosition.cells) {
+            occupiedCells.add(`${cell.x},${cell.z}`);
+        }
+        
+        // Create block at initial position
+        const block = new Block(length, initialPosition.x, initialPosition.z, direction, isVertical, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, 1);
+        blocks.push(block);
+        placedBlocks.push(block);
+        
+        // Animate spawn
+        block.group.scale.set(0, 0, 0);
+        const startTime = performance.now();
+        const duration = 150;
+        
+        await new Promise(resolve => {
+            const animate = () => {
+                const elapsed = performance.now() - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                const eased = 1 - Math.pow(1 - progress, 3);
+                block.group.scale.set(eased, eased, eased);
+                
+                if (progress < 1) {
+                    requestAnimationFrame(animate);
+                } else {
+                    block.group.scale.set(1, 1, 1);
+                    setTimeout(() => resolve(), 30);
+                }
+            };
+            animate();
+        });
+        
+        // Now move this block backward (opposite to arrow direction) toward center as many times as possible
+        let movedBackward = true;
+        let backwardMoves = 0;
+        const maxBackwardMoves = gridSize * 2; // Safety limit
+        
+        while (movedBackward && backwardMoves < maxBackwardMoves) {
+            // Store previous position before move
+            const prevGridX = block.gridX;
+            const prevGridZ = block.gridZ;
+            const prevDistance = distanceFromCenter(prevGridX, prevGridZ);
+            
+            // Check if we can move backward (using occupied cells to avoid overlaps)
+            const moveCheck = canMoveBlockBackwardOneStep(block, blocks, occupiedCells);
+            
+            if (moveCheck.moved) {
+                // Update block position
+                block.gridX = moveCheck.newGridX;
+                block.gridZ = moveCheck.newGridZ;
+                const newDistance = distanceFromCenter(block.gridX, block.gridZ);
+                
+                // Only continue if we're moving closer to center (or at least not further)
+                if (newDistance <= prevDistance) {
+                    backwardMoves++;
+                    
+                    // Update occupied cells BEFORE animation (so next check is accurate)
+                    // Remove old cells (previous position)
+                    if (block.isVertical) {
+                        occupiedCells.delete(`${prevGridX},${prevGridZ}`);
+                    } else {
+                        const isXAligned = Math.abs(block.direction.x) > 0;
+                        for (let i = 0; i < block.length; i++) {
+                            const x = prevGridX + (isXAligned ? i : 0);
+                            const z = prevGridZ + (isXAligned ? 0 : i);
+                            occupiedCells.delete(`${x},${z}`);
+                        }
+                    }
+                    
+                    // Add new cells (current position after move)
+                    if (block.isVertical) {
+                        occupiedCells.add(`${block.gridX},${block.gridZ}`);
+                    } else {
+                        const isXAligned = Math.abs(block.direction.x) > 0;
+                        for (let i = 0; i < block.length; i++) {
+                            const x = block.gridX + (isXAligned ? i : 0);
+                            const z = block.gridZ + (isXAligned ? 0 : i);
+                            occupiedCells.add(`${x},${z}`);
+                        }
+                    }
+                    
+                    // Also update block's world position immediately (before animation)
+                    block.updateWorldPosition();
+                    
+                    // Animate the backward move
+                    await new Promise(resolve => {
+                        // Calculate start position (previous position)
+                        let startX, startZ;
+                        if (block.isVertical) {
+                            startX = prevGridX * cubeSize + cubeSize / 2;
+                            startZ = prevGridZ * cubeSize + cubeSize / 2;
+                        } else {
+                            const isXAligned = Math.abs(block.direction.x) > 0;
+                            if (isXAligned) {
+                                const startGridX = prevGridX * cubeSize + cubeSize / 2;
+                                const endGridX = (prevGridX + block.length - 1) * cubeSize + cubeSize / 2;
+                                startX = (startGridX + endGridX) / 2;
+                                startZ = prevGridZ * cubeSize + cubeSize / 2;
+                            } else {
+                                startX = prevGridX * cubeSize + cubeSize / 2;
+                                const startGridZ = prevGridZ * cubeSize + cubeSize / 2;
+                                const endGridZ = (prevGridZ + block.length - 1) * cubeSize + cubeSize / 2;
+                                startZ = (startGridZ + endGridZ) / 2;
+                            }
+                        }
+                        
+                        // Calculate end position (current position after move)
+                        block.updateWorldPosition();
+                        const endX = block.group.position.x;
+                        const endZ = block.group.position.z;
+                        
+                        // Reset to start position for animation
+                        block.group.position.set(startX, block.yOffset, startZ);
+                        
+                        const startTime = performance.now();
+                        const duration = 200; // 200ms per backward move
+                        
+                        const animate = () => {
+                            const elapsed = performance.now() - startTime;
+                            const progress = Math.min(elapsed / duration, 1);
+                            
+                            const currentX = startX + (endX - startX) * progress;
+                            const currentZ = startZ + (endZ - startZ) * progress;
+                            block.group.position.set(currentX, block.yOffset, currentZ);
+                            
+                            if (progress < 1) {
+                                requestAnimationFrame(animate);
+                            } else {
+                                block.group.position.set(endX, block.yOffset, endZ);
+                                setTimeout(() => resolve(), 30);
+                            }
+                        };
+                        
+                        animate();
+                    });
+                    
+                    // Update occupied cells: remove old cells, add new cells for this block
+                    // Remove old cells (previous position)
+                    if (block.isVertical) {
+                        occupiedCells.delete(`${prevGridX},${prevGridZ}`);
+                    } else {
+                        const isXAligned = Math.abs(block.direction.x) > 0;
+                        for (let i = 0; i < block.length; i++) {
+                            const x = prevGridX + (isXAligned ? i : 0);
+                            const z = prevGridZ + (isXAligned ? 0 : i);
+                            occupiedCells.delete(`${x},${z}`);
+                        }
+                    }
+                    
+                    // Add new cells (current position after move)
+                    if (block.isVertical) {
+                        occupiedCells.add(`${block.gridX},${block.gridZ}`);
+                    } else {
+                        const isXAligned = Math.abs(block.direction.x) > 0;
+                        for (let i = 0; i < block.length; i++) {
+                            const x = block.gridX + (isXAligned ? i : 0);
+                            const z = block.gridZ + (isXAligned ? 0 : i);
+                            occupiedCells.add(`${x},${z}`);
+                        }
+                    }
+                } else {
+                    // Moved away from center - revert and stop
+                    movedBackward = false;
+                    block.gridX = prevGridX;
+                    block.gridZ = prevGridZ;
+                    block.updateWorldPosition();
+                }
+            } else {
+                // Can't move backward anymore (blocked or out of bounds) - stop
+                movedBackward = false;
+            }
+        }
+        
+        // If we've filled all cells, stop
+        if (occupiedCells.size >= targetCells) {
+            break;
+        }
+    }
+    
+    if (showSolvedState) {
+        console.log(`  ✓ Placed ${placedBlocks.length} blocks and moved them backward toward center`);
+        // Wait a moment to show placement
+        await new Promise(resolve => setTimeout(resolve, 500));
+    } else {
+        console.log(`  ✓ Placed ${placedBlocks.length} blocks and moved them backward toward center`);
+    }
+    
+    // Use placedBlocks for backward moves
+    const edgeBlocks = placedBlocks;
+    
+    // STEP 2: Move blocks backward (opposite to arrow direction) randomly
+    if (showSolvedState) {
+        console.log('  Step 2: Moving blocks backward to create puzzle...');
+    }
+    
+    // Helper function to move a block backward
+    function moveBlockBackward(block, allBlocks) {
+        const backwardDirection = {
+            x: -block.direction.x,
+            z: -block.direction.z
+        };
+        
+        const newGridX = block.gridX + backwardDirection.x;
+        const newGridZ = block.gridZ + backwardDirection.z;
+        
+        // Check bounds
+        if (block.isVertical) {
+            if (newGridX < 0 || newGridX >= gridSize || newGridZ < 0 || newGridZ >= gridSize) {
+                return false;
+            }
+        } else {
+            const isXAligned = Math.abs(block.direction.x) > 0;
+            for (let i = 0; i < block.length; i++) {
+                const checkX = newGridX + (isXAligned ? i : 0);
+                const checkZ = newGridZ + (isXAligned ? 0 : i);
+                if (checkX < 0 || checkX >= gridSize || checkZ < 0 || checkZ >= gridSize) {
+                    return false;
+                }
+            }
+        }
+        
+        // Check for overlaps
+        for (const other of allBlocks) {
+            if (other === block || other.yOffset !== block.yOffset) continue;
+            
+            if (block.isVertical) {
+                if (other.isVertical) {
+                    if (newGridX === other.gridX && newGridZ === other.gridZ) return false;
+                } else {
+                    const otherIsXAligned = Math.abs(other.direction.x) > 0;
+                    for (let j = 0; j < other.length; j++) {
+                        const otherX = other.gridX + (otherIsXAligned ? j : 0);
+                        const otherZ = other.gridZ + (otherIsXAligned ? 0 : j);
+                        if (newGridX === otherX && newGridZ === otherZ) return false;
+                    }
+                }
+            } else {
+                const isXAligned = Math.abs(block.direction.x) > 0;
+                for (let i = 0; i < block.length; i++) {
+                    const checkX = newGridX + (isXAligned ? i : 0);
+                    const checkZ = newGridZ + (isXAligned ? 0 : i);
+                    
+                    if (other.isVertical) {
+                        if (checkX === other.gridX && checkZ === other.gridZ) return false;
+                    } else {
+                        const otherIsXAligned = Math.abs(other.direction.x) > 0;
+                        for (let j = 0; j < other.length; j++) {
+                            const otherX = other.gridX + (otherIsXAligned ? j : 0);
+                            const otherZ = other.gridZ + (otherIsXAligned ? 0 : j);
+                            if (checkX === otherX && checkZ === otherZ) return false;
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Move is valid - update position
+        block.gridX = newGridX;
+        block.gridZ = newGridZ;
+        block.updateWorldPosition();
+        return true;
+    }
+    
+    // Move each block backward a random number of times
+    // Process all blocks sequentially to ensure each completes before next starts
+    let completedMoves = 0;
+    const animationPromises = [];
+    
+    // Perform all moves sequentially and collect animation promises
+    for (const block of edgeBlocks) {
+        const numMoves = Math.floor(Math.random() * maxBackwardMoves) + 1;
+        
+        for (let move = 0; move < numMoves; move++) {
+            if (moveBlockBackward(block, blocks)) {
+                completedMoves++;
+                
+                // Create animation promise
+                const animationPromise = new Promise(resolve => {
+                    const startX = block.group.position.x;
+                    const startZ = block.group.position.z;
+                    block.updateWorldPosition();
+                    const endX = block.group.position.x;
+                    const endZ = block.group.position.z;
+                    
+                    // Reset to start position for animation
+                    block.group.position.set(startX, block.yOffset, startZ);
+                    
+                    const startTime = performance.now();
+                    const duration = 300; // 300ms per backward move
+                    
+                    const animate = () => {
+                        const elapsed = performance.now() - startTime;
+                        const progress = Math.min(elapsed / duration, 1);
+                        
+                        const currentX = startX + (endX - startX) * progress;
+                        const currentZ = startZ + (endZ - startZ) * progress;
+                        block.group.position.set(currentX, block.yOffset, currentZ);
+                        
+                        if (progress < 1) {
+                            requestAnimationFrame(animate);
+                        } else {
+                            block.group.position.set(endX, block.yOffset, endZ);
+                            // Small delay to ensure position is fully set and frame is rendered
+                            setTimeout(() => resolve(), 50);
+                        }
+                    };
+                    
+                    animate();
+                });
+                
+                // Wait for this animation to complete before moving to next
+                await animationPromise;
+            } else {
+                // Can't move backward anymore, stop for this block
+                break;
+            }
+        }
+    }
+    
+    // Extra wait to ensure all animations are truly complete (including any queued frame updates)
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // Ensure all animations are complete before returning
+    console.log(`  ✓ Layer complete: ${completedMoves} backward moves finished for ${edgeBlocks.length} blocks`);
+    
+    // STEP 3: Fill layer to 100% (no gaps) before moving to next layer
+    const totalCells = gridSize * gridSize;
+    const currentFillPercentage = (occupiedCells.size / totalCells) * 100;
+    const targetFillPercentage = 100;
+    
+    if (currentFillPercentage < targetFillPercentage) {
+        // Fill to 100% for all layers
+        console.log(`  → Current fill: ${currentFillPercentage.toFixed(1)}%, filling to ${targetFillPercentage}%...`);
+        
+        // Fill to 100% systematically - go through every empty cell
+        const targetCells = totalCells; // 100% = all cells
+        let passes = 0;
+        const maxPasses = 5; // Maximum number of passes to try
+        
+        while (occupiedCells.size < targetCells && passes < maxPasses) {
+            passes++;
+            const beforePass = occupiedCells.size;
+            
+            // Collect all empty cells for this pass
+            const emptyCells = [];
+            for (let z = 0; z < gridSize; z++) {
+                for (let x = 0; x < gridSize; x++) {
+                    if (!isCellOccupied(x, z)) {
+                        emptyCells.push({ x, z });
+                    }
+                }
+            }
+            
+            if (emptyCells.length === 0) {
+                // No empty cells - we're done!
+                break;
+            }
+            
+            console.log(`  → Pass ${passes}: ${emptyCells.length} empty cells remaining`);
+            
+            // Try to fill each empty cell
+            for (const emptyCell of emptyCells) {
+                const randomX = emptyCell.x;
+                const randomZ = emptyCell.z;
+                
+                // Skip if already occupied (double-check)
+                if (isCellOccupied(randomX, randomZ)) continue;
+            
+            // Try to place a block here - prefer single blocks for tight spaces
+            // Try different block configurations to maximize fill
+            let placed = false;
+            
+            // First, try single vertical block (takes only 1 cell)
+            if (!isCellOccupied(randomX, randomZ)) {
+                // Check for overlap with all existing blocks
+                let canPlaceSingle = true;
+                for (const existingBlock of blocks) {
+                    if (existingBlock.yOffset !== yOffset || existingBlock.isRemoved || existingBlock.isFalling) continue;
+                    
+                    if (existingBlock.isVertical) {
+                        if (existingBlock.gridX === randomX && existingBlock.gridZ === randomZ) {
+                            canPlaceSingle = false;
+                            break;
+                        }
+                    } else {
+                        const existingIsXAligned = Math.abs(existingBlock.direction.x) > 0;
+                        for (let i = 0; i < existingBlock.length; i++) {
+                            const x = existingBlock.gridX + (existingIsXAligned ? i : 0);
+                            const z = existingBlock.gridZ + (existingIsXAligned ? 0 : i);
+                            if (x === randomX && z === randomZ) {
+                                canPlaceSingle = false;
+                                break;
+                            }
+                        }
+                        if (!canPlaceSingle) break;
+                    }
+                }
+                
+                if (canPlaceSingle) {
+                    // Place single vertical block
+                    const block = new Block(1, randomX, randomZ, {x: 0, z: 1}, true, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, 1);
+                    blocks.push(block);
+                    edgeBlocks.push(block);
+                    occupiedCells.add(`${randomX},${randomZ}`);
+                    
+                    // Animate spawn
+                    block.group.scale.set(0, 0, 0);
+                    const startTime = performance.now();
+                    const duration = 200;
+                    
+                    await new Promise(resolve => {
+                        const animate = () => {
+                            const elapsed = performance.now() - startTime;
+                            const progress = Math.min(elapsed / duration, 1);
+                            const eased = 1 - Math.pow(1 - progress, 3);
+                            block.group.scale.set(eased, eased, eased);
+                            
+                            if (progress < 1) {
+                                requestAnimationFrame(animate);
+                            } else {
+                                block.group.scale.set(1, 1, 1);
+                                setTimeout(() => resolve(), 50);
+                            }
+                        };
+                        animate();
+                    });
+                    
+                    placed = true;
+                }
+            }
+            
+            // If single block couldn't be placed, try horizontal blocks
+            if (!placed) {
+                const directions = [
+                    {x: 1, z: 0},   // East
+                    {x: -1, z: 0},  // West
+                    {x: 0, z: 1},   // South
+                    {x: 0, z: -1}   // North
+                ];
+                
+                // Shuffle directions to try different orientations
+                for (let d = directions.length - 1; d > 0; d--) {
+                    const j = Math.floor(Math.random() * (d + 1));
+                    [directions[d], directions[j]] = [directions[j], directions[d]];
+                }
+                
+                // Try different lengths (prefer shorter for tight spaces)
+                for (const direction of directions) {
+                    for (const length of [1, 2, 3]) {
+                        const testCells = [];
+                        let canPlace = true;
+                        
+                        if (length === 1) {
+                            testCells.push({ x: randomX, z: randomZ });
+                        } else {
+                            const isXAligned = Math.abs(direction.x) > 0;
+                            for (let j = 0; j < length; j++) {
+                                const checkX = randomX + (isXAligned ? j : 0);
+                                const checkZ = randomZ + (isXAligned ? 0 : j);
+                                if (checkX < 0 || checkX >= gridSize || checkZ < 0 || checkZ >= gridSize) {
+                                    canPlace = false;
+                                    break;
+                                }
+                                if (isCellOccupied(checkX, checkZ)) {
+                                    canPlace = false;
+                                    break;
+                                }
+                                testCells.push({ x: checkX, z: checkZ });
+                            }
+                        }
+                        
+                        if (!canPlace) continue;
+                        
+                        // Check for overlap with ALL existing blocks
+                        for (const existingBlock of blocks) {
+                            if (existingBlock.yOffset !== yOffset || existingBlock.isRemoved || existingBlock.isFalling) continue;
+                            
+                            const existingCells = [];
+                            if (existingBlock.isVertical) {
+                                existingCells.push({ x: existingBlock.gridX, z: existingBlock.gridZ });
+                            } else {
+                                const existingIsXAligned = Math.abs(existingBlock.direction.x) > 0;
+                                for (let i = 0; i < existingBlock.length; i++) {
+                                    const x = existingBlock.gridX + (existingIsXAligned ? i : 0);
+                                    const z = existingBlock.gridZ + (existingIsXAligned ? 0 : i);
+                                    existingCells.push({ x, z });
+                                }
+                            }
+                            
+                            for (const testCell of testCells) {
+                                for (const existingCell of existingCells) {
+                                    if (testCell.x === existingCell.x && testCell.z === existingCell.z) {
+                                        canPlace = false;
+                                        break;
+                                    }
+                                }
+                                if (!canPlace) break;
+                            }
+                            if (!canPlace) break;
+                        }
+                        
+                        if (!canPlace) continue;
+                        
+                        // Place the block
+                        const block = new Block(length, randomX, randomZ, direction, false, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, 1);
+                        blocks.push(block);
+                        edgeBlocks.push(block);
+                        
+                        for (const cell of testCells) {
+                            occupiedCells.add(`${cell.x},${cell.z}`);
+                        }
+                        
+                        // Animate spawn
+                        block.group.scale.set(0, 0, 0);
+                        const startTime = performance.now();
+                        const duration = 200;
+                        
+                        await new Promise(resolve => {
+                            const animate = () => {
+                                const elapsed = performance.now() - startTime;
+                                const progress = Math.min(elapsed / duration, 1);
+                                const eased = 1 - Math.pow(1 - progress, 3);
+                                block.group.scale.set(eased, eased, eased);
+                                
+                                if (progress < 1) {
+                                    requestAnimationFrame(animate);
+                                } else {
+                                    block.group.scale.set(1, 1, 1);
+                                    setTimeout(() => resolve(), 50);
+                                }
+                            };
+                            animate();
+                        });
+                        
+                        placed = true;
+                        break;
+                    }
+                    if (placed) break;
+                }
+            }
+            
+            // Skip to next iteration if we couldn't place anything
+            if (!placed) continue;
+            }
+            
+            // Check if we made progress this pass
+            if (occupiedCells.size === beforePass) {
+                // No progress made this pass, break to avoid infinite loop
+                console.log(`  → Pass ${passes} made no progress, stopping`);
+                break;
+            }
+        }
+        
+        // Final verification: double-check all cells are filled and fill any remaining gaps
+        let finalRemainingCells = [];
+        for (let z = 0; z < gridSize; z++) {
+            for (let x = 0; x < gridSize; x++) {
+                if (!isCellOccupied(x, z)) {
+                    finalRemainingCells.push({ x, z });
+                }
+            }
+        }
+        
+        // Keep trying to fill remaining cells until all are filled or we can't place any more
+        let finalPassAttempts = 0;
+        const maxFinalPassAttempts = finalRemainingCells.length * 2; // Try each cell twice
+        
+        while (finalRemainingCells.length > 0 && finalPassAttempts < maxFinalPassAttempts) {
+            finalPassAttempts++;
+            
+            // Refresh list of remaining cells
+            finalRemainingCells = [];
+            for (let z = 0; z < gridSize; z++) {
+                for (let x = 0; x < gridSize; x++) {
+                    if (!isCellOccupied(x, z)) {
+                        finalRemainingCells.push({ x, z });
+                    }
+                }
+            }
+            
+            if (finalRemainingCells.length === 0) break; // All filled!
+            
+            if (finalPassAttempts === 1) {
+                console.log(`  → Final pass: ${finalRemainingCells.length} cells remaining, attempting to fill...`);
+            }
+            
+            let filledAny = false;
+            
+            // Try each remaining cell
+            for (const cell of finalRemainingCells) {
+                // Try to place a single vertical block
+                let canPlace = true;
+                for (const existingBlock of blocks) {
+                    if (existingBlock.yOffset !== yOffset || existingBlock.isRemoved || existingBlock.isFalling) continue;
+                    
+                    if (existingBlock.isVertical) {
+                        if (existingBlock.gridX === cell.x && existingBlock.gridZ === cell.z) {
+                            canPlace = false;
+                            break;
+                        }
+                    } else {
+                        const existingIsXAligned = Math.abs(existingBlock.direction.x) > 0;
+                        for (let i = 0; i < existingBlock.length; i++) {
+                            const x = existingBlock.gridX + (existingIsXAligned ? i : 0);
+                            const z = existingBlock.gridZ + (existingIsXAligned ? 0 : i);
+                            if (x === cell.x && z === cell.z) {
+                                canPlace = false;
+                                break;
+                            }
+                        }
+                        if (!canPlace) break;
+                    }
+                }
+                
+                if (canPlace) {
+                    const block = new Block(1, cell.x, cell.z, {x: 0, z: 1}, true, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, 1);
+                    blocks.push(block);
+                    edgeBlocks.push(block);
+                    occupiedCells.add(`${cell.x},${cell.z}`);
+                    filledAny = true;
+                    
+                    // Quick spawn animation
+                    block.group.scale.set(0, 0, 0);
+                    const startTime = performance.now();
+                    const duration = 150;
+                    
+                    await new Promise(resolve => {
+                        const animate = () => {
+                            const elapsed = performance.now() - startTime;
+                            const progress = Math.min(elapsed / duration, 1);
+                            const eased = 1 - Math.pow(1 - progress, 3);
+                            block.group.scale.set(eased, eased, eased);
+                            
+                            if (progress < 1) {
+                                requestAnimationFrame(animate);
+                            } else {
+                                block.group.scale.set(1, 1, 1);
+                                setTimeout(() => resolve(), 30);
+                            }
+                        };
+                        animate();
+                    });
+                }
+            }
+            
+            // If we didn't fill any cells this pass, we can't fill more
+            if (!filledAny) {
+                break;
+            }
+        }
+        
+        const finalFillPercentage = (occupiedCells.size / totalCells) * 100;
+        if (finalFillPercentage >= 99.9) {
+            console.log(`  ✓ Fill complete: ${finalFillPercentage.toFixed(1)}% (${occupiedCells.size}/${totalCells} cells) - layer fully filled`);
+        } else {
+            console.log(`  ⚠ Fill incomplete: ${finalFillPercentage.toFixed(1)}% (${occupiedCells.size}/${totalCells} cells) - ${totalCells - occupiedCells.size} cells remaining`);
+        }
+    } else {
+        console.log(`  ✓ Fill already complete: ${currentFillPercentage.toFixed(1)}% (${occupiedCells.size}/${totalCells} cells)`);
+    }
+    
+        // Blocks are ready for backward moves
+    
+    if (showSolvedState) {
+        console.log(`  ✓ Center-out generation complete: ${edgeBlocks.length} blocks placed`);
+    }
+    
+    // Final validation: rebuild occupied cells from all blocks to ensure accuracy
+    // This fixes any potential sync issues between occupiedCells and actual block positions
+    occupiedCells.clear();
+    for (const existingBlock of blocks) {
+        if (existingBlock.yOffset === yOffset && !existingBlock.isRemoved && !existingBlock.isFalling) {
+            if (existingBlock.isVertical) {
+                occupiedCells.add(`${existingBlock.gridX},${existingBlock.gridZ}`);
+            } else {
+                const isXAligned = Math.abs(existingBlock.direction.x) > 0;
+                for (let i = 0; i < existingBlock.length; i++) {
+                    const x = existingBlock.gridX + (isXAligned ? i : 0);
+                    const z = existingBlock.gridZ + (isXAligned ? 0 : i);
+                    occupiedCells.add(`${x},${z}`);
+                }
+            }
+        }
+    }
+    
+    // Validate structure one final time
+    const finalValidation = validateStructure(blocks.filter(b => b.yOffset === yOffset && !b.isRemoved && !b.isFalling), gridSize);
+    if (!finalValidation.valid) {
+        console.warn(`  ⚠ Layer validation failed: ${finalValidation.reason}`);
+    }
+    
+    return edgeBlocks; // Return blocks for this layer
 }
 
 // Generate solvable puzzle using reverse generation (guaranteed solvable)
@@ -729,13 +1664,13 @@ async function generateSolvablePuzzle() {
         if (layer < numLayers - 1) {
             lowerLayerCells = new Set();
             for (const block of layerBlocks) {
-                if (block.isVertical) {
+            if (block.isVertical) {
                     lowerLayerCells.add(`${block.gridX},${block.gridZ}`);
-                } else {
-                    const isXAligned = Math.abs(block.direction.x) > 0;
-                    for (let i = 0; i < block.length; i++) {
-                        const x = block.gridX + (isXAligned ? i : 0);
-                        const z = block.gridZ + (isXAligned ? 0 : i);
+            } else {
+                const isXAligned = Math.abs(block.direction.x) > 0;
+                for (let i = 0; i < block.length; i++) {
+                    const x = block.gridX + (isXAligned ? i : 0);
+                    const z = block.gridZ + (isXAligned ? 0 : i);
                         lowerLayerCells.add(`${x},${z}`);
                     }
                 }
@@ -867,45 +1802,45 @@ function onMouseClick(event) {
     // Select the topmost block (first in sorted array)
     const selectedBlock = allIntersections[0].block;
     
-    // Check if this matches the solution (if we're testing)
-    if (window.puzzleSolution && window.solutionStep < window.puzzleSolution.length) {
-        const expectedBlock = window.puzzleSolution[window.solutionStep];
+            // Check if this matches the solution (if we're testing)
+            if (window.puzzleSolution && window.solutionStep < window.puzzleSolution.length) {
+                const expectedBlock = window.puzzleSolution[window.solutionStep];
         const isCorrect = (selectedBlock === expectedBlock);
-        
-        if (isCorrect) {
-            console.log(`✓ Correct! Moving block at step ${window.solutionStep + 1}/${window.puzzleSolution.length}`);
-        } else {
+                
+                if (isCorrect) {
+                    console.log(`✓ Correct! Moving block at step ${window.solutionStep + 1}/${window.puzzleSolution.length}`);
+                } else {
             console.warn(`✗ Wrong block! Expected block at (${expectedBlock.gridX}, ${expectedBlock.gridZ}), clicked (${selectedBlock.gridX}, ${selectedBlock.gridZ})`);
-            console.warn('  You can still move it, but it may not match the solution path');
-        }
-    }
-    
-    // Validate structure before move
-    const structureCheck = validateStructure(blocks, gridSize);
-    if (!structureCheck.valid) {
-        console.warn('Puzzle structure invalid before move, skipping:', structureCheck.reason);
+                    console.warn('  You can still move it, but it may not match the solution path');
+                }
+            }
+            
+            // Validate structure before move
+            const structureCheck = validateStructure(blocks, gridSize);
+            if (!structureCheck.valid) {
+                console.warn('Puzzle structure invalid before move, skipping:', structureCheck.reason);
         return;
-    }
-    
-    // Store if this block will fall (to update solution tracking)
+            }
+            
+            // Store if this block will fall (to update solution tracking)
     const willFall = selectedBlock.canMove(blocks) === 'fall';
-    
+            
     selectedBlock.move(blocks, gridSize);
-    
-    // If block will fall, it's being cleared - advance solution step
-    if (willFall && window.puzzleSolution) {
-        // Wait for animation to complete, then update
-        setTimeout(() => {
-            // Check if block actually fell (is removed)
+            
+            // If block will fall, it's being cleared - advance solution step
+            if (willFall && window.puzzleSolution) {
+                // Wait for animation to complete, then update
+                setTimeout(() => {
+                    // Check if block actually fell (is removed)
             const blockStillExists = blocks.includes(selectedBlock);
             if (!blockStillExists || selectedBlock.isFalling) {
-                window.solutionStep++;
-                highlightNextBlock();
+                        window.solutionStep++;
+                        highlightNextBlock();
+                    }
+                }, 1000); // Wait for move animation + fall to start
             }
-        }, 1000); // Wait for move animation + fall to start
-    }
-    
-    // Structure validation after move is handled by Block.move() collision detection
+            
+            // Structure validation after move is handled by Block.move() collision detection
 }
 
 window.addEventListener('click', onMouseClick);
@@ -1086,42 +2021,19 @@ function canPlaceBlockAt(length, gridX, gridZ, direction, isVertical, yOffset) {
     return true; // No overlap found
 }
 
-// Function to animate a single block spawn (scale from 0 to 1)
+// Function to spawn a block instantly (no animation)
 function animateBlockSpawn(block) {
-    return new Promise((resolve) => {
-        block.group.scale.set(0, 0, 0);
-        scene.add(block.group);
-        
-        const startTime = performance.now();
-        const duration = 50; // Animation duration in ms (much faster)
-        
-        const animate = () => {
-            const elapsed = performance.now() - startTime;
-            const progress = Math.min(elapsed / duration, 1);
-            
-            // Ease-out cubic for smooth animation
-            const eased = 1 - Math.pow(1 - progress, 3);
-            
-            block.group.scale.set(eased, eased, eased);
-            
-            if (progress < 1) {
-                requestAnimationFrame(animate);
-            } else {
-                // Finalize scale
-                block.group.scale.set(1, 1, 1);
-                resolve();
-            }
-        };
-        
-        animate();
-    });
+    block.group.scale.set(1, 1, 1); // Set to full scale immediately
+    scene.add(block.group);
+    return Promise.resolve(); // Return immediately resolved promise
 }
 
 // Function to spawn a random block at the lowest available position
 function spawnRandomBlock() {
     // Try multiple block configurations before giving up
     // This increases the chance of finding a valid position
-    const maxAttempts = 20; // Try up to 20 different block configurations
+    // Increased attempts to handle dense boards better
+    const maxAttempts = 50; // Try up to 50 different block configurations
     
     const directions = [
         {x: 1, z: 0},   // East
@@ -1137,8 +2049,8 @@ function spawnRandomBlock() {
         const direction = directions[Math.floor(Math.random() * directions.length)];
         
         // Try to find a position starting from the lowest Y (ground level)
-        // Try up to 5 layers high
-        const maxLayers = 5;
+        // Try up to 100 layers high to accommodate more blocks
+        const maxLayers = 100;
         
         for (let layer = 0; layer < maxLayers; layer++) {
             const yOffset = layer * cubeSize;
@@ -1221,7 +2133,7 @@ let targetBlockCount = 1; // Default target
 let lastSpawnTime = 0;
 let consecutiveFailures = 0; // Track consecutive spawn failures
 let initialSpawnComplete = false; // Track if initial spawn to target is complete
-const spawnInterval = 50; // Spawn every 50ms (much faster)
+const spawnInterval = 0; // Spawn as fast as possible (no delay)
 const maxConsecutiveFailures = 10; // After 10 failures, slow down spawning
 
 // Function to update slider value and target count
@@ -1229,7 +2141,7 @@ function updateSliderValue(newValue) {
     if (blocksSlider && blocksSliderValue) {
         // Clamp value to slider range
         const min = parseInt(blocksSlider.min) || 1;
-        const max = parseInt(blocksSlider.max) || 200;
+        const max = parseInt(blocksSlider.max) || 500;
         newValue = Math.max(min, Math.min(max, newValue));
         
         blocksSlider.value = newValue;
@@ -1294,10 +2206,7 @@ window.addEventListener('keydown', async (event) => {
                 console.log(`Stopped spawning: Could not place block ${i + 1}/${spawnCount}`);
                 break;
             }
-            // Small delay between spawns to allow animation to start
-            if (i < spawnCount - 1) {
-                await new Promise(resolve => setTimeout(resolve, 100));
-            }
+            // No delay - spawn as fast as possible
         }
     }
 });
@@ -1345,38 +2254,78 @@ function animate() {
     // Only spawn until initial target is reached, then stop (user plays to clear blocks)
     if (!initialSpawnComplete && !isAutoSpawning && blocks.length < targetBlockCount) {
         // Adjust spawn interval based on consecutive failures
+        // Even with performance issues, we should still try to spawn (just slower)
         const adjustedInterval = consecutiveFailures > maxConsecutiveFailures 
             ? spawnInterval * 3  // Slow down to 150ms if many failures
             : spawnInterval;
         
         // Check if enough time has passed since last spawn
-        if (currentTime - lastSpawnTime >= adjustedInterval) {
+        // With spawnInterval = 0, spawn immediately
+        const timeSinceLastSpawn = currentTime - lastSpawnTime;
+        if (spawnInterval === 0 || timeSinceLastSpawn >= adjustedInterval * 0.8) { // Allow 80% of interval to account for frame drops
             isAutoSpawning = true;
+            lastSpawnTime = currentTime; // Update time immediately to prevent rapid-fire attempts
+            
             (async () => {
+                const blocksBeforeSpawn = blocks.length; // Track count before spawn
                 const success = spawnRandomBlock();
-                lastSpawnTime = currentTime;
                 
                 if (success) {
                     consecutiveFailures = 0; // Reset on success
                     
                     // Check if we've reached the target
+                    // Block is added synchronously in spawnRandomBlock, so check immediately
                     if (blocks.length >= targetBlockCount) {
                         initialSpawnComplete = true;
                         console.log(`✓ Initial spawn complete: ${blocks.length} blocks (target: ${targetBlockCount})`);
                     }
+                    isAutoSpawning = false;
                 } else {
                     consecutiveFailures++; // Increment on failure
                     
+                    // Log progress every 10 failures to help debug
+                    if (consecutiveFailures % 10 === 0) {
+                        const progress = ((blocks.length / targetBlockCount) * 100).toFixed(1);
+                        console.log(`Spawn progress: ${blocks.length}/${targetBlockCount} (${progress}%), ${consecutiveFailures} consecutive failures`);
+                    }
+                    
+                    // Check if board might be full by trying a quick scan
+                    // If we've failed many times, do a quick check to see if there are any valid positions left
+                    if (consecutiveFailures > maxConsecutiveFailures * 3 && consecutiveFailures % 20 === 0) {
+                        let foundValidPosition = false;
+                        // Quick scan: try a few single blocks at different positions
+                        for (let testLayer = 0; testLayer < 3 && !foundValidPosition; testLayer++) {
+                            const testYOffset = testLayer * cubeSize;
+                            for (let testZ = 0; testZ < gridSize && !foundValidPosition; testZ += 2) {
+                                for (let testX = 0; testX < gridSize && !foundValidPosition; testX += 2) {
+                                    if (canPlaceBlockAt(1, testX, testZ, {x: 0, z: 1}, true, testYOffset)) {
+                                        foundValidPosition = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if (!foundValidPosition) {
+                            console.log(`⚠ Board appears full - no valid positions found after ${consecutiveFailures} failures`);
+                            // If board is full and we're reasonably close to target, stop
+                            if (blocks.length >= targetBlockCount * 0.6) {
+                                initialSpawnComplete = true;
+                                console.log(`✓ Initial spawn complete: ${blocks.length} blocks (target: ${targetBlockCount}, board appears full)`);
+                            }
+                        }
+                    }
+                    
                     // If we've failed many times and are close to target, consider it complete
                     // This handles cases where we can't reach exact target due to board constraints
-                    // Increased threshold: need more failures (3x) and higher percentage (95%) before giving up
-                    if (consecutiveFailures > maxConsecutiveFailures * 3 && blocks.length >= targetBlockCount * 0.95) {
+                    // More lenient: need more failures (5x = 50) and higher percentage (98%) before giving up
+                    // This prevents stopping too early when board is getting full but still has space
+                    if (consecutiveFailures > maxConsecutiveFailures * 5 && blocks.length >= targetBlockCount * 0.98) {
                         initialSpawnComplete = true;
-                        console.log(`✓ Initial spawn complete: ${blocks.length} blocks (target: ${targetBlockCount}, reached ~95%)`);
+                        console.log(`✓ Initial spawn complete: ${blocks.length} blocks (target: ${targetBlockCount}, reached ~98% after ${consecutiveFailures} failures)`);
                     }
+                    isAutoSpawning = false;
                 }
-                
-                isAutoSpawning = false;
             })();
         }
     }
@@ -1413,16 +2362,16 @@ function animate() {
         for (let i = 0; i < blocks.length; i++) {
             const block = blocks[i];
             if (!block.isRemoved && block.isFalling) {
-                block.updateFromPhysics();
+            block.updateFromPhysics();
             }
         }
         
         // Update highlight animations (throttled to every other frame to reduce work)
         // Most blocks won't have highlights, so this is usually a no-op
         if (fpsFrameCount % 2 === 0) {
-            for (const block of blocks) {
-                if (block.updateHighlightAnimation) {
-                    block.updateHighlightAnimation(deltaTime);
+        for (const block of blocks) {
+            if (block.updateHighlightAnimation) {
+                block.updateHighlightAnimation(deltaTime);
                 }
             }
         }
