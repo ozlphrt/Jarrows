@@ -37,6 +37,8 @@ export default {
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,png,svg,woff2,wasm}'],
+        // Increase file size limit to accommodate large Rapier bundle (2.27 MB)
+        maximumFileSizeToCacheInBytes: 3 * 1024 * 1024, // 3 MB
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
