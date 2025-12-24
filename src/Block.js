@@ -167,7 +167,7 @@ export class Block {
                 arrowMaterial = new THREE.MeshStandardMaterial({ 
                     color: blockColor,
                     emissive: blockColor,
-                    emissiveIntensity: 0.3,
+                    emissiveIntensity: 0, // Base is 0, pulsing animation will add glow
                     roughness: 0.3,
                     metalness: 0.6,
                     side: THREE.DoubleSide
@@ -195,6 +195,8 @@ export class Block {
                 arrowGeometry = new THREE.ExtrudeGeometry(arrowShape, extrudeSettings);
                 arrowMaterial = new THREE.MeshStandardMaterial({ 
                     color: blockColor,
+                    emissive: blockColor,
+                    emissiveIntensity: 0, // Base is 0, pulsing animation will add glow
                     roughness: 0.4,
                     metalness: 0.3
                 });
@@ -217,8 +219,10 @@ export class Block {
                 arrowShape.lineTo(0, 0.35);
                 
                 arrowGeometry = new THREE.ShapeGeometry(arrowShape);
-                arrowMaterial = new THREE.MeshBasicMaterial({ 
+                arrowMaterial = new THREE.MeshStandardMaterial({ 
                     color: blockColor,
+                    emissive: blockColor,
+                    emissiveIntensity: 0, // Base is 0, pulsing animation will add glow
                     side: THREE.DoubleSide
                 });
                 
@@ -254,7 +258,7 @@ export class Block {
                 arrowMaterial = new THREE.MeshStandardMaterial({ 
                     color: blockColor,
                     emissive: blockColor,
-                    emissiveIntensity: 0.5,
+                    emissiveIntensity: 0, // Base is 0, pulsing animation will add glow
                     roughness: 0.2,
                     metalness: 0.8
                 });
@@ -285,6 +289,8 @@ export class Block {
                 arrowGeometry = new THREE.ExtrudeGeometry(arrowShape, extrudeSettings);
                 arrowMaterial = new THREE.MeshStandardMaterial({ 
                     color: blockColor,
+                    emissive: blockColor,
+                    emissiveIntensity: 0, // Base is 0, pulsing animation will add glow
                     roughness: 0.3,
                     metalness: 0.4
                 });
@@ -316,7 +322,7 @@ export class Block {
                 arrowMaterial = new THREE.MeshStandardMaterial({ 
                     color: blockColor,
                     emissive: blockColor,
-                    emissiveIntensity: 0.2,
+                    emissiveIntensity: 0, // Base is 0, pulsing animation will add glow
                     roughness: 0.4,
                     metalness: 0.3
                 });
@@ -349,6 +355,8 @@ export class Block {
                 arrowGeometry = new THREE.ExtrudeGeometry(arrowShape, extrudeSettings);
                 arrowMaterial = new THREE.MeshStandardMaterial({ 
                     color: blockColor,
+                    emissive: blockColor,
+                    emissiveIntensity: 0, // Base is 0, pulsing animation will add glow
                     roughness: 0.35,
                     metalness: 0.4
                 });
@@ -376,6 +384,8 @@ export class Block {
                 arrowGeometry = new THREE.ExtrudeGeometry(arrowShape, extrudeSettings);
                 arrowMaterial = new THREE.MeshStandardMaterial({ 
                     color: blockColor,
+                    emissive: blockColor,
+                    emissiveIntensity: 0, // Base is 0, pulsing animation will add glow
                     roughness: 0.45,
                     metalness: 0.25
                 });
@@ -525,9 +535,25 @@ export class Block {
             if (newGridX < 0 || newGridX >= gridSize || newGridZ < 0 || newGridZ >= gridSize) {
                 return true;
             }
-            // Only check blocks at the same Y level
+            // Check for 3D overlaps: blocks cannot rotate to a position where they would overlap with another block
             for (const other of blocks) {
-                if (other === this || other === collidedBlock || other.isFalling || other.yOffset !== this.yOffset) continue;
+                if (other === this || other === collidedBlock || other.isFalling || other.isRemoved) continue;
+                
+                // Calculate Y ranges for both blocks to check for 3D overlap
+                const thisHeight = this.isVertical ? this.length * this.cubeSize : this.cubeSize;
+                const thisYBottom = this.yOffset;
+                const thisYTop = this.yOffset + thisHeight;
+                
+                const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
+                const otherYBottom = other.yOffset;
+                const otherYTop = other.yOffset + otherHeight;
+                
+                // Check if Y ranges overlap (blocks are at different Y levels but might overlap in 3D)
+                const yRangesOverlap = !(thisYTop <= otherYBottom || thisYBottom >= otherYTop);
+                
+                // If Y ranges don't overlap, blocks can't collide (they're at different heights)
+                if (!yRangesOverlap) continue;
+                
                 if (other.isVertical) {
                     if (newGridX === other.gridX && newGridZ === other.gridZ) {
                         return false;
@@ -552,9 +578,25 @@ export class Block {
                 if (checkX < 0 || checkX >= gridSize || checkZ < 0 || checkZ >= gridSize) {
                     return true;
                 }
-                // Only check blocks at the same Y level
+                // Check for 3D overlaps: blocks cannot rotate to a position where they would overlap with another block
                 for (const other of blocks) {
-                    if (other === this || other === collidedBlock || other.isFalling || other.yOffset !== this.yOffset) continue;
+                    if (other === this || other === collidedBlock || other.isFalling || other.isRemoved) continue;
+                    
+                    // Calculate Y ranges for both blocks to check for 3D overlap
+                    const thisHeight = this.isVertical ? this.length * this.cubeSize : this.cubeSize;
+                    const thisYBottom = this.yOffset;
+                    const thisYTop = this.yOffset + thisHeight;
+                    
+                    const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
+                    const otherYBottom = other.yOffset;
+                    const otherYTop = other.yOffset + otherHeight;
+                    
+                    // Check if Y ranges overlap (blocks are at different Y levels but might overlap in 3D)
+                    const yRangesOverlap = !(thisYTop <= otherYBottom || thisYBottom >= otherYTop);
+                    
+                    // If Y ranges don't overlap, blocks can't collide (they're at different heights)
+                    if (!yRangesOverlap) continue;
+                    
                     if (other.isVertical) {
                         if (checkX === other.gridX && checkZ === other.gridZ) {
                             return false;
@@ -596,9 +638,24 @@ export class Block {
             }
             
             // Check collision with other blocks (excluding this block and the collided block)
-            // Only check blocks at the same Y level
+            // Check for 3D overlaps: blocks cannot rotate to a position where they would overlap with another block
             for (const other of blocks) {
-                if (other === this || other === collidedBlock || other.isFalling || other.yOffset !== this.yOffset) continue;
+                if (other === this || other === collidedBlock || other.isFalling || other.isRemoved) continue;
+                
+                // Calculate Y ranges for both blocks to check for 3D overlap
+                const thisHeight = this.isVertical ? this.length * this.cubeSize : this.cubeSize;
+                const thisYBottom = this.yOffset;
+                const thisYTop = this.yOffset + thisHeight;
+                
+                const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
+                const otherYBottom = other.yOffset;
+                const otherYTop = other.yOffset + otherHeight;
+                
+                // Check if Y ranges overlap (blocks are at different Y levels but might overlap in 3D)
+                const yRangesOverlap = !(thisYTop <= otherYBottom || thisYBottom >= otherYTop);
+                
+                // If Y ranges don't overlap, blocks can't collide (they're at different heights)
+                if (!yRangesOverlap) continue;
                 
                 if (other.isVertical) {
                     if (newGridX === other.gridX && newGridZ === other.gridZ) {
@@ -639,9 +696,24 @@ export class Block {
                 }
                 
                 // Check collision with other blocks (excluding this block and the collided block)
-                // Only check blocks at the same Y level
+                // Check for 3D overlaps: blocks cannot rotate to a position where they would overlap with another block
                 for (const other of blocks) {
-                    if (other === this || other === collidedBlock || other.isFalling || other.yOffset !== this.yOffset) continue;
+                    if (other === this || other === collidedBlock || other.isFalling || other.isRemoved) continue;
+                    
+                    // Calculate Y ranges for both blocks to check for 3D overlap
+                    const thisHeight = this.isVertical ? this.length * this.cubeSize : this.cubeSize;
+                    const thisYBottom = this.yOffset;
+                    const thisYTop = this.yOffset + thisHeight;
+                    
+                    const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
+                    const otherYBottom = other.yOffset;
+                    const otherYTop = other.yOffset + otherHeight;
+                    
+                    // Check if Y ranges overlap (blocks are at different Y levels but might overlap in 3D)
+                    const yRangesOverlap = !(thisYTop <= otherYBottom || thisYBottom >= otherYTop);
+                    
+                    // If Y ranges don't overlap, blocks can't collide (they're at different heights)
+                    if (!yRangesOverlap) continue;
                     
                     if (other.isVertical) {
                         if (checkX === other.gridX && checkZ === other.gridZ) {
@@ -857,9 +929,24 @@ export class Block {
                 return 'fall';
             }
             
-            // Only check collisions with blocks at the same Y level
+            // Check for 3D overlaps: blocks cannot move to a position where they would overlap with another block
             for (const other of blocks) {
-                if (other === this || other.isFalling || other.yOffset !== this.yOffset) continue;
+                if (other === this || other.isFalling || other.isRemoved) continue;
+                
+                // Calculate Y ranges for both blocks to check for 3D overlap
+                const thisHeight = this.isVertical ? this.length * this.cubeSize : this.cubeSize;
+                const thisYBottom = this.yOffset;
+                const thisYTop = this.yOffset + thisHeight;
+                
+                const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
+                const otherYBottom = other.yOffset;
+                const otherYTop = other.yOffset + otherHeight;
+                
+                // Check if Y ranges overlap (blocks are at different Y levels but might overlap in 3D)
+                const yRangesOverlap = !(thisYTop <= otherYBottom || thisYBottom >= otherYTop);
+                
+                // If Y ranges don't overlap, blocks can't collide (they're at different heights)
+                if (!yRangesOverlap) continue;
                 
                 if (other.isVertical) {
                     if (newGridX === other.gridX && newGridZ === other.gridZ) {
@@ -903,9 +990,24 @@ export class Block {
                 return 'fall';
             }
             
-            // Only check collisions with blocks at the same Y level
+            // Check for 3D overlaps: blocks cannot move to a position where they would overlap with another block
             for (const other of blocks) {
-                if (other === this || other.isFalling || other.yOffset !== this.yOffset) continue;
+                if (other === this || other.isFalling || other.isRemoved) continue;
+                
+                // Calculate Y ranges for both blocks to check for 3D overlap
+                const thisHeight = this.isVertical ? this.length * this.cubeSize : this.cubeSize;
+                const thisYBottom = this.yOffset;
+                const thisYTop = this.yOffset + thisHeight;
+                
+                const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
+                const otherYBottom = other.yOffset;
+                const otherYTop = other.yOffset + otherHeight;
+                
+                // Check if Y ranges overlap (blocks are at different Y levels but might overlap in 3D)
+                const yRangesOverlap = !(thisYTop <= otherYBottom || thisYBottom >= otherYTop);
+                
+                // If Y ranges don't overlap, blocks can't collide (they're at different heights)
+                if (!yRangesOverlap) continue;
                 
                 if (other.isVertical) {
                     if (checkX === other.gridX && checkZ === other.gridZ) {
@@ -954,10 +1056,26 @@ export class Block {
             const nextGridZ = tempGridZ + this.direction.z;
             
             // Check for collisions with other blocks first
-            // Only check blocks at the same Y level (blocks on top can move independently)
+            // Check for 3D overlaps: blocks cannot move to a position where they would overlap with another block
+            // This includes checking blocks at different Y levels that might overlap in 3D space
             let blocked = false;
             for (const other of blocks) {
-                if (other === this || other.isFalling || other.yOffset !== this.yOffset) continue;
+                if (other === this || other.isFalling || other.isRemoved) continue;
+                
+                // Calculate Y ranges for both blocks to check for 3D overlap
+                const thisHeight = this.isVertical ? this.length * this.cubeSize : this.cubeSize;
+                const thisYBottom = this.yOffset;
+                const thisYTop = this.yOffset + thisHeight;
+                
+                const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
+                const otherYBottom = other.yOffset;
+                const otherYTop = other.yOffset + otherHeight;
+                
+                // Check if Y ranges overlap (blocks are at different Y levels but might overlap in 3D)
+                const yRangesOverlap = !(thisYTop <= otherYBottom || thisYBottom >= otherYTop);
+                
+                // If Y ranges don't overlap, blocks can't collide (they're at different heights)
+                if (!yRangesOverlap) continue;
                 
                 if (this.isVertical) {
                     if (other.isVertical) {
@@ -1237,7 +1355,22 @@ export class Block {
                 // Only check blocks at the same Y level (blocks on top can move independently)
                 let blocked = false;
                 for (const other of blocks) {
-                    if (other === this || other.isFalling || other === headOnCollision.block || other.yOffset !== this.yOffset) continue;
+                    if (other === this || other.isFalling || other.isRemoved || other === headOnCollision.block) continue;
+                    
+                    // Calculate Y ranges for both blocks to check for 3D overlap
+                    const thisHeight = this.isVertical ? this.length * this.cubeSize : this.cubeSize;
+                    const thisYBottom = this.yOffset;
+                    const thisYTop = this.yOffset + thisHeight;
+                    
+                    const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
+                    const otherYBottom = other.yOffset;
+                    const otherYTop = other.yOffset + otherHeight;
+                    
+                    // Check if Y ranges overlap (blocks are at different Y levels but might overlap in 3D)
+                    const yRangesOverlap = !(thisYTop <= otherYBottom || thisYBottom >= otherYTop);
+                    
+                    // If Y ranges don't overlap, blocks can't collide (they're at different heights)
+                    if (!yRangesOverlap) continue;
                     
                     if (this.isVertical) {
                         if (other.isVertical) {
