@@ -6,9 +6,11 @@
 
 2. Under **"Source"**, select **"GitHub Actions"**
 
-3. Click **"Save"**
+3. **Leave the "Custom domain" field completely empty** (do not enter anything)
 
-4. The workflow will automatically deploy on the next push!
+4. Click **"Save"** (if the button is still disabled, try refreshing the page or clicking "GitHub Actions" again)
+
+5. The workflow will automatically deploy on the next push!
 
 ## Your App URL
 
