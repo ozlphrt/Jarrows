@@ -2020,16 +2020,18 @@ function animate() {
         // Calculate tower top height dynamically
         const towerTopHeight = getTowerTopHeight();
         
-        // Target the center of the tower top (X, Z center, Y at top)
-        // To position tower top higher on screen, we'll adjust camera position, not target
+        // ROTATION PIVOT: Always at tower center (ground level) - camera orbits around this point
+        const pivotPoint = new THREE.Vector3(towerCenterX, towerCenterY, towerCenterZ);
+        
+        // LOOK-AT TARGET: Tower top center (for viewing) - camera looks at this point
         const targetY = towerTopHeight;
         const targetX = towerCenterX;
         const targetZ = towerCenterZ;
         
-        // Smooth the target position for smooth camera adjustments
+        // Smooth the look-at target position for smooth camera adjustments
         smoothedLookAt.lerp(new THREE.Vector3(targetX, targetY, targetZ), 0.1);
         
-        // Calculate camera position around the tower center
+        // Calculate camera position around the TOWER CENTER (pivot point)
         // Steeper angle to fill upper screen with tower and reduce gap
         // Higher angle (steeper) = camera looks more down = shows more tower, less sky
         const angle = 45 * (Math.PI / 180); // 45 degrees (steeper) - fills upper screen with tower
@@ -2039,19 +2041,20 @@ function animate() {
         const distance = ((towerTopHeight + baseOffset) / Math.sin(angle)) * zoomFactor;
         const radius = distance * Math.cos(angle); // Horizontal radius
         
-        const cameraX = smoothedLookAt.x + radius * Math.cos(cameraRotationAngle);
-        const cameraZ = smoothedLookAt.z + radius * Math.sin(cameraRotationAngle);
+        // Calculate camera position orbiting around TOWER CENTER (pivot point)
+        const cameraX = pivotPoint.x + radius * Math.cos(cameraRotationAngle);
+        const cameraZ = pivotPoint.z + radius * Math.sin(cameraRotationAngle);
         // Camera Y position - steeper angle already fills upper screen, no offset needed
-        const cameraY = smoothedLookAt.y + distance * Math.sin(angle);
+        const cameraY = pivotPoint.y + distance * Math.sin(angle);
         
         // Smooth camera position
         camera.position.lerp(new THREE.Vector3(cameraX, cameraY, cameraZ), 0.1);
         
-        // CRITICAL: Update controls.target to tower top center FIRST
-        // This ensures the camera targets the center of the tower top
-        controls.target.copy(smoothedLookAt);
+        // CRITICAL: Set controls.target to TOWER CENTER (pivot point) for rotation
+        // This ensures camera always rotates around tower center, not tower top
+        controls.target.copy(pivotPoint);
         
-        // Update camera to look at tower top center
+        // Update camera to look at tower top center (for viewing)
         camera.lookAt(smoothedLookAt);
         
         // IMPORTANT: Don't call controls.update() here when in auto-rotation mode
@@ -2067,6 +2070,11 @@ function animate() {
         previousCameraTarget.copy(controls.target);
     } else {
         // User has control - let OrbitControls handle everything
+        // BUT: Keep pivot point at tower center even after user pan
+        // This ensures camera always rotates around tower center, not wherever user panned to
+        const towerCenter = new THREE.Vector3(towerCenterX, towerCenterY, towerCenterZ);
+        controls.target.copy(towerCenter);
+        
         // Update OrbitControls so it can apply damping and user input
         controls.update();
         
