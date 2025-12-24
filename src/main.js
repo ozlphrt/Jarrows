@@ -1971,6 +1971,25 @@ window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
+// Get the current top height of the tower (highest Y position of any block)
+function getTowerTopHeight() {
+    if (!blocks || blocks.length === 0) {
+        return cubeSize; // Default to one cube height if no blocks
+    }
+    
+    let maxHeight = 0;
+    for (const block of blocks) {
+        if (block.isRemoved || block.isFalling) continue;
+        
+        const blockCubeSize = block.cubeSize || cubeSize;
+        const blockHeight = block.isVertical ? block.length * blockCubeSize : blockCubeSize;
+        const blockTop = (block.yOffset || 0) + blockHeight;
+        maxHeight = Math.max(maxHeight, blockTop);
+    }
+    
+    return maxHeight || cubeSize; // Return at least one cube height
+}
+
 // Animation loop with physics
 let lastTime = performance.now();
 let physicsUpdatedThisFrame = false; // Track if physics was updated this frame
@@ -1982,6 +2001,9 @@ let fpsFrameCount = 0;
 let fpsLastUpdate = performance.now();
 let fpsUpdateInterval = 500; // Update FPS display every 500ms
 const fpsElement = document.getElementById('fps-counter');
+
+// Smooth camera target tracking
+let smoothedLookAt = new THREE.Vector3(towerCenterX, towerCenterY, towerCenterZ);
 
 function animate() {
     requestAnimationFrame(animate);
@@ -1995,19 +2017,36 @@ function animate() {
         cameraRotationTime += deltaTime;
         cameraRotationAngle = cameraRotationTime * ROTATION_SPEED * 60; // Scale by 60 for consistent speed
         
+        // Calculate tower top height dynamically
+        const towerTopHeight = getTowerTopHeight();
+        
+        // Target the center of the tower top (X, Z center, Y at top)
+        const targetY = towerTopHeight;
+        const targetX = towerCenterX;
+        const targetZ = towerCenterZ;
+        
+        // Smooth the target position for smooth camera adjustments
+        smoothedLookAt.lerp(new THREE.Vector3(targetX, targetY, targetZ), 0.1);
+        
         // Calculate camera position around the tower center
-        const radius = 15; // Distance from tower center
-        const height = 12; // Height above tower
-        const cameraX = towerCenterX + radius * Math.cos(cameraRotationAngle);
-        const cameraZ = towerCenterZ + radius * Math.sin(cameraRotationAngle);
-        const cameraY = height;
+        // Maintain 30-45 degree angle above the tower top
+        const angle = 35 * (Math.PI / 180); // 35 degrees in radians
+        const distance = (towerTopHeight + 5) / Math.sin(angle); // Distance to maintain angle
+        const radius = distance * Math.cos(angle); // Horizontal radius
         
-        // Update camera position
-        camera.position.set(cameraX, cameraY, cameraZ);
-        camera.lookAt(towerCenterX, towerCenterY + 2, towerCenterZ);
+        const cameraX = smoothedLookAt.x + radius * Math.cos(cameraRotationAngle);
+        const cameraZ = smoothedLookAt.z + radius * Math.sin(cameraRotationAngle);
+        const cameraY = smoothedLookAt.y + distance * Math.sin(angle);
         
-        // Update controls target to match
-        controls.target.set(towerCenterX, towerCenterY + 2, towerCenterZ);
+        // Smooth camera position
+        camera.position.lerp(new THREE.Vector3(cameraX, cameraY, cameraZ), 0.1);
+        
+        // Update camera to look at tower top center
+        camera.lookAt(smoothedLookAt);
+        
+        // Update controls target to match (for OrbitControls state)
+        controls.target.copy(smoothedLookAt);
+        controls.update();
         
         // Track when we last updated for auto-rotation (to distinguish from user input)
         lastAutoRotationTime = currentTime;
