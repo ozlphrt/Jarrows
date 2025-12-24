@@ -56,9 +56,14 @@ export function createGrid(scene) {
     base.receiveShadow = true;
     scene.add(base);
     
-    // Grid lines
+    // Grid lines with improved anti-aliasing
     const gridHelper = new THREE.GridHelper(gridSize * cubeSize, gridSize, 0x888888, 0x666666);
-    gridHelper.position.set(gridSize * cubeSize / 2, 0, gridSize * cubeSize / 2);
+    gridHelper.position.set(gridSize * cubeSize / 2, 0.01, gridSize * cubeSize / 2); // Slightly above base to prevent z-fighting
+    // Improve grid line rendering
+    if (gridHelper.material) {
+        gridHelper.material.transparent = true;
+        gridHelper.material.opacity = 0.8;
+    }
     scene.add(gridHelper);
     
     return { base, gridHelper, gridSize, cubeSize };

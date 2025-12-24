@@ -16,9 +16,14 @@ const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerH
 camera.position.set(8, 8, 8);
 camera.lookAt(3, 0, 3);
 
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+const renderer = new THREE.WebGLRenderer({ 
+    antialias: true,
+    powerPreference: "high-performance"
+});
 renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Limit pixel ratio to reduce aliasing
 renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Softer shadows
 document.body.appendChild(renderer.domElement);
 
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -27,16 +32,16 @@ controls.target.set(3, 0, 3);
 // Configure camera controls for heavy, momentum-based feel
 // Lower damping factor = longer coasting (more inertia)
 controls.enableDamping = true;
-controls.dampingFactor = 0.06; // Lower = heavier, longer coasting
+controls.dampingFactor = 0.08; // Slightly higher = more responsive (was 0.06)
 controls.screenSpacePanning = false;
 controls.enableRotate = true;
 controls.enablePan = true;
 controls.enableZoom = true;
 
-// Slower speeds = heavier feel (harder to start, harder to stop)
-controls.rotateSpeed = 0.25; // Slower rotation for heavier feel
-controls.panSpeed = 0.5;
-controls.zoomSpeed = 0.5;
+// Slightly faster speeds for better responsiveness
+controls.rotateSpeed = 0.3; // Slightly faster (was 0.25)
+controls.panSpeed = 0.6; // Slightly faster (was 0.5)
+controls.zoomSpeed = 0.6; // Slightly faster (was 0.5)
 
 // Distance constraints
 controls.minDistance = 3;
