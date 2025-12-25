@@ -454,25 +454,17 @@
         <div id="toggle-switches">
             <button class="toggle-icon active" id="theme-toggle" title="Dark/Light Theme">
                 <svg id="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <!-- Sun icon (default/light theme) -->
-                    <circle cx="12" cy="12" r="5"></circle>
-                    <line x1="12" y1="1" x2="12" y2="3"></line>
-                    <line x1="12" y1="21" x2="12" y2="23"></line>
-                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
-                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
-                    <line x1="1" y1="12" x2="3" y2="12"></line>
-                    <line x1="21" y1="12" x2="23" y2="12"></line>
-                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
-                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                    <!-- Moon icon (default/dark theme) -->
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
                 </svg>
             </button>
             <button class="toggle-icon active" id="colors-toggle" title="Colored/White Blocks">
                 <svg id="colors-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <!-- Colored blocks icon (default) -->
-                    <rect x="3" y="3" width="7" height="7" rx="1"></rect>
-                    <rect x="14" y="3" width="7" height="7" rx="1"></rect>
-                    <rect x="14" y="14" width="7" height="7" rx="1"></rect>
-                    <rect x="3" y="14" width="7" height="7" rx="1"></rect>
+                    <!-- White blocks icon (default) -->
+                    <rect x="3" y="3" width="7" height="7" rx="1" fill="white"></rect>
+                    <rect x="14" y="3" width="7" height="7" rx="1" fill="white"></rect>
+                    <rect x="14" y="14" width="7" height="7" rx="1" fill="white"></rect>
+                    <rect x="3" y="14" width="7" height="7" rx="1" fill="white"></rect>
                 </svg>
             </button>
             <button class="toggle-icon active" id="center-tower-button" title="Center Tower">
@@ -490,9 +482,12 @@
     <script>
         // Wait for main.js to load and expose scene/blocks
         let blocks;
-        let isDarkTheme = false;
-        let useColoredBlocks = true;
+        let isDarkTheme = true; // Default to dark theme
+        let useColoredBlocks = false; // Default to white blocks
         let handlersSetup = false;
+        
+        // Expose settings globally so blocks can check on creation
+        window.useColoredBlocksDefault = useColoredBlocks;
         
         function updateThemeIcon() {
             const scene = window.gameScene;
@@ -524,7 +519,7 @@
                 window.setupFog(scene, true);
                 // Show moon icon
                 themeIcon.innerHTML = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>';
-                themeToggle.classList.remove('active');
+                themeToggle.classList.add('active'); // Active for dark theme
             } else {
                 // Light theme: much darker sky blue gradient
                 // Top: dark blue-gray, Bottom: darker blue
@@ -532,7 +527,7 @@
                 window.setupFog(scene, false);
                 // Show sun icon
                 themeIcon.innerHTML = '<circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>';
-                themeToggle.classList.add('active');
+                themeToggle.classList.remove('active');
             }
         }
         
@@ -568,12 +563,17 @@
                 if (block.cubes && block.cubes.length > 0) {
                     const mesh = block.cubes[0];
                     if (mesh && mesh.material) {
-                        if (useColoredBlocks) {
-                            // Use colored blocks based on length
-                            mesh.material.color.setHex(colors[block.length - 1] || colors[0]);
-                        } else {
-                            // Use white blocks
-                            mesh.material.color.setHex(whiteColor);
+                        const blockColor = useColoredBlocks 
+                            ? (colors[block.length - 1] || colors[0])
+                            : whiteColor;
+                        const arrowColor = colors[block.length - 1] || colors[0]; // Always colored
+                        
+                        // Update block color
+                        mesh.material.color.setHex(blockColor);
+                        
+                        // Update arrow and indicators to always use colored version
+                        if (block.updateBlockColor) {
+                            block.updateBlockColor(blockColor, arrowColor);
                         }
                     }
                 }
@@ -615,9 +615,10 @@
                 updateBlockColors();
             });
             
-            // Initialize icons
+            // Initialize icons and apply default theme/colors
             updateThemeIcon();
             updateColorsIcon();
+            updateBlockColors(); // Apply white blocks on initial load
             
             console.log('Toggle handlers setup complete');
         }

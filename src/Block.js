@@ -56,9 +56,19 @@ export class Block {
         
         // Use Classic palette as default: original natural colors
         const colors = [0xff6b6b, 0x4ecdc4, 0xffe66d]; // Red, Teal, Yellow
+        const whiteColor = 0xffffff;
+        
+        // Check global setting for default block color
+        const useColored = (typeof window !== 'undefined' && window.useColoredBlocksDefault !== undefined) 
+            ? window.useColoredBlocksDefault 
+            : false; // Default to white blocks
+        
+        const blockColor = useColored ? colors[length - 1] : whiteColor;
+        // Arrow and indicator colors always use length-based colors (for visibility)
+        const arrowColor = colors[length - 1];
         
         const blockMaterial = new THREE.MeshStandardMaterial({ 
-            color: colors[length - 1],
+            color: blockColor,
             roughness: 0.1, // Low roughness for shiny plastic
             metalness: 0.0 // No metalness for plastic
         });
@@ -81,11 +91,11 @@ export class Block {
         this.originalMaterial = blockMaterial;
         this.isHighlighted = false;
         
-        // Create arrow with matching block color
-        this.createArrow(arrowStyle, colors[length - 1]);
+        // Create arrow with colored arrow (always colored for visibility)
+        this.createArrow(arrowStyle, arrowColor);
         
-        // Create forward/backward indicators
-        this.createDirectionIndicators(colors[length - 1], arrowStyle);
+        // Create forward/backward indicators with colored arrows (always colored for visibility)
+        this.createDirectionIndicators(arrowColor, arrowStyle);
         
         // Position block on grid
         this.updateWorldPosition();
@@ -705,8 +715,9 @@ export class Block {
             this.originalMaterial.metalness = 0.0; // Plastic, not metal
         }
         
-        // Update arrow color (use arrowColor if provided, otherwise use block color)
-        const finalArrowColor = arrowColor !== null ? arrowColor : newColor;
+        // Update arrow color - if arrowColor not provided, use length-based color (for visibility)
+        const colors = [0xff6b6b, 0x4ecdc4, 0xffe66d]; // Red, Teal, Yellow
+        const finalArrowColor = arrowColor !== null ? arrowColor : colors[this.length - 1];
         // Arrow structure: this.arrow (Group) -> topArrow (Group) -> topArrowMesh (Mesh with material)
         if (this.arrow && this.arrow.children.length > 0) {
             const topArrow = this.arrow.children[0];

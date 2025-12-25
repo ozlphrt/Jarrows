@@ -6,9 +6,9 @@ import { validateStructure, validateSolvability, calculateDifficulty, getBlockCe
 
 // Scene setup
 const scene = new THREE.Scene();
-// Light theme: much darker sky blue gradient
-setGradientBackground(scene, 0x5a7f98, 0x3a5a7a);
-setupFog(scene, false); // Fog disabled
+// Dark theme: much darker grey gradient (default)
+setGradientBackground(scene, 0x0f0f0f, 0x050505);
+setupFog(scene, true); // Fog enabled for dark theme
 
 // Expose scene, blocks, THREE, and scene functions for toggle handlers
 window.gameScene = scene;
@@ -263,25 +263,13 @@ function updateLightsForCamera(lights, azimuth, elevation, center) {
         lights.keyLight.shadow.camera.updateMatrixWorld();
     }
     
-    // Fill light: reduced intensity and positioned to create more contrast
+    // Fill light: positioned opposite to key light to soften shadows
     const fillLightDistance = 25;
     const fillLightPos = cameraDirection.clone().multiplyScalar(-fillLightDistance);
     fillLightPos.y += 6; // Keep it elevated but lower for more shadow contrast
-    lights.fillLight.position.copy(center.clone().add(fillLightPos));
-    
-    // Rim light: positioned to enhance reflections towards camera
-    const rimLightDistance = 20;
-    // Position rim light more towards camera side to enhance reflections
-    const rimLightOffset = new THREE.Vector3(
-        -cameraDirection.x * 0.5,
-        cameraDirection.y * 0.3 + 0.5,
-        -cameraDirection.z * 0.5
-    );
-    const rimLightPos = cameraDirection.clone().multiplyScalar(-rimLightDistance).add(rimLightOffset);
-    lights.rimLight.position.copy(center.clone().add(rimLightPos));
-    
-    // Top light: reduced intensity to allow more dramatic shadows
-    lights.topLight.position.set(center.x, center.y + 25, center.z);
+    if (lights.fillLight) {
+        lights.fillLight.position.copy(center.clone().add(fillLightPos));
+    }
 }
 
 // Initialize Rapier physics
@@ -1700,52 +1688,198 @@ function undoLastMove() {
     console.log(`Undo: Restored block to (${block.gridX}, ${block.gridZ})`);
 }
 
-// Remove a block with physics-based falling animation
+// Remove a block with melt animation (melts in place)
 function removeBlockWithAnimation(block) {
     if (!blocks.includes(block) || block.isRemoved || block.isFalling || block.isAnimating) {
         return;
     }
     
-    // Mark as falling (not removed yet) so physics can handle it
-    block.isFalling = true;
+    // Mark as animating (but NOT removed yet - let animation complete first)
     block.isAnimating = true;
-    
-    // Set up physics body creation with initial velocities
-    block.needsPhysicsBody = true;
-    
-    // Give block an initial upward velocity so it goes up, then falls down with gravity
-    // Random horizontal velocity for more natural movement
-    const upwardVel = 2 + Math.random() * 2; // 2-4 m/s upward
-    const horizontalVelX = (Math.random() - 0.5) * 2; // Random horizontal X
-    const horizontalVelZ = (Math.random() - 0.5) * 2; // Random horizontal Z
-    
-    block.pendingLinearVel = {
-        x: horizontalVelX,
-        y: upwardVel,
-        z: horizontalVelZ
-    };
-    
-    // Add some random rotation for tumbling effect
-    block.pendingAngularVel = {
-        x: (Math.random() - 0.5) * 5,
-        y: (Math.random() - 0.5) * 5,
-        z: (Math.random() - 0.5) * 5
-    };
-    
-    // Store removal start time to clean up after a timeout
+    block.isRemoved = false; // Don't mark as removed until animation completes
     block.removalStartTime = performance.now();
-    block.removalTimeout = 5000; // Remove after 5 seconds if still falling
+    block.meltDuration = 600; // 600ms melt animation (faster)
     
-    // Make materials transparent for fade effect as it falls
-    block.cubes.forEach(cube => {
+    // Store original scale, position, rotation, and colors
+    const originalScale = block.group.scale.clone();
+    const originalPosition = block.group.position.clone();
+    const originalRotation = block.group.rotation.clone();
+    const originalColors = [];
+    
+    // Make materials transparent for fade effect and store original colors
+    block.cubes.forEach((cube, index) => {
         if (cube.material) {
             if (!cube.material.transparent) {
                 cube.material.transparent = true;
             }
+            cube.material.opacity = 1.0;
+            // Store original color for heat effect
+            originalColors[index] = cube.material.color.clone();
+            // Initialize emissive if not present
+            if (!cube.material.emissive) {
+                cube.material.emissive = new THREE.Color(0, 0, 0);
+            }
         }
     });
     
-    console.log(`Removing block at (${block.gridX}, ${block.gridZ}) with physics fall`);
+    // Also handle arrow and direction indicators if they exist
+    if (block.arrow) {
+        block.arrow.traverse((child) => {
+            if (child.material) {
+                if (!child.material.transparent) {
+                    child.material.transparent = true;
+                }
+                child.material.opacity = 1.0;
+            }
+        });
+    }
+    
+    if (block.directionIndicators) {
+        block.directionIndicators.traverse((child) => {
+            if (child.material) {
+                if (!child.material.transparent) {
+                    child.material.transparent = true;
+                }
+                child.material.opacity = 1.0;
+            }
+        });
+    }
+    
+    // Animation function - called each frame
+    block.updateMeltAnimation = function(deltaTime) {
+        if (!this.removalStartTime) return;
+        
+        const elapsed = performance.now() - this.removalStartTime;
+        const progress = Math.min(elapsed / this.meltDuration, 1.0);
+        
+        // Easing function for smooth melt (ease-in-out with slight bounce at end)
+        let eased;
+        if (progress < 0.7) {
+            // Smooth ease-in-out for most of animation
+            eased = progress < 0.35 
+                ? 2 * progress * progress 
+                : 1 - Math.pow(-2 * progress + 2, 2) / 2;
+        } else {
+            // Accelerate melt at the end (like liquid pooling)
+            const t = (progress - 0.7) / 0.3;
+            eased = 0.755 + 0.245 * (1 - Math.pow(1 - t, 3));
+        }
+        
+        // Melt effect: scale down Y (height) more than X/Z, simulate melting
+        const scaleY = 1 - eased; // Height melts away completely
+        // Width/depth shrink more as it melts (starts slow, accelerates)
+        const scaleXZ = 1 - eased * 0.5; // Width/depth shrinks up to 50%
+        
+        // Add slight wobble/rotation as it melts (like liquid sloshing)
+        const wobbleAmount = Math.sin(progress * Math.PI * 8) * (1 - eased) * 0.05;
+        const rotationWobble = Math.sin(progress * Math.PI * 6) * (1 - eased) * 0.1;
+        
+        this.group.scale.set(
+            originalScale.x * scaleXZ * (1 + wobbleAmount),
+            originalScale.y * scaleY,
+            originalScale.z * scaleXZ * (1 - wobbleAmount * 0.5)
+        );
+        
+        // Add slight rotation wobble
+        this.group.rotation.x = rotationWobble * 0.3;
+        this.group.rotation.z = rotationWobble * 0.2;
+        
+        // Slight downward movement as it melts (more pronounced at end)
+        const sinkAmount = eased * 0.3 + Math.pow(eased, 2) * 0.2;
+        this.group.position.y = originalPosition.y - sinkAmount;
+        
+        // Fade out opacity with slight glow effect mid-animation
+        let opacity = 1 - eased;
+        if (progress > 0.3 && progress < 0.7) {
+            // Add slight glow/pulse effect during mid-melt
+            const glow = Math.sin(progress * Math.PI * 4) * 0.1;
+            opacity = Math.min(1, opacity + glow);
+        }
+        
+        // Debug log first frame and every 200ms
+        if (!this._meltDebugLogged || elapsed % 200 < 16) {
+            if (!this._meltDebugLogged) {
+                console.log('Melt animation started', { progress: (progress * 100).toFixed(1) + '%', scaleY: scaleY.toFixed(2), opacity: opacity.toFixed(2) });
+                this._meltDebugLogged = true;
+            }
+        }
+        
+        // Color shift towards warmer tones as it "heats up" during melt
+        const heatProgress = Math.min(progress * 1.5, 1.0); // Heat effect peaks earlier
+        const heatIntensity = Math.sin(heatProgress * Math.PI) * 0.4;
+        
+        this.cubes.forEach((cube, index) => {
+            if (cube.material && originalColors[index]) {
+                cube.material.opacity = opacity;
+                
+                // Add heat glow effect (shift towards orange/red)
+                if (heatProgress < 0.85) {
+                    const originalColor = originalColors[index];
+                    // Create heat color (orange/red glow)
+                    const heatColor = new THREE.Color().lerpColors(
+                        originalColor,
+                        new THREE.Color(1.0, 0.5, 0.1), // Bright orange-red
+                        heatIntensity
+                    );
+                    cube.material.color.copy(heatColor);
+                    
+                    // Add emissive glow during heat phase (pulsing effect)
+                    const pulse = Math.sin(progress * Math.PI * 6) * 0.2 + 0.8;
+                    cube.material.emissive.copy(heatColor);
+                    cube.material.emissiveIntensity = heatIntensity * 0.6 * pulse;
+                } else {
+                    // Fade back to original color as it finishes melting
+                    const fadeBack = (progress - 0.85) / 0.15;
+                    const finalColor = new THREE.Color().lerpColors(
+                        new THREE.Color(1.0, 0.5, 0.1),
+                        originalColors[index],
+                        fadeBack
+                    );
+                    cube.material.color.copy(finalColor);
+                    cube.material.emissiveIntensity = heatIntensity * 0.6 * (1 - fadeBack);
+                }
+            }
+        });
+        
+        // Fade arrow and indicators
+        if (this.arrow) {
+            this.arrow.traverse((child) => {
+                if (child.material) {
+                    child.material.opacity = opacity;
+                }
+            });
+        }
+        
+        if (this.directionIndicators) {
+            this.directionIndicators.traverse((child) => {
+                if (child.material) {
+                    child.material.opacity = opacity;
+                }
+            });
+        }
+        
+        // Remove block when animation completes
+        if (progress >= 1.0) {
+            // Mark as removed first
+            this.isRemoved = true;
+            this.remove();
+            // Clean up from blocks array
+            const index = blocks.indexOf(this);
+            if (index > -1) {
+                blocks.splice(index, 1);
+            }
+            // Remove from move history if present
+            moveHistory = moveHistory.filter(m => m.block !== this);
+            // Clear animation function
+            this.updateMeltAnimation = null;
+        }
+    };
+    
+    console.log(`Melting block at (${block.gridX}, ${block.gridZ})`, {
+        originalScale,
+        originalPosition,
+        meltDuration: block.meltDuration
+    });
 }
 
 // Restart current level
@@ -2646,6 +2780,18 @@ function animate() {
             }
         }
         
+        // Update melt animations (for blocks being removed)
+        // Check ALL blocks, not just non-removed ones
+        for (const block of blocks) {
+            if (block.updateMeltAnimation && block.removalStartTime && !block.isRemoved) {
+                try {
+                    block.updateMeltAnimation(deltaTime);
+                } catch (e) {
+                    console.error('Error updating melt animation:', e, block);
+                }
+            }
+        }
+        
         // Periodically check for blocks that lost support (continuous monitoring)
         if (currentTime - lastSupportCheckTime > SUPPORT_CHECK_INTERVAL) {
             lastSupportCheckTime = currentTime;
@@ -2656,34 +2802,7 @@ function animate() {
         for (let i = blocks.length - 1; i >= 0; i--) {
             const block = blocks[i];
             
-            // Handle blocks that are falling due to removal (not just regular falling)
-            if (block.isFalling && block.removalStartTime) {
-                const elapsed = performance.now() - block.removalStartTime;
-                const worldPos = new THREE.Vector3();
-                block.group.getWorldPosition(worldPos);
-                
-                // Fade out based on Y position (below ground) or time elapsed
-                const fadeStartY = 0; // Start fading when below ground level
-                const fadeEndY = -5; // Fully faded when 5 units below ground
-                const fadeProgress = Math.min(1, Math.max(0, (fadeStartY - worldPos.y) / (fadeStartY - fadeEndY)));
-                
-                // Also fade based on time (backup in case block doesn't fall)
-                const timeFadeProgress = Math.min(1, elapsed / block.removalTimeout);
-                const finalFadeProgress = Math.max(fadeProgress, timeFadeProgress);
-                
-                // Update opacity
-                block.cubes.forEach(cube => {
-                    if (cube.material) {
-                        cube.material.opacity = 1 - finalFadeProgress;
-                    }
-                });
-                
-                // Mark as removed when it falls far enough or timeout reached
-                if (worldPos.y < -10 || elapsed > block.removalTimeout) {
-                    block.isRemoved = true;
-                    block.isFalling = false;
-                }
-            }
+            // Melt animation cleanup is handled in updateMeltAnimation function
             
             if (block.isRemoved) {
                 // Ensure block is removed from towerGroup (in case remove() didn't work)

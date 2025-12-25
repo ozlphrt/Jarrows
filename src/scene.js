@@ -46,14 +46,13 @@ export function setupFog(scene, isDarkTheme) {
 }
 
 export function createLights(scene) {
-    // Professional 3-point lighting setup - optimized for visible shadows and reflections
+    // Simplified 3-light setup: ambient, key, and fill
     
-    // Ambient Light - further reduced to increase shadow contrast and visible reflections
+    // Ambient Light - base illumination
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.15);
     scene.add(ambientLight);
     
     // Key Light (Main Light) - primary light source, casts shadows
-    // Increased intensity for stronger shadows and reflections towards camera
     const keyLight = new THREE.DirectionalLight(0xffffff, 1.5);
     keyLight.position.set(10, 20, 10);
     keyLight.castShadow = true;
@@ -74,27 +73,15 @@ export function createLights(scene) {
     keyLight.shadow.normalBias = 0.02; // Reduce shadow acne
     scene.add(keyLight);
     
-    // Fill Light - further reduced to allow darker, more dramatic shadows
-    const fillLight = new THREE.DirectionalLight(0xffffff, 0.1);
+    // Fill Light - softens shadows from key light
+    const fillLight = new THREE.DirectionalLight(0xffffff, 0.3);
     fillLight.position.set(-8, 12, -8);
     scene.add(fillLight);
     
-    // Rim/Back Light - increased intensity to enhance reflections towards camera
-    const rimLight = new THREE.DirectionalLight(0xffffff, 0.6);
-    rimLight.position.set(-5, 8, -15);
-    scene.add(rimLight);
-    
-    // Additional accent light from above - further reduced to maintain shadow contrast
-    const topLight = new THREE.DirectionalLight(0xffffff, 0.1);
-    topLight.position.set(0, 25, 0);
-    scene.add(topLight);
-    
     return { 
         ambientLight, 
-        keyLight,      // Main directional light (renamed from dirLight)
-        fillLight,     // Fill light
-        rimLight,      // Rim/back light
-        topLight       // Top accent light
+        keyLight,      // Main directional light (casts shadows)
+        fillLight      // Fill light (softens shadows)
     };
 }
 

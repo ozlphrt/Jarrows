@@ -300,7 +300,7 @@ export function createDebugPanel(lights, blocks = null) {
     panel._contentArea = contentArea;
     
     // Helper function to add light controls to a folder
-    function addLightControls(folder, light) {
+    function addLightControls(folder, light, includeShadows = false) {
         // Position controls
         folder.content.appendChild(createSlider('Position X', light.position.x, -50, 50, 0.1, (value) => {
             light.position.x = value;
@@ -321,6 +321,54 @@ export function createDebugPanel(lights, blocks = null) {
         folder.content.appendChild(createColorPicker('Color', light.color, (color) => {
             light.color.copy(color);
         }));
+        
+        // Shadow controls (only for lights that cast shadows)
+        if (includeShadows && light.castShadow !== undefined) {
+            // Shadow toggle
+            const shadowToggle = document.createElement('div');
+            shadowToggle.style.cssText = `
+                padding: 2px 6px;
+                border-bottom: 1px solid #2d2d2d;
+                display: flex;
+                align-items: center;
+                height: 20px;
+            `;
+            const shadowLabel = document.createElement('span');
+            shadowLabel.textContent = 'Cast Shadows';
+            shadowLabel.style.cssText = `
+                min-width: 80px;
+                color: #fff;
+                font-size: 11px;
+                text-align: left;
+                margin-right: 8px;
+            `;
+            const shadowCheckbox = document.createElement('input');
+            shadowCheckbox.type = 'checkbox';
+            shadowCheckbox.checked = light.castShadow;
+            shadowCheckbox.style.cssText = `
+                cursor: pointer;
+            `;
+            shadowCheckbox.addEventListener('change', (e) => {
+                light.castShadow = e.target.checked;
+            });
+            shadowToggle.appendChild(shadowLabel);
+            shadowToggle.appendChild(shadowCheckbox);
+            folder.content.appendChild(shadowToggle);
+            
+            // Shadow radius (softness)
+            if (light.shadow && light.shadow.radius !== undefined) {
+                folder.content.appendChild(createSlider('Shadow Radius', light.shadow.radius, 0, 10, 0.1, (value) => {
+                    light.shadow.radius = value;
+                }));
+            }
+            
+            // Shadow bias
+            if (light.shadow && light.shadow.bias !== undefined) {
+                folder.content.appendChild(createSlider('Shadow Bias', light.shadow.bias, -0.01, 0.01, 0.0001, (value) => {
+                    light.shadow.bias = value;
+                }));
+            }
+        }
     }
     
     // GROUP 1: Primary Lighting (3-point setup)
@@ -330,7 +378,7 @@ export function createDebugPanel(lights, blocks = null) {
     // Key Light
     const keyLightFolder = createFolder('Key Light', true);
     primaryGroup.content.appendChild(keyLightFolder.folder);
-    addLightControls(keyLightFolder, lights.keyLight);
+    addLightControls(keyLightFolder, lights.keyLight, true); // Include shadow controls
     
     // Fill Light
     const fillLightFolder = createFolder('Fill Light', true);
