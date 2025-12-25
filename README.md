@@ -31,6 +31,12 @@ npm run build
 
 ## Releases
 
+### v2.1.0 - Camera Initialization Fix
+- **Tree**: https://github.com/ozlphrt/Jarrows/tree/v2.1.0
+- **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v2.1.0
+- Fixed camera positioning to eliminate incorrect view on initial frame
+- Camera now positioned correctly before first render
+
 ### v1.1.0 - Catapult Effect (Level 1)
 - **Tree**: https://github.com/ozlphrt/Jarrows/tree/v1.1.0
 - **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v1.1.0
