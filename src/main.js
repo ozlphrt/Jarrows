@@ -1,12 +1,18 @@
 ﻿import * as THREE from 'three';
 import { initPhysics, createPhysicsBlock, updatePhysics, isPhysicsStepping, hasPendingOperations, isPhysicsProcessing } from './physics.js';
 import { Block } from './Block.js';
-import { createLights, createGrid } from './scene.js';
+import { createLights, createGrid, setGradientBackground, setupFog } from './scene.js';
 import { validateStructure, validateSolvability, calculateDifficulty, getBlockCells } from './puzzle_validation.js';
 
 // Scene setup
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x87ceeb);
+// Light theme: much darker sky blue gradient
+setGradientBackground(scene, 0x5a7f98, 0x3a5a7a);
+setupFog(scene, false); // Fog disabled
+
+// Expose scene, blocks, and THREE for toggle handlers
+window.gameScene = scene;
+window.THREE = THREE;
 
 // Global arrow style
 let currentArrowStyle = 2;
@@ -17,10 +23,12 @@ const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2)); // Limit pixel ratio for performance on mobile
 renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Soft shadows for better quality
 document.body.appendChild(renderer.domElement);
 
 // Track camera drag state to prevent block clicks during camera movement
 let isCameraDragging = false;
+let wasCameraDragging = false; // Track if a drag occurred (persists until click is processed)
 let mouseDownPos = null;
 let mouseDownTime = null;
 const DRAG_THRESHOLD = 3; // pixels - minimum movement to consider it a drag
@@ -42,6 +50,7 @@ renderer.domElement.addEventListener('mousedown', (event) => {
         mouseDownPos = { x: event.clientX, y: event.clientY };
         mouseDownTime = performance.now();
         isCameraDragging = false;
+        wasCameraDragging = false; // Reset drag flag on new mouse down
     }
 }, { passive: true });
 
@@ -65,6 +74,7 @@ renderer.domElement.addEventListener('mousemove', (event) => {
             const distance = Math.sqrt(dx * dx + dy * dy);
             if (distance > DRAG_THRESHOLD) {
                 isCameraDragging = true;
+                wasCameraDragging = true; // Mark that a drag occurred
             }
         }
     } else if (mouseDownPos) {
@@ -74,6 +84,7 @@ renderer.domElement.addEventListener('mousemove', (event) => {
         const distance = Math.sqrt(dx * dx + dy * dy);
         if (distance > DRAG_THRESHOLD) {
             isCameraDragging = true;
+            wasCameraDragging = true; // Mark that a drag occurred
         }
     }
 });
@@ -83,8 +94,8 @@ renderer.domElement.addEventListener('mouseup', (event) => {
         isDraggingCamera = false;
     }
     
-    // Reset drag state
-    const wasDragging = isCameraDragging;
+    // Note: Don't reset wasCameraDragging here - let click handler check it first
+    // Reset drag state after a short delay to allow click handler to check
     mouseDownPos = null;
     isCameraDragging = false;
 });
@@ -93,6 +104,7 @@ renderer.domElement.addEventListener('mouseleave', () => {
     isDraggingCamera = false;
     mouseDownPos = null;
     isCameraDragging = false;
+    wasCameraDragging = false; // Reset on mouse leave
 });
 
 // Mouse wheel for zoom
@@ -106,7 +118,7 @@ renderer.domElement.addEventListener('wheel', (event) => {
 }, { passive: false });
 
 // Setup scene elements
-createLights(scene);
+const lights = createLights(scene);
 const { base, gridHelper } = createGrid(scene);
 const gridSize = 7;
 const cubeSize = 1;
@@ -135,6 +147,11 @@ towerGroup.add(gridHelper);
 // Tower position offset (for panning/reframing)
 let towerPositionOffset = new THREE.Vector3(0, 0, 0);
 
+// Function to center the tower (reset pan offset)
+function centerTower() {
+    towerPositionOffset.set(0, 0, 0);
+}
+
 // Camera system constants
 const MIN_RADIUS = 5;
 const MAX_RADIUS = 50;
@@ -143,7 +160,7 @@ const MAX_ELEVATION = Math.PI / 2 - 0.1;
 const ZOOM_PADDING = 2;
 const SPAWN_ZOOM_PADDING = 4; // Extra padding during spawn to show all blocks
 const SPAWN_ZOOM_MULTIPLIER = 1.3; // Additional multiplier for spawn zoom
-const DRAG_SENSITIVITY = 0.005;
+const DRAG_SENSITIVITY = 0.002; // Reduced for heavier feel
 const PAN_SENSITIVITY = 0.01;
 
 // Spherical coordinates (target values - set by user input)
@@ -203,8 +220,8 @@ function updateCameraPosition() {
         effectiveTowerCenter.z + z
     );
     
-    // Look at point 8 units above tower center
-    const lookAtOffset = new THREE.Vector3(0, 8, 0);
+    // Look at point higher above tower center to move base plate up in frame
+    const lookAtOffset = new THREE.Vector3(0, 4, 0);
     const lookAtTarget = effectiveTowerCenter.clone().add(lookAtOffset);
     camera.lookAt(lookAtTarget);
     
@@ -213,11 +230,66 @@ function updateCameraPosition() {
     towerGroup.rotation.set(0, 0, 0); // Always locked to zero
 }
 
+// Update lights to follow camera angle
+function updateLightsForCamera(lights, azimuth, elevation, center) {
+    if (!lights) return;
+    
+    // Calculate camera direction vector (normalized)
+    const cameraDirX = Math.sin(elevation) * Math.cos(azimuth);
+    const cameraDirY = Math.cos(elevation);
+    const cameraDirZ = Math.sin(elevation) * Math.sin(azimuth);
+    
+    const cameraDirection = new THREE.Vector3(cameraDirX, cameraDirY, cameraDirZ).normalize();
+    
+    // Key light: positioned more towards camera to increase shadows and reflections visible from camera
+    // Position light closer to camera direction but slightly offset to create visible shadows
+    const keyLightDistance = 30;
+    // Offset the light slightly to the side and above camera to create dramatic shadows
+    const keyLightOffset = new THREE.Vector3(
+        cameraDirection.x * 0.3 + Math.sin(azimuth + Math.PI/4) * 0.2,
+        cameraDirection.y * 0.5 + 0.3, // More elevation for better shadows
+        cameraDirection.z * 0.3 + Math.cos(azimuth + Math.PI/4) * 0.2
+    );
+    const keyLightPos = cameraDirection.clone().multiplyScalar(keyLightDistance).add(keyLightOffset);
+    lights.keyLight.position.copy(center.clone().add(keyLightPos));
+    
+    // Update shadow camera to ensure it covers the scene (important for directional lights)
+    // The shadow camera needs to look at the scene center to cover both tower and table
+    if (lights.keyLight.shadow && lights.keyLight.shadow.camera) {
+        lights.keyLight.shadow.camera.position.copy(lights.keyLight.position);
+        lights.keyLight.shadow.camera.lookAt(center);
+        lights.keyLight.shadow.camera.updateMatrixWorld();
+    }
+    
+    // Fill light: reduced intensity and positioned to create more contrast
+    const fillLightDistance = 25;
+    const fillLightPos = cameraDirection.clone().multiplyScalar(-fillLightDistance);
+    fillLightPos.y += 6; // Keep it elevated but lower for more shadow contrast
+    lights.fillLight.position.copy(center.clone().add(fillLightPos));
+    
+    // Rim light: positioned to enhance reflections towards camera
+    const rimLightDistance = 20;
+    // Position rim light more towards camera side to enhance reflections
+    const rimLightOffset = new THREE.Vector3(
+        -cameraDirection.x * 0.5,
+        cameraDirection.y * 0.3 + 0.5,
+        -cameraDirection.z * 0.5
+    );
+    const rimLightPos = cameraDirection.clone().multiplyScalar(-rimLightDistance).add(rimLightOffset);
+    lights.rimLight.position.copy(center.clone().add(rimLightPos));
+    
+    // Top light: reduced intensity to allow more dramatic shadows
+    lights.topLight.position.set(center.x, center.y + 25, center.z);
+}
+
 // Initialize Rapier physics
 const physics = await initPhysics();
 
 // Create random blocks
 const blocks = [];
+
+// Expose blocks array for toggle handlers
+window.gameBlocks = blocks;
 const directions = [
     {x: 1, z: 0},   // East
     {x: -1, z: 0},  // West
@@ -1175,6 +1247,164 @@ function placeBlocksBatch(blocksToPlace, batchSize = 10, delayBetweenBatches = 1
     });
 }
 
+// Create blocks with many head-on collisions for testing
+function createHeadOnCollisionBlocks(targetBlockCount = 10) {
+    const blocksToPlace = [];
+    const occupiedCells = new Set();
+    
+    // Head-on collision pairs: blocks facing each other
+    const headOnPairs = [
+        // Mix: Start with some horizontal blocks first
+        { x1: 1, z1: 1, dir1: {x: 1, z: 0}, x2: 3, z2: 1, dir2: {x: -1, z: 0}, len1: 1, len2: 1, vert1: false, vert2: false },
+        { x1: 1, z1: 3, dir1: {x: 1, z: 0}, x2: 4, z2: 3, dir2: {x: -1, z: 0}, len1: 1, len2: 1, vert1: false, vert2: false },
+        { x1: 0, z1: 5, dir1: {x: 1, z: 0}, x2: 3, z2: 5, dir2: {x: -1, z: 0}, len1: 2, len2: 2, vert1: false, vert2: false }, // Multi-cell horizontal
+        { x1: 2, z1: 1, dir1: {x: 0, z: 1}, x2: 2, z2: 3, dir2: {x: 0, z: -1}, len1: 1, len2: 1, vert1: false, vert2: false },
+        { x1: 5, z1: 2, dir1: {x: 0, z: 1}, x2: 5, z2: 5, dir2: {x: 0, z: -1}, len1: 1, len2: 1, vert1: false, vert2: false },
+        { x1: 0, z1: 2, dir1: {x: 0, z: 1}, x2: 0, z2: 4, dir2: {x: 0, z: -1}, len1: 2, len2: 2, vert1: false, vert2: false }, // Multi-cell horizontal
+        
+        // Vertical blocks (head-on collisions) - Use positions that don't conflict
+        { x1: 3, z1: 2, dir1: {x: 1, z: 0}, x2: 5, z2: 2, dir2: {x: -1, z: 0}, len1: 2, len2: 2, vert1: true, vert2: true }, // Vertical multi-cell
+        { x1: 1, z1: 4, dir1: {x: 0, z: 1}, x2: 1, z2: 6, dir2: {x: 0, z: -1}, len1: 3, len2: 2, vert1: true, vert2: true }, // Vertical multi-cell
+        { x1: 6, z1: 1, dir1: {x: 1, z: 0}, x2: 4, z2: 1, dir2: {x: -1, z: 0}, len1: 2, len2: 1, vert1: true, vert2: true }, // Vertical multi-cell
+        { x1: 6, z1: 4, dir1: {x: 0, z: 1}, x2: 6, z2: 6, dir2: {x: 0, z: -1}, len1: 2, len2: 2, vert1: true, vert2: true }, // Vertical multi-cell
+        { x1: 0, z1: 0, dir1: {x: 1, z: 0}, x2: 6, z2: 0, dir2: {x: -1, z: 0}, len1: 3, len2: 2, vert1: true, vert2: true }, // Vertical multi-cell - moved to avoid conflict
+        { x1: 3, z1: 5, dir1: {x: 0, z: 1}, x2: 3, z2: 3, dir2: {x: 0, z: -1}, len1: 2, len2: 3, vert1: true, vert2: true }, // Vertical multi-cell - moved to avoid conflict
+        
+        // More horizontal blocks
+        { x1: 2, z1: 0, dir1: {x: 1, z: 0}, x2: 5, z2: 0, dir2: {x: -1, z: 0}, len1: 3, len2: 2, vert1: false, vert2: false }, // Multi-cell horizontal
+        { x1: 4, z1: 0, dir1: {x: 0, z: 1}, x2: 4, z2: 2, dir2: {x: 0, z: -1}, len1: 2, len2: 1, vert1: false, vert2: false }, // Moved to avoid conflict
+        { x1: 3, z1: 6, dir1: {x: 1, z: 0}, x2: 5, z2: 6, dir2: {x: -1, z: 0}, len1: 1, len2: 1, vert1: false, vert2: false },
+    ];
+    
+    function isCellOccupied(x, z) {
+        return occupiedCells.has(`${x},${z}`);
+    }
+    
+    function occupyCells(x, z, length, isXAligned) {
+        for (let i = 0; i < length; i++) {
+            const cellX = x + (isXAligned ? i : 0);
+            const cellZ = z + (isXAligned ? 0 : i);
+            occupiedCells.add(`${cellX},${cellZ}`);
+        }
+    }
+    
+    // Place head-on collision pairs
+    for (const pair of headOnPairs) {
+        if (blocksToPlace.length >= targetBlockCount) break;
+        
+        // Place first block
+        const isXAligned1 = Math.abs(pair.dir1.x) > 0;
+        let canPlace1 = true;
+        // For vertical blocks, only check the base cell
+        if (pair.vert1) {
+            if (pair.x1 < 0 || pair.x1 >= gridSize || pair.z1 < 0 || pair.z1 >= gridSize || isCellOccupied(pair.x1, pair.z1)) {
+                canPlace1 = false;
+            }
+        } else {
+            for (let i = 0; i < pair.len1; i++) {
+                const checkX = pair.x1 + (isXAligned1 ? i : 0);
+                const checkZ = pair.z1 + (isXAligned1 ? 0 : i);
+                if (checkX < 0 || checkX >= gridSize || checkZ < 0 || checkZ >= gridSize || isCellOccupied(checkX, checkZ)) {
+                    canPlace1 = false;
+                    break;
+                }
+            }
+        }
+        
+        if (canPlace1) {
+            if (pair.vert1) {
+                occupiedCells.add(`${pair.x1},${pair.z1}`);
+            } else {
+                occupyCells(pair.x1, pair.z1, pair.len1, isXAligned1);
+            }
+            const isVertical1 = pair.vert1 === true;
+            console.log(`Creating block1 at (${pair.x1}, ${pair.z1}), vert1=${pair.vert1}, isVertical1=${isVertical1}, length=${pair.len1}`);
+            const block1 = new Block(pair.len1, pair.x1, pair.z1, pair.dir1, isVertical1, currentArrowStyle, scene, physics, gridSize, cubeSize, 0, 1);
+            console.log(`Block1 created, isVertical=${block1.isVertical}`);
+            scene.remove(block1.group);
+            blocksToPlace.push(block1);
+        }
+        
+        // Place second block (head-on collision partner)
+        if (blocksToPlace.length < targetBlockCount) {
+            const isXAligned2 = Math.abs(pair.dir2.x) > 0;
+            let canPlace2 = true;
+            // For vertical blocks, only check the base cell
+            if (pair.vert2) {
+                if (pair.x2 < 0 || pair.x2 >= gridSize || pair.z2 < 0 || pair.z2 >= gridSize || isCellOccupied(pair.x2, pair.z2)) {
+                    canPlace2 = false;
+                }
+            } else {
+                for (let i = 0; i < pair.len2; i++) {
+                    const checkX = pair.x2 + (isXAligned2 ? i : 0);
+                    const checkZ = pair.z2 + (isXAligned2 ? 0 : i);
+                    if (checkX < 0 || checkX >= gridSize || checkZ < 0 || checkZ >= gridSize || isCellOccupied(checkX, checkZ)) {
+                        canPlace2 = false;
+                        break;
+                    }
+                }
+            }
+            
+            if (canPlace2) {
+                if (pair.vert2) {
+                    occupiedCells.add(`${pair.x2},${pair.z2}`);
+                } else {
+                    occupyCells(pair.x2, pair.z2, pair.len2, isXAligned2);
+                }
+                const isVertical2 = pair.vert2 === true;
+                console.log(`Creating block2 at (${pair.x2}, ${pair.z2}), vert2=${pair.vert2}, isVertical2=${isVertical2}, length=${pair.len2}`);
+                const block2 = new Block(pair.len2, pair.x2, pair.z2, pair.dir2, isVertical2, currentArrowStyle, scene, physics, gridSize, cubeSize, 0, 1);
+                console.log(`Block2 created, isVertical=${block2.isVertical}`);
+                scene.remove(block2.group);
+                blocksToPlace.push(block2);
+            }
+        }
+    }
+    
+    // Fill remaining slots with random blocks if needed
+    while (blocksToPlace.length < targetBlockCount) {
+        const x = Math.floor(Math.random() * gridSize);
+        const z = Math.floor(Math.random() * gridSize);
+        if (!isCellOccupied(x, z)) {
+            const directions = [{x: 1, z: 0}, {x: -1, z: 0}, {x: 0, z: 1}, {x: 0, z: -1}];
+            const direction = directions[Math.floor(Math.random() * directions.length)];
+            const length = Math.random() < 0.5 ? 1 : (Math.random() < 0.5 ? 2 : 3);
+            const isVertical = Math.random() < 0.3; // 30% chance for vertical blocks
+            const isXAligned = Math.abs(direction.x) > 0;
+            
+            let canPlace = true;
+            if (isVertical) {
+                // Vertical blocks only occupy the base cell
+                if (x < 0 || x >= gridSize || z < 0 || z >= gridSize || isCellOccupied(x, z)) {
+                    canPlace = false;
+                }
+            } else {
+                for (let i = 0; i < length; i++) {
+                    const checkX = x + (isXAligned ? i : 0);
+                    const checkZ = z + (isXAligned ? 0 : i);
+                    if (checkX < 0 || checkX >= gridSize || checkZ < 0 || checkZ >= gridSize || isCellOccupied(checkX, checkZ)) {
+                        canPlace = false;
+                        break;
+                    }
+                }
+            }
+            
+            if (canPlace) {
+                if (isVertical) {
+                    occupiedCells.add(`${x},${z}`);
+                } else {
+                    occupyCells(x, z, length, isXAligned);
+                }
+                const block = new Block(length, x, z, direction, isVertical, currentArrowStyle, scene, physics, gridSize, cubeSize, 0, 1);
+                scene.remove(block.group);
+                blocksToPlace.push(block);
+            }
+        }
+    }
+    
+    return blocksToPlace;
+}
+
 // Generate solvable puzzle using reverse generation (guaranteed solvable)
 async function generateSolvablePuzzle(level = 1) {
     if (isGeneratingLevel) {
@@ -1193,6 +1423,17 @@ async function generateSolvablePuzzle(level = 1) {
     
     // Get target block count for this level
     const targetBlockCount = getBlocksForLevel(level);
+    
+    // Special case: Level 1 with head-on collisions for testing
+    if (level === 1) {
+        const headOnBlocks = createHeadOnCollisionBlocks(targetBlockCount);
+        
+        // Use the same animation system as normal generation
+        await placeBlocksBatch(headOnBlocks);
+        
+        isGeneratingLevel = false;
+        return;
+    }
     
     // Determine if we need multiple layers
     // Grid has 7x7 = 49 cells, so if targetBlockCount > 49, we need multiple layers
@@ -1440,11 +1681,18 @@ function undoLastMove() {
         return;
     }
     
+    // Stop any ongoing animations
+    block.isAnimating = false;
+    block.needsStop = true;
+    
     // Restore block position
     block.gridX = lastMove.gridX;
     block.gridZ = lastMove.gridZ;
     block.direction = lastMove.direction;
     block.isVertical = lastMove.isVertical;
+    
+    // Reset scale and position immediately
+    block.group.scale.set(1, 1, 1);
     block.updateWorldPosition();
     
     console.log(`Undo: Restored block to (${block.gridX}, ${block.gridZ})`);
@@ -1609,6 +1857,13 @@ if (newGameButton) {
     });
 }
 
+const centerTowerButton = document.getElementById('center-tower-button');
+if (centerTowerButton) {
+    centerTowerButton.addEventListener('click', () => {
+        centerTower();
+    });
+}
+
 // Update undo button state (enable/disable based on history)
 function updateUndoButtonState() {
     if (undoButton) {
@@ -1619,6 +1874,7 @@ function updateUndoButtonState() {
 
 // Initialize camera position
 calculateInitialCameraPosition();
+updateCameraPosition(); // Position camera immediately to avoid default (0,0,0) view on first frame
 
 // Initialize game - load saved progress or start at level 0
 currentLevel = loadProgress();
@@ -1675,6 +1931,15 @@ function onMouseClick(event) {
         return;
     }
     
+    // Prevent block selection if camera was dragged
+    if (wasCameraDragging || isCameraDragging) {
+        // Reset drag tracking for next interaction
+        wasCameraDragging = false;
+        isCameraDragging = false;
+        mouseDownPos = null;
+        return; // Don't process as block click
+    }
+    
     // Check if this was actually a drag by checking mouse movement
     // If mouseDownPos exists and distance is small, it's a click, not a drag
     if (mouseDownPos) {
@@ -1692,6 +1957,7 @@ function onMouseClick(event) {
     // Reset drag tracking
     mouseDownPos = null;
     isCameraDragging = false;
+    wasCameraDragging = false;
     
     mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
     mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
@@ -2070,7 +2336,7 @@ renderer.domElement.addEventListener('touchmove', (event) => {
             }
         }
     } else if (currentTouches.length === 2 && touchState.touches.length === 2) {
-        // Dual touch pinch/pan
+        // Dual touch - pinch/pan
         const touch1 = currentTouches[0];
         const touch2 = currentTouches[1];
         
@@ -2080,20 +2346,22 @@ renderer.domElement.addEventListener('touchmove', (event) => {
         
         const distanceChange = Math.abs(currentDistance - touchState.startDistance) / touchState.startDistance;
         
-        if (distanceChange > 0.1) {
+        const currentCenter = {
+            x: (touch1.clientX + touch2.clientX) / 2,
+            y: (touch1.clientY + touch2.clientY) / 2
+        };
+        
+        if (distanceChange > 0.05) {
             // Pinch to zoom
             touchState.isPinching = true;
             const zoomFactor = currentDistance / touchState.startDistance;
             targetRadius /= zoomFactor;
             targetRadius = Math.max(MIN_RADIUS, Math.min(MAX_RADIUS, targetRadius));
             touchState.startDistance = currentDistance;
+            // Update center for next frame
+            touchState.lastCenter = currentCenter;
         } else {
             // Dual touch drag (pan/reframe)
-            const currentCenter = {
-                x: (touch1.clientX + touch2.clientX) / 2,
-                y: (touch1.clientY + touch2.clientY) / 2
-            };
-            
             const deltaX = currentCenter.x - touchState.lastCenter.x;
             const deltaY = currentCenter.y - touchState.lastCenter.y;
             
@@ -2311,14 +2579,18 @@ function animate() {
         targetRadius = Math.max(MIN_RADIUS, Math.min(MAX_RADIUS, requiredDistance));
     }
     
-    // Smooth interpolation
-    const smoothing = isGeneratingLevel ? 0.25 : 0.1; // Faster during spawn, slower during gameplay
+    // Smooth interpolation with heavier feel (momentum/inertia)
+    // Lower smoothing = slower acceleration/deceleration = heavier feel
+    const smoothing = isGeneratingLevel ? 0.25 : 0.04; // Much slower during gameplay for heavy feel
     currentRadius += (targetRadius - currentRadius) * smoothing;
     currentAzimuth += (targetAzimuth - currentAzimuth) * smoothing;
     currentElevation += (targetElevation - currentElevation) * smoothing;
     
     // Update camera position
     updateCameraPosition();
+    
+    // Update lights to follow camera angle
+    updateLightsForCamera(lights, currentAzimuth, currentElevation, towerCenter.clone().add(towerPositionOffset));
     
     // Update timer display (every frame for smooth updates)
     updateTimerDisplay();
