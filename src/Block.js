@@ -19,6 +19,7 @@ export class Block {
         this.cubeSize = cubeSize;
         this.yOffset = yOffset;
         this.level = level; // Track which level this block belongs to
+        this.arrowStyle = arrowStyle; // Store arrow style for indicator material matching
         
         this.group = new THREE.Group();
         
@@ -82,6 +83,9 @@ export class Block {
         
         // Create arrow with matching block color
         this.createArrow(arrowStyle, colors[length - 1]);
+        
+        // Create forward/backward indicators
+        this.createDirectionIndicators(colors[length - 1], arrowStyle);
         
         // Position block on grid
         this.updateWorldPosition();
@@ -471,6 +475,226 @@ export class Block {
         this.arrow = arrowGroup;
     }
     
+    createDirectionIndicators(blockColor, arrowStyle = 2) {
+        const indicatorsGroup = new THREE.Group();
+        
+        // Calculate block dimensions
+        let blockWidth, blockHeight, blockDepth;
+        const isXAligned = Math.abs(this.direction.x) > 0;
+        
+        if (this.isVertical) {
+            blockWidth = this.cubeSize;
+            blockHeight = this.length * this.cubeSize;
+            blockDepth = this.cubeSize;
+        } else if (isXAligned) {
+            blockWidth = this.length * this.cubeSize;
+            blockHeight = this.cubeSize;
+            blockDepth = this.cubeSize;
+        } else {
+            blockWidth = this.cubeSize;
+            blockHeight = this.cubeSize;
+            blockDepth = this.length * this.cubeSize;
+        }
+        
+        // Small offset from surface to avoid z-fighting
+        const surfaceOffset = 0.01;
+        
+        // Create forward-facing dot (small filled circle)
+        const dotRadius = 0.08;
+        const dotShape = new THREE.Shape();
+        dotShape.arc(0, 0, dotRadius, 0, Math.PI * 2, false);
+        
+        // Get arrow material properties based on style
+        let roughness, metalness;
+        if (arrowStyle === 1) {
+            roughness = 0.3;
+            metalness = 0.6;
+        } else if (arrowStyle === 2) {
+            roughness = 0.4;
+            metalness = 0.3;
+        } else if (arrowStyle === 3) {
+            roughness = 0.5; // Default for MeshStandardMaterial
+            metalness = 0.0;
+        } else if (arrowStyle === 4) {
+            roughness = 0.2;
+            metalness = 0.8;
+        } else if (arrowStyle === 5) {
+            roughness = 0.3;
+            metalness = 0.4;
+        } else if (arrowStyle === 6) {
+            roughness = 0.4;
+            metalness = 0.3;
+        } else if (arrowStyle === 7) {
+            roughness = 0.35;
+            metalness = 0.4;
+        } else if (arrowStyle === 8) {
+            roughness = 0.45;
+            metalness = 0.25;
+        } else {
+            // Default to style 2 properties
+            roughness = 0.4;
+            metalness = 0.3;
+        }
+        
+        // Create 3D extruded dot (like arrows)
+        const dotExtrudeSettings = {
+            depth: 0.04,
+            bevelEnabled: true,
+            bevelThickness: 0.01,
+            bevelSize: 0.01,
+            bevelSegments: 4
+        };
+        
+        const dotGeometry = new THREE.ExtrudeGeometry(dotShape, dotExtrudeSettings);
+        // Match arrow material properties
+        const dotMaterial = new THREE.MeshStandardMaterial({
+            color: blockColor,
+            emissive: blockColor,
+            emissiveIntensity: 0, // Match arrow base emissive
+            roughness: roughness,
+            metalness: metalness
+        });
+        
+        const dotMesh = new THREE.Mesh(dotGeometry, dotMaterial);
+        dotMesh.castShadow = true;
+        dotMesh.receiveShadow = true;
+        
+        // Create backward-facing outlined circle - 3D extruded
+        const circleRadius = 0.18;
+        const circleShape = new THREE.Shape();
+        circleShape.arc(0, 0, circleRadius, 0, Math.PI * 2, false);
+        
+        // Create hole for outline effect
+        const hole = new THREE.Path();
+        hole.arc(0, 0, circleRadius - 0.02, 0, Math.PI * 2, true);
+        circleShape.holes.push(hole);
+        
+        const circleExtrudeSettings = {
+            depth: 0.04,
+            bevelEnabled: true,
+            bevelThickness: 0.01,
+            bevelSize: 0.01,
+            bevelSegments: 4
+        };
+        
+        const circleGeometry = new THREE.ExtrudeGeometry(circleShape, circleExtrudeSettings);
+        // Match arrow material properties
+        const circleMaterial = new THREE.MeshStandardMaterial({
+            color: blockColor,
+            emissive: blockColor,
+            emissiveIntensity: 0, // Match arrow base emissive
+            roughness: roughness,
+            metalness: metalness
+        });
+        
+        const circleMesh = new THREE.Mesh(circleGeometry, circleMaterial);
+        circleMesh.castShadow = true;
+        circleMesh.receiveShadow = true;
+        
+        // Position indicators based on block orientation and direction
+        // ShapeGeometry creates shapes in XY plane (Z=0), so we need to rotate them to align with surfaces
+        // For surfaces facing X: rotate around Y to face X, then rotate around Z to align with surface
+        // For surfaces facing Z: rotate around Y to face Z, then rotate around X to align with surface
+        // For surfaces facing Y: already in correct plane, just rotate around Z
+        
+        if (this.isVertical) {
+            // Vertical block: forward/backward are side faces
+            // Forward face is in the direction of this.direction
+            // Position dot on forward face
+            if (this.direction.x > 0) {
+                // East face (+X) - shape needs to be in YZ plane facing +X
+                dotMesh.position.set(blockWidth / 2 + surfaceOffset, blockHeight / 2, 0);
+                dotMesh.rotation.set(0, -Math.PI / 2, 0); // Rotate to YZ plane, face +X
+            } else if (this.direction.x < 0) {
+                // West face (-X) - shape needs to be in YZ plane facing -X
+                dotMesh.position.set(-blockWidth / 2 - surfaceOffset, blockHeight / 2, 0);
+                dotMesh.rotation.set(0, Math.PI / 2, 0); // Rotate to YZ plane, face -X
+            } else if (this.direction.z > 0) {
+                // South face (+Z) - shape needs to be in XY plane facing +Z
+                dotMesh.position.set(0, blockHeight / 2, blockDepth / 2 + surfaceOffset);
+                dotMesh.rotation.set(0, Math.PI, 0); // Rotate to face +Z
+            } else if (this.direction.z < 0) {
+                // North face (-Z) - shape needs to be in XY plane facing -Z
+                dotMesh.position.set(0, blockHeight / 2, -blockDepth / 2 - surfaceOffset);
+                dotMesh.rotation.set(0, 0, 0); // Already facing -Z (default)
+            }
+            
+            // Position circle on backward face (opposite direction)
+            if (this.direction.x > 0) {
+                // Backward is West face (-X)
+                circleMesh.position.set(-blockWidth / 2 - surfaceOffset, blockHeight / 2, 0);
+                circleMesh.rotation.set(0, Math.PI / 2, 0);
+            } else if (this.direction.x < 0) {
+                // Backward is East face (+X)
+                circleMesh.position.set(blockWidth / 2 + surfaceOffset, blockHeight / 2, 0);
+                circleMesh.rotation.set(0, -Math.PI / 2, 0);
+            } else if (this.direction.z > 0) {
+                // Backward is North face (-Z)
+                circleMesh.position.set(0, blockHeight / 2, -blockDepth / 2 - surfaceOffset);
+                circleMesh.rotation.set(0, 0, 0);
+            } else if (this.direction.z < 0) {
+                // Backward is South face (+Z)
+                circleMesh.position.set(0, blockHeight / 2, blockDepth / 2 + surfaceOffset);
+                circleMesh.rotation.set(0, Math.PI, 0);
+            }
+        } else {
+            // Horizontal block - indicators go on end faces (forward/backward)
+            if (isXAligned) {
+                // Block extends in X direction, indicators on X end faces (YZ planes)
+                if (this.direction.x > 0) {
+                    // Forward face is East (+X) - dot on +X end face
+                    dotMesh.position.set(blockWidth / 2 + surfaceOffset, blockHeight / 2, 0);
+                    dotMesh.rotation.set(0, -Math.PI / 2, 0); // YZ plane, face +X
+                    
+                    // Backward face is West (-X) - circle on -X end face
+                    circleMesh.position.set(-blockWidth / 2 - surfaceOffset, blockHeight / 2, 0);
+                    circleMesh.rotation.set(0, Math.PI / 2, 0); // YZ plane, face -X
+                } else {
+                    // Forward face is West (-X) - dot on -X end face
+                    dotMesh.position.set(-blockWidth / 2 - surfaceOffset, blockHeight / 2, 0);
+                    dotMesh.rotation.set(0, Math.PI / 2, 0); // YZ plane, face -X
+                    
+                    // Backward face is East (+X) - circle on +X end face
+                    circleMesh.position.set(blockWidth / 2 + surfaceOffset, blockHeight / 2, 0);
+                    circleMesh.rotation.set(0, -Math.PI / 2, 0); // YZ plane, face +X
+                }
+            } else {
+                // Block extends in Z direction, indicators on Z end faces (XY planes)
+                if (this.direction.z > 0) {
+                    // Forward face is South (+Z) - dot on +Z end face
+                    dotMesh.position.set(0, blockHeight / 2, blockDepth / 2 + surfaceOffset);
+                    dotMesh.rotation.set(0, Math.PI, 0); // XY plane, face +Z
+                    
+                    // Backward face is North (-Z) - circle on -Z end face
+                    circleMesh.position.set(0, blockHeight / 2, -blockDepth / 2 - surfaceOffset);
+                    circleMesh.rotation.set(0, 0, 0); // XY plane, face -Z
+                } else {
+                    // Forward face is North (-Z) - dot on -Z end face
+                    dotMesh.position.set(0, blockHeight / 2, -blockDepth / 2 - surfaceOffset);
+                    dotMesh.rotation.set(0, 0, 0); // XY plane, face -Z
+                    
+                    // Backward face is South (+Z) - circle on +Z end face
+                    circleMesh.position.set(0, blockHeight / 2, blockDepth / 2 + surfaceOffset);
+                    circleMesh.rotation.set(0, Math.PI, 0); // XY plane, face +Z
+                }
+            }
+        }
+        
+        indicatorsGroup.add(dotMesh);
+        indicatorsGroup.add(circleMesh);
+        this.group.add(indicatorsGroup);
+        this.directionIndicators = indicatorsGroup;
+        
+        // Debug: Verify indicators are created
+        if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
+            console.log('Direction indicators created:', {
+                dotMesh: !!dotMesh,
+                circleMesh: !!circleMesh,
+                indicatorsGroup: indicatorsGroup.children.length
+            });
+        }
+    }
+    
     // Update block color (material and arrow)
     updateBlockColor(newColor, arrowColor = null) {
         // Update block material color
@@ -497,6 +721,24 @@ export class Block {
                 }
             }
         }
+        
+        // Update direction indicators color to match arrow
+        if (this.directionIndicators && this.directionIndicators.children.length >= 2) {
+            const dotMesh = this.directionIndicators.children[0];
+            const circleMesh = this.directionIndicators.children[1];
+            if (dotMesh && dotMesh.material) {
+                dotMesh.material.color.setHex(finalArrowColor);
+                if (dotMesh.material.emissive) {
+                    dotMesh.material.emissive.setHex(finalArrowColor);
+                }
+            }
+            if (circleMesh && circleMesh.material) {
+                circleMesh.material.color.setHex(finalArrowColor);
+                if (circleMesh.material.emissive) {
+                    circleMesh.material.emissive.setHex(finalArrowColor);
+                }
+            }
+        }
     }
     
     // Rotate direction clockwise: East->South->West->North->East
@@ -512,6 +754,57 @@ export class Block {
         this.updateArrowRotation();
     }
     
+    animateRotationClockwise(duration = 400, callback = null) {
+        // Animate the arrow rotation smoothly
+        if (!this.arrow || !this.arrow.children.length > 0) {
+            // If no arrow, just rotate direction immediately
+            this.rotateDirectionClockwise();
+            if (callback) callback();
+            return;
+        }
+        
+        const topArrow = this.arrow.children[0];
+        if (!topArrow) {
+            this.rotateDirectionClockwise();
+            if (callback) callback();
+            return;
+        }
+        
+        // Calculate start and end rotation angles
+        const startAngle = Math.atan2(this.direction.x, this.direction.z) + Math.PI;
+        const newX = -this.direction.z;
+        const newZ = this.direction.x;
+        const endAngle = Math.atan2(newX, newZ) + Math.PI;
+        
+        // Update direction immediately (for movement logic)
+        this.direction = { x: newX, z: newZ };
+        
+        // Animate arrow rotation
+        const startTime = performance.now();
+        const animate = () => {
+            const elapsed = performance.now() - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            
+            // Ease-in-out for smooth rotation
+            const eased = progress < 0.5 
+                ? 2 * progress * progress 
+                : 1 - Math.pow(-2 * progress + 2, 2) / 2;
+            
+            const currentAngle = startAngle + (endAngle - startAngle) * eased;
+            topArrow.rotation.z = currentAngle;
+            
+            if (progress < 1) {
+                requestAnimationFrame(animate);
+            } else {
+                // Ensure final angle is exact
+                topArrow.rotation.z = endAngle;
+                if (callback) callback();
+            }
+        };
+        
+        animate();
+    }
+    
     // Update arrow rotation to match current direction
     updateArrowRotation() {
         if (this.arrow && this.arrow.children.length > 0) {
@@ -520,13 +813,15 @@ export class Block {
                 topArrow.rotation.z = Math.atan2(this.direction.x, this.direction.z) + Math.PI;
             }
         }
-    }
-    
-    // Check if this block collides head-on with another block
-    isHeadOnCollision(other) {
-        // Head-on collision: arrows point at each other (opposite directions)
-        return this.direction.x === -other.direction.x && 
-               this.direction.z === -other.direction.z;
+        
+        // Update direction indicators position when direction changes
+        if (this.directionIndicators) {
+            // Remove old indicators and recreate with new positions
+            this.group.remove(this.directionIndicators);
+            // Get block color from original material
+            const blockColor = this.originalMaterial ? this.originalMaterial.color.getHex() : 0xffffff;
+            this.createDirectionIndicators(blockColor, this.arrowStyle);
+        }
     }
     
     // Helper function to check rotation safety with specific directions (for recursive head-on collisions)
@@ -1075,7 +1370,7 @@ export class Block {
         let hitObstacle = false;
         let hitEdge = false;
         let collidedBlock = null; // Track which block we collided with
-        let headOnCollision = null; // Track head-on collision details: {block, position: {x, z}}
+        let headOnCollision = null; // Track head-on collision: {block, gridX, gridZ, originalDirection, stepsToCollision}
         
         // Count steps until blocked or edge
         // Continue moving until block entirely leaves the board (all cubes off) or hits an obstacle
@@ -1155,125 +1450,35 @@ export class Block {
             }
             
             if (blocked) {
-                // Check if this is a head-on collision
-                // Rule: Head-on collision and clockwise rotation rule does NOT apply to horizontal 2x and 3x blocks
-                // If they are vertical, rule applies as is
-                const isHeadOn = collidedBlock && this.isHeadOnCollision(collidedBlock);
-                const isHorizontalMultiCube = !this.isVertical && (this.length === 2 || this.length === 3);
+                // Check if this is a head-on collision (only for single cube or vertical blocks)
+                const isSingleOrVertical = (this.length === 1) || this.isVertical;
+                const isHeadOn = isSingleOrVertical && collidedBlock && 
+                    this.direction.x === -collidedBlock.direction.x && 
+                    this.direction.z === -collidedBlock.direction.z;
                 
-                if (isHeadOn && !isHorizontalMultiCube) {
-                    // Head-on collision: stop at position BEFORE collision (don't move into collided block's cell)
-                    // tempGridX, tempGridZ is already at the position before collision
+                if (isHeadOn) {
+                    // Head-on collision detected: record collision info for animation
+                    headOnCollision = {
+                        block: collidedBlock,
+                        gridX: tempGridX,
+                        gridZ: tempGridZ,
+                        originalDirection: { x: this.direction.x, z: this.direction.z },
+                        stepsToCollision: stepsToObstacle
+                    };
                     
-                    console.log(`Head-on collision detected: Block at (${this.gridX}, ${this.gridZ}) dir (${this.direction.x}, ${this.direction.z}) collides with block at (${collidedBlock.gridX}, ${collidedBlock.gridZ}) dir (${collidedBlock.direction.x}, ${collidedBlock.direction.z})`);
-                    console.log(`Block length: ${this.length}, isVertical: ${this.isVertical}`);
+                    // Update grid position to collision position
+                    this.gridX = tempGridX;
+                    this.gridZ = tempGridZ;
                     
-                    // Check if rotation is safe at current position (before collision, exclude the collided block from check)
-                    const rotationSafe = this.canRotateSafelyAt(tempGridX, tempGridZ, blocks, gridSize, collidedBlock);
-                    console.log(`Rotation safe check at (${tempGridX}, ${tempGridZ}): ${rotationSafe}`);
+                    // Rotate direction immediately (for movement calculation)
+                    this.rotateDirectionClockwise();
                     
-                    if (!rotationSafe) {
-                        // Debug: show what's blocking
-                        const newDirection = { x: -this.direction.z, z: this.direction.x };
-                        const newGridX = tempGridX + newDirection.x;
-                        const newGridZ = tempGridZ + newDirection.z;
-                        console.log(`Would rotate to dir (${newDirection.x}, ${newDirection.z}), checking position (${newGridX}, ${newGridZ})`);
-                        const newIsXAligned = Math.abs(newDirection.x) > 0;
-                        for (let i = 0; i < this.length; i++) {
-                            const checkX = newGridX + (newIsXAligned ? i : 0);
-                            const checkZ = newGridZ + (newIsXAligned ? 0 : i);
-                            console.log(`  Checking cell (${checkX}, ${checkZ})`);
-                            for (const other of blocks) {
-                                if (other === this || other === collidedBlock || other.isFalling) continue;
-                                if (other.isVertical) {
-                                    if (checkX === other.gridX && checkZ === other.gridZ) {
-                                        console.log(`    BLOCKED by vertical block at (${other.gridX}, ${other.gridZ})`);
-                                    }
-                                } else {
-                                    const otherIsXAligned = Math.abs(other.direction.x) > 0;
-                                    for (let j = 0; j < other.length; j++) {
-                                        const otherX = other.gridX + (otherIsXAligned ? j : 0);
-                                        const otherZ = other.gridZ + (otherIsXAligned ? 0 : j);
-                                        if (checkX === otherX && checkZ === otherZ) {
-                                            console.log(`    BLOCKED by horizontal block at (${other.gridX}, ${other.gridZ}) dir (${other.direction.x}, ${other.direction.z}) length ${other.length}, cell (${otherX}, ${otherZ})`);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    
-                    if (rotationSafe) {
-                        // Rotation is safe: record it for special animation
-                        // Position is the cell BEFORE collision (where block currently is)
-                        headOnCollision = {
-                            block: collidedBlock,
-                            position: { x: tempGridX, z: tempGridZ } // Position before collision
-                        };
-                        console.log(`Head-on collision: rotation will happen at (${tempGridX}, ${tempGridZ})`);
-                        // Stop here - rotation will happen during animation at this position
-                        hitObstacle = false; // Not a regular obstacle, it's a head-on collision
-                        break;
-                    } else {
-                        // Rotation not immediately safe - check if blocking block is also a head-on collision
-                        const newDirection = { x: -this.direction.z, z: this.direction.x };
-                        const newGridX = tempGridX + newDirection.x;
-                        const newGridZ = tempGridZ + newDirection.z;
-                        const newIsXAligned = Math.abs(newDirection.x) > 0;
-                        
-                        // Find the blocking block
-                        let blockingBlock = null;
-                        for (let i = 0; i < this.length; i++) {
-                            const checkX = newGridX + (newIsXAligned ? i : 0);
-                            const checkZ = newGridZ + (newIsXAligned ? 0 : i);
-                            
-                            for (const other of blocks) {
-                                if (other === this || other === collidedBlock || other.isFalling) continue;
-                                
-                                if (other.isVertical) {
-                                    if (checkX === other.gridX && checkZ === other.gridZ) {
-                                        blockingBlock = other;
-                                        break;
-                                    }
-                                } else {
-                                    const otherIsXAligned = Math.abs(other.direction.x) > 0;
-                                    for (let j = 0; j < other.length; j++) {
-                                        const otherX = other.gridX + (otherIsXAligned ? j : 0);
-                                        const otherZ = other.gridZ + (otherIsXAligned ? 0 : j);
-                                        if (checkX === otherX && checkZ === otherZ) {
-                                            blockingBlock = other;
-                                            break;
-                                        }
-                                    }
-                                }
-                                if (blockingBlock) break;
-                            }
-                            if (blockingBlock) break;
-                        }
-                        
-                        // Check if blocking block is in head-on collision with rotated direction
-                        if (blockingBlock && newDirection.x === -blockingBlock.direction.x && 
-                            newDirection.z === -blockingBlock.direction.z) {
-                            // Chain head-on collision: allow rotation, will handle second collision during post-rotation movement
-                            console.log(`Head-on collision: rotation blocked by another head-on collision with block at (${blockingBlock.gridX}, ${blockingBlock.gridZ}), allowing rotation`);
-                            headOnCollision = {
-                                block: collidedBlock,
-                                position: { x: tempGridX, z: tempGridZ } // Position before collision
-                            };
-                            hitObstacle = false; // Not a regular obstacle, it's a head-on collision chain
-                            break;
-                        } else {
-                            // Rotation not safe (blocking blocks in new direction): treat as regular collision
-                            console.log(`Head-on collision: rotation NOT safe, treating as regular collision`);
-                            hitObstacle = true;
-                            break;
-                        }
-                    }
+                    // Continue moving with the new rotated direction from current position
+                    // Don't update tempGridX/tempGridZ - stay at current position
+                    // The next iteration will calculate nextGridX/nextGridZ using the rotated direction
+                    continue; // Skip updating tempGridX/tempGridZ, continue with rotated direction
                 } else {
                     // Regular collision: stop
-                    if (collidedBlock) {
-                        console.log(`Regular collision: Block at (${this.gridX}, ${this.gridZ}) dir (${this.direction.x}, ${this.direction.z}) collides with block at (${collidedBlock.gridX}, ${collidedBlock.gridZ}) dir (${collidedBlock.direction.x}, ${collidedBlock.direction.z}) - NOT head-on`);
-                    }
                     hitObstacle = true;
                     break;
                 }
@@ -1313,266 +1518,20 @@ export class Block {
         }
         
         // If blocked immediately with no movement, add bounce effect
-        // Exception: head-on collision with rotation is allowed even if stepsToObstacle is 0
-        if (stepsToObstacle === 0 && hitObstacle && !headOnCollision) {
+        if (stepsToObstacle === 0 && hitObstacle) {
             this.addBounceEffect(blocks);
             return; // Can't move
         }
         
         // If no movement possible, return
-        // Exception: head-on collision with rotation needs animation even if stepsToObstacle is 0
-        if (stepsToObstacle === 0 && !headOnCollision) {
+        if (stepsToObstacle === 0) {
             return;
-        }
-        
-        // For head-on collision at starting position, we still need to animate rotation and continuation
-        if (headOnCollision && stepsToObstacle === 0) {
-            console.log(`Head-on collision at starting position, will animate rotation and continuation`);
         }
         
         this.isAnimating = true;
         
-        // For head-on collision, we need to calculate final position after rotation
-        // Store original direction to calculate post-rotation movement
-        const originalDirection = { x: this.direction.x, z: this.direction.z };
         let finalGridX = tempGridX;
         let finalGridZ = tempGridZ;
-        
-        // If head-on collision, calculate where block ends up after rotation
-        if (headOnCollision) {
-            // Calculate new direction after rotation
-            const rotatedDirection = { x: -originalDirection.z, z: originalDirection.x };
-            
-            // Continue movement from position BEFORE collision (where rotation happens) with rotated direction
-            let postRotationX = headOnCollision.position.x; // This is the position before collision
-            let postRotationZ = headOnCollision.position.z;
-            
-            // Move in new direction from position before collision until blocked or edge
-            while (true) {
-                const nextX = postRotationX + rotatedDirection.x;
-                const nextZ = postRotationZ + rotatedDirection.z;
-                
-                // Check if out of bounds - for rotated blocks, continue until ALL cubes are off
-                let allCubesOff = false;
-                if (this.isVertical) {
-                    if (nextX < 0 || nextX >= gridSize || nextZ < 0 || nextZ >= gridSize) {
-                        // Vertical block is completely off at this position
-                        allCubesOff = true;
-                    }
-                } else {
-                    const isXAligned = Math.abs(rotatedDirection.x) > 0;
-                    allCubesOff = true; // Assume all off, check if any are still on
-                    for (let i = 0; i < this.length; i++) {
-                        const checkX = nextX + (isXAligned ? i : 0);
-                        const checkZ = nextZ + (isXAligned ? 0 : i);
-                        if (checkX >= 0 && checkX < gridSize && checkZ >= 0 && checkZ < gridSize) {
-                            // At least one cube is still on the board
-                            allCubesOff = false;
-                            break;
-                        }
-                    }
-                }
-                
-                if (allCubesOff) {
-                    // Block has completely left the board - continue moving one more step to ensure it's off
-                    finalGridX = nextX;
-                    finalGridZ = nextZ;
-                    break;
-                }
-                
-                // Check for collisions
-                // Only check blocks at the same Y level (blocks on top can move independently)
-                let blocked = false;
-                for (const other of blocks) {
-                    if (other === this || other.isFalling || other.isRemoved || other === headOnCollision.block) continue;
-                    
-                    // Calculate Y ranges for both blocks to check for 3D overlap
-                    const thisHeight = this.isVertical ? this.length * this.cubeSize : this.cubeSize;
-                    const thisYBottom = this.yOffset;
-                    const thisYTop = this.yOffset + thisHeight;
-                    
-                    const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
-                    const otherYBottom = other.yOffset;
-                    const otherYTop = other.yOffset + otherHeight;
-                    
-                    // Check if Y ranges overlap (blocks are at different Y levels but might overlap in 3D)
-                    const yRangesOverlap = !(thisYTop <= otherYBottom || thisYBottom >= otherYTop);
-                    
-                    // If Y ranges don't overlap, blocks can't collide (they're at different heights)
-                    if (!yRangesOverlap) continue;
-                    
-                    if (this.isVertical) {
-                        if (other.isVertical) {
-                            if (nextX === other.gridX && nextZ === other.gridZ) {
-                                blocked = true;
-                                break;
-                            }
-                        } else {
-                            const otherIsXAligned = Math.abs(other.direction.x) > 0;
-                            for (let j = 0; j < other.length; j++) {
-                                const otherX = other.gridX + (otherIsXAligned ? j : 0);
-                                const otherZ = other.gridZ + (otherIsXAligned ? 0 : j);
-                                if (nextX === otherX && nextZ === otherZ) {
-                                    blocked = true;
-                                    break;
-                                }
-                            }
-                        }
-                    } else {
-                        const isXAligned = Math.abs(rotatedDirection.x) > 0;
-                        for (let i = 0; i < this.length; i++) {
-                            const checkX = nextX + (isXAligned ? i : 0);
-                            const checkZ = nextZ + (isXAligned ? 0 : i);
-                            
-                            if (other.isVertical) {
-                                if (checkX === other.gridX && checkZ === other.gridZ) {
-                                    blocked = true;
-                                    break;
-                                }
-                            } else {
-                                const otherIsXAligned = Math.abs(other.direction.x) > 0;
-                                for (let j = 0; j < other.length; j++) {
-                                    const otherX = other.gridX + (otherIsXAligned ? j : 0);
-                                    const otherZ = other.gridZ + (otherIsXAligned ? 0 : j);
-                                    if (checkX === otherX && checkZ === otherZ) {
-                                        blocked = true;
-                                        break;
-                                    }
-                                }
-                            }
-                            if (blocked) break;
-                        }
-                    }
-                    if (blocked) break;
-                }
-                
-                if (blocked) {
-                    // Check if this is another head-on collision
-                    let collidedBlockAfterRotation = null;
-                    // Find which block is blocking
-                    for (const other of blocks) {
-                        if (other === this || other.isFalling || other === headOnCollision.block) continue;
-                        
-                        if (this.isVertical) {
-                            if (other.isVertical) {
-                                if (nextX === other.gridX && nextZ === other.gridZ) {
-                                    collidedBlockAfterRotation = other;
-                                    break;
-                                }
-                            } else {
-                                const otherIsXAligned = Math.abs(other.direction.x) > 0;
-                                for (let j = 0; j < other.length; j++) {
-                                    const otherX = other.gridX + (otherIsXAligned ? j : 0);
-                                    const otherZ = other.gridZ + (otherIsXAligned ? 0 : j);
-                                    if (nextX === otherX && nextZ === otherZ) {
-                                        collidedBlockAfterRotation = other;
-                                        break;
-                                    }
-                                }
-                            }
-                        } else {
-                            const isXAligned = Math.abs(rotatedDirection.x) > 0;
-                            for (let i = 0; i < this.length; i++) {
-                                const checkX = nextX + (isXAligned ? i : 0);
-                                const checkZ = nextZ + (isXAligned ? 0 : i);
-                                
-                                if (other.isVertical) {
-                                    if (checkX === other.gridX && checkZ === other.gridZ) {
-                                        collidedBlockAfterRotation = other;
-                                        break;
-                                    }
-                                } else {
-                                    const otherIsXAligned = Math.abs(other.direction.x) > 0;
-                                    for (let j = 0; j < other.length; j++) {
-                                        const otherX = other.gridX + (otherIsXAligned ? j : 0);
-                                        const otherZ = other.gridZ + (otherIsXAligned ? 0 : j);
-                                        if (checkX === otherX && checkZ === otherZ) {
-                                            collidedBlockAfterRotation = other;
-                                            break;
-                                        }
-                                    }
-                                }
-                                if (collidedBlockAfterRotation) break;
-                            }
-                        }
-                        if (collidedBlockAfterRotation) break;
-                    }
-                    
-                    // Check if it's a head-on collision with the rotated direction
-                    // Rule: Head-on collision and clockwise rotation rule does NOT apply to horizontal 2x and 3x blocks
-                    if (collidedBlockAfterRotation) {
-                        const isHeadOn = (rotatedDirection.x === -collidedBlockAfterRotation.direction.x && 
-                                         rotatedDirection.z === -collidedBlockAfterRotation.direction.z);
-                        const isHorizontalMultiCube = !this.isVertical && (this.length === 2 || this.length === 3);
-                        
-                        if (isHeadOn && !isHorizontalMultiCube) {
-                            // Another head-on collision: check if rotation is safe
-                            const nextRotatedDirection = { x: -rotatedDirection.z, z: rotatedDirection.x };
-                            const canRotateAgain = this.canRotateSafelyAtWithDirection(
-                                postRotationX, postRotationZ, rotatedDirection, nextRotatedDirection, 
-                                blocks, gridSize, collidedBlockAfterRotation
-                            );
-                            
-                            if (canRotateAgain) {
-                                // Rotate again and continue
-                                rotatedDirection.x = nextRotatedDirection.x;
-                                rotatedDirection.z = nextRotatedDirection.z;
-                                // Don't move to nextX - stay at postRotationX and continue with new direction
-                                continue; // Continue loop with new rotated direction
-                            } else {
-                                // Can't rotate again - stop
-                                finalGridX = postRotationX;
-                                finalGridZ = postRotationZ;
-                                break;
-                            }
-                        } else {
-                            // Regular collision - stop (either not head-on, or horizontal 2x/3x block)
-                            finalGridX = postRotationX;
-                            finalGridZ = postRotationZ;
-                            break;
-                        }
-                    } else {
-                        // Regular collision - stop
-                        finalGridX = postRotationX;
-                        finalGridZ = postRotationZ;
-                        break;
-                    }
-                }
-                
-                postRotationX = nextX;
-                postRotationZ = nextZ;
-            }
-            
-            // finalGridX and finalGridZ are already set by the break statements in the while loop above
-            console.log(`Post-rotation movement: Block will end at (${finalGridX}, ${finalGridZ}) after rotating from (${headOnCollision.position.x}, ${headOnCollision.position.z})`);
-            
-            // Check if final position after rotation is off the board
-            // Recalculate rotated direction (may have been modified in while loop)
-            rotatedDirection.x = -originalDirection.z;
-            rotatedDirection.z = originalDirection.x;
-            const isXAligned = Math.abs(rotatedDirection.x) > 0;
-            let allCubesOffAfterRotation = false;
-            
-            if (this.isVertical) {
-                if (finalGridX < 0 || finalGridX >= gridSize || finalGridZ < 0 || finalGridZ >= gridSize) {
-                    allCubesOffAfterRotation = true;
-                }
-            } else {
-                allCubesOffAfterRotation = true; // Assume all off, check if any are still on
-                for (let i = 0; i < this.length; i++) {
-                    const checkX = finalGridX + (isXAligned ? i : 0);
-                    const checkZ = finalGridZ + (isXAligned ? 0 : i);
-                    if (checkX >= 0 && checkX < gridSize && checkZ >= 0 && checkZ < gridSize) {
-                        allCubesOffAfterRotation = false;
-                        break;
-                    }
-                }
-            }
-            
-            if (allCubesOffAfterRotation) {
-                hitEdge = true;
-            }
-        }
         
         // Calculate start position first (needed for extension calculation)
         // startX/startZ are in local coordinates relative to towerGroup (already offset)
@@ -1588,14 +1547,7 @@ export class Block {
             finalX = finalGridX * this.cubeSize + this.cubeSize / 2 - towerCenterOffset;
             finalZ = finalGridZ * this.cubeSize + this.cubeSize / 2 - towerCenterOffset;
         } else {
-            // For head-on collision, use rotated direction for alignment
-            // For normal movement, use current direction
-            let directionForAlignment = originalDirection;
-            if (headOnCollision) {
-                // After rotation, direction changes
-                directionForAlignment = { x: -originalDirection.z, z: originalDirection.x };
-            }
-            const isXAligned = Math.abs(directionForAlignment.x) > 0;
+            const isXAligned = Math.abs(this.direction.x) > 0;
             if (isXAligned) {
                 const startGridX = finalGridX * this.cubeSize + this.cubeSize / 2;
                 const endGridX = (finalGridX + this.length - 1) * this.cubeSize + this.cubeSize / 2;
@@ -1609,12 +1561,9 @@ export class Block {
             }
         }
         
-        // Check if we have a head-on collision (define early, used in extension calculation)
-        const hasHeadOnCollision = headOnCollision !== null;
-        
         // If block is going off the board, extend final position far enough to completely disappear
         // Calculate direction vector for extension
-        if (hitEdge && !hasHeadOnCollision) {
+        if (hitEdge) {
             const directionX = finalX - startX;
             const directionZ = finalZ - startZ;
             const directionLength = Math.sqrt(directionX * directionX + directionZ * directionZ);
@@ -1649,36 +1598,51 @@ export class Block {
         
         // Recalculate total distance after potential extension for blocks going off board
         const recalculatedTotalDistance = Math.sqrt((finalX - startX) ** 2 + (finalZ - startZ) ** 2);
-        const isCatapult = hitEdge && !hasHeadOnCollision; // Catapult when flying off edge
+        const isCatapult = hitEdge; // Catapult when flying off edge
         
         // Constant speed for all block movements (linear interpolation)
         // Speed: pixels per millisecond (adjust for desired speed)
         const constantSpeed = 0.05; // pixels per ms (50 pixels per second) - slow, visible motion
         
-        // For head-on collision, calculate collision position first (needed for duration calculation)
-        let collisionX, collisionZ, collisionGridX, collisionGridZ, collisionProgress = 0;
-        let rotationStartAngle = 0;
-        let rotationEndAngle = 0;
-        let rotationPauseDuration = 500; // Fixed 500ms pause for rotation (in milliseconds)
-        let rotationApplied = false; // Track if direction has been rotated
+        // Calculate collision position for head-on collision animation
+        let collisionX, collisionZ, collisionProgress = 0;
+        let rotationPauseDuration = 200; // 200ms pause for rotation animation
+        const hasHeadOnCollision = headOnCollision !== null;
+        
         if (hasHeadOnCollision) {
-            collisionGridX = headOnCollision.position.x;
-            collisionGridZ = headOnCollision.position.z;
-            collisionX = collisionGridX * this.cubeSize + this.cubeSize / 2;
-            collisionZ = collisionGridZ * this.cubeSize + this.cubeSize / 2;
+            // Calculate collision position in world coordinates
+            const collisionGridX = headOnCollision.gridX;
+            const collisionGridZ = headOnCollision.gridZ;
+            
+            if (this.isVertical) {
+                collisionX = collisionGridX * this.cubeSize + this.cubeSize / 2 - towerCenterOffset;
+                collisionZ = collisionGridZ * this.cubeSize + this.cubeSize / 2 - towerCenterOffset;
+            } else {
+                // Use original direction for collision position calculation
+                const originalDir = headOnCollision.originalDirection;
+                const isXAligned = Math.abs(originalDir.x) > 0;
+                if (isXAligned) {
+                    const startGridX = collisionGridX * this.cubeSize + this.cubeSize / 2;
+                    const endGridX = (collisionGridX + this.length - 1) * this.cubeSize + this.cubeSize / 2;
+                    collisionX = (startGridX + endGridX) / 2 - towerCenterOffset;
+                    collisionZ = collisionGridZ * this.cubeSize + this.cubeSize / 2 - towerCenterOffset;
+                } else {
+                    collisionX = collisionGridX * this.cubeSize + this.cubeSize / 2 - towerCenterOffset;
+                    const startGridZ = collisionGridZ * this.cubeSize + this.cubeSize / 2;
+                    const endGridZ = (collisionGridZ + this.length - 1) * this.cubeSize + this.cubeSize / 2;
+                    collisionZ = (startGridZ + endGridZ) / 2 - towerCenterOffset;
+                }
+            }
         }
         
         // All movements use constant speed (linear interpolation)
         let duration;
         if (hasHeadOnCollision) {
-            // Head-on collision: use constant speed, but account for rotation pause
-            // Calculate distance to collision + distance after rotation
+            // Head-on collision: calculate distance to collision + distance after + rotation pause
             const distanceToCollision = Math.sqrt((collisionX - startX) ** 2 + (collisionZ - startZ) ** 2);
             const distanceAfterCollision = Math.sqrt((finalX - collisionX) ** 2 + (finalZ - collisionZ) ** 2);
-            const totalDistanceWithCollision = distanceToCollision + distanceAfterCollision;
-            // Duration = time to travel distances + rotation pause time
-            duration = (totalDistanceWithCollision / constantSpeed) + rotationPauseDuration;
-            // Calculate collision progress (when collision happens in the animation)
+            const totalDistance = distanceToCollision + distanceAfterCollision;
+            duration = (totalDistance / constantSpeed) + rotationPauseDuration;
             collisionProgress = (distanceToCollision / constantSpeed) / duration;
         } else if (isCatapult) {
             // Blocks going off board: use constant speed (linear) - no easing
@@ -1688,92 +1652,97 @@ export class Block {
             duration = recalculatedTotalDistance / constantSpeed;
         }
         
+        // Update grid position to final valid position
+        // For head-on collisions, direction was already rotated during movement calculation
+        this.gridX = finalGridX;
+        this.gridZ = finalGridZ;
+        
+        // For head-on collisions, ensure final position uses rotated direction
+        if (hasHeadOnCollision) {
+            // Recalculate finalX/finalZ using rotated direction (already updated)
+            if (this.isVertical) {
+                finalX = finalGridX * this.cubeSize + this.cubeSize / 2 - towerCenterOffset;
+                finalZ = finalGridZ * this.cubeSize + this.cubeSize / 2 - towerCenterOffset;
+            } else {
+                const isXAligned = Math.abs(this.direction.x) > 0;
+                if (isXAligned) {
+                    const startGridX = finalGridX * this.cubeSize + this.cubeSize / 2;
+                    const endGridX = (finalGridX + this.length - 1) * this.cubeSize + this.cubeSize / 2;
+                    finalX = (startGridX + endGridX) / 2 - towerCenterOffset;
+                    finalZ = finalGridZ * this.cubeSize + this.cubeSize / 2 - towerCenterOffset;
+                } else {
+                    finalX = finalGridX * this.cubeSize + this.cubeSize / 2 - towerCenterOffset;
+                    const startGridZ = finalGridZ * this.cubeSize + this.cubeSize / 2;
+                    const endGridZ = (finalGridZ + this.length - 1) * this.cubeSize + this.cubeSize / 2;
+                    finalZ = (startGridZ + endGridZ) / 2 - towerCenterOffset;
+                }
+            }
+        }
+        
         const startTime = performance.now();
         
-        // Calculate rotation angles for head-on collision (if applicable)
-        if (hasHeadOnCollision) {
-            // Calculate rotation angles for smooth arrow animation
-            // Current arrow rotation (before rotation)
-            rotationStartAngle = Math.atan2(originalDirection.x, originalDirection.z) + Math.PI;
-            // Target arrow rotation (after clockwise rotation)
-            const rotatedDirection = { x: -originalDirection.z, z: originalDirection.x };
-            rotationEndAngle = Math.atan2(rotatedDirection.x, rotatedDirection.z) + Math.PI;
-            
-            // Update grid position to collision position initially
-            this.gridX = collisionGridX;
-            this.gridZ = collisionGridZ;
-        } else {
-            // Update grid position to final valid position
-            this.gridX = finalGridX;
-            this.gridZ = finalGridZ;
-        }
+        // Track rotation animation state for head-on collisions
+        let rotationStarted = false;
+        let rotationCompleted = false;
         
         const animate = () => {
             const elapsed = performance.now() - startTime;
             let progress = Math.min(elapsed / duration, 1);
-            let eased = easeOutCubic(progress);
             
-            if (hasHeadOnCollision && progress < collisionProgress) {
-                // Before collision: use linear interpolation (constant speed)
-                const preCollisionProgress = progress / collisionProgress;
-                this.group.position.x = startX + (collisionX - startX) * preCollisionProgress;
-                this.group.position.z = startZ + (collisionZ - startZ) * preCollisionProgress;
-                } else if (hasHeadOnCollision && progress >= collisionProgress) {
-                // At collision: pause at collision position and rotate
-                const timeSinceCollision = (progress - collisionProgress) * duration;
-                if (timeSinceCollision < rotationPauseDuration) {
-                    // Pause at collision for rotation animation (35% of total duration)
-                    this.group.position.x = collisionX;
-                    this.group.position.z = collisionZ;
-                    
-                    // Keep grid position at collision position during pause
-                    this.gridX = collisionGridX;
-                    this.gridZ = collisionGridZ;
-                    
-                    // Animate arrow rotation smoothly during pause
-                    const rotationProgress = timeSinceCollision / rotationPauseDuration;
-                    // Use ease-in-out for smooth rotation animation
-                    const rotationEased = rotationProgress < 0.5 
-                        ? 2 * rotationProgress * rotationProgress 
-                        : 1 - Math.pow(-2 * rotationProgress + 2, 2) / 2;
-                    
-                    // Interpolate arrow rotation angle
-                    const currentRotationAngle = rotationStartAngle + (rotationEndAngle - rotationStartAngle) * rotationEased;
-                    if (this.arrow && this.arrow.children.length > 0) {
-                        const topArrow = this.arrow.children[0];
-                        if (topArrow) {
-                            topArrow.rotation.z = currentRotationAngle;
-                        }
-                    }
-                    
-                    // Update direction only once at the end of rotation animation
-                    if (rotationProgress >= 0.99 && !rotationApplied) {
-                        this.rotateDirectionClockwise();
-                        rotationApplied = true;
-                    }
-                    
-                    // Subtle visual feedback during collision pause (slightly increased bounce)
-                    const bounce = Math.sin(rotationProgress * Math.PI) * 0.10;
-                    this.group.scale.set(1 + bounce, 1 + bounce, 1 + bounce);
-                } else {
-                    // After rotation pause: continue to final position with new direction (constant speed)
-                    const postCollisionProgress = (timeSinceCollision - rotationPauseDuration) / (duration - (collisionProgress * duration) - rotationPauseDuration);
-                    const clampedPostProgress = Math.max(0, Math.min(1, postCollisionProgress));
-                    this.group.position.x = collisionX + (finalX - collisionX) * clampedPostProgress;
-                    this.group.position.z = collisionZ + (finalZ - collisionZ) * clampedPostProgress;
-                    
-                    // Update grid position to final position after collision
-                    this.gridX = finalGridX;
-                    this.gridZ = finalGridZ;
-                    
-                    // Ensure direction is updated (in case rotation wasn't triggered during animation)
-                    if (!rotationApplied) {
-                        this.rotateDirectionClockwise();
-                        rotationApplied = true;
-                    }
-                    
-                    // Reset scale
+            if (hasHeadOnCollision) {
+                if (progress < collisionProgress) {
+                    // Before collision: animate to collision position
+                    const preCollisionProgress = progress / collisionProgress;
+                    this.group.position.x = startX + (collisionX - startX) * preCollisionProgress;
+                    this.group.position.z = startZ + (collisionZ - startZ) * preCollisionProgress;
                     this.group.scale.set(1, 1, 1);
+                } else {
+                    // At or after collision: pause at collision position and rotate
+                    const timeSinceCollision = (progress - collisionProgress) * duration;
+                    
+                    if (timeSinceCollision < rotationPauseDuration) {
+                        // Pause at collision position
+                        this.group.position.x = collisionX;
+                        this.group.position.z = collisionZ;
+                        
+                        // Mark rotation as started
+                        if (!rotationStarted) {
+                            rotationStarted = true;
+                        }
+                        
+                        // Animate arrow rotation during pause
+                        const rotationProgress = timeSinceCollision / rotationPauseDuration;
+                        const rotationEased = rotationProgress < 0.5 
+                            ? 2 * rotationProgress * rotationProgress 
+                            : 1 - Math.pow(-2 * rotationProgress + 2, 2) / 2;
+                        
+                        const originalDir = headOnCollision.originalDirection;
+                        const startAngle = Math.atan2(originalDir.x, originalDir.z) + Math.PI;
+                        const endAngle = Math.atan2(this.direction.x, this.direction.z) + Math.PI;
+                        const currentAngle = startAngle + (endAngle - startAngle) * rotationEased;
+                        
+                        if (this.arrow && this.arrow.children.length > 0) {
+                            const topArrow = this.arrow.children[0];
+                            if (topArrow) {
+                                topArrow.rotation.z = currentAngle;
+                            }
+                        }
+                        
+                        // Subtle bounce effect during rotation
+                        const bounce = Math.sin(rotationProgress * Math.PI) * 0.08;
+                        this.group.scale.set(1 + bounce, 1 + bounce, 1 + bounce);
+                        
+                        if (rotationProgress >= 0.99 && !rotationCompleted) {
+                            rotationCompleted = true;
+                        }
+                    } else {
+                        // After rotation: continue to final position
+                        const postRotationProgress = (timeSinceCollision - rotationPauseDuration) / (duration - (collisionProgress * duration) - rotationPauseDuration);
+                        const clampedPostProgress = Math.max(0, Math.min(1, postRotationProgress));
+                        this.group.position.x = collisionX + (finalX - collisionX) * clampedPostProgress;
+                        this.group.position.z = collisionZ + (finalZ - collisionZ) * clampedPostProgress;
+                        this.group.scale.set(1, 1, 1);
+                    }
                 }
             } else if (isCatapult) {
                 // Blocks going off board: constant speed (linear interpolation) - no easing
@@ -1803,12 +1772,6 @@ export class Block {
                     // Hit edge - start falling immediately without snapping to grid
                     // Position is already correct from animation, don't recalculate
                     this.isAnimating = false;
-                    
-                    // Ensure direction is updated if there was a head-on collision
-                    // This ensures this.direction matches the arrow rotation
-                    if (headOnCollision && !rotationApplied) {
-                        this.rotateDirectionClockwise();
-                    }
                     
                     let velX, velZ, velY;
                     
@@ -1843,7 +1806,12 @@ export class Block {
                 // Normal completion - snap to exact grid position
                 // Reset scale before snapping
                 this.group.scale.set(1, 1, 1);
+                
+                // Normal completion - snap to exact grid position (same for all movement types)
+                // Grid positions and direction are already set correctly before animation started
+                // updateWorldPosition() will recalculate based on current gridX/gridZ/direction
                 this.updateWorldPosition();
+                
                 this.isAnimating = false;
             }
             }
