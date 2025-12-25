@@ -10,9 +10,11 @@ const scene = new THREE.Scene();
 setGradientBackground(scene, 0x5a7f98, 0x3a5a7a);
 setupFog(scene, false); // Fog disabled
 
-// Expose scene, blocks, and THREE for toggle handlers
+// Expose scene, blocks, THREE, and scene functions for toggle handlers
 window.gameScene = scene;
 window.THREE = THREE;
+window.setGradientBackground = setGradientBackground;
+window.setupFog = setupFog;
 
 // Global arrow style
 let currentArrowStyle = 2;

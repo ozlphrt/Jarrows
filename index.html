@@ -35,6 +35,7 @@
             gap: 12px;
             z-index: 1000;
             pointer-events: none;
+            overflow: visible;
         }
         
         .top-counter {
@@ -245,7 +246,7 @@
             z-index: 1000;
             flex-wrap: nowrap;
             justify-content: center;
-            align-items: stretch;
+            align-items: flex-end;
             padding: 0 15px;
             box-sizing: border-box;
         }
@@ -313,6 +314,104 @@
             cursor: not-allowed;
             transform: none;
         }
+        
+        /* Toggle Icons Container */
+        #toggle-switches {
+            background: rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            border-radius: 10px;
+            padding: 6px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            align-items: center;
+            justify-content: center;
+            min-height: auto;
+            height: auto;
+            box-sizing: border-box;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2),
+                        0 2px 8px rgba(0, 0, 0, 0.1),
+                        inset 0 1px 0 rgba(255, 255, 255, 0.15);
+        }
+        
+        .toggle-icon {
+            width: 32px;
+            height: 32px;
+            min-width: 32px;
+            min-height: 32px;
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            padding: 5px;
+            flex-shrink: 0;
+            touch-action: manipulation;
+        }
+        
+        .toggle-icon svg {
+            width: 22px;
+            height: 22px;
+            stroke: white;
+            fill: none;
+            stroke-width: 2.5;
+            transition: all 0.3s ease;
+        }
+        
+        .toggle-icon:hover {
+            transform: scale(1.1);
+        }
+        
+        .toggle-icon:active {
+            transform: scale(0.95);
+        }
+        
+        .toggle-icon.active svg {
+            stroke: white;
+            fill: white;
+            opacity: 1;
+        }
+        
+        .toggle-icon:not(.active) svg {
+            opacity: 0.6;
+        }
+        
+        #center-tower-button svg {
+            opacity: 1 !important;
+        }
+        
+        /* Center Tower Button - styled as toggle icon */
+        #center-tower-button {
+            width: 32px !important;
+            height: 32px !important;
+            min-width: 32px !important;
+            min-height: 32px !important;
+            opacity: 1 !important;
+            visibility: visible !important;
+            display: flex !important;
+            padding: 5px !important;
+        }
+        
+        #center-tower-icon {
+            width: 22px !important;
+            height: 22px !important;
+            stroke: white !important;
+            stroke-width: 2.5 !important;
+            fill: none !important;
+            opacity: 1 !important;
+            visibility: visible !important;
+        }
+        
+        #toggle-switches #center-tower-button {
+            display: flex !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+        }
+        
     </style>
 </head>
 <body>
@@ -352,9 +451,178 @@
             <div>NEW</div>
             <div>GAME</div>
         </button>
+        <div id="toggle-switches">
+            <button class="toggle-icon active" id="theme-toggle" title="Dark/Light Theme">
+                <svg id="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <!-- Sun icon (default/light theme) -->
+                    <circle cx="12" cy="12" r="5"></circle>
+                    <line x1="12" y1="1" x2="12" y2="3"></line>
+                    <line x1="12" y1="21" x2="12" y2="23"></line>
+                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                    <line x1="1" y1="12" x2="3" y2="12"></line>
+                    <line x1="21" y1="12" x2="23" y2="12"></line>
+                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                </svg>
+            </button>
+            <button class="toggle-icon active" id="colors-toggle" title="Colored/White Blocks">
+                <svg id="colors-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <!-- Colored blocks icon (default) -->
+                    <rect x="3" y="3" width="7" height="7" rx="1"></rect>
+                    <rect x="14" y="3" width="7" height="7" rx="1"></rect>
+                    <rect x="14" y="14" width="7" height="7" rx="1"></rect>
+                    <rect x="3" y="14" width="7" height="7" rx="1"></rect>
+                </svg>
+            </button>
+            <button class="toggle-icon active" id="center-tower-button" title="Center Tower">
+                <svg id="center-tower-icon" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <!-- GPS/Target icon -->
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <circle cx="12" cy="12" r="6"></circle>
+                    <circle cx="12" cy="12" r="2"></circle>
+                </svg>
+            </button>
+        </div>
     </div>
     
     <script type="module" src="/src/main.js"></script>
+    <script>
+        // Wait for main.js to load and expose scene/blocks
+        let blocks;
+        let isDarkTheme = false;
+        let useColoredBlocks = true;
+        let handlersSetup = false;
+        
+        function updateThemeIcon() {
+            const scene = window.gameScene;
+            const THREE = window.THREE;
+            const themeIcon = document.getElementById('theme-icon');
+            const themeToggle = document.getElementById('theme-toggle');
+            
+            if (!scene || !THREE || !themeIcon || !themeToggle) {
+                return;
+            }
+            
+            // Wait for functions to be available from main.js module
+            if (!window.setGradientBackground || !window.setupFog) {
+                setTimeout(updateThemeIcon, 50);
+                return;
+            }
+            
+            if (isDarkTheme) {
+                // Dark theme: much darker grey gradient
+                // Top: very dark grey, Bottom: almost black
+                window.setGradientBackground(scene, 0x0f0f0f, 0x050505);
+                window.setupFog(scene, true);
+                // Show moon icon
+                themeIcon.innerHTML = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>';
+                themeToggle.classList.remove('active');
+            } else {
+                // Light theme: much darker sky blue gradient
+                // Top: dark blue-gray, Bottom: darker blue
+                window.setGradientBackground(scene, 0x5a7f98, 0x3a5a7a);
+                window.setupFog(scene, false);
+                // Show sun icon
+                themeIcon.innerHTML = '<circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>';
+                themeToggle.classList.add('active');
+            }
+        }
+        
+        function updateColorsIcon() {
+            const colorsIcon = document.getElementById('colors-icon');
+            const colorsToggle = document.getElementById('colors-toggle');
+            
+            if (!colorsIcon || !colorsToggle) {
+                return;
+            }
+            
+            if (useColoredBlocks) {
+                // Show colored blocks icon (outline)
+                colorsIcon.innerHTML = '<rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="14" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect>';
+                colorsToggle.classList.add('active');
+            } else {
+                // Show white blocks icon (filled)
+                colorsIcon.innerHTML = '<rect x="3" y="3" width="7" height="7" rx="1" fill="white"></rect><rect x="14" y="3" width="7" height="7" rx="1" fill="white"></rect><rect x="14" y="14" width="7" height="7" rx="1" fill="white"></rect><rect x="3" y="14" width="7" height="7" rx="1" fill="white"></rect>';
+                colorsToggle.classList.remove('active');
+            }
+        }
+        
+        function updateBlockColors() {
+            // Get blocks from window, fallback to empty array
+            const currentBlocks = window.gameBlocks || blocks || [];
+            
+            if (!currentBlocks || currentBlocks.length === 0) return;
+            
+            const colors = [0xff6b6b, 0x4ecdc4, 0xffe66d]; // Red, Teal, Yellow
+            const whiteColor = 0xffffff;
+            
+            currentBlocks.forEach(block => {
+                if (block.cubes && block.cubes.length > 0) {
+                    const mesh = block.cubes[0];
+                    if (mesh && mesh.material) {
+                        if (useColoredBlocks) {
+                            // Use colored blocks based on length
+                            mesh.material.color.setHex(colors[block.length - 1] || colors[0]);
+                        } else {
+                            // Use white blocks
+                            mesh.material.color.setHex(whiteColor);
+                        }
+                    }
+                }
+            });
+        }
+        
+        function setupToggleHandlers() {
+            if (handlersSetup) return; // Prevent duplicate handlers
+            handlersSetup = true;
+            
+            const themeToggle = document.getElementById('theme-toggle');
+            const colorsToggle = document.getElementById('colors-toggle');
+            
+            if (!themeToggle || !colorsToggle) {
+                handlersSetup = false;
+                return;
+            }
+            
+            // Theme toggle handler (sun = light theme, moon = dark theme)
+            themeToggle.addEventListener('click', function() {
+                isDarkTheme = !isDarkTheme;
+                updateThemeIcon();
+            });
+            
+            // Colors toggle handler (colored blocks vs white blocks)
+            colorsToggle.addEventListener('click', function() {
+                useColoredBlocks = !useColoredBlocks;
+                updateColorsIcon();
+                updateBlockColors();
+            });
+            
+            // Initialize icons
+            updateThemeIcon();
+            updateColorsIcon();
+        }
+        
+        // Setup handlers immediately when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', setupToggleHandlers);
+        } else {
+            setupToggleHandlers();
+        }
+        
+        // Also try after a delay to ensure scene/blocks are available
+        function initToggles() {
+            if (window.gameScene) {
+                blocks = window.gameBlocks || blocks;
+                setupToggleHandlers();
+            } else {
+                setTimeout(initToggles, 100);
+            }
+        }
+        
+        // Start initialization
+        setTimeout(initToggles, 100);
+    </script>
 </body>
 </html>
 
