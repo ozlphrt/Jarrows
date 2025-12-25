@@ -16,14 +16,10 @@ const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerH
 camera.position.set(8, 8, 8);
 camera.lookAt(3, 0, 3);
 
-const renderer = new THREE.WebGLRenderer({ 
-    antialias: true,
-    powerPreference: "high-performance"
-});
+const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Limit pixel ratio to reduce aliasing
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2)); // Limit pixel ratio for performance on mobile
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Softer shadows
 document.body.appendChild(renderer.domElement);
 
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -32,16 +28,16 @@ controls.target.set(3, 0, 3);
 // Configure camera controls for heavy, momentum-based feel
 // Lower damping factor = longer coasting (more inertia)
 controls.enableDamping = true;
-controls.dampingFactor = 0.08; // Slightly higher = more responsive (was 0.06)
+controls.dampingFactor = 0.06; // Lower = heavier, longer coasting
 controls.screenSpacePanning = false;
 controls.enableRotate = true;
 controls.enablePan = true;
 controls.enableZoom = true;
 
-// Slightly faster speeds for better responsiveness
-controls.rotateSpeed = 0.3; // Slightly faster (was 0.25)
-controls.panSpeed = 0.6; // Slightly faster (was 0.5)
-controls.zoomSpeed = 0.6; // Slightly faster (was 0.5)
+// Slower speeds = heavier feel (harder to start, harder to stop)
+controls.rotateSpeed = 0.25; // Slower rotation for heavier feel
+controls.panSpeed = 0.5;
+controls.zoomSpeed = 0.5;
 
 // Distance constraints
 controls.minDistance = 3;
@@ -613,7 +609,7 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
             const direction = {x: 0, z: 1}; // South
             
             if (isVertical || length === 1) {
-                // ATOMIC OPERATION: Try to reserve cells BEFORE creating the block (FIX: was using occupyCells)
+                // ATOMIC OPERATION: Try to reserve cells BEFORE creating the block
                 const reservation = tryReserveCells(x, gridSize - 1, length, isVertical, direction);
                 if (reservation) {
                     // Cells reserved - create block
@@ -1217,50 +1213,18 @@ async function generateSolvablePuzzle(level = 1) {
         allBlocks = createSolvableBlocks(0, null, targetBlockCount, level);
     }
     
-    // Validate structure before placing blocks
-    const finalValidation = validateStructure(allBlocks, gridSize);
-    if (!finalValidation.valid) {
-        console.error(`Puzzle generation failed validation: ${finalValidation.reason}`);
-        console.error(`Generated ${allBlocks.length} blocks, but structure is invalid`);
-        // Remove all invalid blocks
-        for (const block of allBlocks) {
-            if (block.group && block.group.parent) {
-                scene.remove(block.group);
-            }
-        }
-        // CRITICAL: Don't recursively regenerate - this can cause infinite loops
-        // Instead, log the error and try to continue with what we have
-        // If validation fails, the puzzle might still be playable (validation is strict)
-        console.warn('Validation failed, but continuing with generated blocks. Some overlaps may exist.');
-        // Don't return - continue with placement
-    }
-    
     // Place all blocks in batches
     await placeBlocksBatch(allBlocks, 10, 10); // 10 blocks per batch, 10ms between batches
     
-    // Validate again after placement to ensure no overlaps were introduced
-    const postPlacementValidation = validateStructure(blocks, gridSize);
-    if (!postPlacementValidation.valid) {
-        console.error(`Puzzle invalid after placement: ${postPlacementValidation.reason}`);
-        // This is a critical error - blocks should not overlap after placement
-        // Log detailed info for debugging
-        const [x, z] = postPlacementValidation.reason.match(/\((\d+),\s*(\d+)\)/)?.[1, 2] || [];
-        if (x && z) {
-            const blocksAtPos = blocks.filter(b => {
-                if (b.isFalling || b.isAnimating || b.isRemoved) return false;
-                const cells = getBlockCells(b);
-                return cells.some(c => c.x === parseInt(x) && c.z === parseInt(z));
-            });
-            console.error(`Blocks at (${x}, ${z}):`, blocksAtPos.map(b => ({
-                id: b.id || 'unknown',
-                gridX: b.gridX,
-                gridZ: b.gridZ,
-                length: b.length,
-                isVertical: b.isVertical,
-                yOffset: b.yOffset,
-                yTop: (b.yOffset || 0) + (b.isVertical ? b.length * (b.cubeSize || 1) : (b.cubeSize || 1))
-            })));
-        }
+    // Validate structure after placement to catch any overlaps
+    const structureCheck = validateStructure(blocks, gridSize);
+    if (!structureCheck.valid) {
+        console.error(`✗ Structure validation failed: ${structureCheck.reason}`);
+        console.error('  Regenerating puzzle...');
+        // Regenerate if validation fails
+        isGeneratingLevel = false;
+        await generateSolvablePuzzle(level);
+        return;
     }
     
     // Update level counter display
@@ -1280,6 +1244,7 @@ async function generateSolvablePuzzle(level = 1) {
     
     console.log(`✓ Generated Level ${level} puzzle using reverse generation`);
     console.log(`  Target blocks: ${targetBlockCount}, Actual blocks: ${blocks.length}`);
+    console.log(`  Structure validation: ✓ PASSED`);
 }
 
 // Move history for undo functionality
@@ -1710,24 +1675,6 @@ function onMouseClick(event) {
     const structureCheck = validateStructure(blocks, gridSize);
     if (!structureCheck.valid) {
         console.warn('Puzzle structure invalid before move, skipping:', structureCheck.reason);
-        // Debug: Log all blocks at the problematic position
-        const [x, z] = structureCheck.reason.match(/\((\d+),\s*(\d+)\)/)?.[1, 2] || [];
-        if (x && z) {
-            const blocksAtPos = blocks.filter(b => {
-                if (b.isFalling || b.isAnimating || b.isRemoved) return false;
-                const cells = getBlockCells(b);
-                return cells.some(c => c.x === parseInt(x) && c.z === parseInt(z));
-            });
-            console.warn(`Blocks at (${x}, ${z}):`, blocksAtPos.map(b => ({
-                id: b.id || 'unknown',
-                gridX: b.gridX,
-                gridZ: b.gridZ,
-                length: b.length,
-                isVertical: b.isVertical,
-                yOffset: b.yOffset,
-                yTop: (b.yOffset || 0) + (b.isVertical ? b.length * (b.cubeSize || 1) : (b.cubeSize || 1))
-            })));
-        }
         return;
     }
     
@@ -1961,34 +1908,143 @@ window.addEventListener('click', (event) => {
 window.addEventListener('touchstart', (event) => {
     // IMMEDIATELY stop auto-rotation on touch/tap
     userHasControlledCamera = true;
+    
+    // Track touch start for tap detection (single touch only)
+    if (event.touches.length === 1) {
+        const touch = event.touches[0];
+        touchStartPos = { x: touch.clientX, y: touch.clientY };
+        touchStartTime = performance.now();
+    }
 }, { capture: true, passive: true }); // Use capture phase and passive for performance
 
 // Original click handler for block interaction (normal phase)
 window.addEventListener('click', onMouseClick);
+
+// Touch handler for mobile block interaction
+let touchStartPos = null;
+let touchStartTime = null;
+const TOUCH_DRAG_THRESHOLD = 5; // pixels - minimum movement to consider it a drag
+
+function onTouchEnd(event) {
+    // IMMEDIATELY stop auto-rotation on any touch end
+    userHasControlledCamera = true;
+    
+    // Only process single touch (not multi-touch)
+    if (event.touches.length > 0 || event.changedTouches.length !== 1) {
+        touchStartPos = null;
+        return;
+    }
+    
+    const touch = event.changedTouches[0];
+    
+    // Check if this was actually a drag by checking touch movement
+    if (touchStartPos) {
+        const dx = touch.clientX - touchStartPos.x;
+        const dy = touch.clientY - touchStartPos.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        const timeElapsed = performance.now() - touchStartTime;
+        
+        // If distance exceeds threshold or time is too long, it was a drag, not a tap
+        if (distance > TOUCH_DRAG_THRESHOLD || timeElapsed > 300) {
+            touchStartPos = null;
+            return; // Don't process as block tap
+        }
+    }
+    
+    // Reset drag tracking
+    touchStartPos = null;
+    
+    // Convert touch to normalized device coordinates
+    mouse.x = (touch.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(touch.clientY / window.innerHeight) * 2 + 1;
+    
+    raycaster.setFromCamera(mouse, camera);
+    
+    // Collect ALL intersections from ALL blocks first, then pick the closest one
+    const allIntersections = [];
+    
+    for (const block of blocks) {
+        if (block.isAnimating || block.isFalling) continue;
+        
+        const intersects = raycaster.intersectObjects(block.cubes, true);
+        
+        for (const intersection of intersects) {
+            allIntersections.push({
+                intersection,
+                block,
+                distance: intersection.distance
+            });
+        }
+    }
+    
+    // If no intersections, nothing was tapped
+    if (allIntersections.length === 0) {
+        return;
+    }
+    
+    // Sort by distance (closest first)
+    allIntersections.sort((a, b) => a.distance - b.distance);
+    
+    // Get the closest intersection
+    const closestHit = allIntersections[0];
+    const block = closestHit.block;
+    
+    // If remove mode is active, remove the block instead of moving it
+    if (removeModeActive) {
+        removeBlockWithAnimation(block);
+        toggleRemoveMode();
+        updateUndoButtonState();
+        return;
+    }
+    
+    // Validate structure before move
+    const structureCheck = validateStructure(blocks, gridSize);
+    if (!structureCheck.valid) {
+        console.warn('Puzzle structure invalid before move, skipping:', structureCheck.reason);
+        return;
+    }
+    
+    // Store if this block will fall
+    const willFall = block.canMove(blocks) === 'fall';
+    
+    // Save move state before moving
+    saveMoveState(block);
+    
+    block.move(blocks, gridSize);
+    
+    // After a block moves, check if any other blocks lost support
+    setTimeout(() => {
+        checkAndTriggerFalling(blocks);
+        setTimeout(() => {
+            checkAndTriggerFalling(blocks);
+        }, 500);
+    }, 400);
+    
+    // Update button states after move
+    updateUndoButtonState();
+    
+    // If block will fall, advance solution step
+    if (willFall && window.puzzleSolution) {
+        setTimeout(() => {
+            const blockStillExists = blocks.includes(block);
+            if (!blockStillExists || block.isFalling) {
+                window.solutionStep++;
+                highlightNextBlock();
+            }
+        }, 1000);
+    }
+}
+
+// Touch start tracking is handled above in the capture phase handler
+
+// Handle touch end for block interaction
+window.addEventListener('touchend', onTouchEnd, { passive: true });
+
 window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
-
-// Get the current top height of the tower (highest Y position of any block)
-function getTowerTopHeight() {
-    if (!blocks || blocks.length === 0) {
-        return cubeSize; // Default to one cube height if no blocks
-    }
-    
-    let maxHeight = 0;
-    for (const block of blocks) {
-        if (block.isRemoved || block.isFalling) continue;
-        
-        const blockCubeSize = block.cubeSize || cubeSize;
-        const blockHeight = block.isVertical ? block.length * blockCubeSize : blockCubeSize;
-        const blockTop = (block.yOffset || 0) + blockHeight;
-        maxHeight = Math.max(maxHeight, blockTop);
-    }
-    
-    return maxHeight || cubeSize; // Return at least one cube height
-}
 
 // Animation loop with physics
 let lastTime = performance.now();
@@ -2002,9 +2058,6 @@ let fpsLastUpdate = performance.now();
 let fpsUpdateInterval = 500; // Update FPS display every 500ms
 const fpsElement = document.getElementById('fps-counter');
 
-// Smooth camera target tracking
-let smoothedLookAt = new THREE.Vector3(towerCenterX, towerCenterY, towerCenterZ);
-
 function animate() {
     requestAnimationFrame(animate);
     
@@ -2017,50 +2070,19 @@ function animate() {
         cameraRotationTime += deltaTime;
         cameraRotationAngle = cameraRotationTime * ROTATION_SPEED * 60; // Scale by 60 for consistent speed
         
-        // Calculate tower top height dynamically
-        const towerTopHeight = getTowerTopHeight();
+        // Calculate camera position around the tower center
+        const radius = 15; // Distance from tower center
+        const height = 12; // Height above tower
+        const cameraX = towerCenterX + radius * Math.cos(cameraRotationAngle);
+        const cameraZ = towerCenterZ + radius * Math.sin(cameraRotationAngle);
+        const cameraY = height;
         
-        // ROTATION PIVOT: Always at tower center (ground level) - camera orbits around this point
-        const pivotPoint = new THREE.Vector3(towerCenterX, towerCenterY, towerCenterZ);
+        // Update camera position
+        camera.position.set(cameraX, cameraY, cameraZ);
+        camera.lookAt(towerCenterX, towerCenterY + 2, towerCenterZ);
         
-        // LOOK-AT TARGET: Tower top center (for viewing) - camera looks at this point
-        const targetY = towerTopHeight;
-        const targetX = towerCenterX;
-        const targetZ = towerCenterZ;
-        
-        // Smooth the look-at target position for smooth camera adjustments
-        smoothedLookAt.lerp(new THREE.Vector3(targetX, targetY, targetZ), 0.1);
-        
-        // Calculate camera position around the TOWER CENTER (pivot point)
-        // Steeper angle to fill upper screen with tower and reduce gap
-        // Higher angle (steeper) = camera looks more down = shows more tower, less sky
-        const angle = 45 * (Math.PI / 180); // 45 degrees (steeper) - fills upper screen with tower
-        // Zoom out more: increase zoom factor to reduce zoom
-        const zoomFactor = 1.0; // Increased from 0.7 to 1.0 (100% of original distance) - less zoom
-        const baseOffset = 3; // Increased from 2 to 3 for more base distance
-        const distance = ((towerTopHeight + baseOffset) / Math.sin(angle)) * zoomFactor;
-        const radius = distance * Math.cos(angle); // Horizontal radius
-        
-        // Calculate camera position orbiting around TOWER CENTER (pivot point)
-        const cameraX = pivotPoint.x + radius * Math.cos(cameraRotationAngle);
-        const cameraZ = pivotPoint.z + radius * Math.sin(cameraRotationAngle);
-        // Camera Y position - steeper angle already fills upper screen, no offset needed
-        const cameraY = pivotPoint.y + distance * Math.sin(angle);
-        
-        // Smooth camera position
-        camera.position.lerp(new THREE.Vector3(cameraX, cameraY, cameraZ), 0.1);
-        
-        // CRITICAL: Set controls.target to TOWER CENTER (pivot point) for rotation
-        // This ensures camera always rotates around tower center, not tower top
-        controls.target.copy(pivotPoint);
-        
-        // Update camera to look at tower top center (for viewing)
-        camera.lookAt(smoothedLookAt);
-        
-        // IMPORTANT: Don't call controls.update() here when in auto-rotation mode
-        // controls.update() would recalculate camera position based on OrbitControls' internal state
-        // and override our manual positioning. We only update controls.target so that
-        // when user takes control, OrbitControls knows where to start from.
+        // Update controls target to match
+        controls.target.set(towerCenterX, towerCenterY + 2, towerCenterZ);
         
         // Track when we last updated for auto-rotation (to distinguish from user input)
         lastAutoRotationTime = currentTime;
@@ -2070,14 +2092,7 @@ function animate() {
         previousCameraTarget.copy(controls.target);
     } else {
         // User has control - let OrbitControls handle everything
-        // BUT: Keep pivot point at tower center even after user pan
-        // This ensures camera always rotates around tower center, not wherever user panned to
-        const towerCenter = new THREE.Vector3(towerCenterX, towerCenterY, towerCenterZ);
-        controls.target.copy(towerCenter);
-        
-        // Update OrbitControls so it can apply damping and user input
-        controls.update();
-        
+        // Don't override camera position - let OrbitControls manage it
         // Just update previous positions for tracking
         previousCameraPosition.copy(camera.position);
         previousCameraTarget.copy(controls.target);
@@ -2167,15 +2182,9 @@ function animate() {
         
     }
     
-    // Only call controls.update() if user has control (already done above in else block)
-    // When auto-rotating, we manually control camera, so no need to call controls.update()
-    // controls.update() would override our manual camera.lookAt() positioning
-    
+    controls.update();
     renderer.render(scene, camera);
 }
 
 animate();
-
-// PWA: Service worker is automatically registered by vite-plugin-pwa
-// The plugin handles offline caching and updates automatically
 
