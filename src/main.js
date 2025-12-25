@@ -478,7 +478,8 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
     // SMALL COUNT MODE: Random placement across entire grid for variety
     if (isSmallCount) {
         // Try multiple passes to ensure we reach the target count
-        const maxPasses = 10;
+        // For high block counts in multi-layer, use more passes
+        const maxPasses = targetBlockCount > 100 ? 20 : 10;
         let pass = 0;
         
         while (blocksToPlace.length < targetBlockCount && pass < maxPasses) {
@@ -743,7 +744,9 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
     const maxInwardAttempts = 800; // More attempts for complexity
     let inwardAttempts = 0;
     
-    while (inwardAttempts < maxInwardAttempts && occupiedCells.size < totalCells * 0.95 && blocksToPlace.length < targetBlockCount) {
+    // For high block counts, allow filling up to 100% of cells
+    const fillThreshold = targetBlockCount > 100 ? 1.0 : 0.95;
+    while (inwardAttempts < maxInwardAttempts && occupiedCells.size < totalCells * fillThreshold && blocksToPlace.length < targetBlockCount) {
         inwardAttempts++;
         
         // Pick a random edge block to try moving inward
@@ -931,7 +934,8 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
     // Try multiple times with different strategies to maximize fill
     // Skip if we've already reached target block count
     let fillPasses = 0;
-    const maxFillPasses = 3;
+    // For high block counts, use more passes to ensure we reach target
+    const maxFillPasses = targetBlockCount > 100 ? 10 : 3;
     
     while (fillPasses < maxFillPasses && occupiedCells.size < totalCells && blocksToPlace.length < targetBlockCount) {
         fillPasses++;
@@ -1032,6 +1036,74 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
         
         // If we didn't fill any new cells this pass, stop trying
         if (occupiedCells.size === beforeFill) break;
+    }
+    
+    // FINAL AGGRESSIVE FILL: If we're still short of target, fill remaining cells with single blocks
+    // This ensures we reach the target block count for high-level puzzles
+    // IMPORTANT: Use tryReserveCells for all validation to prevent overlaps
+    if (blocksToPlace.length < targetBlockCount && occupiedCells.size < totalCells) {
+        const remainingNeeded = targetBlockCount - blocksToPlace.length;
+        const remainingCells = [];
+        for (let x = 0; x < gridSize; x++) {
+            for (let z = 0; z < gridSize; z++) {
+                // Don't check isCellOccupied here - let tryReserveCells handle it
+                remainingCells.push({x, z});
+            }
+        }
+        
+        // Shuffle for randomness
+        for (let i = remainingCells.length - 1; i > 0 && blocksToPlace.length < targetBlockCount; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [remainingCells[i], remainingCells[j]] = [remainingCells[j], remainingCells[i]];
+        }
+        
+        for (const cell of remainingCells) {
+            if (blocksToPlace.length >= targetBlockCount) break;
+            
+            // Find nearest edge for direction
+            const distToEdges = {
+                east: gridSize - 1 - cell.x,
+                west: cell.x,
+                south: gridSize - 1 - cell.z,
+                north: cell.z
+            };
+            const minDist = Math.min(...Object.values(distToEdges));
+            const nearestEdges = Object.entries(distToEdges)
+                .filter(([_, dist]) => dist === minDist)
+                .map(([edge, _]) => edge);
+            
+            const edge = nearestEdges[Math.floor(Math.random() * nearestEdges.length)];
+            let direction = {x: 0, z: 0};
+            if (edge === 'east') direction = {x: 1, z: 0};
+            else if (edge === 'west') direction = {x: -1, z: 0};
+            else if (edge === 'south') direction = {x: 0, z: 1};
+            else if (edge === 'north') direction = {x: 0, z: -1};
+            
+            // Try to reserve cells first - this prevents overlaps
+            const reservation = tryReserveCells(cell.x, cell.z, 1, false, direction);
+            if (!reservation) {
+                // Cell already occupied or invalid - skip
+                continue;
+            }
+            
+            // Check support for level 2+ before creating block
+            // Create a temporary block just for support check
+            const testBlock = new Block(1, cell.x, cell.z, direction, false, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level);
+            const hasBlockSupport = yOffset === 0 || hasSupport(testBlock);
+            scene.remove(testBlock.group);
+            
+            if (hasBlockSupport) {
+                // Create the actual block - cells are already reserved
+                const block = new Block(1, cell.x, cell.z, direction, false, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level);
+                scene.remove(block.group); // Remove from scene, will be added with animation
+                blocksToPlace.push(block);
+            } else {
+                // No support - release reserved cells
+                for (const cellKey of reservation.cells) {
+                    occupiedCells.delete(cellKey);
+                }
+            }
+        }
     }
     
     const singleBlockCount = blocksToPlace.filter(b => b.length === 1).length;
@@ -1138,7 +1210,10 @@ async function generateSolvablePuzzle(level = 1) {
         let currentLayer = 0;
         let lowerLayerCells = null;
         
-        while (remainingBlocks > 0 && currentLayer < 10) { // Max 10 layers to prevent infinite loops
+        // Calculate max layers needed: targetBlockCount / gridCells (rounded up) + buffer
+        const maxLayersNeeded = Math.ceil(targetBlockCount / gridCells) + 2; // Add buffer for safety
+        const maxLayers = Math.max(10, maxLayersNeeded); // At least 10, but more if needed
+        while (remainingBlocks > 0 && currentLayer < maxLayers) {
             const yOffset = currentLayer * cubeSize;
             
             // For layer 1: Use longer blocks to minimize block count (prefer 2-3 cell blocks)
@@ -1148,13 +1223,10 @@ async function generateSolvablePuzzle(level = 1) {
             let preferLongBlocks = false;
             
             if (currentLayer === 0) {
-                // Layer 1: Aim for ~60-70% of grid cells filled with longer blocks
-                // This means fewer blocks but more cells occupied
-                const targetCellsFilled = Math.floor(gridCells * 0.65); // ~32 cells
-                // Estimate: if we use mostly 2-cell blocks, we need ~16 blocks
-                // If we use mostly 3-cell blocks, we need ~11 blocks
-                // Let's aim for ~15-20 blocks in layer 1
-                blocksForThisLayer = Math.min(remainingBlocks, Math.floor(gridCells * 0.4)); // ~20 blocks max
+                // Layer 1: Use longer blocks to minimize block count (prefer 2-3 cell blocks)
+                // For high block counts, allow more blocks in layer 1 to reduce total layers needed
+                // Limit to gridCells to ensure we don't exceed capacity
+                blocksForThisLayer = Math.min(remainingBlocks, gridCells);
                 preferLongBlocks = true;
             } else {
                 // Layer 2+: Recalculate remaining blocks based on actual blocks placed so far
@@ -1378,79 +1450,52 @@ function undoLastMove() {
     console.log(`Undo: Restored block to (${block.gridX}, ${block.gridZ})`);
 }
 
-// Remove a block with melt down animation
+// Remove a block with physics-based falling animation
 function removeBlockWithAnimation(block) {
     if (!blocks.includes(block) || block.isRemoved || block.isFalling || block.isAnimating) {
         return;
     }
     
-    block.isRemoved = true;
+    // Mark as falling (not removed yet) so physics can handle it
+    block.isFalling = true;
     block.isAnimating = true;
     
-    // Melt down animation: scale down and fade out
-    const startScale = 1;
-    const endScale = 0;
-    const startOpacity = 1;
-    const endOpacity = 0;
-    const duration = 400; // milliseconds
-    const startTime = performance.now();
+    // Set up physics body creation with initial velocities
+    block.needsPhysicsBody = true;
     
-    // Store original materials for opacity animation
-    const originalMaterials = [];
+    // Give block an initial upward velocity so it goes up, then falls down with gravity
+    // Random horizontal velocity for more natural movement
+    const upwardVel = 2 + Math.random() * 2; // 2-4 m/s upward
+    const horizontalVelX = (Math.random() - 0.5) * 2; // Random horizontal X
+    const horizontalVelZ = (Math.random() - 0.5) * 2; // Random horizontal Z
+    
+    block.pendingLinearVel = {
+        x: horizontalVelX,
+        y: upwardVel,
+        z: horizontalVelZ
+    };
+    
+    // Add some random rotation for tumbling effect
+    block.pendingAngularVel = {
+        x: (Math.random() - 0.5) * 5,
+        y: (Math.random() - 0.5) * 5,
+        z: (Math.random() - 0.5) * 5
+    };
+    
+    // Store removal start time to clean up after a timeout
+    block.removalStartTime = performance.now();
+    block.removalTimeout = 5000; // Remove after 5 seconds if still falling
+    
+    // Make materials transparent for fade effect as it falls
     block.cubes.forEach(cube => {
         if (cube.material) {
-            originalMaterials.push(cube.material);
             if (!cube.material.transparent) {
                 cube.material.transparent = true;
             }
         }
     });
     
-    const animate = () => {
-        const elapsed = performance.now() - startTime;
-        const progress = Math.min(elapsed / duration, 1);
-        
-        // Ease-out cubic for smooth animation
-        const eased = 1 - Math.pow(1 - progress, 3);
-        
-        // Update scale
-        const currentScale = startScale + (endScale - startScale) * eased;
-        block.group.scale.set(currentScale, currentScale, currentScale);
-        
-        // Update opacity
-        const currentOpacity = startOpacity + (endOpacity - startOpacity) * eased;
-        originalMaterials.forEach(material => {
-            if (material) {
-                material.opacity = currentOpacity;
-            }
-        });
-        
-        if (progress < 1) {
-            requestAnimationFrame(animate);
-        } else {
-            // Animation complete - remove from towerGroup and array
-            towerGroup.remove(block.group);
-            const index = blocks.indexOf(block);
-            if (index > -1) {
-                blocks.splice(index, 1);
-            }
-            
-            // Remove from move history if present
-            moveHistory = moveHistory.filter(m => m.block !== block);
-            
-            // Clean up physics body if it exists
-            if (block.physicsBody && block.physicsBody.body) {
-                // Import and use removePhysicsBody synchronously
-                import('./physics.js').then(({ removePhysicsBody }) => {
-                    removePhysicsBody(physics, block.physicsBody.body);
-                });
-            }
-            
-            console.log(`Removed block at (${block.gridX}, ${block.gridZ})`);
-        }
-    };
-    
-    animate();
+    console.log(`Removing block at (${block.gridX}, ${block.gridZ}) with physics fall`);
 }
 
 // Restart current level
@@ -2335,12 +2380,48 @@ function animate() {
         
         // Clean up removed blocks and update solution tracking
         for (let i = blocks.length - 1; i >= 0; i--) {
-            if (blocks[i].isRemoved) {
-                const block = blocks[i];
+            const block = blocks[i];
+            
+            // Handle blocks that are falling due to removal (not just regular falling)
+            if (block.isFalling && block.removalStartTime) {
+                const elapsed = performance.now() - block.removalStartTime;
+                const worldPos = new THREE.Vector3();
+                block.group.getWorldPosition(worldPos);
                 
+                // Fade out based on Y position (below ground) or time elapsed
+                const fadeStartY = 0; // Start fading when below ground level
+                const fadeEndY = -5; // Fully faded when 5 units below ground
+                const fadeProgress = Math.min(1, Math.max(0, (fadeStartY - worldPos.y) / (fadeStartY - fadeEndY)));
+                
+                // Also fade based on time (backup in case block doesn't fall)
+                const timeFadeProgress = Math.min(1, elapsed / block.removalTimeout);
+                const finalFadeProgress = Math.max(fadeProgress, timeFadeProgress);
+                
+                // Update opacity
+                block.cubes.forEach(cube => {
+                    if (cube.material) {
+                        cube.material.opacity = 1 - finalFadeProgress;
+                    }
+                });
+                
+                // Mark as removed when it falls far enough or timeout reached
+                if (worldPos.y < -10 || elapsed > block.removalTimeout) {
+                    block.isRemoved = true;
+                    block.isFalling = false;
+                }
+            }
+            
+            if (block.isRemoved) {
                 // Ensure block is removed from towerGroup (in case remove() didn't work)
                 if (block.group.parent) {
                     block.group.parent.remove(block.group);
+                }
+                
+                // Clean up physics body if it exists
+                if (block.physicsBody && block.physicsBody.body) {
+                    import('./physics.js').then(({ removePhysicsBody }) => {
+                        removePhysicsBody(physics, block.physicsBody.body);
+                    });
                 }
                 
                 // Block was removed (fell off) - advance solution if we're tracking
@@ -2351,6 +2432,10 @@ function animate() {
                         highlightNextBlock();
                     }, 100);
                 }
+                
+                // Remove from move history if present
+                moveHistory = moveHistory.filter(m => m.block !== block);
+                
                 blocks.splice(i, 1);
             }
         }

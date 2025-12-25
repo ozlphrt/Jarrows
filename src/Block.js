@@ -540,7 +540,8 @@ export class Block {
             }
             // Check for 3D overlaps: blocks cannot rotate to a position where they would overlap with another block
             for (const other of blocks) {
-                if (other === this || other === collidedBlock || other.isFalling || other.isRemoved) continue;
+                // Skip blocks that are falling, removed, or being removed
+                if (other === this || other === collidedBlock || other.isFalling || other.isRemoved || other.removalStartTime) continue;
                 
                 // Calculate Y ranges for both blocks to check for 3D overlap
                 const thisHeight = this.isVertical ? this.length * this.cubeSize : this.cubeSize;
@@ -583,7 +584,8 @@ export class Block {
                 }
                 // Check for 3D overlaps: blocks cannot rotate to a position where they would overlap with another block
                 for (const other of blocks) {
-                    if (other === this || other === collidedBlock || other.isFalling || other.isRemoved) continue;
+                    // Skip blocks that are falling, removed, or being removed
+                if (other === this || other === collidedBlock || other.isFalling || other.isRemoved || other.removalStartTime) continue;
                     
                     // Calculate Y ranges for both blocks to check for 3D overlap
                     const thisHeight = this.isVertical ? this.length * this.cubeSize : this.cubeSize;
@@ -643,7 +645,8 @@ export class Block {
             // Check collision with other blocks (excluding this block and the collided block)
             // Check for 3D overlaps: blocks cannot rotate to a position where they would overlap with another block
             for (const other of blocks) {
-                if (other === this || other === collidedBlock || other.isFalling || other.isRemoved) continue;
+                // Skip blocks that are falling, removed, or being removed
+                if (other === this || other === collidedBlock || other.isFalling || other.isRemoved || other.removalStartTime) continue;
                 
                 // Calculate Y ranges for both blocks to check for 3D overlap
                 const thisHeight = this.isVertical ? this.length * this.cubeSize : this.cubeSize;
@@ -701,7 +704,8 @@ export class Block {
                 // Check collision with other blocks (excluding this block and the collided block)
                 // Check for 3D overlaps: blocks cannot rotate to a position where they would overlap with another block
                 for (const other of blocks) {
-                    if (other === this || other === collidedBlock || other.isFalling || other.isRemoved) continue;
+                    // Skip blocks that are falling, removed, or being removed
+                if (other === this || other === collidedBlock || other.isFalling || other.isRemoved || other.removalStartTime) continue;
                     
                     // Calculate Y ranges for both blocks to check for 3D overlap
                     const thisHeight = this.isVertical ? this.length * this.cubeSize : this.cubeSize;
@@ -953,7 +957,8 @@ export class Block {
             
             // Check for 3D overlaps: blocks cannot move to a position where they would overlap with another block
             for (const other of blocks) {
-                if (other === this || other.isFalling || other.isRemoved) continue;
+                // Skip blocks that are falling, removed, or being removed
+                if (other === this || other.isFalling || other.isRemoved || other.removalStartTime) continue;
                 
                 // Calculate Y ranges for both blocks to check for 3D overlap
                 const thisHeight = this.isVertical ? this.length * this.cubeSize : this.cubeSize;
@@ -1014,7 +1019,8 @@ export class Block {
             
             // Check for 3D overlaps: blocks cannot move to a position where they would overlap with another block
             for (const other of blocks) {
-                if (other === this || other.isFalling || other.isRemoved) continue;
+                // Skip blocks that are falling, removed, or being removed
+                if (other === this || other.isFalling || other.isRemoved || other.removalStartTime) continue;
                 
                 // Calculate Y ranges for both blocks to check for 3D overlap
                 const thisHeight = this.isVertical ? this.length * this.cubeSize : this.cubeSize;
@@ -1082,7 +1088,8 @@ export class Block {
             // This includes checking blocks at different Y levels that might overlap in 3D space
             let blocked = false;
             for (const other of blocks) {
-                if (other === this || other.isFalling || other.isRemoved) continue;
+                // Skip blocks that are falling, removed, or being removed
+                if (other === this || other.isFalling || other.isRemoved || other.removalStartTime) continue;
                 
                 // Calculate Y ranges for both blocks to check for 3D overlap
                 const thisHeight = this.isVertical ? this.length * this.cubeSize : this.cubeSize;

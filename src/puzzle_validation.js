@@ -88,7 +88,8 @@ export function canBlockExit(block, occupiedCells, gridSize) {
 function buildOccupiedCells(blocks, excludeBlock = null) {
     const occupied = new Set();
     for (const block of blocks) {
-        if (block === excludeBlock || block.isFalling || block.isAnimating) continue;
+        // Skip blocks that are falling, animating, removed, or being removed
+        if (block === excludeBlock || block.isFalling || block.isAnimating || block.isRemoved || block.removalStartTime) continue;
         for (const cell of getBlockCells(block)) {
             occupied.add(`${cell.x},${cell.z}`);
         }
@@ -105,7 +106,8 @@ export function validateStructure(blocks, gridSize) {
     const occupiedCells = new Map(); // key: "x,z" -> array of {block, yBottom, yTop}
     
     for (const block of blocks) {
-        if (block.isFalling || block.isAnimating || block.isRemoved) continue;
+        // Skip blocks that are falling, animating, removed, or being removed
+        if (block.isFalling || block.isAnimating || block.isRemoved || block.removalStartTime) continue;
         
         const cells = getBlockCells(block);
         
@@ -164,7 +166,8 @@ export function validateSolvability(blocks, gridSize) {
     }
     
     // Create a working copy of blocks (simulate removal)
-    const remainingBlocks = blocks.filter(b => !b.isFalling && !b.isAnimating);
+    // Exclude blocks that are falling, animating, removed, or being removed
+    const remainingBlocks = blocks.filter(b => !b.isFalling && !b.isAnimating && !b.isRemoved && !b.removalStartTime);
     const solution = [];
     const maxIterations = remainingBlocks.length * 2; // Safety limit
     let iterations = 0;
