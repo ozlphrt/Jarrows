@@ -1,37 +1,91 @@
 import * as THREE from 'three';
 
-export function createLights(scene) {
-    // Professional 3-point lighting setup
+/**
+ * Create a gradient background texture
+ * @param {THREE.Scene} scene - The Three.js scene
+ * @param {number} topColor - Top color (hex)
+ * @param {number} bottomColor - Bottom color (hex)
+ */
+export function setGradientBackground(scene, topColor, bottomColor) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 256;
+    const context = canvas.getContext('2d');
     
-    // Ambient Light - provides base illumination
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+    // Create gradient from top to bottom
+    const gradient = context.createLinearGradient(0, 0, 0, 256);
+    
+    // Convert hex to RGB
+    const topR = (topColor >> 16) & 0xff;
+    const topG = (topColor >> 8) & 0xff;
+    const topB = topColor & 0xff;
+    
+    const bottomR = (bottomColor >> 16) & 0xff;
+    const bottomG = (bottomColor >> 8) & 0xff;
+    const bottomB = bottomColor & 0xff;
+    
+    gradient.addColorStop(0, `rgb(${topR}, ${topG}, ${topB})`);
+    gradient.addColorStop(1, `rgb(${bottomR}, ${bottomG}, ${bottomB})`);
+    
+    context.fillStyle = gradient;
+    context.fillRect(0, 0, 256, 256);
+    
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.mapping = THREE.EquirectangularReflectionMapping;
+    scene.background = texture;
+}
+
+/**
+ * Set up fog for the scene
+ * @param {THREE.Scene} scene - The Three.js scene
+ * @param {boolean} isDarkTheme - Whether dark theme is active
+ */
+export function setupFog(scene, isDarkTheme) {
+    // Fog removed - set to null to disable
+    scene.fog = null;
+}
+
+export function createLights(scene) {
+    // Professional 3-point lighting setup - optimized for visible shadows and reflections
+    
+    // Ambient Light - further reduced to increase shadow contrast and visible reflections
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.15);
     scene.add(ambientLight);
     
     // Key Light (Main Light) - primary light source, casts shadows
-    const keyLight = new THREE.DirectionalLight(0xffffff, 1.0);
+    // Increased intensity for stronger shadows and reflections towards camera
+    const keyLight = new THREE.DirectionalLight(0xffffff, 1.5);
     keyLight.position.set(10, 20, 10);
     keyLight.castShadow = true;
-    keyLight.shadow.camera.left = -15;
-    keyLight.shadow.camera.right = 15;
-    keyLight.shadow.camera.top = 15;
-    keyLight.shadow.camera.bottom = -15;
+    // Expanded shadow camera bounds to cover the scene
+    keyLight.shadow.camera.left = -30;
+    keyLight.shadow.camera.right = 30;
+    keyLight.shadow.camera.top = 30;
+    keyLight.shadow.camera.bottom = -30;
+    keyLight.shadow.camera.near = 0.1;
+    keyLight.shadow.camera.far = 100;
+    // Position shadow camera to look at the scene center
+    keyLight.shadow.camera.position.set(0, 25, 0);
+    keyLight.shadow.camera.lookAt(0, 0, 0);
     keyLight.shadow.mapSize.width = 2048;
     keyLight.shadow.mapSize.height = 2048;
     keyLight.shadow.bias = -0.0001;
+    keyLight.shadow.radius = 3; // Slightly sharper shadows for better definition
+    keyLight.shadow.normalBias = 0.02; // Reduce shadow acne
     scene.add(keyLight);
     
-    // Fill Light - softer light from opposite side, fills shadows
-    const fillLight = new THREE.DirectionalLight(0xffffff, 0.3);
+    // Fill Light - further reduced to allow darker, more dramatic shadows
+    const fillLight = new THREE.DirectionalLight(0xffffff, 0.1);
     fillLight.position.set(-8, 12, -8);
     scene.add(fillLight);
     
-    // Rim/Back Light - highlights edges, creates depth
-    const rimLight = new THREE.DirectionalLight(0xffffff, 0.5);
+    // Rim/Back Light - increased intensity to enhance reflections towards camera
+    const rimLight = new THREE.DirectionalLight(0xffffff, 0.6);
     rimLight.position.set(-5, 8, -15);
     scene.add(rimLight);
     
-    // Additional accent light from above for better top-down visibility
-    const topLight = new THREE.DirectionalLight(0xffffff, 0.2);
+    // Additional accent light from above - further reduced to maintain shadow contrast
+    const topLight = new THREE.DirectionalLight(0xffffff, 0.1);
     topLight.position.set(0, 25, 0);
     scene.add(topLight);
     
@@ -50,7 +104,11 @@ export function createGrid(scene) {
     
     // Grid base
     const baseGeometry = new THREE.BoxGeometry(gridSize * cubeSize, 0.2, gridSize * cubeSize);
-    const baseMaterial = new THREE.MeshStandardMaterial({ color: 0x444444 });
+    const baseMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0x444444,
+        roughness: 0.3, // Lower roughness for subtle reflections
+        metalness: 0.1 // Slight metalness for depth
+    });
     const base = new THREE.Mesh(baseGeometry, baseMaterial);
     base.position.set(gridSize * cubeSize / 2, -0.1, gridSize * cubeSize / 2);
     base.receiveShadow = true;
