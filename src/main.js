@@ -18,6 +18,7 @@ camera.lookAt(3, 0, 3);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2)); // Limit pixel ratio for performance on mobile
 renderer.shadowMap.enabled = true;
 document.body.appendChild(renderer.domElement);
 
@@ -608,20 +609,23 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
             const direction = {x: 0, z: 1}; // South
             
             if (isVertical || length === 1) {
-                if (!isCellOccupied(x, gridSize - 1)) {
+                // ATOMIC OPERATION: Try to reserve cells BEFORE creating the block
+                const reservation = tryReserveCells(x, gridSize - 1, length, isVertical, direction);
+                if (reservation) {
+                    // Cells reserved - create block
                     const block = new Block(length, x, gridSize - 1, direction, isVertical, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level);
+                    // Check if block has support (for level 2+)
                     if (hasSupport(block)) {
-                        // Mark cells as occupied BEFORE adding to blocksToPlace (prevent overlaps)
-                        if (!occupyCells(block)) {
-                            scene.remove(block.group);
-                            continue; // Block overlaps - skip it
-                        }
                         scene.remove(block.group); // Remove from scene, will be added with animation
                         edgeBlocks.push(block);
                         blocksToPlace.push(block);
                         // Stop if we've reached the target block count
                         if (blocksToPlace.length >= targetBlockCount) break;
                     } else {
+                        // Release reserved cells since block can't be placed
+                        for (const cellKey of reservation.cells) {
+                            occupiedCells.delete(cellKey);
+                        }
                         scene.remove(block.group);
                     }
                 }
@@ -1212,6 +1216,17 @@ async function generateSolvablePuzzle(level = 1) {
     // Place all blocks in batches
     await placeBlocksBatch(allBlocks, 10, 10); // 10 blocks per batch, 10ms between batches
     
+    // Validate structure after placement to catch any overlaps
+    const structureCheck = validateStructure(blocks, gridSize);
+    if (!structureCheck.valid) {
+        console.error(`✗ Structure validation failed: ${structureCheck.reason}`);
+        console.error('  Regenerating puzzle...');
+        // Regenerate if validation fails
+        isGeneratingLevel = false;
+        await generateSolvablePuzzle(level);
+        return;
+    }
+    
     // Update level counter display
     const levelValueElement = document.getElementById('level-value');
     if (levelValueElement) {
@@ -1229,6 +1244,7 @@ async function generateSolvablePuzzle(level = 1) {
     
     console.log(`✓ Generated Level ${level} puzzle using reverse generation`);
     console.log(`  Target blocks: ${targetBlockCount}, Actual blocks: ${blocks.length}`);
+    console.log(`  Structure validation: ✓ PASSED`);
 }
 
 // Move history for undo functionality
@@ -1892,10 +1908,138 @@ window.addEventListener('click', (event) => {
 window.addEventListener('touchstart', (event) => {
     // IMMEDIATELY stop auto-rotation on touch/tap
     userHasControlledCamera = true;
+    
+    // Track touch start for tap detection (single touch only)
+    if (event.touches.length === 1) {
+        const touch = event.touches[0];
+        touchStartPos = { x: touch.clientX, y: touch.clientY };
+        touchStartTime = performance.now();
+    }
 }, { capture: true, passive: true }); // Use capture phase and passive for performance
 
 // Original click handler for block interaction (normal phase)
 window.addEventListener('click', onMouseClick);
+
+// Touch handler for mobile block interaction
+let touchStartPos = null;
+let touchStartTime = null;
+const TOUCH_DRAG_THRESHOLD = 5; // pixels - minimum movement to consider it a drag
+
+function onTouchEnd(event) {
+    // IMMEDIATELY stop auto-rotation on any touch end
+    userHasControlledCamera = true;
+    
+    // Only process single touch (not multi-touch)
+    if (event.touches.length > 0 || event.changedTouches.length !== 1) {
+        touchStartPos = null;
+        return;
+    }
+    
+    const touch = event.changedTouches[0];
+    
+    // Check if this was actually a drag by checking touch movement
+    if (touchStartPos) {
+        const dx = touch.clientX - touchStartPos.x;
+        const dy = touch.clientY - touchStartPos.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        const timeElapsed = performance.now() - touchStartTime;
+        
+        // If distance exceeds threshold or time is too long, it was a drag, not a tap
+        if (distance > TOUCH_DRAG_THRESHOLD || timeElapsed > 300) {
+            touchStartPos = null;
+            return; // Don't process as block tap
+        }
+    }
+    
+    // Reset drag tracking
+    touchStartPos = null;
+    
+    // Convert touch to normalized device coordinates
+    mouse.x = (touch.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(touch.clientY / window.innerHeight) * 2 + 1;
+    
+    raycaster.setFromCamera(mouse, camera);
+    
+    // Collect ALL intersections from ALL blocks first, then pick the closest one
+    const allIntersections = [];
+    
+    for (const block of blocks) {
+        if (block.isAnimating || block.isFalling) continue;
+        
+        const intersects = raycaster.intersectObjects(block.cubes, true);
+        
+        for (const intersection of intersects) {
+            allIntersections.push({
+                intersection,
+                block,
+                distance: intersection.distance
+            });
+        }
+    }
+    
+    // If no intersections, nothing was tapped
+    if (allIntersections.length === 0) {
+        return;
+    }
+    
+    // Sort by distance (closest first)
+    allIntersections.sort((a, b) => a.distance - b.distance);
+    
+    // Get the closest intersection
+    const closestHit = allIntersections[0];
+    const block = closestHit.block;
+    
+    // If remove mode is active, remove the block instead of moving it
+    if (removeModeActive) {
+        removeBlockWithAnimation(block);
+        toggleRemoveMode();
+        updateUndoButtonState();
+        return;
+    }
+    
+    // Validate structure before move
+    const structureCheck = validateStructure(blocks, gridSize);
+    if (!structureCheck.valid) {
+        console.warn('Puzzle structure invalid before move, skipping:', structureCheck.reason);
+        return;
+    }
+    
+    // Store if this block will fall
+    const willFall = block.canMove(blocks) === 'fall';
+    
+    // Save move state before moving
+    saveMoveState(block);
+    
+    block.move(blocks, gridSize);
+    
+    // After a block moves, check if any other blocks lost support
+    setTimeout(() => {
+        checkAndTriggerFalling(blocks);
+        setTimeout(() => {
+            checkAndTriggerFalling(blocks);
+        }, 500);
+    }, 400);
+    
+    // Update button states after move
+    updateUndoButtonState();
+    
+    // If block will fall, advance solution step
+    if (willFall && window.puzzleSolution) {
+        setTimeout(() => {
+            const blockStillExists = blocks.includes(block);
+            if (!blockStillExists || block.isFalling) {
+                window.solutionStep++;
+                highlightNextBlock();
+            }
+        }, 1000);
+    }
+}
+
+// Touch start tracking is handled above in the capture phase handler
+
+// Handle touch end for block interaction
+window.addEventListener('touchend', onTouchEnd, { passive: true });
+
 window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
