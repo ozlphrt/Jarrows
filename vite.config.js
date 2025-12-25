@@ -17,6 +17,33 @@ export default ({ command }) => {
       VitePWA({
         registerType: 'autoUpdate',
         includeAssets: ['192.png', '512.png'],
+        workbox: {
+          skipWaiting: true,
+          clientsClaim: true,
+          globPatterns: ['**/*.{js,css,html,png,svg,woff2,wasm}'],
+          // Increase file size limit to accommodate large Rapier bundle (2.27 MB)
+          maximumFileSizeToCacheInBytes: 3 * 1024 * 1024, // 3 MB
+          runtimeCaching: [
+            {
+              urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'google-fonts-cache',
+                expiration: {
+                  maxEntries: 10,
+                  maxAgeSeconds: 60 * 60 * 24 * 365 // 1 year
+                },
+                cacheableResponse: {
+                  statuses: [0, 200]
+                }
+              }
+            }
+          ]
+        },
+        devOptions: {
+          enabled: true,
+          type: 'module'
+        },
         manifest: {
           name: 'Jarrows - Sliding Block Puzzle',
           short_name: 'Jarrows',
@@ -41,31 +68,6 @@ export default ({ command }) => {
               purpose: 'any maskable'
             }
           ]
-        },
-        workbox: {
-          globPatterns: ['**/*.{js,css,html,png,svg,woff2,wasm}'],
-          // Increase file size limit to accommodate large Rapier bundle (2.27 MB)
-          maximumFileSizeToCacheInBytes: 3 * 1024 * 1024, // 3 MB
-          runtimeCaching: [
-            {
-              urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
-              handler: 'CacheFirst',
-              options: {
-                cacheName: 'google-fonts-cache',
-                expiration: {
-                  maxEntries: 10,
-                  maxAgeSeconds: 60 * 60 * 24 * 365 // 1 year
-                },
-                cacheableResponse: {
-                  statuses: [0, 200]
-                }
-              }
-            }
-          ]
-        },
-        devOptions: {
-          enabled: true,
-          type: 'module'
         }
       })
     ],

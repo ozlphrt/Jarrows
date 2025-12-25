@@ -501,14 +501,21 @@
             const themeToggle = document.getElementById('theme-toggle');
             
             if (!scene || !THREE || !themeIcon || !themeToggle) {
+                console.log('updateThemeIcon: Missing dependencies', { scene: !!scene, THREE: !!THREE, themeIcon: !!themeIcon, themeToggle: !!themeToggle });
                 return;
             }
             
             // Wait for functions to be available from main.js module
             if (!window.setGradientBackground || !window.setupFog) {
+                console.log('updateThemeIcon: Waiting for functions...', { 
+                    setGradientBackground: !!window.setGradientBackground, 
+                    setupFog: !!window.setupFog 
+                });
                 setTimeout(updateThemeIcon, 50);
                 return;
             }
+            
+            console.log('updateThemeIcon: Applying theme', { isDarkTheme });
             
             if (isDarkTheme) {
                 // Dark theme: much darker grey gradient
@@ -580,19 +587,29 @@
             const themeToggle = document.getElementById('theme-toggle');
             const colorsToggle = document.getElementById('colors-toggle');
             
+            console.log('Setting up toggle handlers...', { themeToggle, colorsToggle });
+            
             if (!themeToggle || !colorsToggle) {
+                console.warn('Toggle buttons not found, retrying...', { themeToggle, colorsToggle });
                 handlersSetup = false;
+                setTimeout(setupToggleHandlers, 100);
                 return;
             }
             
             // Theme toggle handler (sun = light theme, moon = dark theme)
-            themeToggle.addEventListener('click', function() {
+            themeToggle.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('Theme toggle clicked, current state:', isDarkTheme);
                 isDarkTheme = !isDarkTheme;
                 updateThemeIcon();
             });
             
             // Colors toggle handler (colored blocks vs white blocks)
-            colorsToggle.addEventListener('click', function() {
+            colorsToggle.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('Colors toggle clicked, current state:', useColoredBlocks);
                 useColoredBlocks = !useColoredBlocks;
                 updateColorsIcon();
                 updateBlockColors();
@@ -601,6 +618,8 @@
             // Initialize icons
             updateThemeIcon();
             updateColorsIcon();
+            
+            console.log('Toggle handlers setup complete');
         }
         
         // Setup handlers immediately when DOM is ready
