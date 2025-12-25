@@ -90,6 +90,7 @@ export class Block {
         this.physicsBody = null;
         this.physicsCollider = null;
         
+        // Add to scene (will be moved to towerGroup later)
         scene.add(this.group);
     }
     
@@ -114,7 +115,9 @@ export class Block {
             }
         }
         
-        const worldPos = this.group.position;
+        // Get world position (accounting for towerGroup position)
+        const worldPos = new THREE.Vector3();
+        this.group.getWorldPosition(worldPos);
         const physicsBody = createPhysicsBlock(
             this.physics,
             { x: worldPos.x, y: worldPos.y + sizeY / 2, z: worldPos.z },
@@ -761,7 +764,14 @@ export class Block {
             }
         }
         
-        this.group.position.set(centerX, this.yOffset, centerZ);
+        // Blocks are positioned relative to towerGroup, which is centered at (3.5, 0, 3.5)
+        // So we need to offset block positions by -3.5 to center them correctly
+        const towerCenterOffset = this.gridSize * this.cubeSize / 2; // 3.5 for 7x7 grid
+        this.group.position.set(
+            centerX - towerCenterOffset, 
+            this.yOffset, 
+            centerZ - towerCenterOffset
+        );
         
         // Don't sync physics during grid movement - physics only used when falling
     }
@@ -859,20 +869,32 @@ export class Block {
             const sizeY = this.isVertical ? this.length * this.cubeSize : this.cubeSize;
             
             // Falling block - update position and rotation
-            this.group.position.set(x, y - sizeY / 2, z);
+            // Physics body gives world coordinates, but group.position is relative to towerGroup
+            // Convert world coordinates to local coordinates by subtracting towerGroup's world position
+            const towerCenterOffset = this.gridSize * this.cubeSize / 2; // 3.5 for 7x7 grid
+            this.group.position.set(
+                x - towerCenterOffset, 
+                y - sizeY / 2, 
+                z - towerCenterOffset
+            );
             this.group.quaternion.set(qx, qy, qz, qw);
             
             // Remove block if:
             // 1. It has fallen well below the grid (y < -2, accounting for block height)
             // 2. It has moved too far horizontally from the grid center (beyond reasonable bounds)
             // 3. It has been falling for too long (safety timeout)
-            const gridCenter = (this.gridSize * this.cubeSize) / 2;
-            const maxDistanceFromGrid = this.gridSize * this.cubeSize * 1.5; // 1.5x grid size
+            // Note: x, y, z are world coordinates from physics body
+            // Grid center in world coordinates is at (3.5, 0, 3.5) due to towerGroup position
+            const gridCenterWorld = (this.gridSize * this.cubeSize) / 2; // 3.5 for 7x7 grid
+            const maxDistanceFromGrid = this.gridSize * this.cubeSize * 1.5; // 1.5x grid size = 10.5
             const distanceFromCenter = Math.sqrt(
-                Math.pow(x - gridCenter, 2) + Math.pow(z - gridCenter, 2)
+                Math.pow(x - gridCenterWorld, 2) + Math.pow(z - gridCenterWorld, 2)
             );
             
-            if (y < -2 || distanceFromCenter > maxDistanceFromGrid || (Date.now() - this.fallingStartTime > 5000)) {
+            const shouldRemove = y < -2 || distanceFromCenter > maxDistanceFromGrid || (Date.now() - this.fallingStartTime > 5000);
+            
+            if (shouldRemove && !this.isRemoved) {
+                console.log(`Removing block: y=${y.toFixed(2)}, distance=${distanceFromCenter.toFixed(2)}, maxDist=${maxDistanceFromGrid.toFixed(2)}, time=${Date.now() - this.fallingStartTime}ms`);
                 this.remove();
             }
             
@@ -1546,14 +1568,18 @@ export class Block {
         }
         
         // Calculate start position first (needed for extension calculation)
+        // startX/startZ are in local coordinates relative to towerGroup (already offset)
         const startX = this.group.position.x;
         const startZ = this.group.position.z;
         
-        // Calculate final world position (centered on block)
+        // Calculate final position (centered on block) - MUST be in same coordinate space as startX/startZ
+        // Blocks are positioned relative to towerGroup, so we need to subtract towerCenterOffset
+        const towerCenterOffset = this.gridSize * this.cubeSize / 2; // 3.5 for 7x7 grid
+        
         let finalX, finalZ;
         if (this.isVertical) {
-            finalX = finalGridX * this.cubeSize + this.cubeSize / 2;
-            finalZ = finalGridZ * this.cubeSize + this.cubeSize / 2;
+            finalX = finalGridX * this.cubeSize + this.cubeSize / 2 - towerCenterOffset;
+            finalZ = finalGridZ * this.cubeSize + this.cubeSize / 2 - towerCenterOffset;
         } else {
             // For head-on collision, use rotated direction for alignment
             // For normal movement, use current direction
@@ -1566,13 +1592,13 @@ export class Block {
             if (isXAligned) {
                 const startGridX = finalGridX * this.cubeSize + this.cubeSize / 2;
                 const endGridX = (finalGridX + this.length - 1) * this.cubeSize + this.cubeSize / 2;
-                finalX = (startGridX + endGridX) / 2;
-                finalZ = finalGridZ * this.cubeSize + this.cubeSize / 2;
+                finalX = (startGridX + endGridX) / 2 - towerCenterOffset;
+                finalZ = finalGridZ * this.cubeSize + this.cubeSize / 2 - towerCenterOffset;
             } else {
-                finalX = finalGridX * this.cubeSize + this.cubeSize / 2;
+                finalX = finalGridX * this.cubeSize + this.cubeSize / 2 - towerCenterOffset;
                 const startGridZ = finalGridZ * this.cubeSize + this.cubeSize / 2;
                 const endGridZ = (finalGridZ + this.length - 1) * this.cubeSize + this.cubeSize / 2;
-                finalZ = (startGridZ + endGridZ) / 2;
+                finalZ = (startGridZ + endGridZ) / 2 - towerCenterOffset;
             }
         }
         
@@ -1771,34 +1797,38 @@ export class Block {
                     // Position is already correct from animation, don't recalculate
                     this.isAnimating = false;
                     
+                    // Ensure direction is updated if there was a head-on collision
+                    // This ensures this.direction matches the arrow rotation
+                    if (headOnCollision && !rotationApplied) {
+                        this.rotateDirectionClockwise();
+                    }
+                    
                     let velX, velZ, velY;
+                    
+                    // Use this.direction directly - it represents the arrow direction
+                    // Direction values: {x: 1, z: 0} = East, {x: -1, z: 0} = West, {x: 0, z: 1} = South, {x: 0, z: -1} = North
+                    // These are direction vectors in grid space, which map directly to world space velocities
+                    const dirX = this.direction.x;
+                    const dirZ = this.direction.z;
                     
                     if (isCatapult) {
                         // CATAPULT: explosive launch with high velocity and upward arc
                         const catapultSpeed = 8.0; // Much faster horizontal speed
                         const launchAngle = 0.3; // Upward arc (radians, ~17 degrees)
                         
-                        // Direction of movement
-                        const dx = finalX - startX;
-                        const dz = finalZ - startZ;
-                        const dist = Math.sqrt(dx * dx + dz * dz);
-                        const dirX = dist > 0 ? dx / dist : this.direction.x;
-                        const dirZ = dist > 0 ? dz / dist : this.direction.z;
-                        
+                        // Apply velocity in the direction of the arrow
                         velX = dirX * catapultSpeed;
                         velZ = dirZ * catapultSpeed;
                         velY = Math.sin(launchAngle) * catapultSpeed * 0.6; // Upward velocity for arc
                         
                         this.fall(velX, velZ, velY);
                     } else {
-                        // Normal fall: calculate horizontal velocity from animation to maintain momentum
-                        // Ease-out cubic: v(t) = 3(1-t)^2 * distance / duration
-                        const midProgress = 0.5;
-                        const easeDerivative = 3 * Math.pow(1 - midProgress, 2);
-                        const velocityScale = easeDerivative * (1000 / duration);
+                        // Normal fall: use direction with moderate speed
+                        const fallSpeed = 3.5; // Moderate speed for natural continuation
                         
-                        velX = (finalX - startX) * velocityScale;
-                        velZ = (finalZ - startZ) * velocityScale;
+                        // Apply velocity in the direction of the arrow
+                        velX = dirX * fallSpeed;
+                        velZ = dirZ * fallSpeed;
                         
                         this.fall(velX, velZ);
                     }
@@ -2078,7 +2108,15 @@ export class Block {
             this.physicsBody = null;
             this.physicsCollider = null;
         }
-        this.scene.remove(this.group);
+        
+        // Remove from parent (could be scene or towerGroup)
+        // Blocks are now in towerGroup, so remove from parent
+        if (this.group.parent) {
+            this.group.parent.remove(this.group);
+        } else {
+            // Fallback: try removing from scene if no parent
+            this.scene.remove(this.group);
+        }
     }
 }
 

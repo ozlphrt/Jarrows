@@ -35,6 +35,8 @@ async function loadRapier() {
             
             if (initFn) {
                 console.log('Initializing Rapier WASM...');
+                // New API: init() can be called without parameters or with an options object
+                // For rapier3d-compat, we can call it without parameters
                 await initFn();
                 console.log('Rapier WASM initialized');
             } else {
@@ -53,8 +55,8 @@ async function loadRapier() {
             // Vector3 might work without WASM, so we need to test something that definitely requires it
             try {
                 // Try to create a minimal World to verify WASM is ready
-                const testGravity = new RAPIER.Vector3(0, 0, 0);
-                const testWorld = new RAPIER.World(testGravity);
+                // New API: World constructor takes an options object, not a Vector3 directly
+                const testWorld = new RAPIER.World({ x: 0, y: 0, z: 0 });
                 // If we get here, WASM is ready
                 testWorld.free(); // Clean up test world
             } catch (e) {
@@ -86,19 +88,18 @@ export async function initPhysics() {
         throw new Error('Cannot initialize physics: WASM module not ready. ' + e.message);
     }
     
-    const gravity = new RAPIER.Vector3(0.0, -9.81, 0.0);
-    
     // Main world (currently unused but kept for future)
     // CRITICAL: World constructor immediately accesses WASM functions
     // If WASM isn't ready, this will throw the rawintegrationparameters_new error
+    // New API: World constructor takes an options object with gravity property
     let world, eventQueue, fallingWorld, fallingEventQueue;
     
     try {
-        world = new RAPIER.World(gravity);
+        world = new RAPIER.World({ x: 0.0, y: -9.81, z: 0.0 });
         eventQueue = new RAPIER.EventQueue(true);
         
         // Separate world for falling blocks to avoid conflicts
-        fallingWorld = new RAPIER.World(gravity);
+        fallingWorld = new RAPIER.World({ x: 0.0, y: -9.81, z: 0.0 });
         fallingEventQueue = new RAPIER.EventQueue(true);
     } catch (e) {
         console.error('Failed to create Rapier World - WASM not initialized:', e);

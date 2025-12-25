@@ -1,5 +1,4 @@
 ﻿import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { initPhysics, createPhysicsBlock, updatePhysics, isPhysicsStepping, hasPendingOperations, isPhysicsProcessing } from './physics.js';
 import { Block } from './Block.js';
 import { createLights, createGrid } from './scene.js';
@@ -13,8 +12,6 @@ scene.background = new THREE.Color(0x87ceeb);
 let currentArrowStyle = 2;
 
 const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-camera.position.set(8, 8, 8);
-camera.lookAt(3, 0, 3);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -22,143 +19,91 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2)); // Limit pixe
 renderer.shadowMap.enabled = true;
 document.body.appendChild(renderer.domElement);
 
-const controls = new OrbitControls(camera, renderer.domElement);
-controls.target.set(3, 0, 3);
-
-// Configure camera controls for heavy, momentum-based feel
-// Lower damping factor = longer coasting (more inertia)
-controls.enableDamping = true;
-controls.dampingFactor = 0.06; // Lower = heavier, longer coasting
-controls.screenSpacePanning = false;
-controls.enableRotate = true;
-controls.enablePan = true;
-controls.enableZoom = true;
-
-// Slower speeds = heavier feel (harder to start, harder to stop)
-controls.rotateSpeed = 0.25; // Slower rotation for heavier feel
-controls.panSpeed = 0.5;
-controls.zoomSpeed = 0.5;
-
-// Distance constraints
-controls.minDistance = 3;
-controls.maxDistance = 100;
-controls.maxPolarAngle = Math.PI * 0.9; // Prevent camera from going below ground
-
-controls.update();
-
-// Track previous camera position to detect user movement
-let previousCameraPosition = new THREE.Vector3();
-let previousCameraTarget = new THREE.Vector3();
-
-// Detect when user manually controls the camera via OrbitControls
-// We'll check if the camera moved in a way that doesn't match auto-rotation
-let lastAutoRotationTime = 0;
-controls.addEventListener('change', () => {
-    if (userHasControlledCamera) return; // Already detected
-    
-    const timeSinceAutoRotation = performance.now() - lastAutoRotationTime;
-    
-    // If enough time has passed since auto-rotation, or if camera position changed significantly
-    // in a way that doesn't match our rotation pattern, it's user input
-    if (timeSinceAutoRotation > 50) { // Reduced threshold for faster detection
-        // Check if camera position changed in a way that doesn't match auto-rotation
-        const currentPos = camera.position.clone();
-        const currentTarget = controls.target.clone();
-        
-        const posChanged = !currentPos.equals(previousCameraPosition);
-        const targetChanged = !currentTarget.equals(previousCameraTarget);
-        
-        // If position or target changed significantly and it's been a while since auto-rotation
-        if ((posChanged || targetChanged) && timeSinceAutoRotation > 50) {
-            userHasControlledCamera = true;
-        }
-        
-        previousCameraPosition.copy(currentPos);
-        previousCameraTarget.copy(currentTarget);
-    }
-});
-
-// Also detect mouse/wheel interactions directly
-renderer.domElement.addEventListener('wheel', () => {
-    userHasControlledCamera = true; // User is zooming
-}, { passive: true });
-
-// Detect right-click (pan) and middle-click (rotate)
-renderer.domElement.addEventListener('contextmenu', (e) => {
-    e.preventDefault(); // Prevent context menu
-    userHasControlledCamera = true; // User is panning
-});
-
 // Track camera drag state to prevent block clicks during camera movement
 let isCameraDragging = false;
 let mouseDownPos = null;
 let mouseDownTime = null;
 const DRAG_THRESHOLD = 3; // pixels - minimum movement to consider it a drag
 
-// Unified mousedown handler for both camera control and block interaction
-// Use capture phase to ensure we catch the event before OrbitControls
+// Camera control state
+let isDraggingCamera = false;
+let lastMouseX = 0;
+let lastMouseY = 0;
+
+// Mouse controls for camera orbit
 renderer.domElement.addEventListener('mousedown', (event) => {
-    // IMMEDIATELY stop auto-rotation on ANY mouse button press (including left-click)
-    userHasControlledCamera = true;
-    
-    // Check if it's a camera control button (not left-click for blocks)
-    // Right-click (button 2) or middle-click (button 1) are camera controls
-    if (event.button === 1 || event.button === 2) {
-        // Already set userHasControlledCamera above
-    }
-    
-    // Track left-click (button 0) for block interaction
+    // Only handle left-click for camera orbit
     if (event.button === 0) {
+        isDraggingCamera = true;
+        lastMouseX = event.clientX;
+        lastMouseY = event.clientY;
+        
+        // Track for block click detection
         mouseDownPos = { x: event.clientX, y: event.clientY };
         mouseDownTime = performance.now();
         isCameraDragging = false;
     }
-}, { capture: true, passive: true }); // Use capture phase and passive for performance
-
-// Also handle touch events for mobile/tap
-renderer.domElement.addEventListener('touchstart', (event) => {
-    // IMMEDIATELY stop auto-rotation on touch/tap
-    userHasControlledCamera = true;
-    
-    // Track touch position for block interaction
-    if (event.touches.length > 0) {
-        const touch = event.touches[0];
-        mouseDownPos = { x: touch.clientX, y: touch.clientY };
-        mouseDownTime = performance.now();
-        isCameraDragging = false;
-    }
-}, { capture: true, passive: true }); // Use capture phase and passive for performance
+}, { passive: true });
 
 renderer.domElement.addEventListener('mousemove', (event) => {
-    if (mouseDownPos) {
+    if (isDraggingCamera) {
+        const dx = event.clientX - lastMouseX;
+        const dy = event.clientY - lastMouseY;
+        
+        // Update azimuth (horizontal rotation)
+        targetAzimuth += dx * DRAG_SENSITIVITY;
+        
+        // Update elevation (vertical rotation)
+        targetElevation -= dy * DRAG_SENSITIVITY;
+        targetElevation = Math.max(MIN_ELEVATION, Math.min(MAX_ELEVATION, targetElevation));
+        
+        lastMouseX = event.clientX;
+        lastMouseY = event.clientY;
+        
+        // Mark as camera drag if movement exceeds threshold
+        if (mouseDownPos) {
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            if (distance > DRAG_THRESHOLD) {
+                isCameraDragging = true;
+            }
+        }
+    } else if (mouseDownPos) {
+        // Track mouse movement for block click detection
         const dx = event.clientX - mouseDownPos.x;
         const dy = event.clientY - mouseDownPos.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
         if (distance > DRAG_THRESHOLD) {
             isCameraDragging = true;
-            // Only set userHasControlledCamera if it's a right-click or middle-click drag
-            // Left-click drag is for camera rotation, but we still want to allow block clicks
-            // So we'll detect camera control through OrbitControls change event instead
         }
     }
 });
 
 renderer.domElement.addEventListener('mouseup', (event) => {
+    if (event.button === 0) {
+        isDraggingCamera = false;
+    }
+    
     // Reset drag state
     const wasDragging = isCameraDragging;
     mouseDownPos = null;
     isCameraDragging = false;
-    
-    // If it was a left-click drag (camera rotation), mark as user controlled
-    if (wasDragging && event.button === 0) {
-        userHasControlledCamera = true;
-    }
 });
 
 renderer.domElement.addEventListener('mouseleave', () => {
+    isDraggingCamera = false;
     mouseDownPos = null;
     isCameraDragging = false;
 });
+
+// Mouse wheel for zoom
+renderer.domElement.addEventListener('wheel', (event) => {
+    event.preventDefault();
+    
+    const zoomSpeed = 0.1; // 10% per scroll step
+    const zoomFactor = 1 + (event.deltaY > 0 ? zoomSpeed : -zoomSpeed);
+    targetRadius *= zoomFactor;
+    targetRadius = Math.max(MIN_RADIUS, Math.min(MAX_RADIUS, targetRadius));
+}, { passive: false });
 
 // Setup scene elements
 createLights(scene);
@@ -166,16 +111,107 @@ const { base, gridHelper } = createGrid(scene);
 const gridSize = 7;
 const cubeSize = 1;
 
-// Calculate tower center (center of the grid)
-const towerCenterX = gridSize / 2;
-const towerCenterZ = gridSize / 2;
-const towerCenterY = 0; // Ground level
+// Calculate tower center (center of the 7x7 grid)
+const towerCenter = new THREE.Vector3(3.5, 0, 3.5);
 
-// Camera auto-rotation during spawn
-let cameraRotationAngle = 0; // Current rotation angle
-let cameraRotationTime = 0; // Time accumulator for rotation
-const ROTATION_SPEED = 0.003; // Rotation speed (radians per frame)
-let userHasControlledCamera = false; // Track if user has manually controlled the camera
+// Create tower group - contains base, grid, and all blocks
+const towerGroup = new THREE.Group();
+towerGroup.name = 'towerGroup';
+scene.add(towerGroup);
+
+// Move base and gridHelper into towerGroup
+// Reset their positions to be relative to towerGroup origin (0,0,0)
+// They were positioned at (3.5, y, 3.5) in world space, but now need to be relative to towerGroup
+scene.remove(base);
+scene.remove(gridHelper);
+
+// Reset positions relative to towerGroup origin
+base.position.set(0, -0.1, 0); // Base at origin, slightly below ground
+gridHelper.position.set(0, 0.01, 0); // Grid at origin, slightly above base
+
+towerGroup.add(base);
+towerGroup.add(gridHelper);
+
+// Tower position offset (for panning/reframing)
+let towerPositionOffset = new THREE.Vector3(0, 0, 0);
+
+// Camera system constants
+const MIN_RADIUS = 5;
+const MAX_RADIUS = 50;
+const MIN_ELEVATION = -Math.PI / 2 + 0.1;
+const MAX_ELEVATION = Math.PI / 2 - 0.1;
+const ZOOM_PADDING = 2;
+const SPAWN_ZOOM_PADDING = 4; // Extra padding during spawn to show all blocks
+const SPAWN_ZOOM_MULTIPLIER = 1.3; // Additional multiplier for spawn zoom
+const DRAG_SENSITIVITY = 0.005;
+const PAN_SENSITIVITY = 0.01;
+
+// Spherical coordinates (target values - set by user input)
+let cameraRadius = 10;
+let cameraAzimuth = Math.PI / 4; // 45° (diagonal view)
+let cameraElevation = Math.PI / 4; // 45° above horizontal
+
+// Target values (set by user input)
+let targetRadius = cameraRadius;
+let targetAzimuth = cameraAzimuth;
+let targetElevation = cameraElevation;
+
+// Current values (interpolated)
+let currentRadius = cameraRadius;
+let currentAzimuth = cameraAzimuth;
+let currentElevation = cameraElevation;
+
+// Calculate initial camera position to show entire base plate
+function calculateInitialCameraPosition() {
+    // Base plate dimensions
+    const basePlateSize = gridSize * cubeSize; // 7 units
+    const basePlateDiagonal = Math.sqrt(basePlateSize * basePlateSize * 2);
+    
+    // Calculate required distance to fit base plate in view
+    const fov = camera.fov * (Math.PI / 180); // Convert to radians
+    const aspect = camera.aspect;
+    const requiredDistance = (basePlateDiagonal + ZOOM_PADDING) / (2 * Math.tan(fov / 2) * aspect);
+    
+    // Set initial values
+    cameraRadius = Math.max(MIN_RADIUS, requiredDistance);
+    cameraElevation = Math.PI / 4; // 45°
+    cameraAzimuth = Math.PI / 4; // 45° (diagonal view)
+    
+    // Set target and current values
+    targetRadius = cameraRadius;
+    targetAzimuth = cameraAzimuth;
+    targetElevation = cameraElevation;
+    currentRadius = cameraRadius;
+    currentAzimuth = cameraAzimuth;
+    currentElevation = cameraElevation;
+}
+
+// Update camera position from spherical coordinates
+function updateCameraPosition() {
+    // Calculate effective tower center (with offset)
+    const effectiveTowerCenter = towerCenter.clone().add(towerPositionOffset);
+    
+    // Convert spherical to Cartesian coordinates
+    const x = currentRadius * Math.sin(currentElevation) * Math.cos(currentAzimuth);
+    const y = currentRadius * Math.cos(currentElevation);
+    const z = currentRadius * Math.sin(currentElevation) * Math.sin(currentAzimuth);
+    
+    // Set camera position
+    camera.position.set(
+        effectiveTowerCenter.x + x,
+        effectiveTowerCenter.y + y,
+        effectiveTowerCenter.z + z
+    );
+    
+    // Look at point 8 units above tower center
+    const lookAtOffset = new THREE.Vector3(0, 8, 0);
+    const lookAtTarget = effectiveTowerCenter.clone().add(lookAtOffset);
+    camera.lookAt(lookAtTarget);
+    
+    // Update tower group position
+    towerGroup.position.copy(towerCenter.clone().add(towerPositionOffset));
+    towerGroup.rotation.set(0, 0, 0); // Always locked to zero
+}
 
 // Initialize Rapier physics
 const physics = await initPhysics();
@@ -524,6 +560,9 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                 // Cells are now reserved - create the block
                 const block = new Block(length, cell.x, cell.z, randomDir, isVertical, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level);
                 
+                // Move block from scene to towerGroup
+                scene.remove(block.group);
+                
                 // Check if block has support (for level 2+)
                 // Note: We check support AFTER reserving cells because support check is independent
                 // and doesn't affect cell occupation. If support fails, we release the cells.
@@ -532,12 +571,11 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                     for (const cellKey of reservation.cells) {
                         occupiedCells.delete(cellKey);
                     }
-                    scene.remove(block.group);
                     continue;
                 }
                 
                 // Block is valid - keep it and cells remain reserved
-                scene.remove(block.group); // Remove from scene, will be added with animation
+                // Will be added to towerGroup with animation in placeBlocksBatch
                 blocksToPlace.push(block);
                 placedThisPass++;
             }
@@ -1020,11 +1058,11 @@ function placeBlocksBatch(blocksToPlace, batchSize = 10, delayBetweenBatches = 1
                 return;
             }
             
-            // Add all blocks in this batch to scene immediately
+            // Add all blocks in this batch to towerGroup immediately
             for (let i = startIdx; i < endIdx; i++) {
                 const block = blocksToPlace[i];
                 block.group.scale.set(0, 0, 0);
-                scene.add(block.group);
+                towerGroup.add(block.group);
                 blocks.push(block);
             }
             
@@ -1075,13 +1113,9 @@ async function generateSolvablePuzzle(level = 1) {
     isGeneratingLevel = true;
     levelCompleteShown = false; // Reset level complete flag for new level
     
-    // Reset camera rotation for new spawn
-    cameraRotationTime = 0;
-    cameraRotationAngle = 0;
-    
     // Clear existing blocks first
     for (const block of blocks) {
-        scene.remove(block.group);
+        towerGroup.remove(block.group);
     }
     blocks.length = 0;
     
@@ -1394,8 +1428,8 @@ function removeBlockWithAnimation(block) {
         if (progress < 1) {
             requestAnimationFrame(animate);
         } else {
-            // Animation complete - remove from scene and array
-            scene.remove(block.group);
+            // Animation complete - remove from towerGroup and array
+            towerGroup.remove(block.group);
             const index = blocks.indexOf(block);
             if (index > -1) {
                 blocks.splice(index, 1);
@@ -1538,6 +1572,9 @@ function updateUndoButtonState() {
     // Note: Remove button is now always enabled (it toggles remove mode)
 }
 
+// Initialize camera position
+calculateInitialCameraPosition();
+
 // Initialize game - load saved progress or start at level 0
 currentLevel = loadProgress();
 generateSolvablePuzzle(currentLevel);
@@ -1588,9 +1625,6 @@ const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 
 function onMouseClick(event) {
-    // IMMEDIATELY stop auto-rotation on any click (including left-click)
-    userHasControlledCamera = true;
-    
     // Only process left-clicks (button 0) for block interaction
     if (event.button !== 0) {
         return;
@@ -1900,15 +1934,11 @@ function startBlockFalling(block) {
 
 // Add click listener to window in capture phase to catch all clicks early
 window.addEventListener('click', (event) => {
-    // IMMEDIATELY stop auto-rotation on any click (capture phase - happens first)
-    userHasControlledCamera = true;
+    // Track clicks for block interaction
 }, { capture: true, passive: true }); // Use capture phase and passive for performance
 
 // Also handle touch events at window level
 window.addEventListener('touchstart', (event) => {
-    // IMMEDIATELY stop auto-rotation on touch/tap
-    userHasControlledCamera = true;
-    
     // Track touch start for tap detection (single touch only)
     if (event.touches.length === 1) {
         const touch = event.touches[0];
@@ -1920,15 +1950,149 @@ window.addEventListener('touchstart', (event) => {
 // Original click handler for block interaction (normal phase)
 window.addEventListener('click', onMouseClick);
 
+// Touch controls for camera
+let touchState = {
+    isActive: false,
+    touches: [],
+    startDistance: 0,
+    startCenter: null,
+    lastCenter: null,
+    isPinching: false
+};
+
+// Touch start handler
+renderer.domElement.addEventListener('touchstart', (event) => {
+    event.preventDefault();
+    
+    touchState.touches = Array.from(event.touches);
+    touchState.isActive = true;
+    
+    if (touchState.touches.length === 1) {
+        // Single touch - orbit mode
+        const touch = touchState.touches[0];
+        touchState.lastCenter = { x: touch.clientX, y: touch.clientY };
+        
+        // Track for block tap detection
+        touchStartPos = { x: touch.clientX, y: touch.clientY };
+        touchStartTime = performance.now();
+        isCameraDragging = false;
+    } else if (touchState.touches.length === 2) {
+        // Dual touch - pinch/pan mode
+        const touch1 = touchState.touches[0];
+        const touch2 = touchState.touches[1];
+        
+        const dx = touch2.clientX - touch1.clientX;
+        const dy = touch2.clientY - touch1.clientY;
+        touchState.startDistance = Math.sqrt(dx * dx + dy * dy);
+        
+        touchState.startCenter = {
+            x: (touch1.clientX + touch2.clientX) / 2,
+            y: (touch1.clientY + touch2.clientY) / 2
+        };
+        touchState.lastCenter = touchState.startCenter;
+        touchState.isPinching = false;
+    }
+}, { passive: false });
+
+// Touch move handler
+renderer.domElement.addEventListener('touchmove', (event) => {
+    event.preventDefault();
+    
+    if (!touchState.isActive) return;
+    
+    const currentTouches = Array.from(event.touches);
+    
+    if (currentTouches.length === 1 && touchState.touches.length === 1) {
+        // Single touch orbit
+        const touch = currentTouches[0];
+        const lastTouch = touchState.touches[0];
+        
+        const dx = touch.clientX - lastTouch.clientX;
+        const dy = touch.clientY - lastTouch.clientY;
+        
+        // Update azimuth and elevation
+        targetAzimuth += dx * DRAG_SENSITIVITY;
+        targetElevation -= dy * DRAG_SENSITIVITY;
+        targetElevation = Math.max(MIN_ELEVATION, Math.min(MAX_ELEVATION, targetElevation));
+        
+        touchState.touches = currentTouches;
+        
+        // Mark as camera drag
+        if (touchStartPos) {
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            if (distance > DRAG_THRESHOLD) {
+                isCameraDragging = true;
+            }
+        }
+    } else if (currentTouches.length === 2 && touchState.touches.length === 2) {
+        // Dual touch pinch/pan
+        const touch1 = currentTouches[0];
+        const touch2 = currentTouches[1];
+        
+        const dx = touch2.clientX - touch1.clientX;
+        const dy = touch2.clientY - touch1.clientY;
+        const currentDistance = Math.sqrt(dx * dx + dy * dy);
+        
+        const distanceChange = Math.abs(currentDistance - touchState.startDistance) / touchState.startDistance;
+        
+        if (distanceChange > 0.1) {
+            // Pinch to zoom
+            touchState.isPinching = true;
+            const zoomFactor = currentDistance / touchState.startDistance;
+            targetRadius /= zoomFactor;
+            targetRadius = Math.max(MIN_RADIUS, Math.min(MAX_RADIUS, targetRadius));
+            touchState.startDistance = currentDistance;
+        } else {
+            // Dual touch drag (pan/reframe)
+            const currentCenter = {
+                x: (touch1.clientX + touch2.clientX) / 2,
+                y: (touch1.clientY + touch2.clientY) / 2
+            };
+            
+            const deltaX = currentCenter.x - touchState.lastCenter.x;
+            const deltaY = currentCenter.y - touchState.lastCenter.y;
+            
+            // Convert screen-space movement to world-space using camera's right/up vectors
+            const right = new THREE.Vector3();
+            right.setFromMatrixColumn(camera.matrixWorld, 0).normalize();
+            const up = new THREE.Vector3();
+            up.setFromMatrixColumn(camera.matrixWorld, 1).normalize();
+            
+            towerPositionOffset.add(right.multiplyScalar(-deltaX * PAN_SENSITIVITY));
+            towerPositionOffset.add(up.multiplyScalar(deltaY * PAN_SENSITIVITY));
+            
+            touchState.lastCenter = currentCenter;
+        }
+        
+        touchState.touches = currentTouches;
+    }
+}, { passive: false });
+
+// Touch end handler
+renderer.domElement.addEventListener('touchend', (event) => {
+    event.preventDefault();
+    
+    const remainingTouches = Array.from(event.touches);
+    
+    if (remainingTouches.length === 0) {
+        // All touches ended
+        touchState.isActive = false;
+        touchState.touches = [];
+        touchState.isPinching = false;
+    } else if (remainingTouches.length === 1) {
+        // One touch ended, switch to single touch mode
+        touchState.touches = remainingTouches;
+        const touch = remainingTouches[0];
+        touchState.lastCenter = { x: touch.clientX, y: touch.clientY };
+    }
+}, { passive: false });
+
 // Touch handler for mobile block interaction
 let touchStartPos = null;
 let touchStartTime = null;
 const TOUCH_DRAG_THRESHOLD = 5; // pixels - minimum movement to consider it a drag
 
 function onTouchEnd(event) {
-    // IMMEDIATELY stop auto-rotation on any touch end
-    userHasControlledCamera = true;
-    
     // Only process single touch (not multi-touch)
     if (event.touches.length > 0 || event.changedTouches.length !== 1) {
         touchStartPos = null;
@@ -2044,6 +2208,11 @@ window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
+    
+    // Recalculate initial camera position if needed
+    if (!isGeneratingLevel && blocks.length === 0) {
+        calculateInitialCameraPosition();
+    }
 });
 
 // Animation loop with physics
@@ -2065,38 +2234,46 @@ function animate() {
     const deltaTime = (currentTime - lastTime) / 1000;
     lastTime = currentTime;
     
-    // Auto-rotate camera until user manually controls it
-    if (!userHasControlledCamera) {
-        cameraRotationTime += deltaTime;
-        cameraRotationAngle = cameraRotationTime * ROTATION_SPEED * 60; // Scale by 60 for consistent speed
+    // Update tower group position
+    towerGroup.position.copy(towerCenter.clone().add(towerPositionOffset));
+    towerGroup.rotation.set(0, 0, 0); // Always locked to zero
+    
+    // Dynamic zoom during spawn
+    if (isGeneratingLevel && blocks.length > 0) {
+        // Calculate bounding box of all blocks
+        const box = new THREE.Box3();
+        for (const block of blocks) {
+            block.group.updateMatrixWorld(true);
+            box.expandByObject(block.group);
+        }
         
-        // Calculate camera position around the tower center
-        const radius = 15; // Distance from tower center
-        const height = 12; // Height above tower
-        const cameraX = towerCenterX + radius * Math.cos(cameraRotationAngle);
-        const cameraZ = towerCenterZ + radius * Math.sin(cameraRotationAngle);
-        const cameraY = height;
+        const size = box.getSize(new THREE.Vector3());
+        const center = box.getCenter(new THREE.Vector3());
         
-        // Update camera position
-        camera.position.set(cameraX, cameraY, cameraZ);
-        camera.lookAt(towerCenterX, towerCenterY + 2, towerCenterZ);
+        // Calculate required distance to fit all blocks
+        const fov = camera.fov * (Math.PI / 180);
+        const aspect = camera.aspect;
         
-        // Update controls target to match
-        controls.target.set(towerCenterX, towerCenterY + 2, towerCenterZ);
+        // Calculate distance needed for height (with extra padding for spawn)
+        const heightDistance = (size.y + SPAWN_ZOOM_PADDING) / (2 * Math.tan(fov / 2));
         
-        // Track when we last updated for auto-rotation (to distinguish from user input)
-        lastAutoRotationTime = currentTime;
+        // Calculate distance needed for width/depth (with extra padding for spawn)
+        const baseDiagonal = Math.sqrt(size.x * size.x + size.z * size.z);
+        const widthDistance = (baseDiagonal + SPAWN_ZOOM_PADDING) / (2 * Math.tan(fov / 2) * aspect);
         
-        // Update previous position for change detection
-        previousCameraPosition.copy(camera.position);
-        previousCameraTarget.copy(controls.target);
-    } else {
-        // User has control - let OrbitControls handle everything
-        // Don't override camera position - let OrbitControls manage it
-        // Just update previous positions for tracking
-        previousCameraPosition.copy(camera.position);
-        previousCameraTarget.copy(controls.target);
+        // Use the larger distance and apply multiplier for extra zoom out
+        const requiredDistance = Math.max(heightDistance, widthDistance) * SPAWN_ZOOM_MULTIPLIER;
+        targetRadius = Math.max(MIN_RADIUS, Math.min(MAX_RADIUS, requiredDistance));
     }
+    
+    // Smooth interpolation
+    const smoothing = isGeneratingLevel ? 0.25 : 0.1; // Faster during spawn, slower during gameplay
+    currentRadius += (targetRadius - currentRadius) * smoothing;
+    currentAzimuth += (targetAzimuth - currentAzimuth) * smoothing;
+    currentElevation += (targetElevation - currentElevation) * smoothing;
+    
+    // Update camera position
+    updateCameraPosition();
     
     // Update timer display (every frame for smooth updates)
     updateTimerDisplay();
@@ -2159,6 +2336,13 @@ function animate() {
         // Clean up removed blocks and update solution tracking
         for (let i = blocks.length - 1; i >= 0; i--) {
             if (blocks[i].isRemoved) {
+                const block = blocks[i];
+                
+                // Ensure block is removed from towerGroup (in case remove() didn't work)
+                if (block.group.parent) {
+                    block.group.parent.remove(block.group);
+                }
+                
                 // Block was removed (fell off) - advance solution if we're tracking
                 if (window.puzzleSolution && window.solutionStep < window.puzzleSolution.length) {
                     window.solutionStep++;
@@ -2182,7 +2366,6 @@ function animate() {
         
     }
     
-    controls.update();
     renderer.render(scene, camera);
 }
 
