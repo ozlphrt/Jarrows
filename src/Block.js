@@ -510,7 +510,7 @@ export class Block {
         const surfaceOffset = 0.01;
         
         // Create forward-facing dot (small filled circle)
-        const dotRadius = 0.08;
+        const dotRadius = 0.18; // Increased from 0.12
         const dotShape = new THREE.Shape();
         dotShape.arc(0, 0, dotRadius, 0, Math.PI * 2, false);
         
@@ -548,10 +548,10 @@ export class Block {
         
         // Create 3D extruded dot (like arrows)
         const dotExtrudeSettings = {
-            depth: 0.04,
+            depth: 0.08, // Increased from 0.04
             bevelEnabled: true,
-            bevelThickness: 0.01,
-            bevelSize: 0.01,
+            bevelThickness: 0.02, // Increased from 0.01
+            bevelSize: 0.02, // Increased from 0.01
             bevelSegments: 4
         };
         
@@ -570,20 +570,20 @@ export class Block {
         dotMesh.receiveShadow = true;
         
         // Create backward-facing outlined circle - 3D extruded
-        const circleRadius = 0.18;
+        const circleRadius = 0.26; // Increased from 0.18
         const circleShape = new THREE.Shape();
         circleShape.arc(0, 0, circleRadius, 0, Math.PI * 2, false);
         
         // Create hole for outline effect
         const hole = new THREE.Path();
-        hole.arc(0, 0, circleRadius - 0.02, 0, Math.PI * 2, true);
+        hole.arc(0, 0, circleRadius - 0.03, 0, Math.PI * 2, true); // Increased hole offset from 0.02 to 0.03
         circleShape.holes.push(hole);
         
         const circleExtrudeSettings = {
-            depth: 0.04,
+            depth: 0.08, // Increased from 0.04
             bevelEnabled: true,
-            bevelThickness: 0.01,
-            bevelSize: 0.01,
+            bevelThickness: 0.02, // Increased from 0.01
+            bevelSize: 0.02, // Increased from 0.01
             bevelSegments: 4
         };
         

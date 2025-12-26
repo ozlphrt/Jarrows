@@ -6,14 +6,17 @@ export default ({ command }) => {
   // Determine base path and icon paths based on build mode
   const base = command === 'build' ? '/Jarrows/' : '/';
   const iconBase = command === 'build' ? '/Jarrows' : '';
+  const isDev = command === 'serve';
   
-  return {
-    // Only use base path in production build (for GitHub Pages subdirectory deployment)
-    // In dev mode, use root path to avoid module resolution issues
-    base,
-    plugins: [
-      wasm(),
-      topLevelAwait(),
+  // Build plugins array conditionally
+  const plugins = [
+    wasm(),
+    topLevelAwait(),
+  ];
+  
+  // Only include VitePWA plugin in production builds to avoid service worker interference with HMR
+  if (!isDev) {
+    plugins.push(
       VitePWA({
         registerType: 'autoUpdate',
         includeAssets: ['192.png', '512.png'],
@@ -39,10 +42,6 @@ export default ({ command }) => {
               }
             }
           ]
-        },
-        devOptions: {
-          enabled: true,
-          type: 'module'
         },
         manifest: {
           name: 'Jarrows - Sliding Block Puzzle',
@@ -70,12 +69,36 @@ export default ({ command }) => {
           ]
         }
       })
-    ],
+    );
+  }
+  
+  return {
+    // Only use base path in production build (for GitHub Pages subdirectory deployment)
+    // In dev mode, use root path to avoid module resolution issues
+    base,
+    plugins,
     server: {
       port: 3000,
       open: true,
       fs: {
         allow: ['..']
+      },
+      // Enable HMR with proper configuration
+      hmr: {
+        overlay: true,
+        protocol: 'ws',
+        host: 'localhost'
+      },
+      // Watch configuration for better file change detection
+      watch: {
+        usePolling: false, // Set to true if on WSL/Docker
+        interval: 100
+      },
+      // Disable caching headers in dev mode
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
       }
     },
     build: {

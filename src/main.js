@@ -243,6 +243,11 @@ function updateLightsForCamera(lights, azimuth, elevation, center) {
     
     const cameraDirection = new THREE.Vector3(cameraDirX, cameraDirY, cameraDirZ).normalize();
     
+    // Minimum angle above base plate: 30 degrees
+    // tan(30°) ≈ 0.577, so y >= 0.577 * sqrt(x² + z²)
+    const minAngleRad = Math.PI / 6; // 30 degrees
+    const minTanAngle = Math.tan(minAngleRad); // ≈ 0.577
+    
     // Key light: positioned more towards camera to increase shadows and reflections visible from camera
     // Position light closer to camera direction but slightly offset to create visible shadows
     const keyLightDistance = 30;
@@ -252,7 +257,15 @@ function updateLightsForCamera(lights, azimuth, elevation, center) {
         cameraDirection.y * 0.5 + 0.3, // More elevation for better shadows
         cameraDirection.z * 0.3 + Math.cos(azimuth + Math.PI/4) * 0.2
     );
-    const keyLightPos = cameraDirection.clone().multiplyScalar(keyLightDistance).add(keyLightOffset);
+    let keyLightPos = cameraDirection.clone().multiplyScalar(keyLightDistance).add(keyLightOffset);
+    
+    // Ensure minimum 30° angle above base plate
+    const keyHorizontalDist = Math.sqrt(keyLightPos.x * keyLightPos.x + keyLightPos.z * keyLightPos.z);
+    const minKeyY = keyHorizontalDist * minTanAngle;
+    if (keyLightPos.y < minKeyY) {
+        keyLightPos.y = minKeyY;
+    }
+    
     lights.keyLight.position.copy(center.clone().add(keyLightPos));
     
     // Update shadow camera to ensure it covers the scene (important for directional lights)
@@ -265,8 +278,16 @@ function updateLightsForCamera(lights, azimuth, elevation, center) {
     
     // Fill light: positioned opposite to key light to soften shadows
     const fillLightDistance = 25;
-    const fillLightPos = cameraDirection.clone().multiplyScalar(-fillLightDistance);
+    let fillLightPos = cameraDirection.clone().multiplyScalar(-fillLightDistance);
     fillLightPos.y += 6; // Keep it elevated but lower for more shadow contrast
+    
+    // Ensure minimum 30° angle above base plate
+    const fillHorizontalDist = Math.sqrt(fillLightPos.x * fillLightPos.x + fillLightPos.z * fillLightPos.z);
+    const minFillY = fillHorizontalDist * minTanAngle;
+    if (fillLightPos.y < minFillY) {
+        fillLightPos.y = minFillY;
+    }
+    
     if (lights.fillLight) {
         lights.fillLight.position.copy(center.clone().add(fillLightPos));
     }
@@ -1993,10 +2014,10 @@ if (newGameButton) {
     });
 }
 
-const centerTowerButton = document.getElementById('center-tower-button');
-if (centerTowerButton) {
-    centerTowerButton.addEventListener('click', () => {
-        centerTower();
+const diceButton = document.getElementById('dice-button');
+if (diceButton) {
+    diceButton.addEventListener('click', () => {
+        centerTower(); // Keep centerTower functionality for now
     });
 }
 
