@@ -839,17 +839,27 @@ export class Block {
     
     // Animate random spin: fast rotation that slows down and stops at random direction
     animateRandomSpin(duration = 1800, callback = null) {
-        // Only vertical blocks and single-cell blocks can spin
-        if (!this.isVertical && this.length !== 1) {
+        // Vertical blocks, single-cell blocks, and horizontal multi-cell blocks can spin
+        // Horizontal multi-cell blocks can only rotate 180 degrees (flip direction)
+        const isHorizontalMultiCell = !this.isVertical && this.length > 1;
+        
+        if (!this.isVertical && this.length !== 1 && !isHorizontalMultiCell) {
             if (callback) callback();
             return;
         }
         
-        // If no arrow, just set random direction immediately
+        // If no arrow, just set direction immediately
         if (!this.arrow || !this.arrow.children.length > 0) {
-            const directions = [{x: 1, z: 0}, {x: -1, z: 0}, {x: 0, z: 1}, {x: 0, z: -1}];
-            const randomDir = directions[Math.floor(Math.random() * directions.length)];
-            this.direction = randomDir;
+            let targetDirection;
+            if (isHorizontalMultiCell) {
+                // Horizontal multi-cell: flip 180 degrees (opposite direction)
+                targetDirection = { x: -this.direction.x, z: -this.direction.z };
+            } else {
+                // Vertical or single-cell: random direction
+                const directions = [{x: 1, z: 0}, {x: -1, z: 0}, {x: 0, z: 1}, {x: 0, z: -1}];
+                targetDirection = directions[Math.floor(Math.random() * directions.length)];
+            }
+            this.direction = targetDirection;
             this.updateArrowRotation();
             if (callback) callback();
             return;
@@ -857,23 +867,38 @@ export class Block {
         
         const topArrow = this.arrow.children[0];
         if (!topArrow) {
-            const directions = [{x: 1, z: 0}, {x: -1, z: 0}, {x: 0, z: 1}, {x: 0, z: -1}];
-            const randomDir = directions[Math.floor(Math.random() * directions.length)];
-            this.direction = randomDir;
+            let targetDirection;
+            if (isHorizontalMultiCell) {
+                // Horizontal multi-cell: flip 180 degrees (opposite direction)
+                targetDirection = { x: -this.direction.x, z: -this.direction.z };
+            } else {
+                // Vertical or single-cell: random direction
+                const directions = [{x: 1, z: 0}, {x: -1, z: 0}, {x: 0, z: 1}, {x: 0, z: -1}];
+                targetDirection = directions[Math.floor(Math.random() * directions.length)];
+            }
+            this.direction = targetDirection;
             this.updateArrowRotation();
             if (callback) callback();
             return;
         }
         
-        // Pick random target direction (one of 4 cardinal directions)
-        const directions = [{x: 1, z: 0}, {x: -1, z: 0}, {x: 0, z: 1}, {x: 0, z: -1}];
-        const targetDirection = directions[Math.floor(Math.random() * directions.length)];
+        // Determine target direction based on block type
+        let targetDirection;
+        if (isHorizontalMultiCell) {
+            // Horizontal multi-cell: flip 180 degrees (opposite direction)
+            targetDirection = { x: -this.direction.x, z: -this.direction.z };
+        } else {
+            // Vertical or single-cell: random direction (one of 4 cardinal directions)
+            const directions = [{x: 1, z: 0}, {x: -1, z: 0}, {x: 0, z: 1}, {x: 0, z: -1}];
+            targetDirection = directions[Math.floor(Math.random() * directions.length)];
+        }
         
         // Calculate start and end angles
         const startAngle = Math.atan2(this.direction.x, this.direction.z) + Math.PI;
         const targetAngle = Math.atan2(targetDirection.x, targetDirection.z) + Math.PI;
         
         // Calculate number of full rotations (2-4 rotations for visual effect)
+        // For horizontal multi-cell blocks, ensure we rotate exactly 180 degrees + full rotations
         const numRotations = 2 + Math.random() * 2; // 2-4 rotations
         const totalRotation = numRotations * Math.PI * 2;
         
@@ -882,6 +907,13 @@ export class Block {
         // Normalize to [-PI, PI] range
         while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
         while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+        
+        // For horizontal multi-cell blocks, angleDiff should be exactly PI (180 degrees)
+        // But we allow some tolerance in case of floating point issues
+        if (isHorizontalMultiCell) {
+            // Ensure we rotate exactly 180 degrees (PI radians)
+            angleDiff = Math.PI; // Always 180 degrees for horizontal multi-cell
+        }
         
         // Add full rotations in the same direction as the shortest path
         // If angleDiff is positive, rotate clockwise (positive); if negative, rotate counter-clockwise (negative)
@@ -1729,23 +1761,6 @@ export class Block {
             }
         }
         
-        // All movements use constant speed (linear interpolation)
-        let duration;
-        if (hasHeadOnCollision) {
-            // Head-on collision: calculate distance to collision + distance after + rotation pause
-            const distanceToCollision = Math.sqrt((collisionX - startX) ** 2 + (collisionZ - startZ) ** 2);
-            const distanceAfterCollision = Math.sqrt((finalX - collisionX) ** 2 + (finalZ - collisionZ) ** 2);
-            const totalDistance = distanceToCollision + distanceAfterCollision;
-            duration = (totalDistance / constantSpeed) + rotationPauseDuration;
-            collisionProgress = (distanceToCollision / constantSpeed) / duration;
-        } else if (isCatapult) {
-            // Blocks going off board: use constant speed (linear) - no easing
-            duration = recalculatedTotalDistance / constantSpeed;
-        } else {
-            // Normal movement: use constant speed (linear) - no easing
-            duration = recalculatedTotalDistance / constantSpeed;
-        }
-        
         // Update grid position to final valid position
         // For head-on collisions, direction was already rotated during movement calculation
         this.gridX = finalGridX;
@@ -1773,6 +1788,28 @@ export class Block {
             }
         }
         
+        // All movements use constant speed (linear interpolation)
+        let duration;
+        let timeToCollision = 0;
+        let timeAfterCollision = 0;
+        if (hasHeadOnCollision) {
+            // Head-on collision: calculate time to collision and time after collision separately
+            // to maintain same constant speed before and after collision
+            // IMPORTANT: Calculate distanceAfterCollision AFTER finalX/finalZ are recalculated with rotated direction
+            const distanceToCollision = Math.sqrt((collisionX - startX) ** 2 + (collisionZ - startZ) ** 2);
+            const distanceAfterCollision = Math.sqrt((finalX - collisionX) ** 2 + (finalZ - collisionZ) ** 2);
+            timeToCollision = distanceToCollision / constantSpeed;
+            timeAfterCollision = distanceAfterCollision / constantSpeed;
+            duration = timeToCollision + rotationPauseDuration + timeAfterCollision;
+            collisionProgress = timeToCollision / duration;
+        } else if (isCatapult) {
+            // Blocks going off board: use constant speed (linear) - no easing
+            duration = recalculatedTotalDistance / constantSpeed;
+        } else {
+            // Normal movement: use constant speed (linear) - no easing
+            duration = recalculatedTotalDistance / constantSpeed;
+        }
+        
         const startTime = performance.now();
         
         // Track rotation animation state for head-on collisions
@@ -1784,15 +1821,18 @@ export class Block {
             let progress = Math.min(elapsed / duration, 1);
             
             if (hasHeadOnCollision) {
-                if (progress < collisionProgress) {
-                    // Before collision: animate to collision position
-                    const preCollisionProgress = progress / collisionProgress;
+                // Use actual elapsed time for accurate speed calculation
+                const elapsedTime = elapsed;
+                const collisionTime = timeToCollision;
+                
+                if (elapsedTime < collisionTime) {
+                    // Before collision: animate to collision position at constant speed
+                    const preCollisionProgress = elapsedTime / collisionTime;
                     this.group.position.x = startX + (collisionX - startX) * preCollisionProgress;
                     this.group.position.z = startZ + (collisionZ - startZ) * preCollisionProgress;
                     this.group.scale.set(1, 1, 1);
                 } else {
-                    // At or after collision: pause at collision position and rotate
-                    const timeSinceCollision = (progress - collisionProgress) * duration;
+                    const timeSinceCollision = elapsedTime - collisionTime;
                     
                     if (timeSinceCollision < rotationPauseDuration) {
                         // Pause at collision position
@@ -1830,11 +1870,14 @@ export class Block {
                             rotationCompleted = true;
                         }
                     } else {
-                        // After rotation: continue to final position
-                        const postRotationProgress = (timeSinceCollision - rotationPauseDuration) / (duration - (collisionProgress * duration) - rotationPauseDuration);
-                        const clampedPostProgress = Math.max(0, Math.min(1, postRotationProgress));
-                        this.group.position.x = collisionX + (finalX - collisionX) * clampedPostProgress;
-                        this.group.position.z = collisionZ + (finalZ - collisionZ) * clampedPostProgress;
+                        // After rotation: continue to final position at same constant speed
+                        const timeAfterRotation = timeSinceCollision - rotationPauseDuration;
+                        // Use same constant speed calculation as pre-collision
+                        const postRotationProgress = timeAfterCollision > 0 ? Math.min(timeAfterRotation / timeAfterCollision, 1) : 1;
+                        
+                        // Move from collision position to final position at constant speed
+                        this.group.position.x = collisionX + (finalX - collisionX) * postRotationProgress;
+                        this.group.position.z = collisionZ + (finalZ - collisionZ) * postRotationProgress;
                         this.group.scale.set(1, 1, 1);
                     }
                 }

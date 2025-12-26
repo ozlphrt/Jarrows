@@ -7,6 +7,8 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <title>Sliding Block Puzzle</title>
+    <link rel="icon" type="image/png" href="/192.png">
+    <link rel="shortcut icon" type="image/png" href="/192.png">
     <style>
         body {
             margin: 0;
@@ -387,23 +389,21 @@
             opacity: 1 !important;
         }
         
-        /* Dice Button - styled as toggle icon */
+        /* Dice Button - styled as game button */
         #dice-button {
-            width: 40px !important;
-            height: 40px !important;
-            min-width: 40px !important;
-            min-height: 40px !important;
-            opacity: 1 !important;
-            visibility: visible !important;
-            display: flex !important;
-            padding: 6px !important;
+            flex: 0 0 auto !important;
+            min-width: auto !important;
+            max-width: none !important;
+            padding: 10px 14px !important;
         }
         
         #dice-icon {
-            width: 28px !important;
-            height: 28px !important;
+            width: 20px !important;
+            height: 20px !important;
             opacity: 1 !important;
             visibility: visible !important;
+            display: block !important;
+            flex-shrink: 0 !important;
         }
         
         #dice-icon path {
@@ -412,36 +412,98 @@
             fill: none !important;
         }
         
-        #dice-icon circle {
-            fill: white !important;
-        }
-        
         #spin-counter {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            font-size: 14px !important;
-            font-weight: 800 !important;
-            fill: white !important;
-            text-anchor: middle !important;
-            dominant-baseline: middle !important;
-            alignment-baseline: middle !important;
+            font-size: 13px !important;
+            font-weight: 600 !important;
+            color: white !important;
             pointer-events: none !important;
             user-select: none !important;
             -webkit-user-select: none !important;
-            stroke: rgba(0, 0, 0, 0.8) !important;
-            stroke-width: 1.5 !important;
-            paint-order: stroke fill !important;
-        }
-        
-        #toggle-switches #dice-button {
-            display: flex !important;
-            visibility: visible !important;
-            opacity: 1 !important;
-            position: relative !important;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3) !important;
         }
         
         #dice-button:disabled {
             opacity: 0.5 !important;
             cursor: not-allowed !important;
+        }
+        
+        #settings-container {
+            position: relative;
+        }
+        
+        #settings-menu {
+            z-index: 1001;
+        }
+        
+        #settings-menu.show {
+            display: flex !important;
+        }
+        
+        /* Settings Button - styled as game button */
+        #settings-toggle {
+            flex: 0 0 auto !important;
+            min-width: auto !important;
+            max-width: none !important;
+            padding: 10px 14px !important;
+        }
+        
+        #settings-icon {
+            width: 20px !important;
+            height: 20px !important;
+        }
+        
+        /* Framing Control in Settings Menu */
+        #framing-control {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 8px;
+            padding: 8px 3px;
+            width: 28px;
+            height: 120px;
+            cursor: ns-resize;
+            user-select: none;
+            transition: transform 0.1s ease-out, background 0.2s ease;
+            position: relative;
+            margin-top: 4px;
+        }
+        
+        #framing-control:hover {
+            background: rgba(0, 0, 0, 0.5);
+            border-color: rgba(255, 255, 255, 0.35);
+        }
+        
+        #framing-control.pushing-up {
+            transform: translateY(-4px);
+            background: rgba(255, 255, 255, 0.1);
+        }
+        
+        #framing-control.pushing-down {
+            transform: translateY(4px);
+            background: rgba(255, 255, 255, 0.1);
+        }
+        
+        /* Framing Value Display */
+        #framing-value-display {
+            background: rgba(255, 255, 255, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 6px;
+            padding: 8px 2px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            font-size: 11px;
+            font-weight: 600;
+            color: white;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+            min-width: auto;
+            width: 100%;
+            text-align: center;
+            white-space: nowrap;
+            pointer-events: none;
+            box-sizing: border-box;
         }
         
     </style>
@@ -473,8 +535,6 @@
     
     <!-- Game Control Buttons -->
     <div id="game-controls">
-        <button class="game-button" id="undo-button">UNDO</button>
-        <button class="game-button" id="remove-button">REMOVE</button>
         <button class="game-button two-line" id="restart-level-button">
             <div>RESTART</div>
             <div>LEVEL</div>
@@ -483,32 +543,44 @@
             <div>NEW</div>
             <div>GAME</div>
         </button>
-        <div id="toggle-switches">
-            <button class="toggle-icon active" id="theme-toggle" title="Dark/Light Theme">
-                <svg id="theme-icon" viewBox="0 0 24 24" fill="rgba(255,255,255,0.8)" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <!-- Moon icon (default/dark theme) - light fill with thick outline, C-shaped crescent -->
-                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
-                </svg>
-            </button>
-            <button class="toggle-icon" id="colors-toggle" title="Colored/White Blocks">
-                <svg id="colors-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <!-- White blocks icon (default) -->
-                    <rect x="3" y="3" width="7" height="7" rx="1" fill="white"></rect>
-                    <rect x="14" y="3" width="7" height="7" rx="1" fill="white"></rect>
-                    <rect x="14" y="14" width="7" height="7" rx="1" fill="white"></rect>
-                    <rect x="3" y="14" width="7" height="7" rx="1" fill="white"></rect>
-                </svg>
-            </button>
-            <button class="toggle-icon active" id="dice-button" title="Random">
-                <svg id="dice-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <button class="game-button" id="dice-button" title="Random" style="position: relative; display: flex; align-items: center; gap: 6px;">
+                <svg id="dice-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 20px; height: 20px; flex-shrink: 0;">
                     <!-- Refresh/Reload Icon -->
                     <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path>
                     <path d="M21 3v5h-5"></path>
                     <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path>
                     <path d="M3 21v-5h5"></path>
-                    <text id="spin-counter" x="12" y="12" text-anchor="middle" font-size="14" font-weight="800" fill="white" style="pointer-events: none;">3</text>
+                </svg>
+                <span id="spin-counter">3</span>
+            </button>
+        <div id="settings-container" style="position: relative;">
+            <button class="game-button" id="settings-toggle" title="Settings" style="display: flex; align-items: center; justify-content: center;">
+                <svg id="settings-icon" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 20px; height: 20px;">
+                    <!-- Simple minimalist gear icon -->
+                    <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"></path>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
                 </svg>
             </button>
+            <div id="settings-menu" style="position: absolute; bottom: 100%; right: 0; margin-bottom: 8px; background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 10px; padding: 6px; display: none; flex-direction: column; gap: 4px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2), 0 2px 8px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.15);">
+                <button class="toggle-icon active" id="theme-toggle" title="Dark/Light Theme">
+                    <svg id="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <!-- Minimalist outlined crescent moon -->
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" fill="none"></path>
+                    </svg>
+                </button>
+                <button class="toggle-icon" id="colors-toggle" title="Colored/White Blocks">
+                    <svg id="colors-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <!-- White blocks icon (default) -->
+                        <rect x="3" y="3" width="7" height="7" rx="1" fill="white"></rect>
+                        <rect x="14" y="3" width="7" height="7" rx="1" fill="white"></rect>
+                        <rect x="14" y="14" width="7" height="7" rx="1" fill="white"></rect>
+                        <rect x="3" y="14" width="7" height="7" rx="1" fill="white"></rect>
+                    </svg>
+                </button>
+                <div id="framing-control" title="Push up/down to adjust framing">
+                    <div id="framing-value-display">0.1</div>
+                </div>
+            </div>
         </div>
     </div>
     
@@ -555,9 +627,47 @@
         
         // Wait for main.js to load and expose scene/blocks
         let blocks;
-        let isDarkTheme = true; // Default to dark theme
-        let useColoredBlocks = false; // Default to white blocks
+        // Load preferences from localStorage
+        function loadPreferences() {
+            try {
+                const savedTheme = localStorage.getItem('jarrows_theme');
+                const savedColors = localStorage.getItem('jarrows_colors');
+                const savedFraming = localStorage.getItem('jarrows_framing');
+                
+                return {
+                    isDarkTheme: savedTheme !== null ? savedTheme === 'dark' : true,
+                    useColoredBlocks: savedColors !== null ? savedColors === 'colored' : false,
+                    framingOffset: savedFraming !== null ? parseFloat(savedFraming) : 0.1
+                };
+            } catch (e) {
+                console.warn('Failed to load preferences:', e);
+                return {
+                    isDarkTheme: true,
+                    useColoredBlocks: false,
+                    framingOffset: 0.1
+                };
+            }
+        }
+        
+        // Save preferences to localStorage
+        function savePreferences() {
+            try {
+                localStorage.setItem('jarrows_theme', isDarkTheme ? 'dark' : 'light');
+                localStorage.setItem('jarrows_colors', useColoredBlocks ? 'colored' : 'white');
+                localStorage.setItem('jarrows_framing', window.framingOffsetY.toString());
+            } catch (e) {
+                console.warn('Failed to save preferences:', e);
+            }
+        }
+        
+        // Load preferences
+        const preferences = loadPreferences();
+        let isDarkTheme = preferences.isDarkTheme;
+        let useColoredBlocks = preferences.useColoredBlocks;
         let handlersSetup = false;
+        
+        // Set initial framing offset
+        window.framingOffsetY = preferences.framingOffset;
         
         // Expose settings globally so blocks can check on creation
         window.useColoredBlocksDefault = useColoredBlocks;
@@ -590,11 +700,11 @@
                 // Top: very dark grey, Bottom: almost black
                 window.setGradientBackground(scene, 0x0f0f0f, 0x050505);
                 window.setupFog(scene, true);
-                // Show moon icon (light fill with thick outline, C-shaped crescent)
-                themeIcon.setAttribute('fill', 'rgba(255,255,255,0.8)');
+                // Show minimalist outlined moon icon
+                themeIcon.setAttribute('fill', 'none');
                 themeIcon.setAttribute('stroke', 'currentColor');
-                themeIcon.setAttribute('stroke-width', '2.5');
-                themeIcon.innerHTML = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>';
+                themeIcon.setAttribute('stroke-width', '2');
+                themeIcon.innerHTML = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" fill="none"></path>';
                 themeToggle.classList.add('active'); // Active for dark theme
             } else {
                 // Light theme: much darker sky blue gradient
@@ -667,14 +777,35 @@
             
             const themeToggle = document.getElementById('theme-toggle');
             const colorsToggle = document.getElementById('colors-toggle');
+            const settingsToggle = document.getElementById('settings-toggle');
+            const settingsMenu = document.getElementById('settings-menu');
+            const settingsContainer = document.getElementById('settings-container');
             
-            console.log('Setting up toggle handlers...', { themeToggle, colorsToggle });
+            console.log('Setting up toggle handlers...', { themeToggle, colorsToggle, settingsToggle });
             
-            if (!themeToggle || !colorsToggle) {
-                console.warn('Toggle buttons not found, retrying...', { themeToggle, colorsToggle });
+            if (!themeToggle || !colorsToggle || !settingsToggle) {
+                console.warn('Toggle buttons not found, retrying...', { themeToggle, colorsToggle, settingsToggle });
                 handlersSetup = false;
                 setTimeout(setupToggleHandlers, 100);
                 return;
+            }
+            
+            // Settings menu toggle handler
+            if (settingsToggle && settingsMenu) {
+                settingsToggle.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    settingsMenu.classList.toggle('show');
+                });
+            }
+            
+            // Close settings menu when clicking outside
+            if (settingsContainer && settingsMenu) {
+                document.addEventListener('click', function(e) {
+                    if (!settingsContainer.contains(e.target)) {
+                        settingsMenu.classList.remove('show');
+                    }
+                });
             }
             
             // Theme toggle handler (sun = light theme, moon = dark theme)
@@ -684,6 +815,7 @@
                 console.log('Theme toggle clicked, current state:', isDarkTheme);
                 isDarkTheme = !isDarkTheme;
                 updateThemeIcon();
+                savePreferences();
             });
             
             // Colors toggle handler (colored blocks vs white blocks)
@@ -696,12 +828,19 @@
                 window.useColoredBlocksDefault = useColoredBlocks;
                 updateColorsIcon();
                 updateBlockColors();
+                savePreferences();
             });
             
             // Initialize icons and apply default theme/colors
             updateThemeIcon();
             updateColorsIcon();
             updateBlockColors(); // Apply white blocks on initial load
+            
+            // Update framing value display with loaded preference
+            const framingValueDisplay = document.getElementById('framing-value-display');
+            if (framingValueDisplay) {
+                framingValueDisplay.textContent = window.framingOffsetY.toFixed(1);
+            }
             
             console.log('Toggle handlers setup complete');
         }

@@ -19,6 +19,7 @@ window.setupFog = setupFog;
 // Global arrow style
 let currentArrowStyle = 2;
 
+
 const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -162,7 +163,7 @@ const MAX_ELEVATION = Math.PI / 2 - 0.1;
 const ZOOM_PADDING = 2;
 const SPAWN_ZOOM_PADDING = 4; // Extra padding during spawn to show all blocks
 const SPAWN_ZOOM_MULTIPLIER = 1.3; // Additional multiplier for spawn zoom
-const DRAG_SENSITIVITY = 0.002; // Reduced for heavier feel
+const DRAG_SENSITIVITY = 0.0025; // Slightly increased for more responsive rotation
 const PAN_SENSITIVITY = 0.01;
 
 // Spherical coordinates (target values - set by user input)
@@ -222,8 +223,9 @@ function updateCameraPosition() {
         effectiveTowerCenter.z + z
     );
     
-    // Look at point higher above tower center to move base plate up in frame
-    const lookAtOffset = new THREE.Vector3(0, 4, 0);
+    // Look at point higher above tower center to move base plate down in frame (closer to bottom)
+    // Vertical framing offset - controlled by slider (default 6.5, range ~4 to ~10)
+    const lookAtOffset = new THREE.Vector3(0, window.framingOffsetY || 6.5, 0);
     const lookAtTarget = effectiveTowerCenter.clone().add(lookAtOffset);
     camera.lookAt(lookAtTarget);
     
@@ -584,10 +586,14 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
             // If no available cells, we can't place more blocks
             if (availableCells.length === 0) break;
             
-            // Shuffle for randomness
-            for (let i = availableCells.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [availableCells[i], availableCells[j]] = [availableCells[j], availableCells[i]];
+            // Shuffle for randomness - add extra randomization for small levels
+            // For level 0 with few blocks, add more shuffles to ensure variation
+            const shuffleCount = level === 0 ? 3 : 1;
+            for (let shuffle = 0; shuffle < shuffleCount; shuffle++) {
+                for (let i = availableCells.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [availableCells[i], availableCells[j]] = [availableCells[j], availableCells[i]];
+                }
             }
             
             let placedThisPass = 0;
@@ -1429,6 +1435,12 @@ async function generateSolvablePuzzle(level = 1) {
     isGeneratingLevel = true;
     levelCompleteShown = false; // Reset level complete flag for new level
     
+    // Ensure randomization by consuming some random numbers at start
+    // This helps prevent identical layouts when generation happens quickly
+    for (let i = 0; i < (Date.now() % 50 + Math.floor(Math.random() * 50)); i++) {
+        Math.random(); // Consume random numbers to shift the sequence
+    }
+    
     // Clear existing blocks first
     for (const block of blocks) {
         towerGroup.remove(block.group);
@@ -1712,7 +1724,7 @@ function undoLastMove() {
     console.log(`Undo: Restored block to (${block.gridX}, ${block.gridZ})`);
 }
 
-// Remove a block with melt animation (melts in place)
+// Remove a block with selected animation type
 function removeBlockWithAnimation(block) {
     if (!blocks.includes(block) || block.isRemoved || block.isFalling || block.isAnimating) {
         return;
@@ -1975,38 +1987,7 @@ if (nextLevelButton) {
     });
 }
 
-// Game control button handlers
-const undoButton = document.getElementById('undo-button');
-if (undoButton) {
-    undoButton.addEventListener('click', () => {
-        undoLastMove();
-        updateUndoButtonState();
-    });
-}
-
-// Toggle remove mode
-function toggleRemoveMode() {
-    removeModeActive = !removeModeActive;
-    const removeButton = document.getElementById('remove-button');
-    if (removeButton) {
-        if (removeModeActive) {
-            removeButton.classList.add('active');
-            removeButton.style.background = 'rgba(255, 100, 100, 0.6)'; // Red highlight
-            removeButton.style.border = '2px solid rgba(255, 150, 150, 0.8)';
-        } else {
-            removeButton.classList.remove('active');
-            removeButton.style.background = '';
-            removeButton.style.border = '';
-        }
-    }
-}
-
-const removeButton = document.getElementById('remove-button');
-if (removeButton) {
-    removeButton.addEventListener('click', () => {
-        toggleRemoveMode();
-    });
-}
+// Game control button handlers (undo and remove buttons removed)
 
 const restartLevelButton = document.getElementById('restart-level-button');
 if (restartLevelButton) {
@@ -2055,9 +2036,10 @@ function spinRandomBlocks() {
     
     console.log('spinRandomBlocks called, total blocks:', blocks.length);
     
-    // Filter for eligible blocks: vertical OR single-cell blocks
+    // Filter for eligible blocks: vertical OR single-cell blocks OR horizontal multi-cell blocks
+    // Horizontal multi-cell blocks can only rotate 180 degrees (flip direction)
     const eligibleBlocks = blocks.filter(block => 
-        (block.isVertical || block.length === 1) &&
+        (block.isVertical || block.length === 1 || (!block.isVertical && block.length > 1)) &&
         !block.isFalling &&
         !block.isRemoved &&
         !block.removalStartTime &&
@@ -2127,12 +2109,310 @@ if (document.readyState === 'loading') {
     setupDiceButton();
 }
 
+// Setup elevation slider
+// Vertical framing offset (controls where tower appears in frame)
+// Range: 0.1 (tower higher in frame) to 10.0 (tower lower in frame)
+const MIN_FRAMING_OFFSET = 0.1;
+const MAX_FRAMING_OFFSET = 10.0;
+window.framingOffsetY = 0.1; // Default value for desktop/web
+
+function setupFramingSlider() {
+    const controlPanel = document.getElementById('framing-control');
+    const valueDisplay = document.getElementById('framing-value-display');
+    
+    if (controlPanel && valueDisplay) {
+        const BASE_SENSITIVITY = 0.02; // Base sensitivity per pixel
+        const VELOCITY_MULTIPLIER = 0.5; // How much velocity affects sensitivity
+        const MAX_VELOCITY_MULTIPLIER = 5.0; // Maximum speed multiplier
+        const MIN_PUSH_DISTANCE = 3; // Minimum pixels to move before updating value
+        const VELOCITY_SMOOTHING = 0.7; // Smoothing factor for velocity (0-1, higher = smoother)
+        const CONTINUOUS_MOTION_BASE = 0.01; // Base speed for continuous motion while held
+        const DISTANCE_MULTIPLIER = 0.002; // How much push distance affects continuous speed
+        const MAX_CONTINUOUS_SPEED = 0.3; // Maximum continuous motion speed
+        const SPEED_SMOOTHING = 0.15; // Smoothing factor for speed acceleration (0-1, lower = smoother/slower)
+        
+        let isDragging = false;
+        let startY = 0;
+        let lastY = 0;
+        let lastUpdateTime = 0;
+        let pushDirection = null; // 'up' or 'down'
+        let velocity = 0; // Current velocity (pixels per frame)
+        let smoothedVelocity = 0; // Smoothed velocity for more stable calculation
+        let pushDistance = 0; // Distance pushed away from start
+        let targetSpeed = 0; // Target speed based on push distance
+        let currentSpeed = 0; // Current smoothed speed
+        let continuousMotionId = null; // Animation frame ID for continuous motion
+        
+        const updateValueDisplay = (offset) => {
+            valueDisplay.textContent = offset.toFixed(1);
+        };
+        
+        const clampValue = (value) => {
+            return Math.max(MIN_FRAMING_OFFSET, Math.min(MAX_FRAMING_OFFSET, value));
+        };
+        
+        const updateFraming = (delta) => {
+            const newOffset = clampValue(window.framingOffsetY + delta);
+            if (newOffset !== window.framingOffsetY) {
+                window.framingOffsetY = newOffset;
+                updateValueDisplay(newOffset);
+                updateCameraPosition(); // Update camera immediately
+                // Save framing preference to localStorage
+                try {
+                    localStorage.setItem('jarrows_framing', newOffset.toString());
+                } catch (e) {
+                    console.warn('Failed to save framing preference:', e);
+                }
+            }
+        };
+        
+        const stopContinuousMotion = () => {
+            if (continuousMotionId !== null) {
+                cancelAnimationFrame(continuousMotionId);
+                continuousMotionId = null;
+            }
+        };
+        
+        const continueMotionWhileHeld = () => {
+            if (!isDragging) {
+                stopContinuousMotion();
+                currentSpeed = 0;
+                targetSpeed = 0;
+                return;
+            }
+            
+            // Calculate target speed based on push distance
+            // Harder push (further distance) = faster continuous motion
+            const distanceSpeed = Math.min(pushDistance * DISTANCE_MULTIPLIER, MAX_CONTINUOUS_SPEED);
+            targetSpeed = CONTINUOUS_MOTION_BASE + distanceSpeed;
+            
+            // Smoothly interpolate current speed towards target speed
+            currentSpeed = currentSpeed + (targetSpeed - currentSpeed) * SPEED_SMOOTHING;
+            
+            // Determine direction based on push direction
+            const direction = pushDirection === 'up' ? -1 : 1;
+            
+            // Update value continuously while held with smoothed speed
+            updateFraming(currentSpeed * direction);
+            
+            // Continue animation
+            continuousMotionId = requestAnimationFrame(continueMotionWhileHeld);
+        };
+        
+        const setPushAnimation = (direction) => {
+            controlPanel.classList.remove('pushing-up', 'pushing-down');
+            if (direction === 'up') {
+                controlPanel.classList.add('pushing-up');
+            } else if (direction === 'down') {
+                controlPanel.classList.add('pushing-down');
+            }
+        };
+        
+        const clearPushAnimation = () => {
+            controlPanel.classList.remove('pushing-up', 'pushing-down');
+        };
+        
+        // Load framing preference from localStorage if not already set
+        if (window.framingOffsetY === undefined || window.framingOffsetY === null) {
+            try {
+                const savedFraming = localStorage.getItem('jarrows_framing');
+                if (savedFraming !== null) {
+                    const parsedFraming = parseFloat(savedFraming);
+                    if (!isNaN(parsedFraming)) {
+                        window.framingOffsetY = clampValue(parsedFraming);
+                    }
+                }
+            } catch (e) {
+                console.warn('Failed to load framing preference:', e);
+            }
+        }
+        
+        // Set initial value display
+        updateValueDisplay(window.framingOffsetY);
+        
+        // Mouse events
+        controlPanel.addEventListener('mousedown', (e) => {
+            // Stop any existing continuous motion
+            stopContinuousMotion();
+            
+            isDragging = true;
+            startY = e.clientY;
+            lastY = e.clientY;
+            lastUpdateTime = performance.now();
+            velocity = 0;
+            smoothedVelocity = 0;
+            pushDistance = 0;
+            targetSpeed = 0;
+            currentSpeed = 0;
+            controlPanel.style.cursor = 'grabbing';
+            e.preventDefault();
+        });
+        
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            
+            const now = performance.now();
+            const deltaTime = Math.max(1, now - lastUpdateTime); // Prevent division by zero
+            const deltaY = e.clientY - lastY;
+            const totalDeltaY = e.clientY - startY;
+            
+            // Calculate push distance (how far from start point)
+            pushDistance = Math.abs(totalDeltaY);
+            
+            // Calculate velocity (pixels per millisecond)
+            const currentVelocity = Math.abs(deltaY) / deltaTime;
+            // Smooth the velocity to avoid jitter
+            smoothedVelocity = smoothedVelocity * VELOCITY_SMOOTHING + currentVelocity * (1 - VELOCITY_SMOOTHING);
+            
+            // Determine push direction
+            if (Math.abs(totalDeltaY) > MIN_PUSH_DISTANCE) {
+                const direction = totalDeltaY < 0 ? 'up' : 'down';
+                if (pushDirection !== direction) {
+                    pushDirection = direction;
+                    setPushAnimation(direction);
+                    // Start continuous motion when direction is established
+                    if (continuousMotionId === null) {
+                        continueMotionWhileHeld();
+                    }
+                }
+            }
+            
+            // Calculate sensitivity based on velocity (faster push = higher sensitivity)
+            // Velocity is in pixels/ms, so we scale it appropriately
+            const velocityMultiplier = Math.min(1 + (smoothedVelocity * VELOCITY_MULTIPLIER), MAX_VELOCITY_MULTIPLIER);
+            const dynamicSensitivity = BASE_SENSITIVITY * velocityMultiplier;
+            
+            // Update value based on movement with velocity-based sensitivity
+            const valueDelta = -deltaY * dynamicSensitivity; // Negative because up should increase
+            updateFraming(valueDelta);
+            
+            lastY = e.clientY;
+            lastUpdateTime = now;
+        });
+        
+        document.addEventListener('mouseup', () => {
+            if (isDragging) {
+                isDragging = false;
+                stopContinuousMotion();
+                clearPushAnimation();
+                pushDirection = null;
+                velocity = 0;
+                smoothedVelocity = 0;
+                pushDistance = 0;
+                targetSpeed = 0;
+                currentSpeed = 0;
+                controlPanel.style.cursor = 'ns-resize';
+            }
+        });
+        
+        // Touch events
+        let touchStartY = 0;
+        let touchLastY = 0;
+        let touchLastTime = 0;
+        
+        controlPanel.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 1) {
+                // Stop any existing continuous motion
+                stopContinuousMotion();
+                
+                isDragging = true;
+                touchStartY = e.touches[0].clientY;
+                touchLastY = e.touches[0].clientY;
+                touchLastTime = performance.now();
+                velocity = 0;
+                smoothedVelocity = 0;
+                pushDistance = 0;
+                targetSpeed = 0;
+                currentSpeed = 0;
+                e.preventDefault();
+            }
+        });
+        
+        controlPanel.addEventListener('touchmove', (e) => {
+            if (!isDragging || e.touches.length !== 1) return;
+            
+            const touchY = e.touches[0].clientY;
+            const now = performance.now();
+            const deltaTime = Math.max(1, now - touchLastTime);
+            const deltaY = touchY - touchLastY;
+            const totalDeltaY = touchY - touchStartY;
+            
+            // Calculate push distance (how far from start point)
+            pushDistance = Math.abs(totalDeltaY);
+            
+            // Calculate velocity (pixels per millisecond)
+            const currentVelocity = Math.abs(deltaY) / deltaTime;
+            // Smooth the velocity to avoid jitter
+            smoothedVelocity = smoothedVelocity * VELOCITY_SMOOTHING + currentVelocity * (1 - VELOCITY_SMOOTHING);
+            
+            // Determine push direction
+            if (Math.abs(totalDeltaY) > MIN_PUSH_DISTANCE) {
+                const direction = totalDeltaY < 0 ? 'up' : 'down';
+                if (pushDirection !== direction) {
+                    pushDirection = direction;
+                    setPushAnimation(direction);
+                    // Start continuous motion when direction is established
+                    if (continuousMotionId === null) {
+                        continueMotionWhileHeld();
+                    }
+                }
+            }
+            
+            // Calculate sensitivity based on velocity (faster push = higher sensitivity)
+            const velocityMultiplier = Math.min(1 + (smoothedVelocity * VELOCITY_MULTIPLIER), MAX_VELOCITY_MULTIPLIER);
+            const dynamicSensitivity = BASE_SENSITIVITY * velocityMultiplier;
+            
+            // Update value based on movement with velocity-based sensitivity
+            const valueDelta = -deltaY * dynamicSensitivity; // Negative because up should increase
+            updateFraming(valueDelta);
+            
+            touchLastY = touchY;
+            touchLastTime = now;
+            e.preventDefault();
+        });
+        
+        controlPanel.addEventListener('touchend', () => {
+            if (isDragging) {
+                isDragging = false;
+                stopContinuousMotion();
+                clearPushAnimation();
+                pushDirection = null;
+                velocity = 0;
+                smoothedVelocity = 0;
+                pushDistance = 0;
+                targetSpeed = 0;
+                currentSpeed = 0;
+            }
+        });
+        
+        controlPanel.addEventListener('touchcancel', () => {
+            if (isDragging) {
+                isDragging = false;
+                stopContinuousMotion();
+                clearPushAnimation();
+                pushDirection = null;
+                velocity = 0;
+                smoothedVelocity = 0;
+                pushDistance = 0;
+                targetSpeed = 0;
+                currentSpeed = 0;
+            }
+        });
+    } else {
+        setTimeout(setupFramingSlider, 100);
+    }
+}
+
+// Setup framing slider on DOM ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', setupFramingSlider);
+} else {
+    setupFramingSlider();
+}
+
 // Update undo button state (enable/disable based on history)
 function updateUndoButtonState() {
-    if (undoButton) {
-        undoButton.disabled = moveHistory.length === 0;
-    }
-    // Note: Remove button is now always enabled (it toggles remove mode)
+    // Undo button removed - function kept for compatibility
 }
 
 // Initialize camera position
@@ -2907,6 +3187,8 @@ function animate() {
             }
         }
         
+        // Update melt animations (for blocks being removed)
+        // Check ALL blocks, not just non-removed ones
         // Update melt animations (for blocks being removed)
         // Check ALL blocks, not just non-removed ones
         for (const block of blocks) {
