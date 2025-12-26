@@ -799,13 +799,27 @@
                 });
             }
             
-            // Close settings menu when clicking outside
+            // Close settings menu when clicking outside or on game canvas
             if (settingsContainer && settingsMenu) {
-                document.addEventListener('click', function(e) {
+                const closeSettingsMenu = function(e) {
                     if (!settingsContainer.contains(e.target)) {
                         settingsMenu.classList.remove('show');
                     }
-                });
+                };
+                
+                // Close on any click outside settings
+                document.addEventListener('click', closeSettingsMenu);
+                
+                // Close when user interacts with game (clicks on canvas)
+                const canvas = document.querySelector('canvas');
+                if (canvas) {
+                    canvas.addEventListener('mousedown', function(e) {
+                        settingsMenu.classList.remove('show');
+                    });
+                    canvas.addEventListener('touchstart', function(e) {
+                        settingsMenu.classList.remove('show');
+                    });
+                }
             }
             
             // Theme toggle handler (sun = light theme, moon = dark theme)

@@ -925,25 +925,51 @@ export class Block {
         
         // Animate arrow rotation with ease-out curve (fast start, slow end)
         const startTime = performance.now();
+        const spinDuration = duration * 0.8; // Use 80% of duration for spin, 20% for oscillation
+        const oscillationDuration = duration * 0.2; // 20% for compass needle oscillation
+        
         const animate = () => {
             const elapsed = performance.now() - startTime;
-            const progress = Math.min(elapsed / duration, 1);
+            const spinProgress = Math.min(elapsed / spinDuration, 1);
             
-            // Ease-out curve: fast start, slow end
-            // Using cubic ease-out: 1 - (1 - t)^3
-            const eased = 1 - Math.pow(1 - progress, 3);
-            
-            const currentAngle = startAngle + (endAngle - startAngle) * eased;
-            topArrow.rotation.z = currentAngle;
-            
-            if (progress < 1) {
+            if (spinProgress < 1) {
+                // Spin phase: fast start, slow end
+                // Using cubic ease-out: 1 - (1 - t)^3
+                const eased = 1 - Math.pow(1 - spinProgress, 3);
+                const currentAngle = startAngle + (endAngle - startAngle) * eased;
+                topArrow.rotation.z = currentAngle;
                 requestAnimationFrame(animate);
             } else {
-                // Ensure final angle is exact
-                topArrow.rotation.z = targetAngle;
-                // Update indicators to match final direction
-                this.updateArrowRotation();
-                if (callback) callback();
+                // Oscillation phase: compass needle effect (magnetic settling)
+                const oscillationStartTime = performance.now();
+                const oscillationAmplitude = Math.PI / 8; // 22.5 degrees oscillation
+                const oscillationCycles = 3; // Number of back-and-forth oscillations
+                
+                const oscillate = () => {
+                    const oscillationElapsed = performance.now() - oscillationStartTime;
+                    const oscillationProgress = Math.min(oscillationElapsed / oscillationDuration, 1);
+                    
+                    if (oscillationProgress < 1) {
+                        // Damped oscillation: amplitude decreases exponentially over time
+                        // Using exponential decay: e^(-kt) where k controls decay rate
+                        const decayRate = 3; // Higher = faster decay
+                        const dampingFactor = Math.exp(-decayRate * oscillationProgress);
+                        
+                        // Oscillate with decreasing amplitude
+                        const oscillation = Math.sin(oscillationProgress * Math.PI * oscillationCycles * 2) * oscillationAmplitude * dampingFactor;
+                        topArrow.rotation.z = targetAngle + oscillation;
+                        requestAnimationFrame(oscillate);
+                    } else {
+                        // Final settle: ensure exact target angle
+                        topArrow.rotation.z = targetAngle;
+                        // Update indicators to match final direction
+                        this.updateArrowRotation();
+                        if (callback) callback();
+                    }
+                };
+                
+                // Start oscillation immediately
+                oscillate();
             }
         };
         
