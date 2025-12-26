@@ -31,6 +31,16 @@ npm run build
 
 ## Releases
 
+### v2.2.0 - Crescent Icon & UI Improvements
+- **Tree**: https://github.com/ozlphrt/Jarrows/tree/v2.2.0
+- **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v2.2.0
+- Updated moon icon to filled crescent with thick outline
+- Fixed block color toggle to properly show colored vs white blocks
+- Replaced dice icon with refresh/random icon
+- Improved icon sizing and alignment
+- Fixed Vite HMR by disabling service worker in dev mode
+- Enhanced light source angle enforcement (30° minimum)
+
 ### v2.1.0 - Camera Initialization Fix
 - **Tree**: https://github.com/ozlphrt/Jarrows/tree/v2.1.0
 - **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v2.1.0
