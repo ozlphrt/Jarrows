@@ -829,10 +829,93 @@ export class Block {
         if (this.directionIndicators) {
             // Remove old indicators and recreate with new positions
             this.group.remove(this.directionIndicators);
-            // Get block color from original material
-            const blockColor = this.originalMaterial ? this.originalMaterial.color.getHex() : 0xffffff;
-            this.createDirectionIndicators(blockColor, this.arrowStyle);
+            // Use arrow color (length-based colored version) instead of block color
+            // This preserves the colored dots/circles that match the arrow
+            const colors = [0xff6b6b, 0x4ecdc4, 0xffe66d]; // Red, Teal, Yellow
+            const arrowColor = colors[this.length - 1] || colors[0];
+            this.createDirectionIndicators(arrowColor, this.arrowStyle);
         }
+    }
+    
+    // Animate random spin: fast rotation that slows down and stops at random direction
+    animateRandomSpin(duration = 1800, callback = null) {
+        // Only vertical blocks and single-cell blocks can spin
+        if (!this.isVertical && this.length !== 1) {
+            if (callback) callback();
+            return;
+        }
+        
+        // If no arrow, just set random direction immediately
+        if (!this.arrow || !this.arrow.children.length > 0) {
+            const directions = [{x: 1, z: 0}, {x: -1, z: 0}, {x: 0, z: 1}, {x: 0, z: -1}];
+            const randomDir = directions[Math.floor(Math.random() * directions.length)];
+            this.direction = randomDir;
+            this.updateArrowRotation();
+            if (callback) callback();
+            return;
+        }
+        
+        const topArrow = this.arrow.children[0];
+        if (!topArrow) {
+            const directions = [{x: 1, z: 0}, {x: -1, z: 0}, {x: 0, z: 1}, {x: 0, z: -1}];
+            const randomDir = directions[Math.floor(Math.random() * directions.length)];
+            this.direction = randomDir;
+            this.updateArrowRotation();
+            if (callback) callback();
+            return;
+        }
+        
+        // Pick random target direction (one of 4 cardinal directions)
+        const directions = [{x: 1, z: 0}, {x: -1, z: 0}, {x: 0, z: 1}, {x: 0, z: -1}];
+        const targetDirection = directions[Math.floor(Math.random() * directions.length)];
+        
+        // Calculate start and end angles
+        const startAngle = Math.atan2(this.direction.x, this.direction.z) + Math.PI;
+        const targetAngle = Math.atan2(targetDirection.x, targetDirection.z) + Math.PI;
+        
+        // Calculate number of full rotations (2-4 rotations for visual effect)
+        const numRotations = 2 + Math.random() * 2; // 2-4 rotations
+        const totalRotation = numRotations * Math.PI * 2;
+        
+        // Determine shortest path to target angle
+        let angleDiff = targetAngle - startAngle;
+        // Normalize to [-PI, PI] range
+        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+        
+        // Add full rotations in the same direction as the shortest path
+        // If angleDiff is positive, rotate clockwise (positive); if negative, rotate counter-clockwise (negative)
+        const rotationDirection = angleDiff >= 0 ? 1 : -1;
+        const endAngle = startAngle + (rotationDirection * totalRotation) + angleDiff;
+        
+        // Update direction to target immediately (for movement logic)
+        this.direction = { x: targetDirection.x, z: targetDirection.z };
+        
+        // Animate arrow rotation with ease-out curve (fast start, slow end)
+        const startTime = performance.now();
+        const animate = () => {
+            const elapsed = performance.now() - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            
+            // Ease-out curve: fast start, slow end
+            // Using cubic ease-out: 1 - (1 - t)^3
+            const eased = 1 - Math.pow(1 - progress, 3);
+            
+            const currentAngle = startAngle + (endAngle - startAngle) * eased;
+            topArrow.rotation.z = currentAngle;
+            
+            if (progress < 1) {
+                requestAnimationFrame(animate);
+            } else {
+                // Ensure final angle is exact
+                topArrow.rotation.z = targetAngle;
+                // Update indicators to match final direction
+                this.updateArrowRotation();
+                if (callback) callback();
+            }
+        };
+        
+        animate();
     }
     
     // Helper function to check rotation safety with specific directions (for recursive head-on collisions)

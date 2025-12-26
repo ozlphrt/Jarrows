@@ -316,6 +316,9 @@ let levelCompleteShown = false; // Prevent showing level complete modal multiple
 // Remove mode state
 let removeModeActive = false;
 
+// Random spin counter (3 spins per game)
+let remainingSpins = 3;
+
 // Progress persistence using localStorage
 const STORAGE_KEY = 'jarrows_progress';
 const STORAGE_HIGHEST_LEVEL_KEY = 'jarrows_highest_level';
@@ -1905,6 +1908,9 @@ function removeBlockWithAnimation(block) {
 
 // Restart current level
 async function restartCurrentLevel() {
+    // Reset spin counter
+    remainingSpins = 3;
+    updateSpinCounterDisplay();
     if (isGeneratingLevel) return;
     
     // Clear move history
@@ -1924,6 +1930,10 @@ async function startNewGame() {
     
     // Clear move history
     moveHistory = [];
+    
+    // Reset spin counter
+    remainingSpins = 3;
+    updateSpinCounterDisplay();
     
     // Clear saved progress
     clearProgress();
@@ -2014,11 +2024,107 @@ if (newGameButton) {
     });
 }
 
-const diceButton = document.getElementById('dice-button');
-if (diceButton) {
-    diceButton.addEventListener('click', () => {
-        centerTower(); // Keep centerTower functionality for now
+// Update spin counter display
+function updateSpinCounterDisplay() {
+    const spinCounter = document.getElementById('spin-counter');
+    if (spinCounter) {
+        spinCounter.textContent = remainingSpins.toString();
+    }
+    
+    const diceButton = document.getElementById('dice-button');
+    if (diceButton) {
+        if (remainingSpins === 0) {
+            diceButton.disabled = true;
+            diceButton.style.opacity = '0.5';
+            diceButton.style.cursor = 'not-allowed';
+        } else {
+            diceButton.disabled = false;
+            diceButton.style.opacity = '1';
+            diceButton.style.cursor = 'pointer';
+        }
+    }
+}
+
+// Spin random blocks (vertical and single-cell blocks) to break interlock situations
+function spinRandomBlocks() {
+    // Check if spins are available
+    if (remainingSpins <= 0) {
+        console.log('No spins remaining');
+        return;
+    }
+    
+    console.log('spinRandomBlocks called, total blocks:', blocks.length);
+    
+    // Filter for eligible blocks: vertical OR single-cell blocks
+    const eligibleBlocks = blocks.filter(block => 
+        (block.isVertical || block.length === 1) &&
+        !block.isFalling &&
+        !block.isRemoved &&
+        !block.removalStartTime &&
+        !block.isAnimating
+    );
+    
+    console.log('Eligible blocks found:', eligibleBlocks.length);
+    
+    if (eligibleBlocks.length === 0) {
+        console.log('No eligible blocks to spin');
+        return; // No eligible blocks to spin
+    }
+    
+    // Decrement spin counter
+    remainingSpins--;
+    updateSpinCounterDisplay();
+    
+    // Spin each block with slight duration randomization for visual variety
+    eligibleBlocks.forEach((block, index) => {
+        // Add slight delay and duration variation for staggered effect
+        const baseDuration = 1800; // 1.8 seconds base
+        const durationVariation = 200; // ±200ms variation
+        const duration = baseDuration + (Math.random() * 2 - 1) * durationVariation;
+        
+        // Small delay for staggered start (optional, creates wave effect)
+        const delay = index * 20; // 20ms delay between each block
+        
+        setTimeout(() => {
+            try {
+                console.log('Spinning block:', { isVertical: block.isVertical, length: block.length });
+                if (typeof block.animateRandomSpin === 'function') {
+                    block.animateRandomSpin(duration);
+                } else {
+                    console.error('Block does not have animateRandomSpin method!', block);
+                }
+            } catch (error) {
+                console.error('Error spinning block:', error);
+            }
+        }, delay);
     });
+}
+
+// Setup dice button handler - ensure DOM is ready
+function setupDiceButton() {
+    const diceButton = document.getElementById('dice-button');
+    if (diceButton) {
+        console.log('Dice button found, attaching handler');
+        // Initialize spin counter display
+        updateSpinCounterDisplay();
+        diceButton.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('Dice button clicked!');
+            spinRandomBlocks();
+        });
+    } else {
+        console.error('Dice button not found! Retrying...');
+        // Retry after a short delay if button not found
+        setTimeout(setupDiceButton, 100);
+    }
+}
+
+// Setup dice button when DOM is ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', setupDiceButton);
+} else {
+    setupDiceButton();
 }
 
 // Update undo button state (enable/disable based on history)
