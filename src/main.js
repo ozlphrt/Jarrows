@@ -699,9 +699,9 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
             // For level 0 with few blocks, add more shuffles to ensure variation
             const shuffleCount = level === 0 ? 3 : 1;
             for (let shuffle = 0; shuffle < shuffleCount; shuffle++) {
-                for (let i = availableCells.length - 1; i > 0; i--) {
-                    const j = Math.floor(Math.random() * (i + 1));
-                    [availableCells[i], availableCells[j]] = [availableCells[j], availableCells[i]];
+            for (let i = availableCells.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [availableCells[i], availableCells[j]] = [availableCells[j], availableCells[i]];
                 }
             }
             
@@ -1342,8 +1342,19 @@ function placeBlocksBatch(blocksToPlace, batchSize = 10, delayBetweenBatches = 1
             // Animate all blocks in batch simultaneously - very fast
         const startTime = performance.now();
             const duration = 50; // Very fast animation
+            let batchAnimationId = null;
         
             const animate = () => {
+                // Check if level generation was cancelled
+                const startIdx = batchIndex * batchSize;
+                if (!isGeneratingLevel || blocksToPlace.length === 0 || startIdx >= blocksToPlace.length) {
+                    if (batchAnimationId !== null) {
+                        cancelAnimationFrame(batchAnimationId);
+                        batchAnimationId = null;
+                    }
+                    return;
+                }
+                
                 const elapsed = performance.now() - startTime;
                 const progress = Math.min(elapsed / duration, 1);
                 
@@ -1351,16 +1362,25 @@ function placeBlocksBatch(blocksToPlace, batchSize = 10, delayBetweenBatches = 1
                 const eased = 1 - Math.pow(1 - progress, 3);
                 
                 // Update all blocks in batch
-                for (let i = startIdx; i < endIdx; i++) {
+                for (let i = startIdx; i < endIdx && i < blocksToPlace.length; i++) {
+                    if (blocksToPlace[i] && blocksToPlace[i].group) {
                     blocksToPlace[i].group.scale.set(eased, eased, eased);
+                    }
                 }
                             
                             if (progress < 1) {
-                                requestAnimationFrame(animate);
+                    batchAnimationId = requestAnimationFrame(animate);
                             } else {
                     // Finalize scale
-                    for (let i = startIdx; i < endIdx; i++) {
+                    for (let i = startIdx; i < endIdx && i < blocksToPlace.length; i++) {
+                        if (blocksToPlace[i] && blocksToPlace[i].group) {
                         blocksToPlace[i].group.scale.set(1, 1, 1);
+                        }
+                    }
+                    
+                    if (batchAnimationId !== null) {
+                        cancelAnimationFrame(batchAnimationId);
+                        batchAnimationId = null;
                     }
                     
                     // Move to next batch
@@ -1369,7 +1389,7 @@ function placeBlocksBatch(blocksToPlace, batchSize = 10, delayBetweenBatches = 1
                         }
                     };
                     
-                    animate();
+            batchAnimationId = requestAnimationFrame(animate);
         };
         
         placeBatch();
@@ -1544,17 +1564,51 @@ async function generateSolvablePuzzle(level = 1) {
     isGeneratingLevel = true;
     levelCompleteShown = false; // Reset level complete flag for new level
     
+    // Reset spin counter for new level
+    remainingSpins = 3;
+    updateSpinCounterDisplay();
+    
     // Ensure randomization by consuming some random numbers at start
     // This helps prevent identical layouts when generation happens quickly
     for (let i = 0; i < (Date.now() % 50 + Math.floor(Math.random() * 50)); i++) {
         Math.random(); // Consume random numbers to shift the sequence
     }
     
-    // Clear existing blocks first
+    // Clear existing blocks first and clean up animations
     for (const block of blocks) {
+        // Stop any ongoing animations
+        if (block.isAnimating) {
+            block.isAnimating = false;
+        }
+        // Remove from scene
         towerGroup.remove(block.group);
+        // Dispose of geometries and materials to free memory
+        if (block.cubes) {
+            block.cubes.forEach(cube => {
+                if (cube.geometry) cube.geometry.dispose();
+                if (cube.material) cube.material.dispose();
+            });
+        }
+        if (block.arrow) {
+            block.arrow.traverse((child) => {
+                if (child.geometry) child.geometry.dispose();
+                if (child.material) child.material.dispose();
+            });
+        }
+        if (block.directionIndicators) {
+            block.directionIndicators.traverse((child) => {
+                if (child.geometry) child.geometry.dispose();
+                if (child.material) child.material.dispose();
+            });
+        }
     }
     blocks.length = 0;
+    
+    // Clean up any pending animation frames
+    if (framingSmoothAnimationId !== null) {
+        cancelAnimationFrame(framingSmoothAnimationId);
+        framingSmoothAnimationId = null;
+    }
     
     // Get target block count for this level
     const targetBlockCount = getBlocksForLevel(level);
@@ -2119,10 +2173,10 @@ function updateSpinCounterDisplay() {
     const spinCounter = document.getElementById('spin-counter');
     if (spinCounter) {
         spinCounter.textContent = remainingSpins.toString();
-    }
-    
-    const diceButton = document.getElementById('dice-button');
-    if (diceButton) {
+}
+
+const diceButton = document.getElementById('dice-button');
+if (diceButton) {
         if (remainingSpins === 0) {
             diceButton.disabled = true;
             diceButton.style.opacity = '0.5';
@@ -2860,7 +2914,18 @@ function startBlockFalling(block) {
     const fallDistance = startY - targetYOffset;
     const fallDuration = Math.max(300, fallDistance * 200); // ms to fall, proportional to distance
     
+    let fallAnimationId = null;
     const animateFall = () => {
+        // Check if block was removed or level changed
+        if (block.isRemoved || !blocks.includes(block) || isGeneratingLevel) {
+            if (fallAnimationId !== null) {
+                cancelAnimationFrame(fallAnimationId);
+                fallAnimationId = null;
+            }
+            block.isAnimating = false;
+            return;
+        }
+        
         const elapsed = performance.now() - startTime;
         const progress = Math.min(elapsed / fallDuration, 1);
         
@@ -2875,12 +2940,13 @@ function startBlockFalling(block) {
         block.updateWorldPosition();
         
         if (progress < 1) {
-            requestAnimationFrame(animateFall);
+            fallAnimationId = requestAnimationFrame(animateFall);
         } else {
             // Landing complete
             block.yOffset = targetYOffset;
             block.updateWorldPosition();
             block.isAnimating = false;
+            fallAnimationId = null;
             
             // Check if block now has support (should always be true after landing)
             if (!blockHasSupport(block, blocks) && block.yOffset > 0) {
@@ -2892,7 +2958,7 @@ function startBlockFalling(block) {
         }
     };
     
-    animateFall();
+    fallAnimationId = requestAnimationFrame(animateFall);
 }
 
 // Add click listener to window in capture phase to catch all clicks early
@@ -3019,7 +3085,7 @@ renderer.domElement.addEventListener('touchmove', (event) => {
         if (distanceChange > 0.05) {
             // Pinch to zoom
             if (!touchState.isPinching) {
-                touchState.isPinching = true;
+            touchState.isPinching = true;
                 touchState.isFramingControl = false;
             }
             
@@ -3047,8 +3113,8 @@ renderer.domElement.addEventListener('touchmove', (event) => {
             const velocityMultiplier = Math.min(1 + (velocity * 0.5), 5.0);
             const dynamicSensitivity = FRAMING_DRAG_SENSITIVITY * velocityMultiplier;
             
-            // Update target framing offset (negative because up should increase)
-            const valueDelta = -deltaY * dynamicSensitivity;
+            // Update target framing offset (positive because up should decrease - reversed from right-click)
+            const valueDelta = deltaY * dynamicSensitivity;
             targetFramingOffset = Math.max(MIN_FRAMING_OFFSET, Math.min(MAX_FRAMING_OFFSET, targetFramingOffset + valueDelta));
             
             // Start smooth animation if not already running
@@ -3072,7 +3138,7 @@ renderer.domElement.addEventListener('touchmove', (event) => {
                         }
                         
                         framingSmoothAnimationId = requestAnimationFrame(smoothFraming);
-                    } else {
+        } else {
                         // Reached target
                         window.framingOffsetY = targetFramingOffset;
                         updateCameraPosition();
