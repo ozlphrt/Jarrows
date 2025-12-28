@@ -274,6 +274,8 @@ const SPAWN_ZOOM_PADDING = 4; // Extra padding during spawn to show all blocks
 const SPAWN_ZOOM_MULTIPLIER = 1.3; // Additional multiplier for spawn zoom
 const DRAG_SENSITIVITY = 0.0025; // Slightly increased for more responsive rotation
 const PAN_SENSITIVITY = 0.01;
+// Mobile touch rotation sensitivity (higher for faster rotation on mobile)
+const TOUCH_DRAG_SENSITIVITY = 0.004; // 60% faster than desktop for better mobile experience
 
 // Spherical coordinates (target values - set by user input)
 let cameraRadius = 10;
@@ -2819,6 +2821,12 @@ function onMouseClick(event) {
     const closestHit = allIntersections[0];
     const block = closestHit.block;
     
+    // Close settings menu when user clicks on a block (returns to game)
+    const settingsMenu = document.getElementById('settings-menu');
+    if (settingsMenu) {
+        settingsMenu.classList.remove('show');
+    }
+    
     // If remove mode is active, remove the block instead of moving it
     if (removeModeActive) {
         removeBlockWithAnimation(block);
@@ -3203,9 +3211,9 @@ renderer.domElement.addEventListener('touchmove', (event) => {
         const dx = touch.clientX - lastTouch.clientX;
         const dy = touch.clientY - lastTouch.clientY;
         
-        // Update azimuth and elevation
-        targetAzimuth += dx * DRAG_SENSITIVITY;
-        targetElevation -= dy * DRAG_SENSITIVITY;
+        // Update azimuth and elevation (use higher sensitivity for mobile touch)
+        targetAzimuth += dx * TOUCH_DRAG_SENSITIVITY;
+        targetElevation -= dy * TOUCH_DRAG_SENSITIVITY;
         targetElevation = Math.max(MIN_ELEVATION, Math.min(MAX_ELEVATION, targetElevation));
         
         touchState.touches = currentTouches;
@@ -3437,6 +3445,12 @@ function onTouchEnd(event) {
     // Get the closest intersection
     const closestHit = allIntersections[0];
     const block = closestHit.block;
+    
+    // Close settings menu when user clicks on a block (returns to game)
+    const settingsMenu = document.getElementById('settings-menu');
+    if (settingsMenu) {
+        settingsMenu.classList.remove('show');
+    }
     
     // If remove mode is active, remove the block instead of moving it
     if (removeModeActive) {
