@@ -3,6 +3,7 @@ import { initPhysics, createPhysicsBlock, updatePhysics, isPhysicsStepping, hasP
 import { Block } from './Block.js';
 import { createLights, createGrid, setGradientBackground, setupFog } from './scene.js';
 import { validateStructure, validateSolvability, calculateDifficulty, getBlockCells } from './puzzle_validation.js';
+import { createDebugPanel } from './debug-panel.js';
 
 // Scene setup
 const scene = new THREE.Scene();
@@ -412,6 +413,16 @@ const blocks = [];
 
 // Expose blocks array for toggle handlers
 window.gameBlocks = blocks;
+
+// Initialize debug panel with lights and blocks
+let debugPanel = null;
+function initDebugPanel() {
+    if (!debugPanel) {
+        debugPanel = createDebugPanel(lights, blocks);
+    }
+}
+// Initialize debug panel after a short delay to ensure DOM is ready
+setTimeout(initDebugPanel, 100);
 const directions = [
     {x: 1, z: 0},   // East
     {x: -1, z: 0},  // West
@@ -507,6 +518,7 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
     const totalCells = gridSize * gridSize;
     const occupiedCells = new Set();
     const blocksToPlace = []; // Store blocks to be placed sequentially
+    const isUpperLayer = yOffset > 0; // Declare once for use throughout function
     
     // For small/medium block counts (Level 0-5: 3, 10, 20, 30, 40, 50 blocks), use random placement across entire grid
     // This prevents all blocks being at edges, all arrows pointing out, and all being vertical
@@ -676,7 +688,8 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
     if (isSmallCount) {
         // Try multiple passes to ensure we reach the target count
         // For high block counts in multi-layer, use more passes
-        const maxPasses = targetBlockCount > 100 ? 20 : 10;
+        // For upper layers (yOffset > 0), need even more passes due to support constraints
+        const maxPasses = isUpperLayer ? (targetBlockCount > 100 ? 50 : 40) : (targetBlockCount > 100 ? 20 : 10);
         let pass = 0;
         
         while (blocksToPlace.length < targetBlockCount && pass < maxPasses) {
@@ -946,7 +959,9 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
     let inwardAttempts = 0;
     
     // For high block counts, allow filling up to 100% of cells
-    const fillThreshold = targetBlockCount > 100 ? 1.0 : 0.95;
+    // For multi-layer scenarios (yOffset > 0), we need to be more aggressive to reach target
+    // Lower the fill threshold for upper layers to allow more attempts
+    const fillThreshold = isUpperLayer ? 0.98 : (targetBlockCount > 100 ? 1.0 : 0.95);
     while (inwardAttempts < maxInwardAttempts && occupiedCells.size < totalCells * fillThreshold && blocksToPlace.length < targetBlockCount) {
         inwardAttempts++;
         
@@ -1114,6 +1129,25 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                     occupiedCells.delete(cellKey);
                 }
                 scene.remove(testBlock.group);
+                // Debug: Log why block was rejected (only for upper layers to avoid spam)
+                if (isUpperLayer && blocksToPlace.length < targetBlockCount * 0.5) {
+                    const lowerCells = lowerLayerCells instanceof Set ? lowerLayerCells : (lowerLayerCells?.cells || null);
+                    const supportCount = testBlock.isVertical 
+                        ? (lowerCells && lowerCells.has(`${testBlock.gridX},${testBlock.gridZ}`) ? 1 : 0)
+                        : (() => {
+                            const isXAligned = Math.abs(testBlock.direction.x) > 0;
+                            let count = 0;
+                            for (let i = 0; i < testBlock.length; i++) {
+                                const x = testBlock.gridX + (isXAligned ? i : 0);
+                                const z = testBlock.gridZ + (isXAligned ? 0 : i);
+                                if (lowerCells && lowerCells.has(`${x},${z}`)) count++;
+                            }
+                            return count;
+                        })();
+                    if (supportCount === 0 && blocksToPlace.length % 10 === 0) {
+                        console.log(`  [Debug] Block at (${testBlock.gridX},${testBlock.gridZ}) rejected: no support (layer yOffset=${yOffset})`);
+                    }
+                }
                 continue;
             }
             
@@ -1136,7 +1170,8 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
     // Skip if we've already reached target block count
     let fillPasses = 0;
     // For high block counts, use more passes to ensure we reach target
-    const maxFillPasses = targetBlockCount > 100 ? 10 : 3;
+    // For upper layers, need more passes due to support constraints
+    const maxFillPasses = isUpperLayer ? (targetBlockCount > 100 ? 25 : 15) : (targetBlockCount > 100 ? 10 : 3);
     
     while (fillPasses < maxFillPasses && occupiedCells.size < totalCells && blocksToPlace.length < targetBlockCount) {
         fillPasses++;
@@ -1334,6 +1369,10 @@ function placeBlocksBatch(blocksToPlace, batchSize = 10, delayBetweenBatches = 1
             // Add all blocks in this batch to towerGroup immediately
             for (let i = startIdx; i < endIdx; i++) {
                 const block = blocksToPlace[i];
+                if (!block) {
+                    console.warn(`⚠️ Null block at index ${i} in batch starting at ${startIdx}`);
+                    continue;
+                }
                 block.group.scale.set(0, 0, 0);
                 towerGroup.add(block.group);
                 blocks.push(block);
@@ -1661,12 +1700,26 @@ async function generateSolvablePuzzle(level = 1) {
             } else {
                 // Layer 2+: Recalculate remaining blocks based on actual blocks placed so far
                 remainingBlocks = targetBlockCount - allBlocks.length;
-                blocksForThisLayer = remainingBlocks;
+                // For upper layers, we need to be more conservative
+                // Check how many cells in lower layer actually have support
+                const supportedCells = lowerLayerCells?.cells?.size || 0;
+                // Request blocks based on available support - can't place more blocks than we have support cells
+                // But also try to fill the layer reasonably (aim for 80-90% of support cells)
+                const maxBlocksBasedOnSupport = Math.floor(supportedCells * 0.95); // Use 95% of supported cells
+                const maxBlocksPerUpperLayer = Math.min(gridCells, maxBlocksBasedOnSupport);
+                blocksForThisLayer = Math.min(remainingBlocks, maxBlocksPerUpperLayer);
                 preferLongBlocks = false;
+                
+                // If we have very few supported cells, we might not be able to place many blocks
+                if (supportedCells < 10 && remainingBlocks > 50) {
+                    console.warn(`⚠️ Layer ${currentLayer}: Only ${supportedCells} supported cells, limiting block requests`);
+                }
             }
             
             // Generate blocks for this layer with preference for longer blocks in layer 1
+            console.log(`  Layer ${currentLayer}: Requesting ${blocksForThisLayer} blocks (remaining: ${remainingBlocks}, total so far: ${allBlocks.length})`);
             const layerBlocks = createSolvableBlocks(yOffset, lowerLayerCells, blocksForThisLayer, level, preferLongBlocks);
+            console.log(`  Layer ${currentLayer}: Generated ${layerBlocks.length} blocks (requested ${blocksForThisLayer}, difference: ${blocksForThisLayer - layerBlocks.length})`);
             
             // Track cells occupied by this layer for next layer
             // We need to track both 2D cells (for support checking) and Y ranges (for overlap checking)
@@ -1741,7 +1794,15 @@ async function generateSolvablePuzzle(level = 1) {
             // If we didn't place any blocks this layer and we still need more, something went wrong
             // Try to continue with next layer anyway
             if (layerBlocks.length === 0 && remainingBlocks > 0) {
-                console.warn(`Layer ${currentLayer} generated 0 blocks, but ${remainingBlocks} blocks still needed`);
+                console.warn(`⚠️ Layer ${currentLayer} generated 0 blocks, but ${remainingBlocks} blocks still needed`);
+                console.warn(`   Lower layer has ${lowerLayerCells?.cells?.size || 0} supported cells`);
+            }
+            
+            // If we placed significantly fewer blocks than requested, log details
+            if (layerBlocks.length < blocksForThisLayer * 0.8 && remainingBlocks > 0) {
+                console.warn(`⚠️ Layer ${currentLayer} only generated ${layerBlocks.length}/${blocksForThisLayer} blocks (${((layerBlocks.length/blocksForThisLayer)*100).toFixed(1)}%)`);
+                console.warn(`   Lower layer support: ${lowerLayerCells?.cells?.size || 0} cells`);
+                console.warn(`   Current layer occupied: ${currentLayerCells.size} cells`);
             }
         }
     } else {
@@ -1750,7 +1811,12 @@ async function generateSolvablePuzzle(level = 1) {
     }
     
     // Place all blocks in batches
+    console.log(`  Placing ${allBlocks.length} blocks in batches...`);
     await placeBlocksBatch(allBlocks, 10, 10); // 10 blocks per batch, 10ms between batches
+    console.log(`  Placement complete. Blocks array now has ${blocks.length} blocks`);
+    
+    // CRITICAL: Support checking is already disabled by isGeneratingLevel flag
+    // The flag will be set to false after a delay to ensure all blocks are initialized
     
     // Validate structure after placement to catch any overlaps
     const structureCheck = validateStructure(blocks, gridSize);
@@ -1769,7 +1835,12 @@ async function generateSolvablePuzzle(level = 1) {
         levelValueElement.textContent = level;
     }
     
-    isGeneratingLevel = false;
+    // Keep isGeneratingLevel true for a bit longer to prevent support checking from running
+    // Blocks need time to fully initialize before support checking resumes
+    setTimeout(() => {
+        isGeneratingLevel = false;
+        console.log('  Level generation complete, support checking enabled');
+    }, 1500); // 1.5 seconds to ensure all blocks are initialized
     
     // Start timer for new level
     resetTimer();
@@ -1781,6 +1852,20 @@ async function generateSolvablePuzzle(level = 1) {
     console.log(`✓ Generated Level ${level} puzzle using reverse generation`);
     console.log(`  Target blocks: ${targetBlockCount}, Actual blocks: ${blocks.length}`);
     console.log(`  Structure validation: ✓ PASSED`);
+    
+    // Enhanced block count verification
+    if (blocks.length !== targetBlockCount) {
+        console.warn(`⚠️ BLOCK COUNT MISMATCH: Expected ${targetBlockCount}, got ${blocks.length} (difference: ${targetBlockCount - blocks.length})`);
+    } else {
+        console.log(`✓ Block count verified: ${blocks.length} blocks match target ${targetBlockCount}`);
+    }
+    
+    // Log block breakdown by type
+    const verticalCount = blocks.filter(b => b.isVertical).length;
+    const horizontalCount = blocks.filter(b => !b.isVertical).length;
+    const singleCellCount = blocks.filter(b => b.length === 1).length;
+    const multiCellCount = blocks.filter(b => b.length > 1).length;
+    console.log(`  Block breakdown: ${verticalCount} vertical, ${horizontalCount} horizontal, ${singleCellCount} single-cell, ${multiCellCount} multi-cell`);
 }
 
 // Move history for undo functionality
@@ -2583,7 +2668,9 @@ calculateInitialCameraPosition();
 updateCameraPosition(); // Position camera immediately to avoid default (0,0,0) view on first frame
 
 // Initialize game - load saved progress or start at level 0
-currentLevel = loadProgress();
+// TEST MODE: Start at level 40 for testing
+// currentLevel = loadProgress();
+currentLevel = 40; // TEST: Start at level 40
 generateSolvablePuzzle(currentLevel);
 
 // Initialize button states
@@ -2828,6 +2915,13 @@ function blockHasSupport(block, allBlocks) {
  * Blocks fall until they reach the base (yOffset = 0) or another supporting block
  */
 function checkAndTriggerFalling(blocks) {
+    // Skip support checking during level generation to prevent false positives
+    // Blocks are placed with proper support during generation, but the check might
+    // run before all blocks are fully initialized, causing blocks to fall incorrectly
+    if (isGeneratingLevel || window.supportCheckingEnabled === false) {
+        return;
+    }
+    
     // Check all blocks that aren't already falling or removed
     for (const block of blocks) {
         if (block.isFalling || block.isRemoved) continue;
@@ -2988,6 +3082,8 @@ let touchState = {
     lastCenter: null,
     isPinching: false,
     isFramingControl: false,
+    wasFramingControl: false, // Track if framing control was active (persists until checked by onTouchEnd)
+    hadDoubleTouch: false, // Track if we ever had 2 touches in this gesture sequence (prevents block selection)
     framingStartY: 0,
     framingLastY: 0,
     framingLastTime: 0
@@ -3000,6 +3096,10 @@ renderer.domElement.addEventListener('touchstart', (event) => {
     touchState.touches = Array.from(event.touches);
     touchState.isActive = true;
     
+    // Reset framing control tracking for new touch sequence
+    touchState.wasFramingControl = false;
+    touchState.hadDoubleTouch = false;
+    
     if (touchState.touches.length === 1) {
         // Single touch - orbit mode
         const touch = touchState.touches[0];
@@ -3011,6 +3111,8 @@ renderer.domElement.addEventListener('touchstart', (event) => {
         isCameraDragging = false;
     } else if (touchState.touches.length === 2) {
         // Dual touch - detect pinch vs drag
+        touchState.hadDoubleTouch = true; // Mark that we had a double touch gesture
+        
         const touch1 = touchState.touches[0];
         const touch2 = touchState.touches[1];
         
@@ -3063,6 +3165,8 @@ renderer.domElement.addEventListener('touchmove', (event) => {
         }
     } else if (currentTouches.length === 2 && touchState.touches.length === 2) {
         // Dual touch - detect pinch (zoom) vs vertical drag (framing)
+        touchState.hadDoubleTouch = true; // Ensure flag is set if we're in a double touch gesture
+        
         const touch1 = currentTouches[0];
         const touch2 = currentTouches[1];
         
@@ -3179,8 +3283,13 @@ renderer.domElement.addEventListener('touchend', (event) => {
     
     const remainingTouches = Array.from(event.touches);
     
+    // Store if framing control was active before resetting (for onTouchEnd to check)
+    if (touchState.isFramingControl) {
+        touchState.wasFramingControl = true;
+    }
+    
     if (remainingTouches.length === 0) {
-        // All touches ended
+        // All touches ended - hadDoubleTouch will be cleared in onTouchEnd after check
         touchState.isActive = false;
         touchState.touches = [];
         touchState.isPinching = false;
@@ -3188,6 +3297,7 @@ renderer.domElement.addEventListener('touchend', (event) => {
         touchState.framingLastTime = 0;
     } else if (remainingTouches.length === 1) {
         // One touch ended, switch to single touch mode
+        // Keep hadDoubleTouch flag true to prevent block selection from remaining touch
         touchState.touches = remainingTouches;
         const touch = remainingTouches[0];
         touchState.lastCenter = { x: touch.clientX, y: touch.clientY };
@@ -3202,6 +3312,18 @@ let touchStartTime = null;
 const TOUCH_DRAG_THRESHOLD = 5; // pixels - minimum movement to consider it a drag
 
 function onTouchEnd(event) {
+    // Prevent block selection if we had a double touch gesture (pinch or framing control)
+    // This ensures no blocks are selected after completing double touch gestures
+    if (touchState.hadDoubleTouch || touchState.wasFramingControl || touchState.isFramingControl) {
+        // Only clear hadDoubleTouch when all touches have ended
+        if (event.touches.length === 0) {
+            touchState.hadDoubleTouch = false;
+        }
+        touchState.wasFramingControl = false; // Clear flag after checking
+        touchStartPos = null;
+        return; // Don't process as block tap
+    }
+    
     // Only process single touch (not multi-touch)
     if (event.touches.length > 0 || event.changedTouches.length !== 1) {
         touchStartPos = null;
@@ -3508,6 +3630,58 @@ function animate() {
     
     renderer.render(scene, camera);
 }
+
+// Test function to verify block counts across levels
+window.testBlockCounts = async function(maxLevel = 5) {
+    console.log('🧪 Testing block counts for levels 0-' + maxLevel);
+    console.log('='.repeat(60));
+    
+    const results = [];
+    
+    for (let level = 0; level <= maxLevel; level++) {
+        const targetCount = getBlocksForLevel(level);
+        console.log(`\n📊 Level ${level}: Target = ${targetCount}`);
+        
+        // Generate the level
+        await generateSolvablePuzzle(level);
+        
+        // Wait a bit for placement to complete
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        const actualCount = blocks.length;
+        const match = actualCount === targetCount;
+        
+        results.push({
+            level,
+            target: targetCount,
+            actual: actualCount,
+            match,
+            difference: targetCount - actualCount
+        });
+        
+        if (match) {
+            console.log(`✅ Level ${level}: PASS (${actualCount} blocks)`);
+        } else {
+            console.error(`❌ Level ${level}: FAIL - Expected ${targetCount}, got ${actualCount} (difference: ${targetCount - actualCount})`);
+        }
+    }
+    
+    console.log('\n' + '='.repeat(60));
+    console.log('📋 SUMMARY:');
+    const passed = results.filter(r => r.match).length;
+    const failed = results.filter(r => !r.match).length;
+    console.log(`✅ Passed: ${passed}/${results.length}`);
+    console.log(`❌ Failed: ${failed}/${results.length}`);
+    
+    if (failed > 0) {
+        console.log('\n❌ Failed levels:');
+        results.filter(r => !r.match).forEach(r => {
+            console.log(`  Level ${r.level}: Expected ${r.target}, got ${r.actual} (diff: ${r.difference})`);
+        });
+    }
+    
+    return results;
+};
 
 animate();
 

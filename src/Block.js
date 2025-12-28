@@ -64,8 +64,8 @@ export class Block {
             : false; // Default to white blocks
         
         const blockColor = useColored ? colors[length - 1] : whiteColor;
-        // Arrow and indicator colors always use length-based colors (for visibility)
-        const arrowColor = colors[length - 1];
+        // Arrow color matches block color
+        const arrowColor = blockColor;
         
         const blockMaterial = new THREE.MeshStandardMaterial({ 
             color: blockColor,
@@ -91,10 +91,10 @@ export class Block {
         this.originalMaterial = blockMaterial;
         this.isHighlighted = false;
         
-        // Create arrow with colored arrow (always colored for visibility)
+        // Create arrow with block color
         this.createArrow(arrowStyle, arrowColor);
         
-        // Create forward/backward indicators with colored arrows (always colored for visibility)
+        // Create forward/backward indicators with block color
         this.createDirectionIndicators(arrowColor, arrowStyle);
         
         // Position block on grid
@@ -173,10 +173,10 @@ export class Block {
                 arrowShape.lineTo(-thickness / 2, length - width);
                 
                 extrudeSettings = {
-                    depth: 0.03,
+                    depth: 0.06,
                     bevelEnabled: true,
-                    bevelThickness: 0.01,
-                    bevelSize: 0.01,
+                    bevelThickness: 0.02,
+                    bevelSize: 0.02,
                     bevelSegments: 2
                 };
                 
@@ -184,7 +184,7 @@ export class Block {
                 arrowMaterial = new THREE.MeshStandardMaterial({ 
                     color: blockColor,
                     emissive: blockColor,
-                    emissiveIntensity: 0, // Base is 0, pulsing animation will add glow
+                    emissiveIntensity: 0.3,
                     roughness: 0.3,
                     metalness: 0.6,
                     side: THREE.DoubleSide
@@ -202,18 +202,16 @@ export class Block {
                 arrowShape.lineTo(0, 0.35);
                 
                 extrudeSettings = {
-                    depth: 0.025,
+                    depth: 0.05,
                     bevelEnabled: true,
-                    bevelThickness: 0.01,
-                    bevelSize: 0.01,
+                    bevelThickness: 0.02,
+                    bevelSize: 0.02,
                     bevelSegments: 3
                 };
                 
                 arrowGeometry = new THREE.ExtrudeGeometry(arrowShape, extrudeSettings);
                 arrowMaterial = new THREE.MeshStandardMaterial({ 
                     color: blockColor,
-                    emissive: blockColor,
-                    emissiveIntensity: 0, // Base is 0, pulsing animation will add glow
                     roughness: 0.4,
                     metalness: 0.3
                 });
@@ -238,8 +236,6 @@ export class Block {
                 arrowGeometry = new THREE.ShapeGeometry(arrowShape);
                 arrowMaterial = new THREE.MeshStandardMaterial({ 
                     color: blockColor,
-                    emissive: blockColor,
-                    emissiveIntensity: 0, // Base is 0, pulsing animation will add glow
                     side: THREE.DoubleSide
                 });
                 
@@ -267,17 +263,13 @@ export class Block {
                 arrowShape.holes.push(hole);
                 
                 extrudeSettings = {
-                    depth: 0.03,
+                    depth: 0.06,
                     bevelEnabled: false
                 };
                 
                 arrowGeometry = new THREE.ExtrudeGeometry(arrowShape, extrudeSettings);
                 arrowMaterial = new THREE.MeshStandardMaterial({ 
-                    color: blockColor,
-                    emissive: blockColor,
-                    emissiveIntensity: 0, // Base is 0, pulsing animation will add glow
-                    roughness: 0.2,
-                    metalness: 0.8
+                    color: blockColor
                 });
                 
             } else if (style === 5) {
@@ -296,20 +288,16 @@ export class Block {
                 arrowShape.lineTo(0, 0.35);
                 
                 extrudeSettings = {
-                    depth: 0.05,
+                    depth: 0.08,
                     bevelEnabled: true,
-                    bevelThickness: 0.02,
-                    bevelSize: 0.02,
+                    bevelThickness: 0.03,
+                    bevelSize: 0.03,
                     bevelSegments: 5
                 };
                 
                 arrowGeometry = new THREE.ExtrudeGeometry(arrowShape, extrudeSettings);
                 arrowMaterial = new THREE.MeshStandardMaterial({ 
-                    color: blockColor,
-                    emissive: blockColor,
-                    emissiveIntensity: 0, // Base is 0, pulsing animation will add glow
-                    roughness: 0.3,
-                    metalness: 0.4
+                    color: blockColor
                 });
                 
             } else if (style === 6) {
@@ -328,20 +316,16 @@ export class Block {
                 arrowShape.lineTo(0, 0.38);
                 
                 extrudeSettings = {
-                    depth: 0.06,
+                    depth: 0.09,
                     bevelEnabled: true,
-                    bevelThickness: 0.025,
-                    bevelSize: 0.025,
+                    bevelThickness: 0.035,
+                    bevelSize: 0.035,
                     bevelSegments: 4
                 };
                 
                 arrowGeometry = new THREE.ExtrudeGeometry(arrowShape, extrudeSettings);
                 arrowMaterial = new THREE.MeshStandardMaterial({ 
-                    color: blockColor,
-                    emissive: blockColor,
-                    emissiveIntensity: 0, // Base is 0, pulsing animation will add glow
-                    roughness: 0.4,
-                    metalness: 0.3
+                    color: blockColor
                 });
                 
             } else if (style === 7) {
@@ -362,20 +346,16 @@ export class Block {
                 arrowShape.lineTo(0, 0.36);
                 
                 extrudeSettings = {
-                    depth: 0.05,
+                    depth: 0.08,
                     bevelEnabled: true,
-                    bevelThickness: 0.02,
-                    bevelSize: 0.02,
+                    bevelThickness: 0.03,
+                    bevelSize: 0.03,
                     bevelSegments: 3
                 };
                 
                 arrowGeometry = new THREE.ExtrudeGeometry(arrowShape, extrudeSettings);
                 arrowMaterial = new THREE.MeshStandardMaterial({ 
-                    color: blockColor,
-                    emissive: blockColor,
-                    emissiveIntensity: 0, // Base is 0, pulsing animation will add glow
-                    roughness: 0.35,
-                    metalness: 0.4
+                    color: blockColor
                 });
                 
             } else if (style === 8) {
@@ -391,20 +371,16 @@ export class Block {
                 arrowShape.lineTo(0, 0.4);
                 
                 extrudeSettings = {
-                    depth: 0.055,
+                    depth: 0.08,
                     bevelEnabled: true,
-                    bevelThickness: 0.02,
-                    bevelSize: 0.02,
+                    bevelThickness: 0.03,
+                    bevelSize: 0.03,
                     bevelSegments: 2
                 };
                 
                 arrowGeometry = new THREE.ExtrudeGeometry(arrowShape, extrudeSettings);
                 arrowMaterial = new THREE.MeshStandardMaterial({ 
-                    color: blockColor,
-                    emissive: blockColor,
-                    emissiveIntensity: 0, // Base is 0, pulsing animation will add glow
-                    roughness: 0.45,
-                    metalness: 0.25
+                    color: blockColor
                 });
             }
             
@@ -506,100 +482,129 @@ export class Block {
             blockDepth = this.length * this.cubeSize;
         }
         
-        // Small offset from surface to avoid z-fighting
-        const surfaceOffset = 0.01;
+        // Increased offset from surface to match how arrows stand out (arrows are at cubeSize + 0.02 above block)
+        // Use larger offset to make dots/circles stand out the same way
+        const surfaceOffset = 0.03;
+        
+        // Use full arrowColor for all indicators (no darkening)
+        const indicatorColor = blockColor; // blockColor is already arrowColor when passed
         
         // Create forward-facing dot (small filled circle)
-        const dotRadius = 0.18; // Increased from 0.12
+        const dotRadius = 0.2;
         const dotShape = new THREE.Shape();
         dotShape.arc(0, 0, dotRadius, 0, Math.PI * 2, false);
         
-        // Get arrow material properties based on style
-        let roughness, metalness;
+        // Get arrow extrude settings based on arrow style to match emboss/bevel
+        // Use style 2 as default (most common), but match the bevel pattern
+        let dotExtrudeSettings;
         if (arrowStyle === 1) {
-            roughness = 0.3;
-            metalness = 0.6;
+            dotExtrudeSettings = {
+                depth: 0.06,
+                bevelEnabled: true,
+                bevelThickness: 0.02,
+                bevelSize: 0.02,
+                bevelSegments: 2
+            };
         } else if (arrowStyle === 2) {
-            roughness = 0.4;
-            metalness = 0.3;
+            dotExtrudeSettings = {
+                depth: 0.05,
+                bevelEnabled: true,
+                bevelThickness: 0.02,
+                bevelSize: 0.02,
+                bevelSegments: 3
+            };
         } else if (arrowStyle === 3) {
-            roughness = 0.5; // Default for MeshStandardMaterial
-            metalness = 0.0;
+            dotExtrudeSettings = {
+                depth: 0.05,
+                bevelEnabled: false
+            };
         } else if (arrowStyle === 4) {
-            roughness = 0.2;
-            metalness = 0.8;
+            dotExtrudeSettings = {
+                depth: 0.06,
+                bevelEnabled: false
+            };
         } else if (arrowStyle === 5) {
-            roughness = 0.3;
-            metalness = 0.4;
+            dotExtrudeSettings = {
+                depth: 0.08,
+                bevelEnabled: true,
+                bevelThickness: 0.03,
+                bevelSize: 0.03,
+                bevelSegments: 5
+            };
         } else if (arrowStyle === 6) {
-            roughness = 0.4;
-            metalness = 0.3;
+            dotExtrudeSettings = {
+                depth: 0.09,
+                bevelEnabled: true,
+                bevelThickness: 0.035,
+                bevelSize: 0.035,
+                bevelSegments: 4
+            };
         } else if (arrowStyle === 7) {
-            roughness = 0.35;
-            metalness = 0.4;
+            dotExtrudeSettings = {
+                depth: 0.08,
+                bevelEnabled: true,
+                bevelThickness: 0.03,
+                bevelSize: 0.03,
+                bevelSegments: 3
+            };
         } else if (arrowStyle === 8) {
-            roughness = 0.45;
-            metalness = 0.25;
+            dotExtrudeSettings = {
+                depth: 0.08,
+                bevelEnabled: true,
+                bevelThickness: 0.03,
+                bevelSize: 0.03,
+                bevelSegments: 2
+            };
         } else {
-            // Default to style 2 properties
-            roughness = 0.4;
-            metalness = 0.3;
+            // Default to style 2
+            dotExtrudeSettings = {
+                depth: 0.05,
+                bevelEnabled: true,
+                bevelThickness: 0.02,
+                bevelSize: 0.02,
+                bevelSegments: 3
+            };
         }
         
-        // Create 3D extruded dot (like arrows)
-        const dotExtrudeSettings = {
-            depth: 0.08, // Increased from 0.04
-            bevelEnabled: true,
-            bevelThickness: 0.02, // Increased from 0.01
-            bevelSize: 0.02, // Increased from 0.01
-            bevelSegments: 4
-        };
-        
         const dotGeometry = new THREE.ExtrudeGeometry(dotShape, dotExtrudeSettings);
-        // Match arrow material properties
         const dotMaterial = new THREE.MeshStandardMaterial({
-            color: blockColor,
-            emissive: blockColor,
-            emissiveIntensity: 0, // Match arrow base emissive
-            roughness: roughness,
-            metalness: metalness
+            color: indicatorColor,
+            side: THREE.DoubleSide
         });
         
         const dotMesh = new THREE.Mesh(dotGeometry, dotMaterial);
         dotMesh.castShadow = true;
         dotMesh.receiveShadow = true;
         
+        // Get Z offset to push indicators away from surface
+        const zOffset = 0.01;
+        
         // Create backward-facing outlined circle - 3D extruded
-        const circleRadius = 0.26; // Increased from 0.18
+        const circleRadius = 0.25;
         const circleShape = new THREE.Shape();
         circleShape.arc(0, 0, circleRadius, 0, Math.PI * 2, false);
         
         // Create hole for outline effect
         const hole = new THREE.Path();
-        hole.arc(0, 0, circleRadius - 0.03, 0, Math.PI * 2, true); // Increased hole offset from 0.02 to 0.03
+        const holeOffset = 0.06;
+        hole.arc(0, 0, circleRadius - holeOffset, 0, Math.PI * 2, true);
         circleShape.holes.push(hole);
         
-        const circleExtrudeSettings = {
-            depth: 0.08, // Increased from 0.04
-            bevelEnabled: true,
-            bevelThickness: 0.02, // Increased from 0.01
-            bevelSize: 0.02, // Increased from 0.01
-            bevelSegments: 4
-        };
+        // Use same extrude settings as dot
+        const circleExtrudeSettings = dotExtrudeSettings;
         
         const circleGeometry = new THREE.ExtrudeGeometry(circleShape, circleExtrudeSettings);
-        // Match arrow material properties
         const circleMaterial = new THREE.MeshStandardMaterial({
-            color: blockColor,
-            emissive: blockColor,
-            emissiveIntensity: 0, // Match arrow base emissive
-            roughness: roughness,
-            metalness: metalness
+            color: indicatorColor,
+            side: THREE.DoubleSide
         });
         
         const circleMesh = new THREE.Mesh(circleGeometry, circleMaterial);
         circleMesh.castShadow = true;
         circleMesh.receiveShadow = true;
+        
+        // Apply Z offset to make the circle stand out from the surface
+        circleMesh.position.z = zOffset;
         
         // Position indicators based on block orientation and direction
         // ShapeGeometry creates shapes in XY plane (Z=0), so we need to rotate them to align with surfaces
@@ -715,9 +720,8 @@ export class Block {
             this.originalMaterial.metalness = 0.0; // Plastic, not metal
         }
         
-        // Update arrow color - if arrowColor not provided, use length-based color (for visibility)
-        const colors = [0xff6b6b, 0x4ecdc4, 0xffe66d]; // Red, Teal, Yellow
-        const finalArrowColor = arrowColor !== null ? arrowColor : colors[this.length - 1];
+        // Update arrow color - if arrowColor not provided, use block color
+        const finalArrowColor = arrowColor !== null ? arrowColor : newColor;
         // Arrow structure: this.arrow (Group) -> topArrow (Group) -> topArrowMesh (Mesh with material)
         if (this.arrow && this.arrow.children.length > 0) {
             const topArrow = this.arrow.children[0];
@@ -733,21 +737,17 @@ export class Block {
             }
         }
         
-        // Update direction indicators color to match arrow
+        // Use full arrow color for indicators
+        const indicatorColor = finalArrowColor;
+        
         if (this.directionIndicators && this.directionIndicators.children.length >= 2) {
             const dotMesh = this.directionIndicators.children[0];
             const circleMesh = this.directionIndicators.children[1];
             if (dotMesh && dotMesh.material) {
-                dotMesh.material.color.setHex(finalArrowColor);
-                if (dotMesh.material.emissive) {
-                    dotMesh.material.emissive.setHex(finalArrowColor);
-                }
+                dotMesh.material.color.setHex(indicatorColor);
             }
             if (circleMesh && circleMesh.material) {
-                circleMesh.material.color.setHex(finalArrowColor);
-                if (circleMesh.material.emissive) {
-                    circleMesh.material.emissive.setHex(finalArrowColor);
-                }
+                circleMesh.material.color.setHex(indicatorColor);
             }
         }
     }
@@ -829,11 +829,9 @@ export class Block {
         if (this.directionIndicators) {
             // Remove old indicators and recreate with new positions
             this.group.remove(this.directionIndicators);
-            // Use arrow color (length-based colored version) instead of block color
-            // This preserves the colored dots/circles that match the arrow
-            const colors = [0xff6b6b, 0x4ecdc4, 0xffe66d]; // Red, Teal, Yellow
-            const arrowColor = colors[this.length - 1] || colors[0];
-            this.createDirectionIndicators(arrowColor, this.arrowStyle);
+            // Use current block color for indicators
+            const currentBlockColor = this.originalMaterial ? this.originalMaterial.color.getHex() : 0xffffff;
+            this.createDirectionIndicators(currentBlockColor, this.arrowStyle);
         }
     }
     

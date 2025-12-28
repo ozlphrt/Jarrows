@@ -566,6 +566,98 @@ export function createDebugPanel(lights, blocks = null) {
     
     paletteFolder.content.appendChild(paletteGrid);
     
+    // GROUP 4: Color Adjustments (Brightness, Hue, Saturation)
+    const colorAdjustFolder = createFolder('Color Adjustments', false);
+    contentArea.appendChild(colorAdjustFolder.folder);
+    
+    // Initialize filter values
+    let brightnessValue = 1.0;
+    let hueValue = 0;
+    let saturationValue = 1.0;
+    
+    // Function to get canvas element (with retry if not immediately available)
+    function getCanvas() {
+        return document.querySelector('canvas');
+    }
+    
+    // Function to update CSS filter
+    function updateCanvasFilter() {
+        const canvas = getCanvas();
+        if (canvas) {
+            // CSS filter: brightness(1.0) hue-rotate(0deg) saturate(1.0)
+            canvas.style.filter = `brightness(${brightnessValue}) hue-rotate(${hueValue}deg) saturate(${saturationValue})`;
+        }
+    }
+    
+    // Brightness slider (0 to 2, default 1.0)
+    colorAdjustFolder.content.appendChild(createSlider('Brightness', brightnessValue, 0, 2, 0.01, (value) => {
+        brightnessValue = value;
+        updateCanvasFilter();
+    }));
+    
+    // Hue slider (-180 to 180 degrees, default 0)
+    colorAdjustFolder.content.appendChild(createSlider('Hue', hueValue, -180, 180, 1, (value) => {
+        hueValue = value;
+        updateCanvasFilter();
+    }));
+    
+    // Saturation slider (0 to 2, default 1.0)
+    colorAdjustFolder.content.appendChild(createSlider('Saturation', saturationValue, 0, 2, 0.01, (value) => {
+        saturationValue = value;
+        updateCanvasFilter();
+    }));
+    
+    // Reset button
+    const resetButton = document.createElement('div');
+    resetButton.textContent = 'Reset';
+    resetButton.style.cssText = `
+        padding: 6px 12px;
+        background: #2d2d2d;
+        border: 1px solid #444;
+        border-radius: 2px;
+        cursor: pointer;
+        font-size: 11px;
+        color: #fff;
+        text-align: center;
+        margin: 4px 6px;
+        transition: all 0.2s;
+    `;
+    resetButton.addEventListener('mouseenter', () => {
+        resetButton.style.background = '#3d3d3d';
+        resetButton.style.borderColor = '#4ecdc4';
+    });
+    resetButton.addEventListener('mouseleave', () => {
+        resetButton.style.background = '#2d2d2d';
+        resetButton.style.borderColor = '#444';
+    });
+    resetButton.addEventListener('click', () => {
+        brightnessValue = 1.0;
+        hueValue = 0;
+        saturationValue = 1.0;
+        updateCanvasFilter();
+        
+        // Update sliders
+        const sliders = colorAdjustFolder.content.querySelectorAll('input[type="range"]');
+        if (sliders.length >= 3) {
+            sliders[0].value = brightnessValue;
+            sliders[1].value = hueValue;
+            sliders[2].value = saturationValue;
+            
+            // Update value displays
+            const valueDisplays = colorAdjustFolder.content.querySelectorAll('span');
+            let displayIndex = 0;
+            valueDisplays.forEach((span) => {
+                if (span.textContent && !isNaN(parseFloat(span.textContent))) {
+                    if (displayIndex === 0) span.textContent = brightnessValue.toFixed(2);
+                    else if (displayIndex === 1) span.textContent = hueValue.toFixed(0);
+                    else if (displayIndex === 2) span.textContent = saturationValue.toFixed(2);
+                    displayIndex++;
+                }
+            });
+        }
+    });
+    colorAdjustFolder.content.appendChild(resetButton);
+    
     // Block Color Palettes folder - open by default (only if blocks array is provided)
     if (blocks !== null && Array.isArray(blocks)) {
         const blockPaletteFolder = createFolder('Block Color Palettes', false);
