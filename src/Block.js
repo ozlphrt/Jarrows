@@ -64,8 +64,8 @@ export class Block {
             : false; // Default to white blocks
         
         const blockColor = useColored ? colors[length - 1] : whiteColor;
-        // Arrow color matches block color
-        const arrowColor = blockColor;
+        // Arrow color always uses length-based colors (for visibility)
+        const arrowColor = colors[length - 1];
         
         const blockMaterial = new THREE.MeshStandardMaterial({ 
             color: blockColor,
@@ -91,10 +91,10 @@ export class Block {
         this.originalMaterial = blockMaterial;
         this.isHighlighted = false;
         
-        // Create arrow with block color
+        // Create arrow with colored arrow (always colored for visibility)
         this.createArrow(arrowStyle, arrowColor);
         
-        // Create forward/backward indicators with block color
+        // Create forward/backward indicators with colored arrows (always colored for visibility)
         this.createDirectionIndicators(arrowColor, arrowStyle);
         
         // Position block on grid
@@ -720,8 +720,9 @@ export class Block {
             this.originalMaterial.metalness = 0.0; // Plastic, not metal
         }
         
-        // Update arrow color - if arrowColor not provided, use block color
-        const finalArrowColor = arrowColor !== null ? arrowColor : newColor;
+        // Update arrow color - ALWAYS use length-based color (for visibility), ignore passed arrowColor
+        const colors = [0xff6b6b, 0x4ecdc4, 0xffe66d]; // Red, Teal, Yellow
+        const finalArrowColor = colors[this.length - 1] || colors[0];
         // Arrow structure: this.arrow (Group) -> topArrow (Group) -> topArrowMesh (Mesh with material)
         if (this.arrow && this.arrow.children.length > 0) {
             const topArrow = this.arrow.children[0];
@@ -829,9 +830,11 @@ export class Block {
         if (this.directionIndicators) {
             // Remove old indicators and recreate with new positions
             this.group.remove(this.directionIndicators);
-            // Use current block color for indicators
-            const currentBlockColor = this.originalMaterial ? this.originalMaterial.color.getHex() : 0xffffff;
-            this.createDirectionIndicators(currentBlockColor, this.arrowStyle);
+            // Use arrow color (length-based colored version) instead of block color
+            // This preserves the colored dots/circles that match the arrow
+            const colors = [0xff6b6b, 0x4ecdc4, 0xffe66d]; // Red, Teal, Yellow
+            const arrowColor = colors[this.length - 1] || colors[0];
+            this.createDirectionIndicators(arrowColor, this.arrowStyle);
         }
     }
     
