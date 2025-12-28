@@ -31,6 +31,12 @@ npm run build
 
 ## Releases
 
+### v4.3.1 - Arrow Color Fix
+- **Tree**: https://github.com/ozlphrt/Jarrows/tree/v4.3.1
+- **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v4.3.1
+- Fixed arrow colors to always use length-based colors on white blocks
+- Ensured arrows remain colored (red/teal/yellow) regardless of block color setting
+
 ### v4.3.0 - Enhanced Visibility & Color Controls
 - **Tree**: https://github.com/ozlphrt/Jarrows/tree/v4.3.0
 - **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v4.3.0
