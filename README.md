@@ -31,6 +31,14 @@ npm run build
 
 ## Releases
 
+### v4.3.0 - Enhanced Visibility & Color Controls
+- **Tree**: https://github.com/ozlphrt/Jarrows/tree/v4.3.0
+- **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v4.3.0
+- Increased emboss depth for arrows, dots, and circles (2x visibility)
+- Added temporary color adjustment controls (brightness, hue, saturation) in debug panel
+- Reverted arrow color changes to match block colors
+- Enhanced bevel settings for better 3D appearance
+
 ### v2.2.0 - Crescent Icon & UI Improvements
 - **Tree**: https://github.com/ozlphrt/Jarrows/tree/v2.2.0
 - **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v2.2.0
