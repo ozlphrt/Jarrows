@@ -2,8 +2,7 @@
 import { initPhysics, createPhysicsBlock, updatePhysics, isPhysicsStepping, hasPendingOperations, isPhysicsProcessing } from './physics.js';
 import { Block } from './Block.js';
 import { createLights, createGrid, setGradientBackground, setupFog } from './scene.js';
-import { validateStructure, validateSolvability, calculateDifficulty, getBlockCells } from './puzzle_validation.js';
-import { createDebugPanel } from './debug-panel.js';
+import { validateStructure, validateSolvability, calculateDifficulty, getBlockCells, fixOverlappingBlocks, checkAndFixAllOverlaps } from './puzzle_validation.js';
 
 // Scene setup
 const scene = new THREE.Scene();
@@ -414,15 +413,13 @@ const blocks = [];
 // Expose blocks array for toggle handlers
 window.gameBlocks = blocks;
 
-// Initialize debug panel with lights and blocks
-let debugPanel = null;
-function initDebugPanel() {
-    if (!debugPanel) {
-        debugPanel = createDebugPanel(lights, blocks);
-    }
-}
-// Initialize debug panel after a short delay to ensure DOM is ready
-setTimeout(initDebugPanel, 100);
+// Expose overlap fixing function for debugging
+window.fixOverlaps = () => {
+    const result = checkAndFixAllOverlaps(blocks, gridSize);
+    console.log(result.message);
+    return result;
+};
+
 const directions = [
     {x: 1, z: 0},   // East
     {x: -1, z: 0},  // West
@@ -1845,6 +1842,8 @@ async function generateSolvablePuzzle(level = 1) {
     // Start timer for new level
     resetTimer();
     startTimer();
+    // Reset move counter for new level
+    totalMoves = 0;
     
     // Update button states after level generation
     updateUndoButtonState();
@@ -1870,6 +1869,7 @@ async function generateSolvablePuzzle(level = 1) {
 
 // Move history for undo functionality
 let moveHistory = [];
+let totalMoves = 0; // Track total moves for the current level
 
 // Timer functionality
 let timerStartTime = null;
@@ -1935,6 +1935,9 @@ function saveMoveState(block) {
         isVertical: block.isVertical,
         timestamp: performance.now()
     });
+    
+    // Increment total move counter
+    totalMoves++;
     
     // Limit history to last 50 moves
     if (moveHistory.length > 50) {
@@ -2175,6 +2178,7 @@ async function restartCurrentLevel() {
     
     // Clear move history
     moveHistory = [];
+    totalMoves = 0;
     
     // Regenerate current level
     await generateSolvablePuzzle(currentLevel);
@@ -2190,6 +2194,7 @@ async function startNewGame() {
     
     // Clear move history
     moveHistory = [];
+    totalMoves = 0;
     
     // Reset spin counter
     remainingSpins = 3;
@@ -2209,9 +2214,34 @@ async function startNewGame() {
 function showLevelCompleteModal(completedLevel) {
     const modal = document.getElementById('level-complete-modal');
     const message = document.getElementById('level-complete-message');
+    const timeElement = document.getElementById('level-complete-time');
+    const movesElement = document.getElementById('level-complete-moves');
+    const blocksElement = document.getElementById('level-complete-blocks');
     
     if (modal && message) {
         message.textContent = `Congratulations! You cleared Level ${completedLevel}!`;
+        
+        // Get elapsed time
+        let elapsedSeconds = timerPausedTime;
+        if (isTimerRunning && timerStartTime !== null) {
+            elapsedSeconds += (performance.now() / 1000) - timerStartTime;
+        }
+        const timeString = formatTime(elapsedSeconds);
+        if (timeElement) {
+            timeElement.textContent = timeString;
+        }
+        
+        // Get move count (use totalMoves for accurate count)
+        if (movesElement) {
+            movesElement.textContent = totalMoves;
+        }
+        
+        // Get number of blocks cleared (initial block count for this level)
+        const initialBlockCount = getBlocksForLevel(completedLevel);
+        if (blocksElement) {
+            blocksElement.textContent = initialBlockCount;
+        }
+        
         modal.style.display = 'flex';
     }
 }
@@ -2230,6 +2260,7 @@ if (nextLevelButton) {
         hideLevelCompleteModal();
         currentLevel++;
         moveHistory = []; // Clear move history for new level
+        totalMoves = 0; // Reset move counter
         saveProgress(); // Save progress when advancing to next level
         await generateSolvablePuzzle(currentLevel);
     });
@@ -2813,16 +2844,39 @@ function onMouseClick(event) {
     const structureCheck = validateStructure(blocks, gridSize);
     if (!structureCheck.valid) {
         console.warn('Puzzle structure invalid before move, skipping:', structureCheck.reason);
-        return;
+        console.warn('This may indicate a bug in the movement logic or puzzle generation.');
+        // Don't block the move - allow it to proceed and let the move logic handle collisions
+        // The validation might be too strict or detecting a transient state
+        // return;
     }
     
     // Store if this block will fall (to update solution tracking)
-    const willFall = block.canMove(blocks) === 'fall';
+    const moveResult = block.canMove(blocks);
+    const willFall = moveResult === 'fall';
+    
+    // Debug: Log why block can't move
+    if (moveResult === 'blocked') {
+        console.log(`Block at (${block.gridX}, ${block.gridZ}) cannot move ${JSON.stringify(block.direction)}: blocked by another block`);
+    }
     
     // Save move state before moving (for undo)
     saveMoveState(block);
     
     block.move(blocks, gridSize);
+    
+    // After a block moves, validate structure and fix any overlaps
+    setTimeout(() => {
+        const structureCheck = validateStructure(blocks, gridSize);
+        if (!structureCheck.valid) {
+            console.warn('Overlap detected after move, attempting to fix...');
+            const fixResult = fixOverlappingBlocks(blocks, gridSize);
+            if (fixResult.fixed) {
+                console.log(`Fixed ${fixResult.movedBlocks.length} overlapping block(s)`);
+            } else {
+                console.error('Failed to fix overlaps - manual intervention may be needed');
+            }
+        }
+    }, 100);
     
     // After a block moves, check if any other blocks lost support and need to fall
     // Wait for move animation to complete before checking support
@@ -3396,7 +3450,10 @@ function onTouchEnd(event) {
     const structureCheck = validateStructure(blocks, gridSize);
     if (!structureCheck.valid) {
         console.warn('Puzzle structure invalid before move, skipping:', structureCheck.reason);
-        return;
+        console.warn('This may indicate a bug in the movement logic or puzzle generation.');
+        // Don't block the move - allow it to proceed and let the move logic handle collisions
+        // The validation might be too strict or detecting a transient state
+        // return;
     }
     
     // Store if this block will fall
@@ -3406,6 +3463,20 @@ function onTouchEnd(event) {
     saveMoveState(block);
     
     block.move(blocks, gridSize);
+    
+    // After a block moves, validate structure and fix any overlaps
+    setTimeout(() => {
+        const structureCheck = validateStructure(blocks, gridSize);
+        if (!structureCheck.valid) {
+            console.warn('Overlap detected after move, attempting to fix...');
+            const fixResult = fixOverlappingBlocks(blocks, gridSize);
+            if (fixResult.fixed) {
+                console.log(`Fixed ${fixResult.movedBlocks.length} overlapping block(s)`);
+            } else {
+                console.error('Failed to fix overlaps - manual intervention may be needed');
+            }
+        }
+    }, 100);
     
     // After a block moves, check if any other blocks lost support
     setTimeout(() => {

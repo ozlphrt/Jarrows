@@ -424,6 +424,13 @@ export class Block {
         const topArrowData = createArrowGeometry(style);
         const topArrowMesh = new THREE.Mesh(topArrowData.geometry, topArrowData.material);
         
+        // Store original emissiveIntensity for later color updates
+        if (topArrowMesh.material.emissive) {
+            topArrowMesh.material._originalEmissiveIntensity = topArrowMesh.material.emissiveIntensity !== undefined 
+                ? topArrowMesh.material.emissiveIntensity 
+                : 0;
+        }
+        
         // Enable shadows on arrow mesh
         topArrowMesh.castShadow = true;
         topArrowMesh.receiveShadow = true;
@@ -729,11 +736,11 @@ export class Block {
             if (topArrow && topArrow.children && topArrow.children.length > 0) {
                 const topArrowMesh = topArrow.children[0];
                 if (topArrowMesh && topArrowMesh.material) {
+                    // Update arrow color ONLY - do not touch emissive properties
+                    // This prevents arrows from becoming luminescent when switching block colors
                     topArrowMesh.material.color.setHex(finalArrowColor);
-                    // Only update emissive if it exists (some arrow styles don't have emissive)
-                    if (topArrowMesh.material.emissive) {
-                        topArrowMesh.material.emissive.setHex(finalArrowColor);
-                    }
+                    // Do NOT update emissive color or intensity - leave them as originally set
+                    // The emissive properties should remain unchanged from initial creation
                 }
             }
         }
@@ -1001,7 +1008,9 @@ export class Block {
                 const otherYTop = other.yOffset + otherHeight;
                 
                 // Check if Y ranges overlap (blocks are at different Y levels but might overlap in 3D)
-                const yRangesOverlap = !(thisYTop <= otherYBottom || thisYBottom >= otherYTop);
+                // Use strict inequality to avoid false positives when blocks are just touching
+                // Blocks overlap if: thisYTop > otherYBottom AND thisYBottom < otherYTop
+                const yRangesOverlap = thisYTop > otherYBottom && thisYBottom < otherYTop;
                 
                 // If Y ranges don't overlap, blocks can't collide (they're at different heights)
                 if (!yRangesOverlap) continue;
@@ -1045,7 +1054,9 @@ export class Block {
                     const otherYTop = other.yOffset + otherHeight;
                     
                     // Check if Y ranges overlap (blocks are at different Y levels but might overlap in 3D)
-                    const yRangesOverlap = !(thisYTop <= otherYBottom || thisYBottom >= otherYTop);
+                    // Check if Y ranges overlap - use strict inequality to avoid false positives
+                    // Blocks overlap if: thisYTop > otherYBottom AND thisYBottom < otherYTop
+                    const yRangesOverlap = thisYTop > otherYBottom && thisYBottom < otherYTop;
                     
                     // If Y ranges don't overlap, blocks can't collide (they're at different heights)
                     if (!yRangesOverlap) continue;
@@ -1106,7 +1117,9 @@ export class Block {
                 const otherYTop = other.yOffset + otherHeight;
                 
                 // Check if Y ranges overlap (blocks are at different Y levels but might overlap in 3D)
-                const yRangesOverlap = !(thisYTop <= otherYBottom || thisYBottom >= otherYTop);
+                // Use strict inequality to avoid false positives when blocks are just touching
+                // Blocks overlap if: thisYTop > otherYBottom AND thisYBottom < otherYTop
+                const yRangesOverlap = thisYTop > otherYBottom && thisYBottom < otherYTop;
                 
                 // If Y ranges don't overlap, blocks can't collide (they're at different heights)
                 if (!yRangesOverlap) continue;
@@ -1165,7 +1178,9 @@ export class Block {
                     const otherYTop = other.yOffset + otherHeight;
                     
                     // Check if Y ranges overlap (blocks are at different Y levels but might overlap in 3D)
-                    const yRangesOverlap = !(thisYTop <= otherYBottom || thisYBottom >= otherYTop);
+                    // Check if Y ranges overlap - use strict inequality to avoid false positives
+                    // Blocks overlap if: thisYTop > otherYBottom AND thisYBottom < otherYTop
+                    const yRangesOverlap = thisYTop > otherYBottom && thisYBottom < otherYTop;
                     
                     // If Y ranges don't overlap, blocks can't collide (they're at different heights)
                     if (!yRangesOverlap) continue;
@@ -1398,6 +1413,12 @@ export class Block {
         const newGridX = this.gridX + this.direction.x;
         const newGridZ = this.gridZ + this.direction.z;
         
+        // Debug logging for blocks that can't move
+        const debugThis = false; // Set to true to enable debug logging
+        if (debugThis) {
+            console.log(`canMove check: block at (${this.gridX}, ${this.gridZ}), direction (${this.direction.x}, ${this.direction.z}), newPos (${newGridX}, ${newGridZ}), yOffset=${this.yOffset}, isVertical=${this.isVertical}, length=${this.length}`);
+        }
+        
         if (this.isVertical) {
             if (newGridX < 0 || newGridX >= this.gridSize || newGridZ < 0 || newGridZ >= this.gridSize) {
                 return 'fall';
@@ -1418,13 +1439,28 @@ export class Block {
                 const otherYTop = other.yOffset + otherHeight;
                 
                 // Check if Y ranges overlap (blocks are at different Y levels but might overlap in 3D)
-                const yRangesOverlap = !(thisYTop <= otherYBottom || thisYBottom >= otherYTop);
+                // Use strict inequality to avoid false positives when blocks are just touching
+                // Blocks overlap if: thisYTop > otherYBottom AND thisYBottom < otherYTop
+                const yRangesOverlap = thisYTop > otherYBottom && thisYBottom < otherYTop;
                 
                 // If Y ranges don't overlap, blocks can't collide (they're at different heights)
                 if (!yRangesOverlap) continue;
                 
                 if (other.isVertical) {
                     if (newGridX === other.gridX && newGridZ === other.gridZ) {
+                        // Check if this is a head-on collision
+                        // For single-cube or vertical blocks: head-on collision
+                        // For horizontal multi-cell blocks: also allow head-on collision
+                        const isSingleOrVertical = (this.length === 1) || this.isVertical;
+                        const isHorizontalMultiCell = !this.isVertical && this.length > 1;
+                        const isHeadOn = (isSingleOrVertical || isHorizontalMultiCell) && 
+                            this.direction.x === -other.direction.x && 
+                            this.direction.z === -other.direction.z;
+                        
+                        if (isHeadOn) {
+                            // Head-on collision: block can move (will rotate and continue)
+                            continue; // Skip this collision, allow movement
+                        }
                         return 'blocked';
                     }
                 } else {
@@ -1440,6 +1476,16 @@ export class Block {
                         }
                         
                         if (newGridX === otherX && newGridZ === otherZ) {
+                            // Check if this is a head-on collision (only for single cube or vertical blocks)
+                            const isSingleOrVertical = (this.length === 1) || this.isVertical;
+                            const isHeadOn = isSingleOrVertical && 
+                                this.direction.x === -other.direction.x && 
+                                this.direction.z === -other.direction.z;
+                            
+                            if (isHeadOn) {
+                                // Head-on collision: block can move (will rotate and continue)
+                                continue; // Skip this collision, allow movement
+                            }
                             return 'blocked';
                         }
                     }
@@ -1480,13 +1526,35 @@ export class Block {
                 const otherYTop = other.yOffset + otherHeight;
                 
                 // Check if Y ranges overlap (blocks are at different Y levels but might overlap in 3D)
-                const yRangesOverlap = !(thisYTop <= otherYBottom || thisYBottom >= otherYTop);
+                // Use strict inequality to avoid false positives when blocks are just touching
+                // Blocks overlap if: thisYTop > otherYBottom AND thisYBottom < otherYTop
+                const yRangesOverlap = thisYTop > otherYBottom && thisYBottom < otherYTop;
                 
                 // If Y ranges don't overlap, blocks can't collide (they're at different heights)
                 if (!yRangesOverlap) continue;
                 
+                // Additional precision check: For horizontal blocks, ensure they're at the same Y level
+                // (within a small epsilon to account for floating point precision)
+                if (!this.isVertical && !other.isVertical) {
+                    const yLevelDiff = Math.abs(this.yOffset - other.yOffset);
+                    if (yLevelDiff > 0.001) continue; // Different Y levels, can't collide
+                }
+                
                 if (other.isVertical) {
                     if (checkX === other.gridX && checkZ === other.gridZ) {
+                        // Check if this is a head-on collision
+                        // For single-cube or vertical blocks: head-on collision
+                        // For horizontal multi-cell blocks: also allow head-on collision
+                        const isSingleOrVertical = (this.length === 1) || this.isVertical;
+                        const isHorizontalMultiCell = !this.isVertical && this.length > 1;
+                        const isHeadOn = (isSingleOrVertical || isHorizontalMultiCell) && 
+                            this.direction.x === -other.direction.x && 
+                            this.direction.z === -other.direction.z;
+                        
+                        if (isHeadOn) {
+                            // Head-on collision: block can move (will rotate and continue)
+                            continue; // Skip this collision, allow movement
+                        }
                         return 'blocked';
                     }
                 } else {
@@ -1503,6 +1571,19 @@ export class Block {
                         }
                         
                         if (checkX === otherX && checkZ === otherZ) {
+                            // Check if this is a head-on collision
+                            // For single-cube or vertical blocks: head-on collision
+                            // For horizontal multi-cell blocks: also allow head-on collision
+                            const isSingleOrVertical = (this.length === 1) || this.isVertical;
+                            const isHorizontalMultiCell = !this.isVertical && this.length > 1;
+                            const isHeadOn = (isSingleOrVertical || isHorizontalMultiCell) && 
+                                this.direction.x === -other.direction.x && 
+                                this.direction.z === -other.direction.z;
+                            
+                            if (isHeadOn) {
+                                // Head-on collision: block can move (will rotate and continue)
+                                continue; // Skip this collision, allow movement
+                            }
                             return 'blocked';
                         }
                     }
@@ -1524,6 +1605,8 @@ export class Block {
         let hitEdge = false;
         let collidedBlock = null; // Track which block we collided with
         let headOnCollision = null; // Track head-on collision: {block, gridX, gridZ, originalDirection, stepsToCollision}
+        let headOnCollisionCount = 0; // Safety counter to prevent infinite head-on collision loops
+        const MAX_HEAD_ON_COLLISIONS = 10; // Maximum number of head-on collisions allowed in one move
         
         // Count steps until blocked or edge
         // Continue moving until block entirely leaves the board (all cubes off) or hits an obstacle
@@ -1549,7 +1632,9 @@ export class Block {
                 const otherYTop = other.yOffset + otherHeight;
                 
                 // Check if Y ranges overlap (blocks are at different Y levels but might overlap in 3D)
-                const yRangesOverlap = !(thisYTop <= otherYBottom || thisYBottom >= otherYTop);
+                // Use strict inequality to avoid false positives when blocks are just touching
+                // Blocks overlap if: thisYTop > otherYBottom AND thisYBottom < otherYTop
+                const yRangesOverlap = thisYTop > otherYBottom && thisYBottom < otherYTop;
                 
                 // If Y ranges don't overlap, blocks can't collide (they're at different heights)
                 if (!yRangesOverlap) continue;
@@ -1603,20 +1688,33 @@ export class Block {
             }
             
             if (blocked) {
-                // Check if this is a head-on collision (only for single cube or vertical blocks)
+                // Check if this is a head-on collision
+                // For single-cube or vertical blocks: head-on collision
+                // For horizontal multi-cell blocks: also allow head-on collision
                 const isSingleOrVertical = (this.length === 1) || this.isVertical;
-                const isHeadOn = isSingleOrVertical && collidedBlock && 
+                const isHorizontalMultiCell = !this.isVertical && this.length > 1;
+                const isHeadOn = (isSingleOrVertical || isHorizontalMultiCell) && collidedBlock && 
                     this.direction.x === -collidedBlock.direction.x && 
                     this.direction.z === -collidedBlock.direction.z;
                 
                 if (isHeadOn) {
+                    // Safety check: prevent infinite head-on collision loops
+                    headOnCollisionCount++;
+                    if (headOnCollisionCount > MAX_HEAD_ON_COLLISIONS) {
+                        // Too many head-on collisions - treat as regular collision to prevent infinite loop
+                        console.warn(`Block at (${this.gridX}, ${this.gridZ}) hit maximum head-on collisions (${MAX_HEAD_ON_COLLISIONS}), stopping movement`);
+                        hitObstacle = true;
+                        break;
+                    }
+                    
                     // Head-on collision detected: record collision info for animation
                     headOnCollision = {
                         block: collidedBlock,
                         gridX: tempGridX,
                         gridZ: tempGridZ,
                         originalDirection: { x: this.direction.x, z: this.direction.z },
-                        stepsToCollision: stepsToObstacle
+                        stepsToCollision: stepsToObstacle,
+                        originalYOffset: this.yOffset // Store original Y level before drop
                     };
                     
                     // Update grid position to collision position
@@ -1624,7 +1722,101 @@ export class Block {
                     this.gridZ = tempGridZ;
                     
                     // Rotate direction immediately (for movement calculation)
-                    this.rotateDirectionClockwise();
+                    // Horizontal multi-cell blocks rotate 180 degrees (flip direction)
+                    // Single-cube and vertical blocks rotate clockwise
+                    if (isHorizontalMultiCell) {
+                        // Flip direction 180 degrees: negate both x and z
+                        this.direction = { x: -this.direction.x, z: -this.direction.z };
+                        this.updateArrowRotation();
+                    } else {
+                        // Single-cube or vertical: rotate clockwise
+                        this.rotateDirectionClockwise();
+                    }
+                    
+                    // Drop down one level after head-on collision
+                    // But first check if dropping would cause an overlap
+                    const newYOffset = Math.max(0, this.yOffset - this.cubeSize);
+                    const thisHeight = this.isVertical ? this.length * this.cubeSize : this.cubeSize;
+                    const newYBottom = newYOffset;
+                    const newYTop = newYOffset + thisHeight;
+                    
+                    // Check if dropping would cause overlap with any block at the collision position
+                    let wouldOverlap = false;
+                    for (const other of blocks) {
+                        if (other === this || other === collidedBlock || other.isFalling || other.isRemoved || other.removalStartTime) continue;
+                        
+                        // Check if other block is at the collision position
+                        const otherAtPosition = other.isVertical 
+                            ? (other.gridX === tempGridX && other.gridZ === tempGridZ)
+                            : (() => {
+                                const otherIsXAligned = Math.abs(other.direction.x) > 0;
+                                for (let j = 0; j < other.length; j++) {
+                                    const otherX = other.gridX + (otherIsXAligned ? j : 0);
+                                    const otherZ = other.gridZ + (otherIsXAligned ? 0 : j);
+                                    if (otherX === tempGridX && otherZ === tempGridZ) return true;
+                                }
+                                return false;
+                            })();
+                        
+                        if (otherAtPosition) {
+                            const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
+                            const otherYBottom = other.yOffset;
+                            const otherYTop = other.yOffset + otherHeight;
+                            
+                            // Check if Y ranges would overlap
+                            if (newYTop > otherYBottom && newYBottom < otherYTop) {
+                                wouldOverlap = true;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    if (!wouldOverlap) {
+                        this.yOffset = newYOffset;
+                    } else {
+                        // Can't drop - keep at current level (or find next available level)
+                        // Try dropping further if possible
+                        let safeYOffset = this.yOffset;
+                        for (let dropLevel = 1; dropLevel <= 5; dropLevel++) {
+                            const testYOffset = Math.max(0, this.yOffset - dropLevel * this.cubeSize);
+                            const testYBottom = testYOffset;
+                            const testYTop = testYOffset + thisHeight;
+                            
+                            let testOverlap = false;
+                            for (const other of blocks) {
+                                if (other === this || other === collidedBlock || other.isFalling || other.isRemoved || other.removalStartTime) continue;
+                                
+                                const otherAtPosition = other.isVertical 
+                                    ? (other.gridX === tempGridX && other.gridZ === tempGridZ)
+                                    : (() => {
+                                        const otherIsXAligned = Math.abs(other.direction.x) > 0;
+                                        for (let j = 0; j < other.length; j++) {
+                                            const otherX = other.gridX + (otherIsXAligned ? j : 0);
+                                            const otherZ = other.gridZ + (otherIsXAligned ? 0 : j);
+                                            if (otherX === tempGridX && otherZ === tempGridZ) return true;
+                                        }
+                                        return false;
+                                    })();
+                                
+                                if (otherAtPosition) {
+                                    const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
+                                    const otherYBottom = other.yOffset;
+                                    const otherYTop = other.yOffset + otherHeight;
+                                    
+                                    if (testYTop > otherYBottom && testYBottom < otherYTop) {
+                                        testOverlap = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            
+                            if (!testOverlap) {
+                                safeYOffset = testYOffset;
+                                break;
+                            }
+                        }
+                        this.yOffset = safeYOffset;
+                    }
                     
                     // Continue moving with the new rotated direction from current position
                     // Don't update tempGridX/tempGridZ - stay at current position
@@ -1857,14 +2049,20 @@ export class Block {
                     const preCollisionProgress = elapsedTime / collisionTime;
                     this.group.position.x = startX + (collisionX - startX) * preCollisionProgress;
                     this.group.position.z = startZ + (collisionZ - startZ) * preCollisionProgress;
+                    // Keep Y position at original level before collision (group Y = yOffset, mesh bottom at yOffset)
+                    const originalYOffset = headOnCollision.originalYOffset;
+                    this.group.position.y = originalYOffset;
                     this.group.scale.set(1, 1, 1);
                 } else {
                     const timeSinceCollision = elapsedTime - collisionTime;
                     
                     if (timeSinceCollision < rotationPauseDuration) {
-                        // Pause at collision position
+                        // Pause at collision position (still at original Y level)
                         this.group.position.x = collisionX;
                         this.group.position.z = collisionZ;
+                        // Keep Y at original level during rotation pause (group Y = yOffset, mesh bottom at yOffset)
+                        const originalYOffset = headOnCollision.originalYOffset;
+                        this.group.position.y = originalYOffset;
                         
                         // Mark rotation as started
                         if (!rotationStarted) {
@@ -1879,7 +2077,17 @@ export class Block {
                         
                         const originalDir = headOnCollision.originalDirection;
                         const startAngle = Math.atan2(originalDir.x, originalDir.z) + Math.PI;
-                        const endAngle = Math.atan2(this.direction.x, this.direction.z) + Math.PI;
+                        // For horizontal multi-cell blocks, end angle is 180 degrees from start (flip)
+                        // For single-cube/vertical blocks, end angle is clockwise rotation
+                        const isHorizontalMultiCell = !this.isVertical && this.length > 1;
+                        let endAngle;
+                        if (isHorizontalMultiCell) {
+                            // 180 degree flip: add PI radians
+                            endAngle = startAngle + Math.PI;
+                        } else {
+                            // Clockwise rotation
+                            endAngle = Math.atan2(this.direction.x, this.direction.z) + Math.PI;
+                        }
                         const currentAngle = startAngle + (endAngle - startAngle) * rotationEased;
                         
                         if (this.arrow && this.arrow.children.length > 0) {
@@ -1905,6 +2113,14 @@ export class Block {
                         // Move from collision position to final position at constant speed
                         this.group.position.x = collisionX + (finalX - collisionX) * postRotationProgress;
                         this.group.position.z = collisionZ + (finalZ - collisionZ) * postRotationProgress;
+                        
+                        // Animate Y position drop during post-rotation movement
+                        // Group Y position = yOffset (mesh bottom at yOffset, center at yOffset + blockHeight/2)
+                        const originalYOffset = headOnCollision.originalYOffset;
+                        const newYOffset = this.yOffset;
+                        const currentY = originalYOffset + (newYOffset - originalYOffset) * postRotationProgress;
+                        this.group.position.y = currentY;
+                        
                         this.group.scale.set(1, 1, 1);
                     }
                 }

@@ -31,116 +31,89 @@
             pointer-events: none;
             z-index: 1000;
         }
-        #top-counters-container {
+        /* Compact Stats Bar */
+        #stats-bar {
             position: fixed;
-            top: 20px;
-            left: 20px;
-            right: 20px;
-            display: flex;
-            gap: 12px;
+            top: 10px;
+            left: 10px;
             z-index: 1000;
             pointer-events: none;
-            overflow: visible;
-        }
-        
-        .top-counter {
-            flex: 1;
             color: white;
-            background: rgba(0, 0, 0, 0.4);
-            backdrop-filter: blur(20px) saturate(180%);
-            -webkit-backdrop-filter: blur(20px) saturate(180%);
-            padding: 16px 20px;
-            border-radius: 12px;
-            border: 1px solid rgba(255, 255, 255, 0.25);
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2),
-                        0 2px 8px rgba(0, 0, 0, 0.1),
-                        inset 0 1px 0 rgba(255, 255, 255, 0.15);
-            box-sizing: border-box;
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-start;
-            align-items: flex-start;
-            min-width: 0;
-            position: relative;
-        }
-        
-        .top-counter-label {
-            font-size: 14px;
-            font-weight: 600;
+            background: rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            padding: 6px 10px;
+            border-radius: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            letter-spacing: 1px;
-            text-transform: uppercase;
-            opacity: 0.95;
-            margin-bottom: 2px;
-            margin-top: 0;
-            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
-            align-self: flex-start;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
             line-height: 1.2;
         }
         
-        .top-counter-value {
-            font-size: 72px;
+        .stats-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+        }
+        
+        .stats-label {
+            font-size: 12px;
+            font-weight: 600;
+            opacity: 0.9;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+        }
+        
+        .stats-value {
+            font-size: 18px;
             font-weight: 700;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            letter-spacing: 0;
-            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-            line-height: 1;
-            white-space: nowrap;
-            align-self: flex-end;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
         }
         
-        #block-counter .top-counter-label,
-        #level-counter .top-counter-label,
-        #timer-counter .top-counter-label {
-            align-self: flex-start;
-        }
-        
-        #block-counter .top-counter-value {
-            align-self: flex-end;
-        }
-        
-        #level-counter .top-counter-value {
-            align-self: flex-end;
-        }
-        
-        #timer-counter .top-counter-value {
-            align-self: center;
+        .stats-separator {
+            font-size: 12px;
+            opacity: 0.5;
+            margin: 0 2px;
         }
         
         /* Responsive adjustments for smaller screens */
         @media (max-width: 768px) {
-            #top-counters-container {
-                top: 15px;
-                left: 10px;
-                right: 10px;
-                gap: 8px;
+            #stats-bar {
+                top: 8px;
+                left: 8px;
+                padding: 5px 8px;
+                gap: 5px;
             }
-            .top-counter {
-                padding: 12px 16px;
+            .stats-label {
+                font-size: 11px;
             }
-            .top-counter-label {
-                font-size: 12px;
+            .stats-value {
+                font-size: 16px;
             }
-            .top-counter-value {
-                font-size: 54px;
+            .stats-separator {
+                font-size: 11px;
             }
         }
         
         @media (max-width: 480px) {
-            #top-counters-container {
-                top: 10px;
-                left: 8px;
-                right: 8px;
-                gap: 6px;
+            #stats-bar {
+                top: 6px;
+                left: 6px;
+                padding: 4px 6px;
+                gap: 4px;
             }
-            .top-counter {
-                padding: 10px 14px;
+            .stats-label {
+                font-size: 10px;
             }
-            .top-counter-label {
-                font-size: 11px;
+            .stats-value {
+                font-size: 14px;
             }
-            .top-counter-value {
-                font-size: 40px;
+            .stats-separator {
+                font-size: 10px;
             }
         }
         /* Level Complete Modal */
@@ -509,19 +482,21 @@
     </style>
 </head>
 <body>
-    <div id="top-counters-container">
-        <div id="block-counter" class="top-counter">
-            <div class="top-counter-label">Blocks</div>
-            <div class="top-counter-value" id="block-value">0</div>
-        </div>
-        <div id="timer-counter" class="top-counter">
-            <div class="top-counter-label">Timer</div>
-            <div class="top-counter-value" id="timer-value">00:00</div>
-        </div>
-        <div id="level-counter" class="top-counter">
-            <div class="top-counter-label">Level</div>
-            <div class="top-counter-value" id="level-value">0</div>
-        </div>
+    <div id="stats-bar" class="stats-bar">
+        <span class="stats-item">
+            <span class="stats-label">Level:</span>
+            <span class="stats-value" id="level-value">0</span>
+        </span>
+        <span class="stats-separator">|</span>
+        <span class="stats-item">
+            <span class="stats-label">Blocks:</span>
+            <span class="stats-value" id="block-value">0</span>
+        </span>
+        <span class="stats-separator">|</span>
+        <span class="stats-item">
+            <span class="stats-label">Timer:</span>
+            <span class="stats-value" id="timer-value">00:00</span>
+        </span>
     </div>
     
     <!-- Level Complete Modal -->
@@ -529,6 +504,20 @@
         <div class="modal-content">
             <h2 class="modal-title">Level Complete!</h2>
             <p class="modal-message" id="level-complete-message">Congratulations! You cleared Level 1!</p>
+            <div id="level-complete-stats" style="margin: 24px 0; padding: 20px; background: rgba(255, 255, 255, 0.1); border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.2);">
+                <div class="stat-row" style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+                    <span style="color: rgba(255, 255, 255, 0.8);">Time:</span>
+                    <span id="level-complete-time" style="color: #fff; font-weight: 600;">00:00</span>
+                </div>
+                <div class="stat-row" style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+                    <span style="color: rgba(255, 255, 255, 0.8);">Moves:</span>
+                    <span id="level-complete-moves" style="color: #fff; font-weight: 600;">0</span>
+                </div>
+                <div class="stat-row" style="display: flex; justify-content: space-between;">
+                    <span style="color: rgba(255, 255, 255, 0.8);">Blocks Cleared:</span>
+                    <span id="level-complete-blocks" style="color: #fff; font-weight: 600;">0</span>
+                </div>
+            </div>
             <button class="modal-button" id="next-level-button">Next Level</button>
         </div>
     </div>

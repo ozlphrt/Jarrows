@@ -134,6 +134,10 @@ export function validateStructure(blocks, gridSize) {
                 for (const existing of existingBlocks) {
                     // Check if Y ranges overlap
                     if (!(yTop <= existing.yBottom || yBottom >= existing.yTop)) {
+                        // Enhanced debug info
+                        const blockInfo = `block at (${block.gridX}, ${block.gridZ}), yOffset=${yBottom}, height=${blockHeight}`;
+                        const existingInfo = `block at (${existing.block.gridX}, ${existing.block.gridZ}), yOffset=${existing.yBottom}, height=${existing.yTop - existing.yBottom}`;
+                        console.warn(`Overlap detected: ${blockInfo} overlaps with ${existingInfo} at (${cell.x}, ${cell.z})`);
                         return { valid: false, reason: `Overlap at (${cell.x}, ${cell.z})` };
                     }
                 }
@@ -147,6 +151,125 @@ export function validateStructure(blocks, gridSize) {
     }
     
     return { valid: true };
+}
+
+/**
+ * Fix overlapping blocks by moving them apart
+ * Returns: { fixed: boolean, movedBlocks: Block[] }
+ */
+export function fixOverlappingBlocks(blocks, gridSize) {
+    const movedBlocks = [];
+    const occupiedCells = new Map(); // key: "x,z" -> array of {block, yBottom, yTop}
+    
+    // First pass: identify all overlaps
+    const overlaps = [];
+    for (const block of blocks) {
+        if (block.isFalling || block.isAnimating || block.isRemoved || block.removalStartTime) continue;
+        
+        const cells = getBlockCells(block);
+        const cubeSize = block.cubeSize || 1;
+        const blockHeight = block.isVertical ? block.length * cubeSize : cubeSize;
+        const yBottom = block.yOffset || 0;
+        const yTop = yBottom + blockHeight;
+        
+        for (const cell of cells) {
+            const key = `${cell.x},${cell.z}`;
+            
+            if (occupiedCells.has(key)) {
+                const existingBlocks = occupiedCells.get(key);
+                for (const existing of existingBlocks) {
+                    if (!(yTop <= existing.yBottom || yBottom >= existing.yTop)) {
+                        // Overlap detected
+                        overlaps.push({
+                            block1: block,
+                            block2: existing.block,
+                            cell: {x: cell.x, z: cell.z}
+                        });
+                    }
+                }
+                existingBlocks.push({block, yBottom, yTop});
+            } else {
+                occupiedCells.set(key, [{block, yBottom, yTop}]);
+            }
+        }
+    }
+    
+    // Second pass: fix overlaps by moving blocks to safe positions
+    for (const overlap of overlaps) {
+        const { block1, block2, cell } = overlap;
+        
+        // Move the block with higher Y offset down, or if same Y, move block1
+        const block1Y = block1.yOffset || 0;
+        const block2Y = block2.yOffset || 0;
+        const blockToMove = block1Y >= block2Y ? block1 : block2;
+        const cubeSize = blockToMove.cubeSize || 1;
+        const blockHeight = blockToMove.isVertical ? blockToMove.length * cubeSize : cubeSize;
+        
+        // Try to find a safe Y level below
+        let safeYOffset = blockToMove.yOffset;
+        for (let dropLevel = 1; dropLevel <= 10; dropLevel++) {
+            const testYOffset = Math.max(0, blockToMove.yOffset - dropLevel * cubeSize);
+            const testYBottom = testYOffset;
+            const testYTop = testYOffset + blockHeight;
+            
+            // Check if this Y level is safe (no overlaps)
+            let isSafe = true;
+            const cells = getBlockCells(blockToMove);
+            for (const checkCell of cells) {
+                const key = `${checkCell.x},${checkCell.z}`;
+                const existingBlocks = occupiedCells.get(key) || [];
+                for (const existing of existingBlocks) {
+                    if (existing.block === blockToMove) continue;
+                    if (testYTop > existing.yBottom && testYBottom < existing.yTop) {
+                        isSafe = false;
+                        break;
+                    }
+                }
+                if (!isSafe) break;
+            }
+            
+            if (isSafe) {
+                safeYOffset = testYOffset;
+                break;
+            }
+        }
+        
+        if (safeYOffset !== blockToMove.yOffset) {
+            blockToMove.yOffset = safeYOffset;
+            blockToMove.updateWorldPosition();
+            if (!movedBlocks.includes(blockToMove)) {
+                movedBlocks.push(blockToMove);
+            }
+        }
+    }
+    
+    return { fixed: movedBlocks.length > 0, movedBlocks };
+}
+
+/**
+ * Check and fix all overlapping blocks in the puzzle
+ * Can be called manually for debugging
+ */
+export function checkAndFixAllOverlaps(blocks, gridSize) {
+    const structureCheck = validateStructure(blocks, gridSize);
+    if (structureCheck.valid) {
+        return { fixed: false, message: 'No overlaps detected' };
+    }
+    
+    console.warn('Overlaps detected, attempting to fix...');
+    const fixResult = fixOverlappingBlocks(blocks, gridSize);
+    
+    if (fixResult.fixed) {
+        // Re-validate to ensure all overlaps are fixed
+        const recheck = validateStructure(blocks, gridSize);
+        if (recheck.valid) {
+            return { fixed: true, message: `Fixed ${fixResult.movedBlocks.length} overlapping block(s)`, movedBlocks: fixResult.movedBlocks };
+        } else {
+            return { fixed: false, message: `Partially fixed, but still have overlaps: ${recheck.reason}`, movedBlocks: fixResult.movedBlocks };
+        }
+    } else {
+        return { fixed: false, message: 'Could not fix overlaps automatically', movedBlocks: [] };
+    }
 }
 
 /**
