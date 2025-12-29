@@ -31,6 +31,13 @@ npm run build
 
 ## Releases
 
+### v4.4.1 - Remove Debug Panel
+- **Tree**: https://github.com/ozlphrt/Jarrows/tree/v4.4.1
+- **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v4.4.1
+- Removed DEBUG button from game controls
+- Removed debug output from block click handler
+- Cleaned up debug UI code
+
 ### v4.4.0 - Collision Detection Improvements & Gameplay Enhancements
 - **Tree**: https://github.com/ozlphrt/Jarrows/tree/v4.4.0
 - **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v4.4.0

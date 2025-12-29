@@ -2442,22 +2442,6 @@ if (diceButton) {
     }
 }
 
-// Debug move mode toggle
-let debugMoveMode = false;
-window.debugMoveMode = false;
-const debugMoveButton = document.getElementById('debug-move-button');
-if (debugMoveButton) {
-    debugMoveButton.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        debugMoveMode = !debugMoveMode;
-        window.debugMoveMode = debugMoveMode;
-        debugMoveButton.textContent = debugMoveMode ? 'DEBUG ON' : 'DEBUG';
-        debugMoveButton.style.background = debugMoveMode ? 'rgba(255, 0, 0, 0.8)' : '';
-        console.log('Debug move mode:', debugMoveMode ? 'ON' : 'OFF');
-    });
-}
-
 // Auto spin after spawn (doesn't count toward 3 spins)
 function autoSpinAfterSpawn() {
     console.log('Auto spinning blocks after spawn (does not count toward spin limit)');
@@ -3054,64 +3038,6 @@ function onMouseClick(event) {
     // Store if this block will fall (to update solution tracking)
     const moveResult = block.canMove(blocks);
     const willFall = moveResult === 'fall';
-    
-    // Debug mode: Show detailed movement analysis
-    if (window.debugMoveMode && window.debugMoveInfo) {
-        console.group(`🔍 DEBUG: Block at (${block.gridX}, ${block.gridZ})`);
-        console.log('Block info:', window.debugMoveInfo.block);
-        console.log('Target position:', window.debugMoveInfo.targetPos);
-        console.log('Result:', window.debugMoveInfo.result);
-        if (window.debugMoveInfo.reason) {
-            console.log('Reason:', window.debugMoveInfo.reason);
-        }
-        if (window.debugMoveInfo.blockers.length > 0) {
-            console.log('Blockers found:', window.debugMoveInfo.blockers);
-            // Show detailed blocker info
-            window.debugMoveInfo.blockers.forEach((blocker, idx) => {
-                console.log(`  Blocker ${idx + 1}:`, {
-                    position: blocker.block?.gridX !== undefined ? `(${blocker.block.gridX}, ${blocker.block.gridZ})` : 'unknown',
-                    yOffset: blocker.block?.yOffset,
-                    isVertical: blocker.block?.isVertical,
-                    length: blocker.block?.length,
-                    reason: blocker.reason,
-                    isHeadOn: blocker.isHeadOn
-                });
-            });
-        }
-            if (window.debugMoveInfo.yRangeChecks.length > 0) {
-                // Only show Y-range checks that actually overlap AND are at target position
-                const relevantChecks = window.debugMoveInfo.yRangeChecks.filter(check => {
-                    if (!check.overlaps) return false;
-                    // Check if this block is at the target position
-                    const atTarget = check.other.gridX === window.debugMoveInfo.targetPos.x && 
-                                     check.other.gridZ === window.debugMoveInfo.targetPos.z;
-                    return atTarget;
-                });
-                if (relevantChecks.length > 0) {
-                    console.log('Y-range checks at target position:', relevantChecks);
-                    // Calculate actual overlap amount for each check
-                    relevantChecks.forEach(check => {
-                        const overlapStart = Math.max(check.thisYRange.bottom, check.otherYRange.bottom);
-                        const overlapEnd = Math.min(check.thisYRange.top, check.otherYRange.top);
-                        const overlapAmount = overlapEnd - overlapStart;
-                        console.log(`  Overlap amount: ${overlapAmount.toFixed(6)} (EPSILON: 0.001)`);
-                    });
-                }
-            // Show all Y-range checks for debugging
-            const problematic = window.debugMoveInfo.yRangeChecks.filter(check => 
-                check.overlaps && window.debugMoveInfo.result === 'blocked'
-            );
-            if (problematic.length > 0) {
-                console.warn(`⚠️ Total Y-overlaps found: ${problematic.length} (only blocks at target position matter)`);
-            }
-        }
-        console.groupEnd();
-    }
-    
-    // Debug: Log why block can't move
-    if (moveResult === 'blocked') {
-        console.log(`Block at (${block.gridX}, ${block.gridZ}) cannot move ${JSON.stringify(block.direction)}: blocked by another block`);
-    }
     
     // Save move state before moving (for undo)
     saveMoveState(block);
