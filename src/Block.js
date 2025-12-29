@@ -1413,16 +1413,29 @@ export class Block {
         const newGridX = this.gridX + this.direction.x;
         const newGridZ = this.gridZ + this.direction.z;
         
-        // Debug logging for blocks that can't move
-        const debugThis = false; // Set to true to enable debug logging
-        if (debugThis) {
-            console.log(`canMove check: block at (${this.gridX}, ${this.gridZ}), direction (${this.direction.x}, ${this.direction.z}), newPos (${newGridX}, ${newGridZ}), yOffset=${this.yOffset}, isVertical=${this.isVertical}, length=${this.length}`);
+        // Debug mode: store detailed blocking information
+        if (window.debugMoveMode) {
+            window.debugMoveInfo = {
+                block: { gridX: this.gridX, gridZ: this.gridZ, yOffset: this.yOffset, isVertical: this.isVertical, length: this.length, direction: {...this.direction} },
+                targetPos: { x: newGridX, z: newGridZ },
+                blockers: [],
+                yRangeChecks: []
+            };
         }
         
         if (this.isVertical) {
             if (newGridX < 0 || newGridX >= this.gridSize || newGridZ < 0 || newGridZ >= this.gridSize) {
+                if (window.debugMoveMode) {
+                    window.debugMoveInfo.result = 'fall';
+                    window.debugMoveInfo.reason = `Out of bounds: (${newGridX}, ${newGridZ})`;
+                }
                 return 'fall';
             }
+            
+            // Calculate Y ranges for this block
+            const thisHeight = this.isVertical ? this.length * this.cubeSize : this.cubeSize;
+            const thisYBottom = this.yOffset;
+            const thisYTop = this.yOffset + thisHeight;
             
             // Check for 3D overlaps: blocks cannot move to a position where they would overlap with another block
             for (const other of blocks) {
@@ -1430,18 +1443,40 @@ export class Block {
                 if (other === this || other.isFalling || other.isRemoved || other.removalStartTime) continue;
                 
                 // Calculate Y ranges for both blocks to check for 3D overlap
-                const thisHeight = this.isVertical ? this.length * this.cubeSize : this.cubeSize;
-                const thisYBottom = this.yOffset;
-                const thisYTop = this.yOffset + thisHeight;
-                
                 const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
                 const otherYBottom = other.yOffset;
                 const otherYTop = other.yOffset + otherHeight;
                 
-                // Check if Y ranges overlap (blocks are at different Y levels but might overlap in 3D)
-                // Use strict inequality to avoid false positives when blocks are just touching
-                // Blocks overlap if: thisYTop > otherYBottom AND thisYBottom < otherYTop
-                const yRangesOverlap = thisYTop > otherYBottom && thisYBottom < otherYTop;
+                // For vertical blocks, use standard Y-range overlap check
+                // For horizontal blocks, use stricter Y-level checking (only collide with blocks at same Y level)
+                let yRangesOverlap;
+                if (!other.isVertical) {
+                    // Other block is horizontal: only collide if it's at the same Y level as this vertical block
+                    // Check if this vertical block's Y range includes the horizontal block's Y level
+                    // Use strict inequality with epsilon to avoid false positives when blocks are just touching
+                    const EPSILON = 0.001; // Small tolerance for floating point precision
+                    yRangesOverlap = (otherYBottom - thisYBottom > EPSILON) && (thisYTop - otherYBottom > EPSILON);
+                } else {
+                    // Both vertical: use standard Y-range overlap check
+                    // Blocks overlap if they actually overlap (not just touching)
+                    // Use strict inequalities with small epsilon to avoid false positives when blocks are just touching
+                    const EPSILON = 0.001; // Small tolerance for floating point precision
+                    yRangesOverlap = (thisYTop - otherYBottom > EPSILON) && (otherYTop - thisYBottom > EPSILON);
+                }
+                
+                if (window.debugMoveMode) {
+                    // Only log Y-range checks for blocks at the target position to reduce noise
+                    const atTargetPosition = newGridX === other.gridX && newGridZ === other.gridZ;
+                    if (atTargetPosition || yRangesOverlap) {
+                        window.debugMoveInfo.yRangeChecks.push({
+                            other: { gridX: other.gridX, gridZ: other.gridZ, yOffset: other.yOffset, isVertical: other.isVertical, length: other.length },
+                            thisYRange: { bottom: thisYBottom, top: thisYTop, height: thisHeight },
+                            otherYRange: { bottom: otherYBottom, top: otherYTop, height: otherHeight },
+                            overlaps: yRangesOverlap,
+                            atTargetPosition: atTargetPosition
+                        });
+                    }
+                }
                 
                 // If Y ranges don't overlap, blocks can't collide (they're at different heights)
                 if (!yRangesOverlap) continue;
@@ -1458,8 +1493,24 @@ export class Block {
                             this.direction.z === -other.direction.z;
                         
                         if (isHeadOn) {
+                            if (window.debugMoveMode) {
+                                window.debugMoveInfo.blockers.push({
+                                    block: { gridX: other.gridX, gridZ: other.gridZ, yOffset: other.yOffset },
+                                    reason: 'Head-on collision (allowed)',
+                                    isHeadOn: true
+                                });
+                            }
                             // Head-on collision: block can move (will rotate and continue)
                             continue; // Skip this collision, allow movement
+                        }
+                        
+                        if (window.debugMoveMode) {
+                            window.debugMoveInfo.result = 'blocked';
+                            window.debugMoveInfo.blockers.push({
+                                block: { gridX: other.gridX, gridZ: other.gridZ, yOffset: other.yOffset, isVertical: other.isVertical, length: other.length, direction: {...other.direction} },
+                                reason: 'Vertical block at same position',
+                                isHeadOn: false
+                            });
                         }
                         return 'blocked';
                     }
@@ -1483,8 +1534,25 @@ export class Block {
                                 this.direction.z === -other.direction.z;
                             
                             if (isHeadOn) {
+                                if (window.debugMoveMode) {
+                                    window.debugMoveInfo.blockers.push({
+                                        block: { gridX: other.gridX, gridZ: other.gridZ, yOffset: other.yOffset, length: other.length, direction: {...other.direction} },
+                                        reason: 'Head-on collision (allowed)',
+                                        isHeadOn: true
+                                    });
+                                }
                                 // Head-on collision: block can move (will rotate and continue)
                                 continue; // Skip this collision, allow movement
+                            }
+                            
+                            if (window.debugMoveMode) {
+                                window.debugMoveInfo.result = 'blocked';
+                                window.debugMoveInfo.blockers.push({
+                                    block: { gridX: other.gridX, gridZ: other.gridZ, yOffset: other.yOffset, isVertical: other.isVertical, length: other.length, direction: {...other.direction} },
+                                    cell: { x: otherX, z: otherZ },
+                                    reason: 'Horizontal block occupies target cell',
+                                    isHeadOn: false
+                                });
                             }
                             return 'blocked';
                         }
@@ -1492,6 +1560,9 @@ export class Block {
                 }
             }
             
+            if (window.debugMoveMode) {
+                window.debugMoveInfo.result = 'ok';
+            }
             return 'ok';
         }
         
@@ -1508,8 +1579,17 @@ export class Block {
             }
             
             if (checkX < 0 || checkX >= this.gridSize || checkZ < 0 || checkZ >= this.gridSize) {
+                if (window.debugMoveMode) {
+                    window.debugMoveInfo.result = 'fall';
+                    window.debugMoveInfo.reason = `Out of bounds: cell ${i} at (${checkX}, ${checkZ})`;
+                }
                 return 'fall';
             }
+            
+            // Calculate Y ranges for this block
+            const thisHeight = this.isVertical ? this.length * this.cubeSize : this.cubeSize;
+            const thisYBottom = this.yOffset;
+            const thisYTop = this.yOffset + thisHeight;
             
             // Check for 3D overlaps: blocks cannot move to a position where they would overlap with another block
             for (const other of blocks) {
@@ -1517,28 +1597,48 @@ export class Block {
                 if (other === this || other.isFalling || other.isRemoved || other.removalStartTime) continue;
                 
                 // Calculate Y ranges for both blocks to check for 3D overlap
-                const thisHeight = this.isVertical ? this.length * this.cubeSize : this.cubeSize;
-                const thisYBottom = this.yOffset;
-                const thisYTop = this.yOffset + thisHeight;
-                
                 const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
                 const otherYBottom = other.yOffset;
                 const otherYTop = other.yOffset + otherHeight;
                 
-                // Check if Y ranges overlap (blocks are at different Y levels but might overlap in 3D)
-                // Use strict inequality to avoid false positives when blocks are just touching
-                // Blocks overlap if: thisYTop > otherYBottom AND thisYBottom < otherYTop
-                const yRangesOverlap = thisYTop > otherYBottom && thisYBottom < otherYTop;
+                // For horizontal blocks, use stricter Y-level checking
+                // A horizontal block at yOffset: 4 should only collide with blocks that actually occupy yOffset: 4
+                let yRangesOverlap;
+                if (!this.isVertical) {
+                    // Horizontal block: only collide with blocks at the same Y level
+                    // Check if other block's Y range includes this block's Y level
+                    if (other.isVertical) {
+                        // Vertical block: check if it passes through this horizontal block's Y level
+                        // Use strict inequality with epsilon to avoid false positives when blocks are just touching
+                        // The horizontal block's Y level must be INSIDE the vertical block's range (not at the boundary)
+                        const EPSILON = 0.001; // Small tolerance for floating point precision
+                        yRangesOverlap = (thisYBottom - otherYBottom > EPSILON) && (otherYTop - thisYBottom > EPSILON);
+                    } else {
+                        // Both horizontal: must be at exactly the same Y level
+                        const yLevelDiff = Math.abs(this.yOffset - other.yOffset);
+                        yRangesOverlap = yLevelDiff < 0.001;
+                    }
+                } else {
+                    // This block is vertical: use standard Y-range overlap check
+                    // Blocks overlap if they actually overlap (not just touching)
+                    // Use strict inequalities with small epsilon to avoid false positives when blocks are just touching
+                    const EPSILON = 0.001; // Small tolerance for floating point precision
+                    yRangesOverlap = (thisYTop - otherYBottom > EPSILON) && (otherYTop - thisYBottom > EPSILON);
+                }
+                
+                if (window.debugMoveMode && i === 0) {
+                    window.debugMoveInfo.yRangeChecks.push({
+                        other: { gridX: other.gridX, gridZ: other.gridZ, yOffset: other.yOffset, isVertical: other.isVertical, length: other.length },
+                        thisYRange: { bottom: thisYBottom, top: thisYTop, height: thisHeight },
+                        otherYRange: { bottom: otherYBottom, top: otherYTop, height: otherHeight },
+                        overlaps: yRangesOverlap,
+                        cellIndex: i,
+                        checkCell: { x: checkX, z: checkZ }
+                    });
+                }
                 
                 // If Y ranges don't overlap, blocks can't collide (they're at different heights)
                 if (!yRangesOverlap) continue;
-                
-                // Additional precision check: For horizontal blocks, ensure they're at the same Y level
-                // (within a small epsilon to account for floating point precision)
-                if (!this.isVertical && !other.isVertical) {
-                    const yLevelDiff = Math.abs(this.yOffset - other.yOffset);
-                    if (yLevelDiff > 0.001) continue; // Different Y levels, can't collide
-                }
                 
                 if (other.isVertical) {
                     if (checkX === other.gridX && checkZ === other.gridZ) {
@@ -1552,8 +1652,26 @@ export class Block {
                             this.direction.z === -other.direction.z;
                         
                         if (isHeadOn) {
+                            if (window.debugMoveMode) {
+                                window.debugMoveInfo.blockers.push({
+                                    block: { gridX: other.gridX, gridZ: other.gridZ, yOffset: other.yOffset },
+                                    cell: { x: checkX, z: checkZ, index: i },
+                                    reason: 'Head-on collision (allowed)',
+                                    isHeadOn: true
+                                });
+                            }
                             // Head-on collision: block can move (will rotate and continue)
                             continue; // Skip this collision, allow movement
+                        }
+                        
+                        if (window.debugMoveMode) {
+                            window.debugMoveInfo.result = 'blocked';
+                            window.debugMoveInfo.blockers.push({
+                                block: { gridX: other.gridX, gridZ: other.gridZ, yOffset: other.yOffset, isVertical: other.isVertical, length: other.length, direction: {...other.direction} },
+                                cell: { x: checkX, z: checkZ, index: i },
+                                reason: 'Vertical block at cell position',
+                                isHeadOn: false
+                            });
                         }
                         return 'blocked';
                     }
@@ -1581,8 +1699,26 @@ export class Block {
                                 this.direction.z === -other.direction.z;
                             
                             if (isHeadOn) {
+                                if (window.debugMoveMode) {
+                                    window.debugMoveInfo.blockers.push({
+                                        block: { gridX: other.gridX, gridZ: other.gridZ, yOffset: other.yOffset, length: other.length, direction: {...other.direction} },
+                                        cell: { x: checkX, z: checkZ, index: i },
+                                        reason: 'Head-on collision (allowed)',
+                                        isHeadOn: true
+                                    });
+                                }
                                 // Head-on collision: block can move (will rotate and continue)
                                 continue; // Skip this collision, allow movement
+                            }
+                            
+                            if (window.debugMoveMode) {
+                                window.debugMoveInfo.result = 'blocked';
+                                window.debugMoveInfo.blockers.push({
+                                    block: { gridX: other.gridX, gridZ: other.gridZ, yOffset: other.yOffset, isVertical: other.isVertical, length: other.length, direction: {...other.direction} },
+                                    cell: { x: checkX, z: checkZ, index: i },
+                                    reason: 'Horizontal block occupies cell',
+                                    isHeadOn: false
+                                });
                             }
                             return 'blocked';
                         }
@@ -1591,6 +1727,9 @@ export class Block {
             }
         }
         
+        if (window.debugMoveMode) {
+            window.debugMoveInfo.result = 'ok';
+        }
         return 'ok';
     }
     

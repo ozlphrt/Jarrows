@@ -31,6 +31,17 @@ npm run build
 
 ## Releases
 
+### v4.4.0 - Collision Detection Improvements & Gameplay Enhancements
+- **Tree**: https://github.com/ozlphrt/Jarrows/tree/v4.4.0
+- **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v4.4.0
+- Fixed Y-overlap collision detection with epsilon tolerance for floating-point precision
+- Added debug mode button for movement analysis (DEBUG button in game controls)
+- Implemented vertical tower centering after block spawn
+- Prioritized blocks facing outward (toward edges) for easier gameplay
+- Improved block generation to prefer exit-capable blocks (70% outward-facing)
+- Enhanced block sorting to prioritize blocks that can exit immediately
+- Fixed false collision detections when blocks are just touching at boundaries
+
 ### v4.3.1 - Arrow Color Fix
 - **Tree**: https://github.com/ozlphrt/Jarrows/tree/v4.3.1
 - **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v4.3.1

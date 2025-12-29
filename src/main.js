@@ -2,7 +2,7 @@
 import { initPhysics, createPhysicsBlock, updatePhysics, isPhysicsStepping, hasPendingOperations, isPhysicsProcessing } from './physics.js';
 import { Block } from './Block.js';
 import { createLights, createGrid, setGradientBackground, setupFog } from './scene.js';
-import { validateStructure, validateSolvability, calculateDifficulty, getBlockCells, fixOverlappingBlocks, checkAndFixAllOverlaps } from './puzzle_validation.js';
+import { validateStructure, validateSolvability, calculateDifficulty, getBlockCells, fixOverlappingBlocks, checkAndFixAllOverlaps, canBlockExit } from './puzzle_validation.js';
 
 // Scene setup
 const scene = new THREE.Scene();
@@ -264,6 +264,36 @@ function centerTower() {
     towerPositionOffset.set(0, 0, 0);
 }
 
+// Function to vertically center the tower based on block positions
+function centerTowerVertically() {
+    if (blocks.length === 0) return;
+    
+    let minY = Infinity;
+    let maxY = -Infinity;
+    
+    // Calculate min and max Y positions of all blocks
+    for (const block of blocks) {
+        if (block.isRemoved || block.isFalling) continue;
+        
+        const blockHeight = block.isVertical ? block.length * block.cubeSize : block.cubeSize;
+        const blockBottom = block.yOffset;
+        const blockTop = blockBottom + blockHeight;
+        
+        minY = Math.min(minY, blockBottom);
+        maxY = Math.max(maxY, blockTop);
+    }
+    
+    if (minY === Infinity || maxY === -Infinity) return;
+    
+    // Calculate center Y position
+    const centerY = (minY + maxY) / 2;
+    
+    // Adjust tower position offset to center vertically (negative because we want to move the tower down)
+    towerPositionOffset.y = -centerY;
+    
+    console.log(`Tower vertically centered: minY=${minY.toFixed(2)}, maxY=${maxY.toFixed(2)}, centerY=${centerY.toFixed(2)}, offsetY=${towerPositionOffset.y.toFixed(2)}`);
+}
+
 // Camera system constants
 const MIN_RADIUS = 5;
 const MAX_RADIUS = 50;
@@ -389,10 +419,11 @@ function updateLightsForCamera(lights, azimuth, elevation, center) {
         lights.keyLight.shadow.camera.updateMatrixWorld();
     }
     
-    // Fill light: positioned opposite to key light to soften shadows
+    // Fill light: minimal fill light for dramatic shadows (positioned opposite to key light)
     const fillLightDistance = 25;
     let fillLightPos = cameraDirection.clone().multiplyScalar(-fillLightDistance);
     fillLightPos.y += 6; // Keep it elevated but lower for more shadow contrast
+    // Reduced fill light intensity is handled in createLights for dramatic shadows
     
     // Ensure minimum 30° angle above base plate
     const fillHorizontalDist = Math.sqrt(fillLightPos.x * fillLightPos.x + fillLightPos.z * fillLightPos.z);
@@ -556,6 +587,59 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
             }
             return false; // No support found
         }
+    }
+    
+    /**
+     * Check if a block faces toward the nearest edge (can exit)
+     * Returns: { canExit: boolean, distanceToEdge: number }
+     */
+    function canBlockFaceOutward(gridX, gridZ, direction, gridSize) {
+        // Calculate distance to each edge
+        const distToNorth = gridZ;
+        const distToSouth = gridSize - 1 - gridZ;
+        const distToWest = gridX;
+        const distToEast = gridSize - 1 - gridX;
+        
+        // Check if direction points toward nearest edge
+        let distanceToEdge = Infinity;
+        let facesOutward = false;
+        
+        if (direction.z === -1 && distToNorth < distToSouth && distToNorth < distToWest && distToNorth < distToEast) {
+            // Facing north, and north is the nearest edge
+            distanceToEdge = distToNorth;
+            facesOutward = true;
+        } else if (direction.z === 1 && distToSouth < distToNorth && distToSouth < distToWest && distToSouth < distToEast) {
+            // Facing south, and south is the nearest edge
+            distanceToEdge = distToSouth;
+            facesOutward = true;
+        } else if (direction.x === -1 && distToWest < distToNorth && distToWest < distToSouth && distToWest < distToEast) {
+            // Facing west, and west is the nearest edge
+            distanceToEdge = distToWest;
+            facesOutward = true;
+        } else if (direction.x === 1 && distToEast < distToNorth && distToEast < distToSouth && distToEast < distToWest) {
+            // Facing east, and east is the nearest edge
+            distanceToEdge = distToEast;
+            facesOutward = true;
+        }
+        
+        return { canExit: facesOutward, distanceToEdge };
+    }
+    
+    /**
+     * Get the best direction pointing toward the nearest edge
+     */
+    function getBestOutwardDirection(gridX, gridZ, gridSize) {
+        const distToNorth = gridZ;
+        const distToSouth = gridSize - 1 - gridZ;
+        const distToWest = gridX;
+        const distToEast = gridSize - 1 - gridX;
+        
+        const minDist = Math.min(distToNorth, distToSouth, distToWest, distToEast);
+        
+        if (minDist === distToNorth) return {x: 0, z: -1};
+        if (minDist === distToSouth) return {x: 0, z: 1};
+        if (minDist === distToWest) return {x: -1, z: 0};
+        return {x: 1, z: 0}; // East
     }
     
     /**
@@ -758,8 +842,18 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                     }
                 }
                 
-                // Random direction (all 4 directions equally likely)
-                const randomDir = directions[Math.floor(Math.random() * directions.length)];
+                // Prioritize blocks that face outward (toward edges) for easier gameplay
+                // 70% chance to prefer outward-facing directions
+                let randomDir;
+                const preferOutward = Math.random() < 0.7; // 70% chance to prefer outward-facing
+                if (preferOutward) {
+                    // Try to get a direction pointing toward the nearest edge
+                    const bestDir = getBestOutwardDirection(cell.x, cell.z, gridSize);
+                    // 80% chance to use best direction, 20% chance to use random
+                    randomDir = Math.random() < 0.8 ? bestDir : directions[Math.floor(Math.random() * directions.length)];
+                } else {
+                    randomDir = directions[Math.floor(Math.random() * directions.length)];
+                }
                 
                 // 50% vertical, 50% horizontal
                 const isVertical = Math.random() < 0.5;
@@ -796,6 +890,44 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
             
             // If we didn't place any blocks this pass, stop trying
             if (placedThisPass === 0) break;
+        }
+        
+        // Sort blocks to prioritize those that can exit (for easier gameplay)
+        if (blocksToPlace.length > 0) {
+            // Build occupied cells map for exit checking
+            const occupiedCellsForExit = new Set();
+            blocksToPlace.forEach(block => {
+                const cells = getBlockCells(block);
+                cells.forEach(cell => occupiedCellsForExit.add(`${cell.x},${cell.z}`));
+            });
+            
+            blocksToPlace.sort((a, b) => {
+                const aExit = canBlockExit(a, occupiedCellsForExit, gridSize);
+                const bExit = canBlockExit(b, occupiedCellsForExit, gridSize);
+                
+                // Blocks that can exit come first
+                if (aExit.canExit && !bExit.canExit) return -1;
+                if (!aExit.canExit && bExit.canExit) return 1;
+                
+                // If both can exit, prefer those with fewer steps to exit
+                if (aExit.canExit && bExit.canExit) {
+                    return aExit.stepsToExit - bExit.stepsToExit;
+                }
+                
+                // If neither can exit, prefer blocks that face outward (toward nearest edge)
+                const aOutward = canBlockFaceOutward(a.gridX, a.gridZ, a.direction, gridSize);
+                const bOutward = canBlockFaceOutward(b.gridX, b.gridZ, b.direction, gridSize);
+                
+                if (aOutward.canExit && !bOutward.canExit) return -1;
+                if (!aOutward.canExit && bOutward.canExit) return 1;
+                
+                // If both face outward, prefer closer to edge
+                if (aOutward.canExit && bOutward.canExit) {
+                    return aOutward.distanceToEdge - bOutward.distanceToEdge;
+                }
+                
+                return 0;
+            });
         }
         
         // Return blocks placed
@@ -1839,6 +1971,9 @@ async function generateSolvablePuzzle(level = 1) {
     setTimeout(() => {
         isGeneratingLevel = false;
         console.log('  Level generation complete, support checking enabled');
+        
+        // Vertically center the tower after all blocks are spawned
+        centerTowerVertically();
     }, 1500); // 1.5 seconds to ensure all blocks are initialized
     
     // Start timer for new level
@@ -2305,6 +2440,64 @@ if (diceButton) {
             diceButton.style.cursor = 'pointer';
         }
     }
+}
+
+// Debug move mode toggle
+let debugMoveMode = false;
+window.debugMoveMode = false;
+const debugMoveButton = document.getElementById('debug-move-button');
+if (debugMoveButton) {
+    debugMoveButton.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        debugMoveMode = !debugMoveMode;
+        window.debugMoveMode = debugMoveMode;
+        debugMoveButton.textContent = debugMoveMode ? 'DEBUG ON' : 'DEBUG';
+        debugMoveButton.style.background = debugMoveMode ? 'rgba(255, 0, 0, 0.8)' : '';
+        console.log('Debug move mode:', debugMoveMode ? 'ON' : 'OFF');
+    });
+}
+
+// Auto spin after spawn (doesn't count toward 3 spins)
+function autoSpinAfterSpawn() {
+    console.log('Auto spinning blocks after spawn (does not count toward spin limit)');
+    
+    // Filter for eligible blocks: vertical OR single-cell blocks OR horizontal multi-cell blocks
+    const eligibleBlocks = blocks.filter(block => 
+        (block.isVertical || block.length === 1 || (!block.isVertical && block.length > 1)) &&
+        !block.isFalling &&
+        !block.isRemoved &&
+        !block.removalStartTime &&
+        !block.isAnimating
+    );
+    
+    if (eligibleBlocks.length === 0) {
+        return; // No eligible blocks to spin
+    }
+    
+    // Spin each block with slight duration randomization for visual variety
+    // Note: This does NOT decrement remainingSpins
+    eligibleBlocks.forEach((block, index) => {
+        // Add slight delay and duration variation for staggered effect
+        const baseDuration = 1800; // 1.8 seconds base
+        const durationVariation = 200; // ±200ms variation
+        const duration = baseDuration + (Math.random() * 2 - 1) * durationVariation;
+        
+        // Small delay for staggered start (optional, creates wave effect)
+        const delay = index * 20; // 20ms delay between each block
+        
+        setTimeout(() => {
+            try {
+                if (typeof block.animateRandomSpin === 'function') {
+                    block.animateRandomSpin(duration);
+                } else {
+                    console.error('Block does not have animateRandomSpin method!', block);
+                }
+            } catch (error) {
+                console.error('Error spinning block:', error);
+            }
+        }, delay);
+    });
 }
 
 // Spin random blocks (vertical and single-cell blocks) to break interlock situations
@@ -2861,6 +3054,59 @@ function onMouseClick(event) {
     // Store if this block will fall (to update solution tracking)
     const moveResult = block.canMove(blocks);
     const willFall = moveResult === 'fall';
+    
+    // Debug mode: Show detailed movement analysis
+    if (window.debugMoveMode && window.debugMoveInfo) {
+        console.group(`🔍 DEBUG: Block at (${block.gridX}, ${block.gridZ})`);
+        console.log('Block info:', window.debugMoveInfo.block);
+        console.log('Target position:', window.debugMoveInfo.targetPos);
+        console.log('Result:', window.debugMoveInfo.result);
+        if (window.debugMoveInfo.reason) {
+            console.log('Reason:', window.debugMoveInfo.reason);
+        }
+        if (window.debugMoveInfo.blockers.length > 0) {
+            console.log('Blockers found:', window.debugMoveInfo.blockers);
+            // Show detailed blocker info
+            window.debugMoveInfo.blockers.forEach((blocker, idx) => {
+                console.log(`  Blocker ${idx + 1}:`, {
+                    position: blocker.block?.gridX !== undefined ? `(${blocker.block.gridX}, ${blocker.block.gridZ})` : 'unknown',
+                    yOffset: blocker.block?.yOffset,
+                    isVertical: blocker.block?.isVertical,
+                    length: blocker.block?.length,
+                    reason: blocker.reason,
+                    isHeadOn: blocker.isHeadOn
+                });
+            });
+        }
+            if (window.debugMoveInfo.yRangeChecks.length > 0) {
+                // Only show Y-range checks that actually overlap AND are at target position
+                const relevantChecks = window.debugMoveInfo.yRangeChecks.filter(check => {
+                    if (!check.overlaps) return false;
+                    // Check if this block is at the target position
+                    const atTarget = check.other.gridX === window.debugMoveInfo.targetPos.x && 
+                                     check.other.gridZ === window.debugMoveInfo.targetPos.z;
+                    return atTarget;
+                });
+                if (relevantChecks.length > 0) {
+                    console.log('Y-range checks at target position:', relevantChecks);
+                    // Calculate actual overlap amount for each check
+                    relevantChecks.forEach(check => {
+                        const overlapStart = Math.max(check.thisYRange.bottom, check.otherYRange.bottom);
+                        const overlapEnd = Math.min(check.thisYRange.top, check.otherYRange.top);
+                        const overlapAmount = overlapEnd - overlapStart;
+                        console.log(`  Overlap amount: ${overlapAmount.toFixed(6)} (EPSILON: 0.001)`);
+                    });
+                }
+            // Show all Y-range checks for debugging
+            const problematic = window.debugMoveInfo.yRangeChecks.filter(check => 
+                check.overlaps && window.debugMoveInfo.result === 'blocked'
+            );
+            if (problematic.length > 0) {
+                console.warn(`⚠️ Total Y-overlaps found: ${problematic.length} (only blocks at target position matter)`);
+            }
+        }
+        console.groupEnd();
+    }
     
     // Debug: Log why block can't move
     if (moveResult === 'blocked') {

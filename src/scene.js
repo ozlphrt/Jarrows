@@ -46,14 +46,14 @@ export function setupFog(scene, isDarkTheme) {
 }
 
 export function createLights(scene) {
-    // Simplified 3-light setup: ambient, key, and fill
+    // Dramatic lighting setup: low ambient, strong key light, minimal fill
     
-    // Ambient Light - base illumination
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.15);
+    // Ambient Light - reduced for more dramatic shadows
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.08); // Reduced from 0.15 for darker shadows
     scene.add(ambientLight);
     
-    // Key Light (Main Light) - primary light source, casts shadows
-    const keyLight = new THREE.DirectionalLight(0xffffff, 1.5);
+    // Key Light (Main Light) - primary light source, casts dramatic shadows
+    const keyLight = new THREE.DirectionalLight(0xffffff, 2.0); // Increased from 1.5 for stronger light
     keyLight.position.set(10, 20, 10);
     keyLight.castShadow = true;
     // Expanded shadow camera bounds to cover the scene
@@ -69,19 +69,19 @@ export function createLights(scene) {
     keyLight.shadow.mapSize.width = 2048;
     keyLight.shadow.mapSize.height = 2048;
     keyLight.shadow.bias = -0.0001;
-    keyLight.shadow.radius = 3; // Slightly sharper shadows for better definition
+    keyLight.shadow.radius = 2; // Sharper shadows (reduced from 3) for more dramatic definition
     keyLight.shadow.normalBias = 0.02; // Reduce shadow acne
     scene.add(keyLight);
     
-    // Fill Light - softens shadows from key light
-    const fillLight = new THREE.DirectionalLight(0xffffff, 0.3);
+    // Fill Light - minimal fill light for dramatic contrast (reduced significantly)
+    const fillLight = new THREE.DirectionalLight(0xffffff, 0.1); // Reduced from 0.3 for more dramatic shadows
     fillLight.position.set(-8, 12, -8);
     scene.add(fillLight);
     
     return { 
         ambientLight, 
         keyLight,      // Main directional light (casts shadows)
-        fillLight      // Fill light (softens shadows)
+        fillLight      // Fill light (minimal for dramatic contrast)
     };
 }
 
