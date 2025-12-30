@@ -2878,9 +2878,7 @@ calculateInitialCameraPosition();
 updateCameraPosition(); // Position camera immediately to avoid default (0,0,0) view on first frame
 
 // Initialize game - load saved progress or start at level 0
-// TEST MODE: Start at level 40 for testing
-// currentLevel = loadProgress();
-currentLevel = 40; // TEST: Start at level 40
+currentLevel = loadProgress();
 generateSolvablePuzzle(currentLevel);
 
 // Initialize button states

@@ -31,6 +31,12 @@ npm run build
 
 ## Releases
 
+### v4.4.2 - Fix Level Initialization
+- **Tree**: https://github.com/ozlphrt/Jarrows/tree/v4.4.2
+- **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v4.4.2
+- Fixed hardcoded test level 40 - now properly loads saved progress
+- New users start at level 0, existing users resume from their saved level
+
 ### v4.4.1 - Remove Debug Panel
 - **Tree**: https://github.com/ozlphrt/Jarrows/tree/v4.4.1
 - **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v4.4.1
