@@ -474,35 +474,103 @@ let remainingSpins = 3;
 // Progress persistence using localStorage
 const STORAGE_KEY = 'jarrows_progress';
 const STORAGE_HIGHEST_LEVEL_KEY = 'jarrows_highest_level';
+const STORAGE_VERSION_KEY = 'jarrows_storage_version';
+const RESET_FLAG_KEY = 'jarrows_reset_completed';
+const CURRENT_STORAGE_VERSION = '2.0'; // Increment to reset all users
+
+// One-time reset: Clear all existing progress for all users
+// This ensures everyone starts from level 0
+// Uses a flag to ensure reset only happens once per version
+function resetAllProgress() {
+    try {
+        const storedVersion = localStorage.getItem(STORAGE_VERSION_KEY);
+        const resetFlag = localStorage.getItem(RESET_FLAG_KEY);
+        
+        // Check if we need to reset (version mismatch or reset not yet completed for this version)
+        const needsReset = storedVersion !== CURRENT_STORAGE_VERSION || 
+                          (storedVersion === CURRENT_STORAGE_VERSION && resetFlag !== 'true');
+        
+        if (needsReset) {
+            console.log('Resetting all progress: storage version mismatch or first run');
+            localStorage.removeItem(STORAGE_KEY);
+            localStorage.removeItem(STORAGE_HIGHEST_LEVEL_KEY);
+            localStorage.setItem(STORAGE_VERSION_KEY, CURRENT_STORAGE_VERSION);
+            localStorage.setItem(RESET_FLAG_KEY, 'true'); // Mark reset as completed
+            console.log('All users reset to level 0 (reset flag set)');
+            return true; // Progress was reset
+        }
+    } catch (e) {
+        console.warn('Failed to reset progress:', e);
+    }
+    return false; // No reset needed
+}
 
 // Save current progress
 function saveProgress() {
     try {
+        // Ensure storage version and reset flag are set
+        if (localStorage.getItem(STORAGE_VERSION_KEY) !== CURRENT_STORAGE_VERSION) {
+            localStorage.setItem(STORAGE_VERSION_KEY, CURRENT_STORAGE_VERSION);
+            // If version changed, reset flag should be handled by resetAllProgress()
+            // But ensure it's set here as well for safety
+            if (localStorage.getItem(RESET_FLAG_KEY) !== 'true') {
+                localStorage.setItem(RESET_FLAG_KEY, 'true');
+            }
+        }
+        
+        // Save current level
         localStorage.setItem(STORAGE_KEY, currentLevel.toString());
+        console.log(`Progress saved: Level ${currentLevel}`);
+        
         // Also track highest level reached
         const highestLevel = parseInt(localStorage.getItem(STORAGE_HIGHEST_LEVEL_KEY) || '0', 10);
         if (currentLevel > highestLevel) {
             localStorage.setItem(STORAGE_HIGHEST_LEVEL_KEY, currentLevel.toString());
+            console.log(`New highest level reached: ${currentLevel}`);
         }
+        
+        // Verify save was successful
+        const verify = localStorage.getItem(STORAGE_KEY);
+        if (verify !== currentLevel.toString()) {
+            console.error('Progress save verification failed!');
+            return false;
+        }
+        return true;
     } catch (e) {
-        console.warn('Failed to save progress:', e);
+        console.error('Failed to save progress:', e);
+        // Check if localStorage is available
+        if (e.name === 'QuotaExceededError') {
+            console.error('localStorage quota exceeded - cannot save progress');
+        } else if (e.name === 'SecurityError') {
+            console.error('localStorage access denied - cannot save progress');
+        }
+        return false;
     }
 }
 
 // Load saved progress
 function loadProgress() {
     try {
+        // First, check if we need to reset all progress
+        resetAllProgress();
+        
+        // Now try to load saved progress
         const savedLevel = localStorage.getItem(STORAGE_KEY);
-        if (savedLevel !== null) {
+        if (savedLevel !== null && savedLevel !== '') {
             const level = parseInt(savedLevel, 10);
             // Validate level is a valid number
             if (!isNaN(level) && level >= 0) {
+                console.log(`Progress loaded: Level ${level}`);
                 return level;
+            } else {
+                console.warn('Invalid saved level, resetting to 0');
+                localStorage.removeItem(STORAGE_KEY);
             }
         }
     } catch (e) {
         console.warn('Failed to load progress:', e);
     }
+    console.log('Starting from level 0 (no saved progress)');
     return 0; // Default to level 0 if no saved progress
 }
 
@@ -510,9 +578,12 @@ function loadProgress() {
 function clearProgress() {
     try {
         localStorage.removeItem(STORAGE_KEY);
-        // Note: We keep highest level for tracking, but user can start fresh
+        // Keep storage version and highest level for tracking
+        console.log('Progress cleared - user will start from level 0 on next load');
+        return true;
     } catch (e) {
         console.warn('Failed to clear progress:', e);
+        return false;
     }
 }
 
@@ -3877,7 +3948,21 @@ function animate() {
         if (blocks.length === 0 && currentLevel >= 0 && !isGeneratingLevel && !levelCompleteShown) {
             levelCompleteShown = true;
             stopTimer(); // Stop timer when level is complete
-            saveProgress(); // Save progress when level is completed
+            // Save progress for the next level (currentLevel + 1) since they'll advance
+            // This ensures progress is saved even if they close the browser before clicking "Next Level"
+            // We save the next level directly to localStorage without modifying currentLevel
+            try {
+                const nextLevel = currentLevel + 1;
+                localStorage.setItem(STORAGE_KEY, nextLevel.toString());
+                // Also update highest level if needed
+                const highestLevel = parseInt(localStorage.getItem(STORAGE_HIGHEST_LEVEL_KEY) || '0', 10);
+                if (nextLevel > highestLevel) {
+                    localStorage.setItem(STORAGE_HIGHEST_LEVEL_KEY, nextLevel.toString());
+                }
+                console.log(`Progress saved: Level ${nextLevel} (completed level ${currentLevel})`);
+            } catch (e) {
+                console.warn('Failed to save progress on level completion:', e);
+            }
             showLevelCompleteModal(currentLevel);
         }
         

@@ -31,6 +31,16 @@ npm run build
 
 ## Releases
 
+### v4.4.3 - LocalStorage Progress Fix & Reset All Users
+- **Tree**: https://github.com/ozlphrt/Jarrows/tree/v4.4.3
+- **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v4.4.3
+- **Live**: https://ozlphrt.github.io/Jarrows/
+- Fixed localStorage level progress saving and loading
+- Added one-time reset mechanism to start all users from level 0
+- Improved error handling and verification for progress saves
+- Added reset flag to prevent multiple resets
+- Progress now saves on level completion and when advancing levels
+
 ### v4.4.2 - Fix Level Initialization
 - **Tree**: https://github.com/ozlphrt/Jarrows/tree/v4.4.2
 - **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v4.4.2
