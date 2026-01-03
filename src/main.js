@@ -2422,12 +2422,18 @@ async function startNewGame() {
 function showLevelCompleteModal(completedLevel) {
     const modal = document.getElementById('level-complete-modal');
     const message = document.getElementById('level-complete-message');
+    const levelNumber = document.getElementById('level-complete-level');
     const timeElement = document.getElementById('level-complete-time');
     const movesElement = document.getElementById('level-complete-moves');
     const blocksElement = document.getElementById('level-complete-blocks');
     
-    if (modal && message) {
-        message.textContent = `Congratulations! You cleared Level ${completedLevel}!`;
+    if (modal) {
+        // Per request: remove the "Outstanding performance" line.
+        if (message) message.textContent = '';
+        
+        if (levelNumber) {
+            levelNumber.textContent = String(completedLevel);
+        }
         
         // Get elapsed time
         let elapsedSeconds = timerPausedTime;
@@ -2441,13 +2447,13 @@ function showLevelCompleteModal(completedLevel) {
         
         // Get move count (use totalMoves for accurate count)
         if (movesElement) {
-            movesElement.textContent = totalMoves;
+            movesElement.textContent = String(totalMoves);
         }
         
         // Get number of blocks cleared (initial block count for this level)
         const initialBlockCount = getBlocksForLevel(completedLevel);
         if (blocksElement) {
-            blocksElement.textContent = initialBlockCount;
+            blocksElement.textContent = String(initialBlockCount);
         }
         
         modal.style.display = 'flex';
