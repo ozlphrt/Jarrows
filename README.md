@@ -31,6 +31,12 @@ npm run build
 
 ## Releases
 
+### v4.5.1 - Remove Debug Button
+- **Tree**: https://github.com/ozlphrt/Jarrows/tree/v4.5.1
+- **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v4.5.1
+- **Live**: https://ozlphrt.github.io/Jarrows/
+- Removed the DEBUG UI button (diagnostics remain available only via console for development)
+
 ### v4.5.0 - Undo + Debug Movement Diagnostics + Overlap Fixes
 - **Tree**: https://github.com/ozlphrt/Jarrows/tree/v4.5.0
 - **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v4.5.0

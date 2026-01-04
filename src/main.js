@@ -2556,9 +2556,10 @@ if (nextLevelButton) {
 
 // Game control button handlers (undo and remove buttons removed)
 
-// --- DEBUG: movement diagnostics (restored) ---
-// When enabled, Block.canMove() populates window.debugMoveInfo (see src/Block.js).
-// We capture reports specifically when a user clicks a block and the block does not actually start moving.
+// --- DEBUG: movement diagnostics (headless) ---
+// The UI debug toggle/button was removed in v4.5.1.
+// To enable diagnostics manually, run in the browser console:
+//   window.debugMoveMode = true
 if (typeof window !== 'undefined') {
     window.debugMoveMode = !!window.debugMoveMode;
     window.debugNonMovingReports = Array.isArray(window.debugNonMovingReports) ? window.debugNonMovingReports : [];
@@ -2704,36 +2705,6 @@ function recordNonMovingReport(report) {
     // Auto-download a single JSON report for easy sharing.
     const ts = new Date().toISOString().replace(/[:.]/g, '-');
     downloadJson(report, `jarrows_non_moving_${ts}.json`);
-}
-
-let debugButtonEl = null;
-function updateDebugButtonUi() {
-    if (!debugButtonEl) debugButtonEl = document.getElementById('debug-button');
-    if (!debugButtonEl) return;
-    const enabled = !!window.debugMoveMode;
-    debugButtonEl.classList.toggle('debug-active', enabled);
-    debugButtonEl.textContent = enabled ? 'DEBUG ON' : 'DEBUG';
-    debugButtonEl.title = enabled
-        ? 'Debug enabled: non-moving block clicks will be recorded'
-        : 'Debug disabled: click to enable recording for non-moving blocks';
-}
-
-function toggleDebugMoveMode() {
-    if (typeof window === 'undefined') return;
-    window.debugMoveMode = !window.debugMoveMode;
-    updateDebugButtonUi();
-    console.log(window.debugMoveMode ? '[DEBUG] debugMoveMode enabled' : '[DEBUG] debugMoveMode disabled');
-}
-
-const debugButton = document.getElementById('debug-button');
-if (debugButton) {
-    debugButtonEl = debugButton;
-    updateDebugButtonUi();
-    debugButton.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        toggleDebugMoveMode();
-    });
 }
 
 const restartLevelButton = document.getElementById('restart-level-button');
