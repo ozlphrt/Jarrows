@@ -4,6 +4,25 @@ import { Block } from './Block.js';
 import { createLights, createGrid, setGradientBackground, setupFog } from './scene.js';
 import { validateStructure, validateSolvability, calculateDifficulty, getBlockCells, fixOverlappingBlocks, checkAndFixAllOverlaps, canBlockExit } from './puzzle_validation.js';
 
+// Platform/perf heuristics (battery-focused, especially for iPhone ProMotion)
+const isIOS = (() => {
+    try {
+        return (
+            /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+            (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+        );
+    } catch {
+        return false;
+    }
+})();
+const isMobileLike = (() => {
+    try {
+        return matchMedia('(pointer: coarse)').matches;
+    } catch {
+        return false;
+    }
+})();
+
 // Scene setup
 const scene = new THREE.Scene();
 // Dark theme: much darker grey gradient (default)
@@ -22,11 +41,21 @@ let currentArrowStyle = 2;
 
 const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
 
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+const renderer = new THREE.WebGLRenderer({
+    // AA is expensive on mobile; rely on lower DPR + post AA from browser compositor
+    antialias: !isMobileLike,
+    powerPreference: (isIOS || isMobileLike) ? 'low-power' : 'high-performance',
+});
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2)); // Limit pixel ratio for performance on mobile
+// Limit pixel ratio for performance/battery on mobile (iPhone ProMotion is especially sensitive)
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, (isIOS || isMobileLike) ? 1.25 : 2));
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Soft shadows for better quality
+// On iOS, prefer cheaper PCF shadows over PCFSoft (significant battery win)
+renderer.shadowMap.type = isIOS ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
+// Default: keep shadows "frozen" unless we explicitly need updates (camera interaction / falling blocks).
+// We'll toggle autoUpdate during the animation loop.
+renderer.shadowMap.autoUpdate = false;
+renderer.shadowMap.needsUpdate = true;
 document.body.appendChild(renderer.domElement);
 
 // Track camera drag state to prevent block clicks during camera movement
@@ -348,9 +377,12 @@ function calculateInitialCameraPosition() {
 }
 
 // Update camera position from spherical coordinates
+const _effectiveTowerCenter = new THREE.Vector3();
+const _lookAtOffset = new THREE.Vector3();
+const _lookAtTarget = new THREE.Vector3();
 function updateCameraPosition() {
     // Calculate effective tower center (with offset)
-    const effectiveTowerCenter = towerCenter.clone().add(towerPositionOffset);
+    _effectiveTowerCenter.copy(towerCenter).add(towerPositionOffset);
     
     // Convert spherical to Cartesian coordinates
     const x = currentRadius * Math.sin(currentElevation) * Math.cos(currentAzimuth);
@@ -359,16 +391,16 @@ function updateCameraPosition() {
     
     // Set camera position
     camera.position.set(
-        effectiveTowerCenter.x + x,
-        effectiveTowerCenter.y + y,
-        effectiveTowerCenter.z + z
+        _effectiveTowerCenter.x + x,
+        _effectiveTowerCenter.y + y,
+        _effectiveTowerCenter.z + z
     );
     
     // Look at point higher above tower center to move base plate down in frame (closer to bottom)
     // Vertical framing offset - controlled by slider (default 6.5, range ~4 to ~10)
-    const lookAtOffset = new THREE.Vector3(0, window.framingOffsetY || 6.5, 0);
-    const lookAtTarget = effectiveTowerCenter.clone().add(lookAtOffset);
-    camera.lookAt(lookAtTarget);
+    _lookAtOffset.set(0, window.framingOffsetY || 6.5, 0);
+    _lookAtTarget.copy(_effectiveTowerCenter).add(_lookAtOffset);
+    camera.lookAt(_lookAtTarget);
     
     // Update tower group position
     towerGroup.position.copy(towerCenter.clone().add(towerPositionOffset));
@@ -4241,16 +4273,54 @@ let physicsUpdatedThisFrame = false; // Track if physics was updated this frame
 let lastSupportCheckTime = 0;
 const SUPPORT_CHECK_INTERVAL = 200; // Check support every 200ms
 
+// Battery/perf: cap frame rate on iOS (avoids 120Hz ProMotion drain) and downclock further when idle.
+const ACTIVE_FPS = isIOS ? 30 : 60;
+const IDLE_FPS = isIOS ? 10 : 30;
+const ACTIVE_FRAME_MS = 1000 / ACTIVE_FPS;
+const IDLE_FRAME_MS = 1000 / IDLE_FPS;
+let nextFrameDelayMs = ACTIVE_FRAME_MS;
+let lastFrameTick = performance.now();
+let rafId = null;
+let frameCapTimeoutId = null;
+let isPaused = false;
+
+let lastTimerUiMs = 0;
+const TIMER_UI_INTERVAL_MS = 250; // 4Hz is enough; avoids per-frame DOM writes on mobile
+
+// Shadow update gating: only update expensive shadow maps when interaction or physics motion occurs.
+let lastLightUpdateMs = 0;
+const LIGHT_UPDATE_INTERVAL_MS = isIOS ? 80 : 33; // ~12.5Hz iOS, ~30Hz desktop while interacting
+
 // FPS tracking
 let fpsFrameCount = 0;
 let fpsLastUpdate = performance.now();
 let fpsUpdateInterval = 500; // Update FPS display every 500ms
 const fpsElement = document.getElementById('fps-counter');
 
+function scheduleNextFrame() {
+    if (isPaused) return;
+    if (isIOS) {
+        // Use a timer to avoid running this callback at 120Hz on ProMotion devices.
+        if (frameCapTimeoutId !== null) return;
+        frameCapTimeoutId = window.setTimeout(() => {
+            frameCapTimeoutId = null;
+            rafId = requestAnimationFrame(animate);
+        }, nextFrameDelayMs);
+    } else {
+        rafId = requestAnimationFrame(animate);
+    }
+}
+
 function animate() {
-    requestAnimationFrame(animate);
+    scheduleNextFrame();
     
     const currentTime = performance.now();
+    // Extra guard for non-iOS browsers: skip work if called too quickly.
+    if (!isIOS && (currentTime - lastFrameTick) < (nextFrameDelayMs - 0.5)) {
+        return;
+    }
+    lastFrameTick = currentTime;
+
     const deltaTime = (currentTime - lastTime) / 1000;
     lastTime = currentTime;
     
@@ -4292,15 +4362,51 @@ function animate() {
     currentRadius += (targetRadius - currentRadius) * smoothing;
     currentAzimuth += (targetAzimuth - currentAzimuth) * smoothing;
     currentElevation += (targetElevation - currentElevation) * smoothing;
+
+    // Snap to target when close to avoid endless micro-updates (saves battery, stabilizes idle frames)
+    const SNAP_EPS = 1e-4;
+    const dr = Math.abs(targetRadius - currentRadius);
+    const da = Math.abs(targetAzimuth - currentAzimuth);
+    const de = Math.abs(targetElevation - currentElevation);
+    if (dr < SNAP_EPS) currentRadius = targetRadius;
+    if (da < SNAP_EPS) currentAzimuth = targetAzimuth;
+    if (de < SNAP_EPS) currentElevation = targetElevation;
     
     // Update camera position
     updateCameraPosition();
     
-    // Update lights to follow camera angle
-    updateLightsForCamera(lights, currentAzimuth, currentElevation, towerCenter.clone().add(towerPositionOffset));
+    // Determine if we need expensive shadow updates this frame
+    const interacting = isDraggingCamera || (touchState && touchState.isActive) || isFramingDrag;
+    const hasFallingBlocks = blocks.some(block => block.isFalling);
+    const cameraStillMoving = (dr >= SNAP_EPS) || (da >= SNAP_EPS) || (de >= SNAP_EPS);
+    const hasActiveAnimations = blocks.some(block => (block.isAnimating) || (block.removalStartTime && !block.isRemoved));
+    const isActiveFrame = interacting || hasFallingBlocks || cameraStillMoving || hasActiveAnimations || isGeneratingLevel;
+    nextFrameDelayMs = isActiveFrame ? ACTIVE_FRAME_MS : IDLE_FRAME_MS;
+    const needShadowsThisFrame = interacting || hasFallingBlocks;
+
+    // Update lights only while interacting (or during falling, if you want shadows to react to camera during motion).
+    // Moving the shadow-casting light forces a shadow-map re-render, so rate-limit this.
+    if (needShadowsThisFrame && (currentTime - lastLightUpdateMs) > LIGHT_UPDATE_INTERVAL_MS) {
+        lastLightUpdateMs = currentTime;
+        updateLightsForCamera(lights, currentAzimuth, currentElevation, towerCenter.clone().add(towerPositionOffset));
+    }
+
+    // Toggle shadow map updates only when needed (camera interaction / falling blocks).
+    // This keeps shadows enabled but prevents expensive continuous shadow-map rendering while idle.
+    if (renderer.shadowMap) {
+        if (renderer.shadowMap.autoUpdate !== needShadowsThisFrame) {
+            renderer.shadowMap.autoUpdate = needShadowsThisFrame;
+            if (needShadowsThisFrame) {
+                renderer.shadowMap.needsUpdate = true;
+            }
+        }
+    }
     
-    // Update timer display (every frame for smooth updates)
-    updateTimerDisplay();
+    // Update timer display (throttled; per-frame DOM updates cost battery on mobile)
+    if (currentTime - lastTimerUiMs > TIMER_UI_INTERVAL_MS) {
+        lastTimerUiMs = currentTime;
+        updateTimerDisplay();
+    }
     
     // Update FPS counter
     fpsFrameCount++;
@@ -4322,7 +4428,6 @@ function animate() {
     
     // Check if any blocks are falling
     const hasPhysicsBlocks = blocks.some(block => block.isFalling && block.physicsBody);
-    const hasFallingBlocks = blocks.some(block => block.isFalling);
     
     // CRITICAL: Only call updatePhysics ONCE per frame, before any reads
     // Process operations and step physics
@@ -4486,5 +4591,23 @@ window.testBlockCounts = async function(maxLevel = 5) {
     return results;
 };
 
-animate();
+// Pause render loop when tab is backgrounded / screen locked (big battery win on mobile)
+document.addEventListener('visibilitychange', () => {
+    isPaused = document.hidden;
+    if (isPaused) {
+        if (rafId !== null) cancelAnimationFrame(rafId);
+        rafId = null;
+        if (frameCapTimeoutId !== null) {
+            clearTimeout(frameCapTimeoutId);
+            frameCapTimeoutId = null;
+        }
+        return;
+    }
+    // Resume
+    lastTime = performance.now();
+    lastFrameTick = lastTime;
+    scheduleNextFrame();
+});
+
+scheduleNextFrame();
 

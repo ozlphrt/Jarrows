@@ -46,6 +46,18 @@ export function setupFog(scene, isDarkTheme) {
 }
 
 export function createLights(scene) {
+    // Platform/perf heuristics (iOS shadow tier)
+    const isIOS = (() => {
+        try {
+            return (
+                /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+                (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+            );
+        } catch {
+            return false;
+        }
+    })();
+
     // Dramatic lighting setup: low ambient, strong key light, minimal fill
     
     // Ambient Light - reduced for more dramatic shadows
@@ -56,20 +68,24 @@ export function createLights(scene) {
     const keyLight = new THREE.DirectionalLight(0xffffff, 2.0); // Increased from 1.5 for stronger light
     keyLight.position.set(10, 20, 10);
     keyLight.castShadow = true;
-    // Expanded shadow camera bounds to cover the scene
-    keyLight.shadow.camera.left = -30;
-    keyLight.shadow.camera.right = 30;
-    keyLight.shadow.camera.top = 30;
-    keyLight.shadow.camera.bottom = -30;
-    keyLight.shadow.camera.near = 0.1;
-    keyLight.shadow.camera.far = 100;
+    // Shadow camera bounds: keep tight for better precision + less wasted shadow-map area.
+    // The board is ~7x7 centered around (3.5, 0, 3.5). These values are tuned to cover
+    // typical tower height without wasting a huge frustum (which makes shadows blurrier AND more costly).
+    keyLight.shadow.camera.left = -10;
+    keyLight.shadow.camera.right = 10;
+    keyLight.shadow.camera.top = 12;
+    keyLight.shadow.camera.bottom = -12;
+    keyLight.shadow.camera.near = 1.0;
+    keyLight.shadow.camera.far = 40.0;
     // Position shadow camera to look at the scene center
     keyLight.shadow.camera.position.set(0, 25, 0);
     keyLight.shadow.camera.lookAt(0, 0, 0);
-    keyLight.shadow.mapSize.width = 2048;
-    keyLight.shadow.mapSize.height = 2048;
+    // Shadow map size tier: iOS gets a smaller map for battery/thermals.
+    const shadowSize = isIOS ? 1024 : 2048;
+    keyLight.shadow.mapSize.width = shadowSize;
+    keyLight.shadow.mapSize.height = shadowSize;
     keyLight.shadow.bias = -0.0001;
-    keyLight.shadow.radius = 2; // Sharper shadows (reduced from 3) for more dramatic definition
+    keyLight.shadow.radius = isIOS ? 1 : 2; // iOS: cheaper/less softening
     keyLight.shadow.normalBias = 0.02; // Reduce shadow acne
     scene.add(keyLight);
     

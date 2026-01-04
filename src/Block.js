@@ -464,8 +464,9 @@ export class Block {
                 : 0;
         }
         
-        // Enable shadows on arrow mesh
-        topArrowMesh.castShadow = true;
+        // Battery/perf: keep arrows receiving shadows, but avoid adding more shadow casters.
+        // The main block body already casts; these small details multiply shadow-map cost on mobile.
+        topArrowMesh.castShadow = false;
         topArrowMesh.receiveShadow = true;
         
         if (style === 1) topArrowMesh.position.z = -0.015;
@@ -613,7 +614,8 @@ export class Block {
         });
         
         const dotMesh = new THREE.Mesh(dotGeometry, dotMaterial);
-        dotMesh.castShadow = true;
+        // Battery/perf: receive only (avoid extra shadow casters for tiny details)
+        dotMesh.castShadow = false;
         dotMesh.receiveShadow = true;
         
         // Get Z offset to push indicators away from surface
@@ -640,7 +642,8 @@ export class Block {
         });
         
         const circleMesh = new THREE.Mesh(circleGeometry, circleMaterial);
-        circleMesh.castShadow = true;
+        // Battery/perf: receive only (avoid extra shadow casters for tiny details)
+        circleMesh.castShadow = false;
         circleMesh.receiveShadow = true;
         
         // Apply Z offset to make the circle stand out from the surface
