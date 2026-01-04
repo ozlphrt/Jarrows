@@ -24,6 +24,21 @@ export function getBlockCells(block) {
     return cells;
 }
 
+// --- 3D overlap helpers (snap + epsilon) ---
+// Float drift can accumulate in yOffset (e.g. 2.0016). For structure checks and fixes,
+// treat values very close to an integer as that integer.
+const Y_SNAP_EPS = 0.01;
+const Y_OVERLAP_EPS = 0.001; // touching at boundary is NOT overlap
+
+function snapLayerY(y) {
+    const r = Math.round(y);
+    return Math.abs(y - r) < Y_SNAP_EPS ? r : y;
+}
+
+function yRangesOverlap(aBottom, aTop, bBottom, bTop) {
+    return (aTop - bBottom > Y_OVERLAP_EPS) && (bTop - aBottom > Y_OVERLAP_EPS);
+}
+
 /**
  * Check if a block can exit the board in its current state
  * Returns: { canExit: boolean, stepsToExit: number }
@@ -114,7 +129,7 @@ export function validateStructure(blocks, gridSize) {
         // Calculate block height (use cubeSize from block if available, otherwise default to 1)
         const cubeSize = block.cubeSize || 1;
         const blockHeight = block.isVertical ? block.length * cubeSize : cubeSize;
-        const yBottom = block.yOffset || 0;
+        const yBottom = snapLayerY(block.yOffset || 0);
         const yTop = yBottom + blockHeight;
         
         // Check bounds
@@ -133,7 +148,7 @@ export function validateStructure(blocks, gridSize) {
                 const existingBlocks = occupiedCells.get(key);
                 for (const existing of existingBlocks) {
                     // Check if Y ranges overlap
-                    if (!(yTop <= existing.yBottom || yBottom >= existing.yTop)) {
+                    if (yRangesOverlap(yBottom, yTop, existing.yBottom, existing.yTop)) {
                         // Enhanced debug info
                         const blockInfo = `block at (${block.gridX}, ${block.gridZ}), yOffset=${yBottom}, height=${blockHeight}`;
                         const existingInfo = `block at (${existing.block.gridX}, ${existing.block.gridZ}), yOffset=${existing.yBottom}, height=${existing.yTop - existing.yBottom}`;
@@ -159,91 +174,114 @@ export function validateStructure(blocks, gridSize) {
  */
 export function fixOverlappingBlocks(blocks, gridSize) {
     const movedBlocks = [];
-    const occupiedCells = new Map(); // key: "x,z" -> array of {block, yBottom, yTop}
-    
-    // First pass: identify all overlaps
-    const overlaps = [];
-    for (const block of blocks) {
-        if (block.isFalling || block.isAnimating || block.isRemoved || block.removalStartTime) continue;
-        
-        const cells = getBlockCells(block);
+
+    function getBlockYRange(block, yOverride = null) {
         const cubeSize = block.cubeSize || 1;
-        const blockHeight = block.isVertical ? block.length * cubeSize : cubeSize;
-        const yBottom = block.yOffset || 0;
-        const yTop = yBottom + blockHeight;
-        
-        for (const cell of cells) {
-            const key = `${cell.x},${cell.z}`;
-            
-            if (occupiedCells.has(key)) {
-                const existingBlocks = occupiedCells.get(key);
-                for (const existing of existingBlocks) {
-                    if (!(yTop <= existing.yBottom || yBottom >= existing.yTop)) {
-                        // Overlap detected
-                        overlaps.push({
-                            block1: block,
-                            block2: existing.block,
-                            cell: {x: cell.x, z: cell.z}
-                        });
-                    }
+        const height = block.isVertical ? block.length * cubeSize : cubeSize;
+        const yBottom = snapLayerY(yOverride !== null ? yOverride : (block.yOffset || 0));
+        return { yBottom, yTop: yBottom + height, height, cubeSize };
+    }
+
+    function cellsToKeySet(cells) {
+        const s = new Set();
+        for (const c of cells) s.add(`${c.x},${c.z}`);
+        return s;
+    }
+
+    function isSafeAtYOffset(blockToMove, testYOffset, allBlocks) {
+        const { yBottom, yTop } = getBlockYRange(blockToMove, testYOffset);
+        const moveCells = getBlockCells(blockToMove);
+        const moveCellSet = cellsToKeySet(moveCells);
+
+        for (const other of allBlocks) {
+            if (!other || other === blockToMove || other.isFalling || other.isAnimating || other.isRemoved || other.removalStartTime) continue;
+            const otherCells = getBlockCells(other);
+            let sharesCell = false;
+            for (const c of otherCells) {
+                if (moveCellSet.has(`${c.x},${c.z}`)) {
+                    sharesCell = true;
+                    break;
                 }
-                existingBlocks.push({block, yBottom, yTop});
-            } else {
-                occupiedCells.set(key, [{block, yBottom, yTop}]);
+            }
+            if (!sharesCell) continue;
+
+            const otherRange = getBlockYRange(other);
+            if (yRangesOverlap(yBottom, yTop, otherRange.yBottom, otherRange.yTop)) {
+                return false;
             }
         }
+        return true;
     }
-    
-    // Second pass: fix overlaps by moving blocks to safe positions
-    for (const overlap of overlaps) {
-        const { block1, block2, cell } = overlap;
-        
-        // Move the block with higher Y offset down, or if same Y, move block1
-        const block1Y = block1.yOffset || 0;
-        const block2Y = block2.yOffset || 0;
-        const blockToMove = block1Y >= block2Y ? block1 : block2;
-        const cubeSize = blockToMove.cubeSize || 1;
-        const blockHeight = blockToMove.isVertical ? blockToMove.length * cubeSize : cubeSize;
-        
-        // Try to find a safe Y level below
-        let safeYOffset = blockToMove.yOffset;
-        for (let dropLevel = 1; dropLevel <= 10; dropLevel++) {
-            const testYOffset = Math.max(0, blockToMove.yOffset - dropLevel * cubeSize);
-            const testYBottom = testYOffset;
-            const testYTop = testYOffset + blockHeight;
-            
-            // Check if this Y level is safe (no overlaps)
-            let isSafe = true;
-            const cells = getBlockCells(blockToMove);
-            for (const checkCell of cells) {
-                const key = `${checkCell.x},${checkCell.z}`;
-                const existingBlocks = occupiedCells.get(key) || [];
-                for (const existing of existingBlocks) {
-                    if (existing.block === blockToMove) continue;
-                    if (testYTop > existing.yBottom && testYBottom < existing.yTop) {
-                        isSafe = false;
-                        break;
-                    }
+
+    // Identify overlaps (collect ALL, not just first)
+    const overlaps = [];
+    const occupiedCells = new Map(); // key: "x,z" -> array of {block, yBottom, yTop}
+    for (const block of blocks) {
+        if (block.isFalling || block.isAnimating || block.isRemoved || block.removalStartTime) continue;
+        const { yBottom, yTop } = getBlockYRange(block);
+        const cells = getBlockCells(block);
+
+        for (const cell of cells) {
+            const key = `${cell.x},${cell.z}`;
+            const list = occupiedCells.get(key) || [];
+            for (const existing of list) {
+                if (yRangesOverlap(yBottom, yTop, existing.yBottom, existing.yTop)) {
+                    overlaps.push({ block1: block, block2: existing.block, cell: { x: cell.x, z: cell.z } });
                 }
-                if (!isSafe) break;
             }
-            
-            if (isSafe) {
-                safeYOffset = testYOffset;
+            list.push({ block, yBottom, yTop });
+            occupiedCells.set(key, list);
+        }
+    }
+
+    // Fix overlaps: try snapping, then search both DOWN and UP for a safe layer
+    for (const overlap of overlaps) {
+        const b1 = overlap.block1;
+        const b2 = overlap.block2;
+        if (!b1 || !b2) continue;
+
+        // Heuristic: if vertical+horizontal overlap, move the horizontal block (more likely to be "resting" incorrectly).
+        // Otherwise move the one with higher Y.
+        const b1Y = snapLayerY(b1.yOffset || 0);
+        const b2Y = snapLayerY(b2.yOffset || 0);
+        let blockToMove = b1;
+        if (b1.isVertical !== b2.isVertical) {
+            blockToMove = b1.isVertical ? b2 : b1;
+        } else {
+            blockToMove = b1Y >= b2Y ? b1 : b2;
+        }
+
+        const { cubeSize } = getBlockYRange(blockToMove);
+        const base = snapLayerY(blockToMove.yOffset || 0);
+
+        // Candidate list: snapped base, then alternate down/up by layer.
+        const candidates = [base];
+        const MAX_STEPS = 12;
+        for (let i = 1; i <= MAX_STEPS; i++) {
+            candidates.push(Math.max(0, base - i * cubeSize));
+            candidates.push(base + i * cubeSize);
+        }
+
+        let chosen = null;
+        for (const c of candidates) {
+            if (isSafeAtYOffset(blockToMove, c, blocks)) {
+                chosen = c;
                 break;
             }
         }
-        
-        if (safeYOffset !== blockToMove.yOffset) {
-            blockToMove.yOffset = safeYOffset;
-            blockToMove.updateWorldPosition();
-            if (!movedBlocks.includes(blockToMove)) {
-                movedBlocks.push(blockToMove);
+
+        if (chosen !== null && Math.abs((blockToMove.yOffset || 0) - chosen) > 1e-9) {
+            blockToMove.yOffset = chosen;
+            if (typeof blockToMove.updateWorldPosition === 'function') {
+                blockToMove.updateWorldPosition();
             }
+            if (!movedBlocks.includes(blockToMove)) movedBlocks.push(blockToMove);
         }
     }
-    
-    return { fixed: movedBlocks.length > 0, movedBlocks };
+
+    // Only report fixed if structure is actually valid afterwards.
+    const recheck = validateStructure(blocks, gridSize);
+    return { fixed: recheck.valid, movedBlocks };
 }
 
 /**

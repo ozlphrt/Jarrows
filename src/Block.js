@@ -2,6 +2,39 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { createPhysicsBlock, removePhysicsBody, isPhysicsStepping, deferBodyCreation, deferBodyModification } from './physics.js';
 
+/**
+ * Movement/collision Y-overlap rules.
+ *
+ * IMPORTANT: `canMove()` and `move()` must use the SAME overlap logic, otherwise we get:
+ * - canMove() === "ok" but move() no-ops (false blocker)
+ * - or worse: real overlaps in the grid (impossible puzzle states)
+ *
+ * We treat blocks as 3D volumes. To avoid float drift causing phantom overlaps at boundaries
+ * (e.g. yOffset=2.00168 should be treated as yOffset=2 when it's essentially landed),
+ * we "snap" yBottom to the nearest integer layer when it's close enough.
+ */
+function snapLayerY(y) {
+    // Snap only when already very close to an integer layer.
+    // This fixes accumulated float drift from animations/support calculations.
+    const r = Math.round(y);
+    return Math.abs(y - r) < 0.01 ? r : y;
+}
+
+function yRangesOverlapForMovement(_thisBlock, _otherBlock, thisYBottom, thisYTop, otherYBottom, otherYTop) {
+    const EPSILON = 0.001;
+
+    const thisHeight = thisYTop - thisYBottom;
+    const otherHeight = otherYTop - otherYBottom;
+
+    const aBottom = snapLayerY(thisYBottom);
+    const bBottom = snapLayerY(otherYBottom);
+    const aTop = aBottom + thisHeight;
+    const bTop = bBottom + otherHeight;
+
+    // Strict overlap with epsilon: boundaries that merely touch are NOT overlapping.
+    return (aTop - bBottom > EPSILON) && (bTop - aBottom > EPSILON);
+}
+
 export class Block {
     constructor(length, gridX, gridZ, direction, isVertical, arrowStyle, scene, physics, gridSize, cubeSize, yOffset = 0, level = 1) {
         this.length = length;
@@ -1010,7 +1043,7 @@ export class Block {
                 // Check if Y ranges overlap (blocks are at different Y levels but might overlap in 3D)
                 // Use strict inequality to avoid false positives when blocks are just touching
                 // Blocks overlap if: thisYTop > otherYBottom AND thisYBottom < otherYTop
-                const yRangesOverlap = thisYTop > otherYBottom && thisYBottom < otherYTop;
+                const yRangesOverlap = yRangesOverlapForMovement(this, other, thisYBottom, thisYTop, otherYBottom, otherYTop);
                 
                 // If Y ranges don't overlap, blocks can't collide (they're at different heights)
                 if (!yRangesOverlap) continue;
@@ -1056,7 +1089,7 @@ export class Block {
                     // Check if Y ranges overlap (blocks are at different Y levels but might overlap in 3D)
                     // Check if Y ranges overlap - use strict inequality to avoid false positives
                     // Blocks overlap if: thisYTop > otherYBottom AND thisYBottom < otherYTop
-                    const yRangesOverlap = thisYTop > otherYBottom && thisYBottom < otherYTop;
+                    const yRangesOverlap = yRangesOverlapForMovement(this, other, thisYBottom, thisYTop, otherYBottom, otherYTop);
                     
                     // If Y ranges don't overlap, blocks can't collide (they're at different heights)
                     if (!yRangesOverlap) continue;
@@ -1119,7 +1152,7 @@ export class Block {
                 // Check if Y ranges overlap (blocks are at different Y levels but might overlap in 3D)
                 // Use strict inequality to avoid false positives when blocks are just touching
                 // Blocks overlap if: thisYTop > otherYBottom AND thisYBottom < otherYTop
-                const yRangesOverlap = thisYTop > otherYBottom && thisYBottom < otherYTop;
+                const yRangesOverlap = yRangesOverlapForMovement(this, other, thisYBottom, thisYTop, otherYBottom, otherYTop);
                 
                 // If Y ranges don't overlap, blocks can't collide (they're at different heights)
                 if (!yRangesOverlap) continue;
@@ -1180,7 +1213,7 @@ export class Block {
                     // Check if Y ranges overlap (blocks are at different Y levels but might overlap in 3D)
                     // Check if Y ranges overlap - use strict inequality to avoid false positives
                     // Blocks overlap if: thisYTop > otherYBottom AND thisYBottom < otherYTop
-                    const yRangesOverlap = thisYTop > otherYBottom && thisYBottom < otherYTop;
+                    const yRangesOverlap = yRangesOverlapForMovement(this, other, thisYBottom, thisYTop, otherYBottom, otherYTop);
                     
                     // If Y ranges don't overlap, blocks can't collide (they're at different heights)
                     if (!yRangesOverlap) continue;
@@ -1447,22 +1480,8 @@ export class Block {
                 const otherYBottom = other.yOffset;
                 const otherYTop = other.yOffset + otherHeight;
                 
-                // For vertical blocks, use standard Y-range overlap check
-                // For horizontal blocks, use stricter Y-level checking (only collide with blocks at same Y level)
-                let yRangesOverlap;
-                if (!other.isVertical) {
-                    // Other block is horizontal: only collide if it's at the same Y level as this vertical block
-                    // Check if this vertical block's Y range includes the horizontal block's Y level
-                    // Use strict inequality with epsilon to avoid false positives when blocks are just touching
-                    const EPSILON = 0.001; // Small tolerance for floating point precision
-                    yRangesOverlap = (otherYBottom - thisYBottom > EPSILON) && (thisYTop - otherYBottom > EPSILON);
-                } else {
-                    // Both vertical: use standard Y-range overlap check
-                    // Blocks overlap if they actually overlap (not just touching)
-                    // Use strict inequalities with small epsilon to avoid false positives when blocks are just touching
-                    const EPSILON = 0.001; // Small tolerance for floating point precision
-                    yRangesOverlap = (thisYTop - otherYBottom > EPSILON) && (otherYTop - thisYBottom > EPSILON);
-                }
+                // 3D overlap check (MUST match move() logic)
+                const yRangesOverlap = yRangesOverlapForMovement(this, other, thisYBottom, thisYTop, otherYBottom, otherYTop);
                 
                 if (window.debugMoveMode) {
                     // Only log Y-range checks for blocks at the target position to reduce noise
@@ -1601,30 +1620,8 @@ export class Block {
                 const otherYBottom = other.yOffset;
                 const otherYTop = other.yOffset + otherHeight;
                 
-                // For horizontal blocks, use stricter Y-level checking
-                // A horizontal block at yOffset: 4 should only collide with blocks that actually occupy yOffset: 4
-                let yRangesOverlap;
-                if (!this.isVertical) {
-                    // Horizontal block: only collide with blocks at the same Y level
-                    // Check if other block's Y range includes this block's Y level
-                    if (other.isVertical) {
-                        // Vertical block: check if it passes through this horizontal block's Y level
-                        // Use strict inequality with epsilon to avoid false positives when blocks are just touching
-                        // The horizontal block's Y level must be INSIDE the vertical block's range (not at the boundary)
-                        const EPSILON = 0.001; // Small tolerance for floating point precision
-                        yRangesOverlap = (thisYBottom - otherYBottom > EPSILON) && (otherYTop - thisYBottom > EPSILON);
-                    } else {
-                        // Both horizontal: must be at exactly the same Y level
-                        const yLevelDiff = Math.abs(this.yOffset - other.yOffset);
-                        yRangesOverlap = yLevelDiff < 0.001;
-                    }
-                } else {
-                    // This block is vertical: use standard Y-range overlap check
-                    // Blocks overlap if they actually overlap (not just touching)
-                    // Use strict inequalities with small epsilon to avoid false positives when blocks are just touching
-                    const EPSILON = 0.001; // Small tolerance for floating point precision
-                    yRangesOverlap = (thisYTop - otherYBottom > EPSILON) && (otherYTop - thisYBottom > EPSILON);
-                }
+                // 3D overlap check (MUST match move() logic)
+                const yRangesOverlap = yRangesOverlapForMovement(this, other, thisYBottom, thisYTop, otherYBottom, otherYTop);
                 
                 if (window.debugMoveMode && i === 0) {
                     window.debugMoveInfo.yRangeChecks.push({
@@ -1735,6 +1732,15 @@ export class Block {
     
     move(blocks, gridSize) {
         if (this.isAnimating || this.isFalling) return;
+
+        // Snapshot state for Undo BEFORE any move logic mutates direction/yOffset/etc.
+        const preMoveState = {
+            gridX: this.gridX,
+            gridZ: this.gridZ,
+            yOffset: this.yOffset,
+            direction: { ...this.direction },
+            isVertical: this.isVertical,
+        };
         
         // Calculate how many steps the block can move before hitting something
         let stepsToObstacle = 0;
@@ -1773,7 +1779,7 @@ export class Block {
                 // Check if Y ranges overlap (blocks are at different Y levels but might overlap in 3D)
                 // Use strict inequality to avoid false positives when blocks are just touching
                 // Blocks overlap if: thisYTop > otherYBottom AND thisYBottom < otherYTop
-                const yRangesOverlap = thisYTop > otherYBottom && thisYBottom < otherYTop;
+                const yRangesOverlap = yRangesOverlapForMovement(this, other, thisYBottom, thisYTop, otherYBottom, otherYTop);
                 
                 // If Y ranges don't overlap, blocks can't collide (they're at different heights)
                 if (!yRangesOverlap) continue;
@@ -2011,6 +2017,11 @@ export class Block {
         if (stepsToObstacle === 0) {
             return;
         }
+
+        // Record this move for Undo (single source of truth, independent of input handler)
+        if (typeof window !== 'undefined' && typeof window.recordMoveState === 'function') {
+            window.recordMoveState(this, preMoveState);
+        }
         
         this.isAnimating = true;
         
@@ -2175,6 +2186,18 @@ export class Block {
         let rotationCompleted = false;
         
         const animate = () => {
+            // Allow external cancellation (used by Undo)
+            if (this.needsStop) {
+                this.needsStop = false;
+                this.isAnimating = false;
+                this.group.scale.set(1, 1, 1);
+                this.updateWorldPosition();
+                if (typeof window !== 'undefined' && typeof window.updateUndoButtonState === 'function') {
+                    window.updateUndoButtonState();
+                }
+                return;
+            }
+
             const elapsed = performance.now() - startTime;
             let progress = Math.min(elapsed / duration, 1);
             
@@ -2291,6 +2314,9 @@ export class Block {
                     // Hit edge - start falling immediately without snapping to grid
                     // Position is already correct from animation, don't recalculate
                     this.isAnimating = false;
+                    if (typeof window !== 'undefined' && typeof window.updateUndoButtonState === 'function') {
+                        window.updateUndoButtonState();
+                    }
                     
                     let velX, velZ, velY;
                     
@@ -2332,6 +2358,9 @@ export class Block {
                 this.updateWorldPosition();
                 
                 this.isAnimating = false;
+                if (typeof window !== 'undefined' && typeof window.updateUndoButtonState === 'function') {
+                    window.updateUndoButtonState();
+                }
             }
             }
         };
@@ -2426,6 +2455,18 @@ export class Block {
         const startTime = performance.now();
         
         const bounce = () => {
+            // Allow external cancellation (used by Undo)
+            if (this.needsStop) {
+                this.needsStop = false;
+                this.isAnimating = false;
+                this.group.scale.set(1, 1, 1);
+                this.updateWorldPosition();
+                if (typeof window !== 'undefined' && typeof window.updateUndoButtonState === 'function') {
+                    window.updateUndoButtonState();
+                }
+                return;
+            }
+
             const elapsed = performance.now() - startTime;
             const progress = Math.min(elapsed / bounceDuration, 1);
             
@@ -2472,6 +2513,9 @@ export class Block {
                 // Snap back to exact grid position (main block)
                 this.updateWorldPosition();
                 this.isAnimating = false;
+                if (typeof window !== 'undefined' && typeof window.updateUndoButtonState === 'function') {
+                    window.updateUndoButtonState();
+                }
                 
                 // Snap back surrounding blocks
                 for (const block of surroundingBlocks) {

@@ -2135,10 +2135,13 @@ function updateTimerDisplay() {
 
 // Save move state before a block moves
 function saveMoveState(block) {
+    // Deprecated: moves are now recorded from inside `Block.move()` to ensure all move paths are undoable.
+    // Kept for compatibility with older call sites.
     moveHistory.push({
         block: block,
         gridX: block.gridX,
         gridZ: block.gridZ,
+        yOffset: block.yOffset,
         direction: {...block.direction},
         isVertical: block.isVertical,
         timestamp: performance.now()
@@ -2153,34 +2156,105 @@ function saveMoveState(block) {
     }
 }
 
+// Single source of truth for move history recording (called from `Block.move()`).
+function recordMoveState(block, preMoveState) {
+    moveHistory.push({
+        block,
+        gridX: preMoveState.gridX,
+        gridZ: preMoveState.gridZ,
+        yOffset: preMoveState.yOffset,
+        direction: { ...preMoveState.direction },
+        isVertical: preMoveState.isVertical,
+        timestamp: performance.now(),
+    });
+
+    totalMoves++;
+
+    if (moveHistory.length > 50) {
+        moveHistory.shift();
+    }
+
+    updateUndoButtonState();
+}
+
+// Expose for `Block.js` (module boundary)
+if (typeof window !== 'undefined') {
+    window.recordMoveState = recordMoveState;
+}
+
 // Undo last move
 function undoLastMove() {
-    if (moveHistory.length === 0) return;
+    if (moveHistory.length === 0) return false;
     
     const lastMove = moveHistory.pop();
     const block = lastMove.block;
+    if (!block) return false;
     
-    // Check if block still exists (hasn't been removed)
-    if (!blocks.includes(block) || block.isRemoved) {
-        // Block was removed, can't undo
-        return;
+    // If the block is actively falling (physics sim still running), don't fight physics.
+    // (If it already finished and was removed, we'll resurrect below.)
+    if (block.isFalling && !block.isRemoved) return false;
+
+    // If the block was removed (fell off / cleared), resurrect it so we can undo properly.
+    if (block.isRemoved || !blocks.includes(block)) {
+        // Ensure it exists in blocks array
+        if (!blocks.includes(block)) {
+            blocks.push(block);
+        }
+
+        // Ensure it is in the scene graph (towerGroup is the parent in current architecture)
+        try {
+            if (block.group && !block.group.parent && typeof towerGroup !== 'undefined' && towerGroup) {
+                towerGroup.add(block.group);
+            }
+        } catch (e) {
+            // best-effort
+        }
+
+        // Reset removal / physics flags
+        block.isRemoved = false;
+        block.isFalling = false;
+        block.isAnimating = false;
+        block.needsStop = true;
+        block.removalStartTime = null;
+        block.updateMeltAnimation = null;
+
+        // Physics state (falling uses physics bodies)
+        block.physicsBody = null;
+        block.physicsCollider = null;
+        block.needsPhysicsBody = false;
+        block.pendingAngularVel = null;
+        block.pendingLinearVel = null;
+
+        // Reset transform (physics may have rotated it)
+        if (block.group) {
+            block.group.scale.set(1, 1, 1);
+            block.group.rotation.set(0, 0, 0);
+            block.group.quaternion.set(0, 0, 0, 1);
+        }
     }
     
     // Stop any ongoing animations
-    block.isAnimating = false;
     block.needsStop = true;
+    block.isAnimating = false;
     
     // Restore block position
     block.gridX = lastMove.gridX;
     block.gridZ = lastMove.gridZ;
+    block.yOffset = lastMove.yOffset ?? block.yOffset;
     block.direction = lastMove.direction;
     block.isVertical = lastMove.isVertical;
     
     // Reset scale and position immediately
     block.group.scale.set(1, 1, 1);
     block.updateWorldPosition();
-    
-    console.log(`Undo: Restored block to (${block.gridX}, ${block.gridZ})`);
+    if (typeof block.updateArrowRotation === 'function') {
+        block.updateArrowRotation();
+    }
+
+    // Undo should also undo the move counter for the level (clamp at 0)
+    totalMoves = Math.max(0, totalMoves - 1);
+
+    return true;
 }
 
 // Remove a block with selected animation type
@@ -2363,8 +2437,8 @@ function removeBlockWithAnimation(block) {
             if (index > -1) {
                 blocks.splice(index, 1);
             }
-            // Remove from move history if present
-            moveHistory = moveHistory.filter(m => m.block !== this);
+            // Keep move history entries even if a block is removed.
+            // Undo can resurrect the last-removed block back onto the board.
             // Clear animation function
             this.updateMeltAnimation = null;
         }
@@ -2482,6 +2556,186 @@ if (nextLevelButton) {
 
 // Game control button handlers (undo and remove buttons removed)
 
+// --- DEBUG: movement diagnostics (restored) ---
+// When enabled, Block.canMove() populates window.debugMoveInfo (see src/Block.js).
+// We capture reports specifically when a user clicks a block and the block does not actually start moving.
+if (typeof window !== 'undefined') {
+    window.debugMoveMode = !!window.debugMoveMode;
+    window.debugNonMovingReports = Array.isArray(window.debugNonMovingReports) ? window.debugNonMovingReports : [];
+}
+
+function safeClone(value) {
+    try {
+        // Prefer structuredClone when available (keeps numbers, arrays, objects)
+        if (typeof structuredClone === 'function') return structuredClone(value);
+    } catch (_) {
+        // Fall through to JSON clone
+    }
+    try {
+        return JSON.parse(JSON.stringify(value));
+    } catch (_) {
+        return value;
+    }
+}
+
+function downloadJson(data, filename) {
+    try {
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+    } catch (e) {
+        console.warn('Failed to download debug JSON:', e);
+    }
+}
+
+function getBlockCellsAt(block, baseGridX, baseGridZ) {
+    if (block.isVertical) return [{ x: baseGridX, z: baseGridZ }];
+    const isXAligned = Math.abs(block.direction.x) > 0;
+    const cells = [];
+    for (let i = 0; i < block.length; i++) {
+        cells.push({
+            x: baseGridX + (isXAligned ? i : 0),
+            z: baseGridZ + (isXAligned ? 0 : i)
+        });
+    }
+    return cells;
+}
+
+// Approximate the "first step" collision checks used by Block.move() (which uses a strict Y-range overlap check).
+// This helps identify mismatches where canMove() says "ok" but move() still no-ops due to overlap math.
+function computeFirstStepPotentialBlockers(block, allBlocks, preState) {
+    const baseX = preState?.gridX ?? block.gridX;
+    const baseZ = preState?.gridZ ?? block.gridZ;
+
+    const nextBaseX = baseX + block.direction.x;
+    const nextBaseZ = baseZ + block.direction.z;
+
+    const nextCells = getBlockCellsAt(block, nextBaseX, nextBaseZ);
+
+    const thisHeight = block.isVertical ? block.length * block.cubeSize : block.cubeSize;
+    const thisYBottom = preState?.yOffset ?? block.yOffset;
+    const thisYTop = thisYBottom + thisHeight;
+
+    const blockers = [];
+    for (const other of allBlocks) {
+        if (!other || other === block || other.isFalling || other.isRemoved || other.removalStartTime) continue;
+
+        const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
+        const otherYBottom = other.yOffset;
+        const otherYTop = otherYBottom + otherHeight;
+
+        // NOTE: This is the stricter/older overlap check used in Block.move() (no EPSILON).
+        const yRangesOverlap_move = (thisYTop > otherYBottom) && (thisYBottom < otherYTop);
+        if (!yRangesOverlap_move) continue;
+
+        const otherCells = getBlockCellsAt(other, other.gridX, other.gridZ);
+        let overlappingCell = null;
+        for (const c of nextCells) {
+            if (otherCells.some(o => o.x === c.x && o.z === c.z)) {
+                overlappingCell = c;
+                break;
+            }
+        }
+        if (!overlappingCell) continue;
+
+        const directionsOpposed = (block.direction.x === -other.direction.x) && (block.direction.z === -other.direction.z);
+        const headOnAllowed = directionsOpposed; // In current logic, opposite directions generally allow head-on continuation.
+
+        blockers.push({
+            other: {
+                gridX: other.gridX,
+                gridZ: other.gridZ,
+                yOffset: other.yOffset,
+                isVertical: other.isVertical,
+                length: other.length,
+                direction: other.direction ? { ...other.direction } : null
+            },
+            overlappingCell,
+            yRangesOverlap_move,
+            thisYRange: { bottom: thisYBottom, top: thisYTop, height: thisHeight },
+            otherYRange: { bottom: otherYBottom, top: otherYTop, height: otherHeight },
+            directionsOpposed,
+            headOnAllowed
+        });
+    }
+
+    return {
+        nextBase: { x: nextBaseX, z: nextBaseZ },
+        nextCells,
+        blockers
+    };
+}
+
+function snapshotPhysicsState(block) {
+    const body = block?.physicsBody;
+    if (!body) return null;
+    try {
+        const t = body.translation?.();
+        const lv = body.linvel?.();
+        const av = body.angvel?.();
+        const sleeping = typeof body.isSleeping === 'function' ? body.isSleeping() : undefined;
+        return {
+            translation: t ? { x: t.x, y: t.y, z: t.z } : null,
+            linvel: lv ? { x: lv.x, y: lv.y, z: lv.z } : null,
+            angvel: av ? { x: av.x, y: av.y, z: av.z } : null,
+            isSleeping: sleeping
+        };
+    } catch (e) {
+        return { error: String(e?.message || e) };
+    }
+}
+
+function recordNonMovingReport(report) {
+    if (typeof window === 'undefined') return;
+    window.debugNonMovingReports.push(report);
+
+    console.groupCollapsed(
+        `[DEBUG] Non-moving block click @ (${report.block?.gridX},${report.block?.gridZ}) y=${report.block?.yOffset} len=${report.block?.length} vertical=${report.block?.isVertical} result=${report.canMoveResult}`
+    );
+    console.log(report);
+    console.groupEnd();
+
+    // Auto-download a single JSON report for easy sharing.
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    downloadJson(report, `jarrows_non_moving_${ts}.json`);
+}
+
+let debugButtonEl = null;
+function updateDebugButtonUi() {
+    if (!debugButtonEl) debugButtonEl = document.getElementById('debug-button');
+    if (!debugButtonEl) return;
+    const enabled = !!window.debugMoveMode;
+    debugButtonEl.classList.toggle('debug-active', enabled);
+    debugButtonEl.textContent = enabled ? 'DEBUG ON' : 'DEBUG';
+    debugButtonEl.title = enabled
+        ? 'Debug enabled: non-moving block clicks will be recorded'
+        : 'Debug disabled: click to enable recording for non-moving blocks';
+}
+
+function toggleDebugMoveMode() {
+    if (typeof window === 'undefined') return;
+    window.debugMoveMode = !window.debugMoveMode;
+    updateDebugButtonUi();
+    console.log(window.debugMoveMode ? '[DEBUG] debugMoveMode enabled' : '[DEBUG] debugMoveMode disabled');
+}
+
+const debugButton = document.getElementById('debug-button');
+if (debugButton) {
+    debugButtonEl = debugButton;
+    updateDebugButtonUi();
+    debugButton.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleDebugMoveMode();
+    });
+}
+
 const restartLevelButton = document.getElementById('restart-level-button');
 if (restartLevelButton) {
     restartLevelButton.addEventListener('click', async () => {
@@ -2495,6 +2749,18 @@ if (newGameButton) {
     newGameButton.addEventListener('click', async () => {
         await startNewGame();
         updateUndoButtonState();
+    });
+}
+
+const undoButton = document.getElementById('undo-button');
+if (undoButton) {
+    undoButton.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const didUndo = undoLastMove();
+        if (didUndo) {
+            updateUndoButtonState();
+        }
     });
 }
 
@@ -2947,7 +3213,24 @@ if (document.readyState === 'loading') {
 
 // Update undo button state (enable/disable based on history)
 function updateUndoButtonState() {
-    // Undo button removed - function kept for compatibility
+    const undoButton = document.getElementById('undo-button');
+    if (!undoButton) return;
+
+    const hasBlocks = Array.isArray(blocks) && blocks.length > 0;
+    const hasActiveAnimations = hasBlocks
+        ? blocks.some(b => b && (b.isFalling || b.isAnimating || b.removalStartTime))
+        : false;
+
+    const canUndo = moveHistory.length > 0 && !isGeneratingLevel && !hasActiveAnimations;
+    undoButton.disabled = !canUndo;
+    undoButton.style.opacity = canUndo ? '1' : '0.5';
+    undoButton.style.cursor = canUndo ? 'pointer' : 'not-allowed';
+}
+
+// Allow Block animations (in `src/Block.js`) to refresh the Undo button once animations complete.
+// This avoids the Undo button getting stuck disabled after a move while `isAnimating` was true.
+if (typeof window !== 'undefined') {
+    window.updateUndoButtonState = updateUndoButtonState;
 }
 
 // Initialize camera position
@@ -3105,19 +3388,105 @@ function onMouseClick(event) {
     if (!structureCheck.valid) {
         console.warn('Puzzle structure invalid before move, skipping:', structureCheck.reason);
         console.warn('This may indicate a bug in the movement logic or puzzle generation.');
-        // Don't block the move - allow it to proceed and let the move logic handle collisions
-        // The validation might be too strict or detecting a transient state
-        // return;
+        // Auto-fix attempt: if we already have overlaps, don't apply more moves on top of a broken state.
+        const fixResult = fixOverlappingBlocks(blocks, gridSize);
+        if (fixResult.fixed) {
+            console.warn(`Fixed ${fixResult.movedBlocks.length} overlapping block(s). Please click again.`);
+        } else {
+            console.error('Failed to fix overlaps - manual intervention may be needed');
+        }
+        return;
     }
     
+    const debugEnabled = typeof window !== 'undefined' && !!window.debugMoveMode;
+    const preAttempt = {
+        gridX: block.gridX,
+        gridZ: block.gridZ,
+        yOffset: block.yOffset,
+        direction: block.direction ? { ...block.direction } : null,
+        length: block.length,
+        isVertical: block.isVertical,
+        isAnimating: block.isAnimating,
+        isFalling: block.isFalling,
+        isRemoved: block.isRemoved,
+        removalStartTime: block.removalStartTime ?? null
+    };
+
+    let canMoveDebugInfo = null;
+    if (debugEnabled) {
+        // Reset per-attempt so we don't accidentally read stale info.
+        window.debugMoveInfo = null;
+    }
+
     // Store if this block will fall (to update solution tracking)
     const moveResult = block.canMove(blocks);
     const willFall = moveResult === 'fall';
-    
-    // Save move state before moving (for undo)
-    saveMoveState(block);
+
+    if (debugEnabled) {
+        canMoveDebugInfo = safeClone(window.debugMoveInfo);
+    }
     
     block.move(blocks, gridSize);
+
+    if (debugEnabled) {
+        const postAttempt = {
+            gridX: block.gridX,
+            gridZ: block.gridZ,
+            yOffset: block.yOffset,
+            direction: block.direction ? { ...block.direction } : null,
+            isAnimating: block.isAnimating,
+            isFalling: block.isFalling,
+            isRemoved: block.isRemoved,
+            removalStartTime: block.removalStartTime ?? null
+        };
+
+        const didStartMoving =
+            postAttempt.isAnimating ||
+            postAttempt.isFalling ||
+            (postAttempt.gridX !== preAttempt.gridX) ||
+            (postAttempt.gridZ !== preAttempt.gridZ) ||
+            (!!postAttempt.removalStartTime);
+
+        if (!didStartMoving) {
+            const firstStep = computeFirstStepPotentialBlockers(block, blocks, preAttempt);
+            const report = {
+                meta: {
+                    kind: 'non_moving_block_click',
+                    timestamp: Date.now(),
+                    userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : null
+                },
+                input: {
+                    click: { x: event?.clientX ?? null, y: event?.clientY ?? null }
+                },
+                canMoveResult: moveResult,
+                preAttempt,
+                postAttempt,
+                block: {
+                    gridX: block.gridX,
+                    gridZ: block.gridZ,
+                    yOffset: block.yOffset,
+                    length: block.length,
+                    isVertical: block.isVertical,
+                    direction: block.direction ? { ...block.direction } : null,
+                    isAnimating: block.isAnimating,
+                    isFalling: block.isFalling,
+                    isRemoved: block.isRemoved
+                },
+                support: {
+                    hasSupport: typeof blockHasSupport === 'function' ? blockHasSupport(block, blocks) : null
+                },
+                physics: {
+                    blockBody: snapshotPhysicsState(block)
+                },
+                diagnostics: {
+                    canMoveDebugInfo,
+                    moveFirstStepApprox: firstStep
+                }
+            };
+
+            recordNonMovingReport(report);
+        }
+    }
     
     // After a block moves, validate structure and fix any overlaps
     setTimeout(() => {
@@ -3231,21 +3600,137 @@ function checkAndTriggerFalling(blocks) {
         return;
     }
     
-    // Check all blocks that aren't already falling or removed
-    for (const block of blocks) {
-        if (block.isFalling || block.isRemoved) continue;
-        
-        // Skip blocks that are currently animating (they might be in the middle of a move)
-        // But we still want to check blocks that are animating a fall
-        if (block.isAnimating && !block.isFalling) continue;
-        
-        // Check if block has support
-        if (!blockHasSupport(block, blocks)) {
-            // Block lost support - make it fall
-            console.log(`Block at (${block.gridX}, ${block.gridZ}) yOffset=${block.yOffset} lost support, starting fall`);
-            startBlockFalling(block);
+    // IMPORTANT: Batch detect unsupported blocks so chain reactions happen simultaneously.
+    // Without batching, the simulation becomes "stepped" (lower blocks fall first, then above),
+    // because support evaluation is done against the current state and only discovers the next
+    // unsupported block after the previous one lands.
+    //
+    // We treat blocks that are *also going to fall in this batch* as NOT providing support.
+    // Then we compute final landing targets bottom→top and animate all affected blocks together.
+
+    const eligible = blocks.filter(b => {
+        if (b.isRemoved || b.isFalling) return false;
+        if (b.isAnimating) return false; // don't fight other animations (move, etc.)
+        return b.yOffset > 0; // only upper-layer blocks can lose support
+    });
+
+    // Compute closure of blocks that become unsupported if we remove all blocks already selected to fall.
+    const toFall = new Set();
+    let changed = true;
+    while (changed) {
+        changed = false;
+        for (const b of eligible) {
+            if (toFall.has(b)) continue;
+            if (!blockHasSupportExcluding(b, blocks, toFall)) {
+                toFall.add(b);
+                changed = true;
+            }
         }
     }
+
+    if (toFall.size === 0) return;
+
+    // Compute landing Y targets for each falling block, considering:
+    // - static blocks (not in toFall)
+    // - already-resolved falling blocks (using their computed target Y)
+    const targets = computeSupportFallTargets(blocks, toFall);
+
+    for (const [block, targetYOffset] of targets.entries()) {
+        if (targetYOffset >= block.yOffset) continue;
+        console.log(`Block at (${block.gridX}, ${block.gridZ}) yOffset=${block.yOffset} lost support, falling to yOffset=${targetYOffset}`);
+        startBlockFallingToTarget(block, targetYOffset);
+    }
+}
+
+/**
+ * Like blockHasSupport, but treats blocks in `excluded` as if they don't exist (they provide no support).
+ */
+function blockHasSupportExcluding(block, allBlocks, excluded) {
+    if (block.yOffset === 0) return true;
+    const blockCells = getBlockCells(block);
+
+    for (const cell of blockCells) {
+        let cellHasSupport = false;
+        for (const other of allBlocks) {
+            if (other === block || other.isFalling || other.isRemoved) continue;
+            if (excluded && excluded.has(other)) continue;
+            if (other.yOffset >= block.yOffset) continue;
+
+            const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
+            const otherTop = other.yOffset + otherHeight;
+            if (otherTop < block.yOffset - 0.01) continue;
+
+            const otherCells = getBlockCells(other);
+            for (const otherCell of otherCells) {
+                if (otherCell.x === cell.x && otherCell.z === cell.z) {
+                    cellHasSupport = true;
+                    break;
+                }
+            }
+
+            if (cellHasSupport) break;
+        }
+        if (cellHasSupport) return true;
+    }
+    return false;
+}
+
+/**
+ * Compute final landing yOffset for every block in `toFall` (a Set), using a bottom→top pass.
+ * This makes chain-reaction drops animate simultaneously while still landing in correct stacked order.
+ */
+function computeSupportFallTargets(allBlocks, toFall) {
+    const fallBlocks = Array.from(toFall);
+    // Process bottom→top: lower blocks' targets must be known before higher blocks can land on them.
+    fallBlocks.sort((a, b) => (a.yOffset - b.yOffset));
+
+    const targets = new Map();
+
+    // Helper to query the "top surface" of a support block.
+    const getBlockTop = (b) => {
+        const baseY = targets.has(b) ? targets.get(b) : b.yOffset;
+        const h = b.isVertical ? b.length * b.cubeSize : b.cubeSize;
+        return baseY + h;
+    };
+
+    for (const block of fallBlocks) {
+        const blockCells = getBlockCells(block);
+        let targetYOffset = 0;
+
+        for (const cell of blockCells) {
+            let highestSupportY = 0;
+            for (const other of allBlocks) {
+                if (other === block || other.isFalling || other.isRemoved) continue;
+
+                const otherInFallSet = toFall.has(other);
+                // Only allow other falling blocks to act as support if we've already computed their target.
+                if (otherInFallSet && !targets.has(other)) continue;
+                // Static supports must be below current bottom; resolved falling supports use their target position.
+                const otherBaseY = otherInFallSet ? targets.get(other) : other.yOffset;
+                if (otherBaseY >= block.yOffset) continue;
+
+                const otherCells = getBlockCells(other);
+                let occupiesCell = false;
+                for (const otherCell of otherCells) {
+                    if (otherCell.x === cell.x && otherCell.z === cell.z) {
+                        occupiesCell = true;
+                        break;
+                    }
+                }
+                if (!occupiesCell) continue;
+
+                const otherTop = getBlockTop(other);
+                if (otherTop > highestSupportY) highestSupportY = otherTop;
+            }
+            if (highestSupportY > targetYOffset) targetYOffset = highestSupportY;
+        }
+
+        // Safety: never "fall up"
+        targetYOffset = Math.min(targetYOffset, block.yOffset);
+        targets.set(block, targetYOffset);
+    }
+
+    return targets;
 }
 
 /**
@@ -3310,57 +3795,61 @@ function startBlockFalling(block) {
         return; // Block already has support
     }
     
-    // Animate block falling down to target Y offset
+    // Use the generic animation helper for consistency.
+    startBlockFallingToTarget(block, targetYOffset);
+}
+
+/**
+ * Animate a support-fall to a precomputed targetYOffset.
+ * Used both for single-block support loss and batched chain reactions.
+ */
+function startBlockFallingToTarget(block, targetYOffset) {
+    if (block.isFalling || block.isRemoved || block.isAnimating) return;
+    if (targetYOffset >= block.yOffset) return;
+
     block.isAnimating = true;
     const startY = block.yOffset;
     const startTime = performance.now();
     const fallDistance = startY - targetYOffset;
-    const fallDuration = Math.max(300, fallDistance * 200); // ms to fall, proportional to distance
-    
+
+    // Fast slam: higher effective gravity and tighter caps, with acceleration curve.
+    // d = 1/2 g t^2 => t = sqrt(2d/g)
+    const SUPPORT_FALL_EFFECTIVE_G = 85;
+    const SUPPORT_FALL_MIN_MS = 80;
+    const SUPPORT_FALL_MAX_MS = 450;
+    const fallDuration = Math.min(
+        SUPPORT_FALL_MAX_MS,
+        Math.max(
+            SUPPORT_FALL_MIN_MS,
+            Math.sqrt((2 * Math.max(0.0001, fallDistance)) / SUPPORT_FALL_EFFECTIVE_G) * 1000
+        )
+    );
+
     let fallAnimationId = null;
     const animateFall = () => {
-        // Check if block was removed or level changed
         if (block.isRemoved || !blocks.includes(block) || isGeneratingLevel) {
-            if (fallAnimationId !== null) {
-                cancelAnimationFrame(fallAnimationId);
-                fallAnimationId = null;
-            }
+            if (fallAnimationId !== null) cancelAnimationFrame(fallAnimationId);
             block.isAnimating = false;
             return;
         }
-        
+
         const elapsed = performance.now() - startTime;
         const progress = Math.min(elapsed / fallDuration, 1);
-        
-        // Ease out for smooth landing
-        const eased = 1 - Math.pow(1 - progress, 3);
-        
-        // Interpolate Y offset
-        const currentY = startY + (targetYOffset - startY) * eased;
-        block.yOffset = currentY;
-        
-        // Update visual position
+        const eased = progress * progress; // accelerating downward
+
+        block.yOffset = startY + (targetYOffset - startY) * eased;
         block.updateWorldPosition();
-        
+
         if (progress < 1) {
             fallAnimationId = requestAnimationFrame(animateFall);
         } else {
-            // Landing complete
             block.yOffset = targetYOffset;
             block.updateWorldPosition();
             block.isAnimating = false;
             fallAnimationId = null;
-            
-            // Check if block now has support (should always be true after landing)
-            if (!blockHasSupport(block, blocks) && block.yOffset > 0) {
-                // Still no support - continue falling
-                setTimeout(() => {
-                    startBlockFalling(block);
-                }, 50);
-            }
         }
     };
-    
+
     fallAnimationId = requestAnimationFrame(animateFall);
 }
 
@@ -3720,9 +4209,6 @@ function onTouchEnd(event) {
     // Store if this block will fall
     const willFall = block.canMove(blocks) === 'fall';
     
-    // Save move state before moving
-    saveMoveState(block);
-    
     block.move(blocks, gridSize);
     
     // After a block moves, validate structure and fix any overlaps
@@ -3942,8 +4428,8 @@ function animate() {
                     }, 100);
                 }
                 
-                // Remove from move history if present
-                moveHistory = moveHistory.filter(m => m.block !== block);
+                // Keep move history entries even if a block is removed.
+                // Undo can resurrect the last-removed block back onto the board.
                 
                 blocks.splice(i, 1);
             }

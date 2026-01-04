@@ -22,19 +22,6 @@
         canvas {
             display: block;
         }
-        #fps-counter {
-            position: fixed;
-            bottom: 10px;
-            right: 10px;
-            color: white;
-            background: rgba(0, 0, 0, 0.6);
-            padding: 8px 12px;
-            border-radius: 4px;
-            font-size: 14px;
-            font-family: 'Courier New', monospace;
-            pointer-events: none;
-            z-index: 1000;
-        }
         /* Compact Stats Bar */
         #stats-bar {
             position: fixed;
@@ -511,6 +498,15 @@
             cursor: not-allowed;
             transform: none;
         }
+
+        /* DEBUG button active state */
+        .game-button.debug-active {
+            border-color: rgba(255, 215, 0, 0.7);
+            box-shadow: 0 0 0 2px rgba(255, 215, 0, 0.18),
+                        0 4px 12px rgba(0, 0, 0, 0.2),
+                        0 2px 8px rgba(0, 0, 0, 0.1),
+                        inset 0 1px 0 rgba(255, 255, 255, 0.15);
+        }
         
         /* Toggle Icons Container */
         #toggle-switches {
@@ -641,6 +637,19 @@
         }
         
         #settings-icon {
+            width: 20px !important;
+            height: 20px !important;
+        }
+
+        /* Undo Button - styled as game button (match dice/settings compact icon buttons) */
+        #undo-button {
+            flex: 0 0 auto !important;
+            min-width: auto !important;
+            max-width: none !important;
+            padding: 10px 14px !important;
+        }
+
+        #undo-icon {
             width: 20px !important;
             height: 20px !important;
         }
@@ -803,6 +812,16 @@
                 </svg>
                 <span id="spin-counter">3</span>
             </button>
+        <button class="game-button" id="undo-button" title="Undo" style="display: flex; align-items: center; justify-content: center;">
+            <svg id="undo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <!-- Undo (clean curved return, lucide-style) -->
+                <path d="M9 14 4 9l5-5"></path>
+                <path d="M4 9h10a6 6 0 0 1 0 12h-1"></path>
+            </svg>
+        </button>
+        <button class="game-button" id="debug-button" title="Debug: record non-moving blocks" style="display: flex; align-items: center; justify-content: center;">
+            DEBUG
+        </button>
         <div id="settings-container" style="position: relative;">
             <button class="game-button" id="settings-toggle" title="Settings" style="display: flex; align-items: center; justify-content: center;">
                 <svg id="settings-icon" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 20px; height: 20px;">

@@ -31,6 +31,14 @@ npm run build
 
 ## Releases
 
+### v4.5.0 - Undo + Debug Movement Diagnostics + Overlap Fixes
+- **Tree**: https://github.com/ozlphrt/Jarrows/tree/v4.5.0
+- **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v4.5.0
+- **Live**: https://ozlphrt.github.io/Jarrows/
+- Added Undo support (including restoring cleared blocks when possible)
+- Added DEBUG toggle to record non-moving block clicks for diagnosis
+- Improved Y-overlap handling (snap-to-layer + epsilon) to reduce float-drift false overlaps and prevent impossible states
+
 ### v4.4.3 - LocalStorage Progress Fix & Reset All Users
 - **Tree**: https://github.com/ozlphrt/Jarrows/tree/v4.4.3
 - **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v4.4.3
