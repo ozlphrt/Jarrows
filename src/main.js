@@ -321,6 +321,22 @@ function centerTowerVertically() {
     towerPositionOffset.y = -centerY;
     
     console.log(`Tower vertically centered: minY=${minY.toFixed(2)}, maxY=${maxY.toFixed(2)}, centerY=${centerY.toFixed(2)}, offsetY=${towerPositionOffset.y.toFixed(2)}`);
+
+    // Shadows are in manual-update mode (shadowMap.autoUpdate=false). When we move the entire towerGroup,
+    // we must explicitly "warm" and refresh shadow maps, otherwise the tower may show stale shadows until
+    // the user interacts (which triggers the shadow update gating).
+    try {
+        // Ensure the key light tracks the newly centered tower and force a shadow refresh window.
+        updateLightsForCamera(lights, currentAzimuth, currentElevation, towerCenter.clone().add(towerPositionOffset));
+        if (renderer.shadowMap) renderer.shadowMap.needsUpdate = true;
+        // Keep shadows updating briefly so the refreshed map is actually rendered.
+        shadowUpdateCooldownUntilMs = performance.now() + SHADOW_UPDATE_COOLDOWN_MS;
+        // Reset timers so the refresh isn't blocked by rate limits.
+        lastLightUpdateMs = 0;
+        lastShadowMapUpdateMs = 0;
+    } catch (e) {
+        // best-effort: avoid breaking spawn if any of the shadow-gating vars aren't initialized yet
+    }
 }
 
 // Camera system constants
@@ -2300,6 +2316,12 @@ function removeBlockWithAnimation(block) {
     block.isRemoved = false; // Don't mark as removed until animation completes
     block.removalStartTime = performance.now();
     block.meltDuration = 600; // 600ms melt animation (faster)
+
+    // Support should be considered lost immediately when a block starts being removed.
+    // Request an immediate support check so upper blocks begin dropping without waiting.
+    if (typeof window !== 'undefined' && typeof window.requestImmediateSupportCheck === 'function') {
+        window.requestImmediateSupportCheck();
+    }
     
     // Store original scale, position, rotation, and colors
     const originalScale = block.group.scale.clone();
@@ -3656,6 +3678,8 @@ function blockHasSupportExcluding(block, allBlocks, excluded) {
         let cellHasSupport = false;
         for (const other of allBlocks) {
             if (other === block || other.isFalling || other.isRemoved) continue;
+            // Blocks that are being removed should not provide support immediately.
+            if (other.removalStartTime) continue;
             if (excluded && excluded.has(other)) continue;
             if (other.yOffset >= block.yOffset) continue;
 
@@ -3704,6 +3728,8 @@ function computeSupportFallTargets(allBlocks, toFall) {
             let highestSupportY = 0;
             for (const other of allBlocks) {
                 if (other === block || other.isFalling || other.isRemoved) continue;
+                // Blocks that are being removed should not act as supports.
+                if (other.removalStartTime) continue;
 
                 const otherInFallSet = toFall.has(other);
                 // Only allow other falling blocks to act as support if we've already computed their target.
@@ -4213,6 +4239,12 @@ function onTouchEnd(event) {
     const willFall = block.canMove(blocks) === 'fall';
     
     block.move(blocks, gridSize);
+
+    // Support can change as soon as the moving block's logical grid position updates (before animation finishes).
+    // Request an immediate support check so upper blocks start dropping with no perceived delay.
+    if (typeof window !== 'undefined' && typeof window.requestImmediateSupportCheck === 'function') {
+        window.requestImmediateSupportCheck();
+    }
     
     // After a block moves, validate structure and fix any overlaps
     setTimeout(() => {
@@ -4229,12 +4261,8 @@ function onTouchEnd(event) {
     }, 100);
     
     // After a block moves, check if any other blocks lost support
-    setTimeout(() => {
-        checkAndTriggerFalling(blocks);
-        setTimeout(() => {
-            checkAndTriggerFalling(blocks);
-        }, 500);
-    }, 400);
+    // No delayed support checks here: move/removal code requests an immediate check when it completes,
+    // and the animation loop also runs a periodic fallback check.
     
     // Update button states after move
     updateUndoButtonState();
@@ -4272,6 +4300,15 @@ let lastTime = performance.now();
 let physicsUpdatedThisFrame = false; // Track if physics was updated this frame
 let lastSupportCheckTime = 0;
 const SUPPORT_CHECK_INTERVAL = 200; // Check support every 200ms
+let supportCheckRequested = false; // event-driven support checks (no delay after moves/removals)
+
+// Allow other modules (e.g. Block.js) to request an immediate support check.
+// The check executes in the main loop (single authority) on the next frame.
+if (typeof window !== 'undefined') {
+    window.requestImmediateSupportCheck = () => {
+        supportCheckRequested = true;
+    };
+}
 
 // Battery/perf: cap frame rate on iOS (avoids 120Hz ProMotion drain) and downclock further when idle.
 const ACTIVE_FPS = isIOS ? 30 : 60;
@@ -4477,8 +4514,11 @@ function animate() {
             }
         }
         
-        // Periodically check for blocks that lost support (continuous monitoring)
-        if (currentTime - lastSupportCheckTime > SUPPORT_CHECK_INTERVAL) {
+        // Support checking:
+        // - Event-driven: runs immediately after moves/removals complete (requested by game logic)
+        // - Periodic fallback: keeps state correct if something slips through
+        if (supportCheckRequested || (currentTime - lastSupportCheckTime > SUPPORT_CHECK_INTERVAL)) {
+            supportCheckRequested = false;
             lastSupportCheckTime = currentTime;
             checkAndTriggerFalling(blocks);
         }
@@ -4515,6 +4555,8 @@ function animate() {
                 // Undo can resurrect the last-removed block back onto the board.
                 
                 blocks.splice(i, 1);
+                // Removal can cause upper blocks to lose support; request an immediate check.
+                supportCheckRequested = true;
             }
         }
         
