@@ -31,6 +31,12 @@ npm run build
 
 ## Releases
 
+### v4.5.3 - Shadow Stability (Battery Optimizations Follow-up)
+- **Tree**: https://github.com/ozlphrt/Jarrows/tree/v4.5.3
+- **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v4.5.3
+- **Live**: https://ozlphrt.github.io/Jarrows/
+- Smoothed shadow updates to prevent distracting shadow popping while retaining iOS battery optimizations
+
 ### v4.5.1 - Remove Debug Button
 - **Tree**: https://github.com/ozlphrt/Jarrows/tree/v4.5.1
 - **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v4.5.1
