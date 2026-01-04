@@ -4290,6 +4290,10 @@ const TIMER_UI_INTERVAL_MS = 250; // 4Hz is enough; avoids per-frame DOM writes 
 // Shadow update gating: only update expensive shadow maps when interaction or physics motion occurs.
 let lastLightUpdateMs = 0;
 const LIGHT_UPDATE_INTERVAL_MS = isIOS ? 80 : 33; // ~12.5Hz iOS, ~30Hz desktop while interacting
+let lastShadowMapUpdateMs = 0;
+const SHADOW_MAP_UPDATE_INTERVAL_MS = isIOS ? 80 : 33;
+let shadowUpdateCooldownUntilMs = 0;
+const SHADOW_UPDATE_COOLDOWN_MS = isIOS ? 600 : 350; // keep shadows stable briefly after interaction ends
 
 // FPS tracking
 let fpsFrameCount = 0;
@@ -4382,24 +4386,27 @@ function animate() {
     const hasActiveAnimations = blocks.some(block => (block.isAnimating) || (block.removalStartTime && !block.isRemoved));
     const isActiveFrame = interacting || hasFallingBlocks || cameraStillMoving || hasActiveAnimations || isGeneratingLevel;
     nextFrameDelayMs = isActiveFrame ? ACTIVE_FRAME_MS : IDLE_FRAME_MS;
-    const needShadowsThisFrame = interacting || hasFallingBlocks;
+    
+    // Keep shadow updates "warm" while the camera is settling (smoothing) and for a short cooldown after interaction.
+    // This prevents noticeable shadow direction/strength jumps when updates are gated too aggressively.
+    if (interacting || cameraStillMoving || hasFallingBlocks || hasActiveAnimations) {
+        shadowUpdateCooldownUntilMs = currentTime + SHADOW_UPDATE_COOLDOWN_MS;
+    }
+    const needShadowsThisFrame = currentTime < shadowUpdateCooldownUntilMs;
 
     // Update lights only while interacting (or during falling, if you want shadows to react to camera during motion).
     // Moving the shadow-casting light forces a shadow-map re-render, so rate-limit this.
     if (needShadowsThisFrame && (currentTime - lastLightUpdateMs) > LIGHT_UPDATE_INTERVAL_MS) {
         lastLightUpdateMs = currentTime;
         updateLightsForCamera(lights, currentAzimuth, currentElevation, towerCenter.clone().add(towerPositionOffset));
+        if (renderer.shadowMap) renderer.shadowMap.needsUpdate = true;
     }
 
-    // Toggle shadow map updates only when needed (camera interaction / falling blocks).
-    // This keeps shadows enabled but prevents expensive continuous shadow-map rendering while idle.
-    if (renderer.shadowMap) {
-        if (renderer.shadowMap.autoUpdate !== needShadowsThisFrame) {
-            renderer.shadowMap.autoUpdate = needShadowsThisFrame;
-            if (needShadowsThisFrame) {
-                renderer.shadowMap.needsUpdate = true;
-            }
-        }
+    // Keep shadow maps in manual-update mode, but refresh periodically while motion/interaction is happening.
+    // This avoids abrupt shadow pops from toggling autoUpdate on/off.
+    if (renderer.shadowMap && needShadowsThisFrame && (currentTime - lastShadowMapUpdateMs) > SHADOW_MAP_UPDATE_INTERVAL_MS) {
+        lastShadowMapUpdateMs = currentTime;
+        renderer.shadowMap.needsUpdate = true;
     }
     
     // Update timer display (throttled; per-frame DOM updates cost battery on mobile)

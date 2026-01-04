@@ -71,12 +71,13 @@ export function createLights(scene) {
     // Shadow camera bounds: keep tight for better precision + less wasted shadow-map area.
     // The board is ~7x7 centered around (3.5, 0, 3.5). These values are tuned to cover
     // typical tower height without wasting a huge frustum (which makes shadows blurrier AND more costly).
-    keyLight.shadow.camera.left = -10;
-    keyLight.shadow.camera.right = 10;
-    keyLight.shadow.camera.top = 12;
-    keyLight.shadow.camera.bottom = -12;
+    // Slightly looser than the previous tight bounds to reduce shadow clipping/popping as the tower grows.
+    keyLight.shadow.camera.left = -12;
+    keyLight.shadow.camera.right = 12;
+    keyLight.shadow.camera.top = 14;
+    keyLight.shadow.camera.bottom = -14;
     keyLight.shadow.camera.near = 1.0;
-    keyLight.shadow.camera.far = 40.0;
+    keyLight.shadow.camera.far = isIOS ? 60.0 : 50.0;
     // Position shadow camera to look at the scene center
     keyLight.shadow.camera.position.set(0, 25, 0);
     keyLight.shadow.camera.lookAt(0, 0, 0);
