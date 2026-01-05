@@ -169,115 +169,6 @@ renderer.domElement.addEventListener('mouseleave', () => {
     wasCameraDragging = false; // Reset on mouse leave
 });
 
-// Right-click + drag for framing control (desktop)
-let isFramingDrag = false;
-let framingDragStartY = 0;
-let framingDragLastY = 0;
-const FRAMING_DRAG_SENSITIVITY = 0.02; // Same as framing slider sensitivity
-let targetFramingOffset = window.framingOffsetY || 0.1;
-let framingSmoothAnimationId = null;
-const FRAMING_SMOOTHING = 0.2; // Smoothing factor (0-1, lower = smoother)
-
-// Initialize targetFramingOffset when framingOffsetY is set from preferences
-if (window.framingOffsetY !== undefined) {
-    targetFramingOffset = window.framingOffsetY;
-}
-
-renderer.domElement.addEventListener('contextmenu', (e) => {
-    // Prevent context menu when right-clicking for framing control
-    e.preventDefault();
-});
-
-renderer.domElement.addEventListener('mousedown', (event) => {
-    // Right-click for framing control
-    if (event.button === 2) {
-        isFramingDrag = true;
-        framingDragStartY = event.clientY;
-        framingDragLastY = event.clientY;
-        event.preventDefault();
-    }
-}, { passive: false });
-
-renderer.domElement.addEventListener('mousemove', (event) => {
-    if (isFramingDrag) {
-        const deltaY = event.clientY - framingDragLastY;
-        const totalDeltaY = event.clientY - framingDragStartY;
-        
-        // Calculate sensitivity based on velocity (like framing slider)
-        const now = performance.now();
-        if (!framingDragLastTime) framingDragLastTime = now;
-        const deltaTime = Math.max(1, now - framingDragLastTime);
-        const velocity = Math.abs(deltaY) / deltaTime;
-        
-        // Dynamic sensitivity based on velocity
-        const velocityMultiplier = Math.min(1 + (velocity * 0.5), 5.0);
-        const dynamicSensitivity = FRAMING_DRAG_SENSITIVITY * velocityMultiplier;
-        
-        // Update target framing offset (negative because up should increase)
-        const valueDelta = -deltaY * dynamicSensitivity;
-        targetFramingOffset = Math.max(MIN_FRAMING_OFFSET, Math.min(MAX_FRAMING_OFFSET, targetFramingOffset + valueDelta));
-        
-        // Start smooth animation if not already running
-        if (framingSmoothAnimationId === null) {
-            const smoothFraming = () => {
-                const currentOffset = window.framingOffsetY;
-                const diff = targetFramingOffset - currentOffset;
-                
-                if (Math.abs(diff) > 0.001) {
-                    // Smooth interpolation
-                    const newOffset = currentOffset + diff * FRAMING_SMOOTHING;
-                    const clampedOffset = Math.max(MIN_FRAMING_OFFSET, Math.min(MAX_FRAMING_OFFSET, newOffset));
-                    
-                    window.framingOffsetY = clampedOffset;
-                    updateCameraPosition();
-                    
-                    // Update framing value display if it exists
-                    const framingValueDisplay = document.getElementById('framing-value-display');
-                    if (framingValueDisplay) {
-                        framingValueDisplay.textContent = clampedOffset.toFixed(1);
-                    }
-                    
-                    framingSmoothAnimationId = requestAnimationFrame(smoothFraming);
-                } else {
-                    // Reached target
-                    window.framingOffsetY = targetFramingOffset;
-                    updateCameraPosition();
-                    
-                    const framingValueDisplay = document.getElementById('framing-value-display');
-                    if (framingValueDisplay) {
-                        framingValueDisplay.textContent = targetFramingOffset.toFixed(1);
-                    }
-                    
-                    // Save to localStorage
-                    try {
-                        localStorage.setItem('jarrows_framing', targetFramingOffset.toString());
-                    } catch (e) {
-                        console.warn('Failed to save framing preference:', e);
-                    }
-                    
-                    framingSmoothAnimationId = null;
-                }
-            };
-            smoothFraming();
-        }
-        
-        framingDragLastY = event.clientY;
-        framingDragLastTime = now;
-        event.preventDefault();
-    }
-});
-
-let framingDragLastTime = 0;
-
-renderer.domElement.addEventListener('mouseup', (event) => {
-    if (event.button === 2 && isFramingDrag) {
-        isFramingDrag = false;
-        framingDragLastTime = 0;
-        // Let smooth animation continue until it reaches target
-        event.preventDefault();
-    }
-});
-
 // Mouse wheel for zoom
 renderer.domElement.addEventListener('wheel', (event) => {
     event.preventDefault();
@@ -426,9 +317,10 @@ function updateCameraPosition() {
         _effectiveTowerCenter.z + z
     );
     
-    // Look at point higher above tower center to move base plate down in frame (closer to bottom)
-    // Vertical framing offset - controlled by slider (default 6.5, range ~4 to ~10)
-    _lookAtOffset.set(0, window.framingOffsetY || 6.5, 0);
+// Look at point higher above tower center to move base plate down in frame (closer to bottom)
+// Framing control removed: keep a fixed offset for consistent gameplay.
+const DEFAULT_FRAMING_OFFSET_Y = 6.5;
+_lookAtOffset.set(0, DEFAULT_FRAMING_OFFSET_Y, 0);
     _lookAtTarget.copy(_effectiveTowerCenter).add(_lookAtOffset);
     camera.lookAt(_lookAtTarget);
     
@@ -1907,11 +1799,7 @@ async function generateSolvablePuzzle(level = 1) {
     }
     blocks.length = 0;
     
-    // Clean up any pending animation frames
-    if (framingSmoothAnimationId !== null) {
-        cancelAnimationFrame(framingSmoothAnimationId);
-        framingSmoothAnimationId = null;
-    }
+    // Framing control removed: no framing animation frames to cancel
     
     // Get target block count for this level
     const targetBlockCount = getBlocksForLevel(level);
@@ -2952,14 +2840,11 @@ if (document.readyState === 'loading') {
     setupDiceButton();
 }
 
-// Setup elevation slider
-// Vertical framing offset (controls where tower appears in frame)
-// Range: 0.1 (tower higher in frame) to 10.0 (tower lower in frame)
-const MIN_FRAMING_OFFSET = 0.1;
-const MAX_FRAMING_OFFSET = 10.0;
-window.framingOffsetY = 0.1; // Default value for desktop/web
+// Framing control removed (was previously adjustable in Settings and via gestures).
 
 function setupFramingSlider() {
+    // Framing control removed
+    return;
     const controlPanel = document.getElementById('framing-control');
     const valueDisplay = document.getElementById('framing-value-display');
     
@@ -3246,12 +3131,7 @@ function setupFramingSlider() {
     }
 }
 
-// Setup framing slider on DOM ready
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', setupFramingSlider);
-} else {
-    setupFramingSlider();
-}
+// Framing control removed (do not initialize slider)
 
 // Update undo button state (enable/disable based on history)
 function updateUndoButtonState() {
@@ -3921,12 +3801,7 @@ let touchState = {
     startCenter: null,
     lastCenter: null,
     isPinching: false,
-    isFramingControl: false,
-    wasFramingControl: false, // Track if framing control was active (persists until checked by onTouchEnd)
     hadDoubleTouch: false, // Track if we ever had 2 touches in this gesture sequence (prevents block selection)
-    framingStartY: 0,
-    framingLastY: 0,
-    framingLastTime: 0
 };
 
 // Touch start handler
@@ -3936,8 +3811,6 @@ renderer.domElement.addEventListener('touchstart', (event) => {
     touchState.touches = Array.from(event.touches);
     touchState.isActive = true;
     
-    // Reset framing control tracking for new touch sequence
-    touchState.wasFramingControl = false;
     touchState.hadDoubleTouch = false;
     
     if (touchState.touches.length === 1) {
@@ -3966,10 +3839,6 @@ renderer.domElement.addEventListener('touchstart', (event) => {
         };
         touchState.lastCenter = touchState.startCenter;
         touchState.isPinching = false;
-        touchState.isFramingControl = false;
-        touchState.framingStartY = touchState.startCenter.y;
-        touchState.framingLastY = touchState.startCenter.y;
-        touchState.framingLastTime = performance.now();
     }
 }, { passive: false });
 
@@ -4004,7 +3873,7 @@ renderer.domElement.addEventListener('touchmove', (event) => {
             }
         }
     } else if (currentTouches.length === 2 && touchState.touches.length === 2) {
-        // Dual touch - detect pinch (zoom) vs vertical drag (framing)
+        // Dual touch - pinch to zoom
         touchState.hadDoubleTouch = true; // Ensure flag is set if we're in a double touch gesture
         
         const touch1 = currentTouches[0];
@@ -4025,93 +3894,19 @@ renderer.domElement.addEventListener('touchmove', (event) => {
         const centerDeltaX = Math.abs(currentCenter.x - touchState.lastCenter.x);
         const centerMovement = Math.sqrt(centerDeltaX * centerDeltaX + centerDeltaY * centerDeltaY);
         
-        // Determine gesture: pinch (distance change) vs framing drag (vertical movement)
+        // Determine gesture: pinch (distance change)
         if (distanceChange > 0.05) {
-            // Pinch to zoom
             if (!touchState.isPinching) {
-            touchState.isPinching = true;
-                touchState.isFramingControl = false;
+                touchState.isPinching = true;
             }
-            
+
             const zoomFactor = currentDistance / touchState.startDistance;
             targetRadius /= zoomFactor;
             targetRadius = Math.max(MIN_RADIUS, Math.min(MAX_RADIUS, targetRadius));
             touchState.startDistance = currentDistance;
-            touchState.lastCenter = currentCenter;
-        } else if (centerDeltaY > centerDeltaX && centerMovement > 5) {
-            // Vertical drag for framing control (like framing slider)
-            if (!touchState.isFramingControl) {
-                touchState.isFramingControl = true;
-                touchState.isPinching = false;
-                touchState.framingStartY = currentCenter.y;
-                touchState.framingLastY = currentCenter.y;
-                touchState.framingLastTime = performance.now();
-            }
-            
-            const deltaY = currentCenter.y - touchState.framingLastY;
-            const now = performance.now();
-            const deltaTime = Math.max(1, now - touchState.framingLastTime);
-            const velocity = Math.abs(deltaY) / deltaTime;
-            
-            // Dynamic sensitivity based on velocity (like framing slider)
-            const velocityMultiplier = Math.min(1 + (velocity * 0.5), 5.0);
-            const dynamicSensitivity = FRAMING_DRAG_SENSITIVITY * velocityMultiplier;
-            
-            // Update target framing offset (positive because up should decrease - reversed from right-click)
-            const valueDelta = deltaY * dynamicSensitivity;
-            targetFramingOffset = Math.max(MIN_FRAMING_OFFSET, Math.min(MAX_FRAMING_OFFSET, targetFramingOffset + valueDelta));
-            
-            // Start smooth animation if not already running
-            if (framingSmoothAnimationId === null) {
-                const smoothFraming = () => {
-                    const currentOffset = window.framingOffsetY;
-                    const diff = targetFramingOffset - currentOffset;
-                    
-                    if (Math.abs(diff) > 0.001) {
-                        // Smooth interpolation
-                        const newOffset = currentOffset + diff * FRAMING_SMOOTHING;
-                        const clampedOffset = Math.max(MIN_FRAMING_OFFSET, Math.min(MAX_FRAMING_OFFSET, newOffset));
-                        
-                        window.framingOffsetY = clampedOffset;
-                        updateCameraPosition();
-                        
-                        // Update framing value display if it exists
-                        const framingValueDisplay = document.getElementById('framing-value-display');
-                        if (framingValueDisplay) {
-                            framingValueDisplay.textContent = clampedOffset.toFixed(1);
-                        }
-                        
-                        framingSmoothAnimationId = requestAnimationFrame(smoothFraming);
-        } else {
-                        // Reached target
-                        window.framingOffsetY = targetFramingOffset;
-                        updateCameraPosition();
-                        
-                        const framingValueDisplay = document.getElementById('framing-value-display');
-                        if (framingValueDisplay) {
-                            framingValueDisplay.textContent = targetFramingOffset.toFixed(1);
-                        }
-                        
-                        // Save to localStorage
-                        try {
-                            localStorage.setItem('jarrows_framing', targetFramingOffset.toString());
-                        } catch (e) {
-                            console.warn('Failed to save framing preference:', e);
-                        }
-                        
-                        framingSmoothAnimationId = null;
-                    }
-                };
-                smoothFraming();
-            }
-            
-            touchState.framingLastY = currentCenter.y;
-            touchState.framingLastTime = now;
-            touchState.lastCenter = currentCenter;
-        } else {
-            // Neither pinch nor framing drag - update center for next frame
-            touchState.lastCenter = currentCenter;
         }
+
+        touchState.lastCenter = currentCenter;
         
         touchState.touches = currentTouches;
     }
@@ -4123,26 +3918,17 @@ renderer.domElement.addEventListener('touchend', (event) => {
     
     const remainingTouches = Array.from(event.touches);
     
-    // Store if framing control was active before resetting (for onTouchEnd to check)
-    if (touchState.isFramingControl) {
-        touchState.wasFramingControl = true;
-    }
-    
     if (remainingTouches.length === 0) {
         // All touches ended - hadDoubleTouch will be cleared in onTouchEnd after check
         touchState.isActive = false;
         touchState.touches = [];
         touchState.isPinching = false;
-        touchState.isFramingControl = false;
-        touchState.framingLastTime = 0;
     } else if (remainingTouches.length === 1) {
         // One touch ended, switch to single touch mode
         // Keep hadDoubleTouch flag true to prevent block selection from remaining touch
         touchState.touches = remainingTouches;
         const touch = remainingTouches[0];
         touchState.lastCenter = { x: touch.clientX, y: touch.clientY };
-        touchState.isFramingControl = false;
-        touchState.framingLastTime = 0;
     }
 }, { passive: false });
 
@@ -4154,12 +3940,11 @@ const TOUCH_DRAG_THRESHOLD = 5; // pixels - minimum movement to consider it a dr
 function onTouchEnd(event) {
     // Prevent block selection if we had a double touch gesture (pinch or framing control)
     // This ensures no blocks are selected after completing double touch gestures
-    if (touchState.hadDoubleTouch || touchState.wasFramingControl || touchState.isFramingControl) {
+    if (touchState.hadDoubleTouch) {
         // Only clear hadDoubleTouch when all touches have ended
         if (event.touches.length === 0) {
             touchState.hadDoubleTouch = false;
         }
-        touchState.wasFramingControl = false; // Clear flag after checking
         touchStartPos = null;
         return; // Don't process as block tap
     }
@@ -4488,7 +4273,7 @@ function animate() {
     updateCameraPosition();
     
     // Determine if we need expensive shadow updates this frame
-    const interacting = isDraggingCamera || (touchState && touchState.isActive) || isFramingDrag;
+    const interacting = isDraggingCamera || (touchState && touchState.isActive);
     const hasFallingBlocks = blocks.some(block => block.isFalling);
     const cameraStillMoving = (dr >= SNAP_EPS) || (da >= SNAP_EPS) || (de >= SNAP_EPS);
     const hasActiveAnimations = blocks.some(block => (block.isAnimating) || (block.removalStartTime && !block.isRemoved));

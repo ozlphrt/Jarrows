@@ -31,6 +31,12 @@ npm run build
 
 ## Releases
 
+### v4.5.10 - Remove Framing Control UI
+- **Tree**: https://github.com/ozlphrt/Jarrows/tree/v4.5.10
+- **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v4.5.10
+- **Live**: https://ozlphrt.github.io/Jarrows/
+- Removed camera framing control from Settings (and disabled framing gesture); camera framing uses a fixed offset now
+
 ### v4.5.9 - Softer Shadows (Less Harsh Edges/Contrast)
 - **Tree**: https://github.com/ozlphrt/Jarrows/tree/v4.5.9
 - **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v4.5.9
