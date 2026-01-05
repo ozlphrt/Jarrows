@@ -427,10 +427,11 @@ export function updateLevelCompleteModal(userStats, comparison) {
         const statsGrid = document.querySelector('.modal-stats-grid');
         
         if (modalContent && statsGrid) {
-            // Insert after stats grid, before button
-            const button = document.querySelector('.modal-button');
-            if (button) {
-                modalContent.insertBefore(comparisonSection, button);
+            // Insert after stats grid, before the modal actions container.
+            // NOTE: insertBefore() requires the reference node to be a *direct child* of modalContent.
+            const actions = document.querySelector('.modal-actions');
+            if (actions && actions.parentElement === modalContent) {
+                modalContent.insertBefore(comparisonSection, actions);
             } else {
                 modalContent.appendChild(comparisonSection);
             }
