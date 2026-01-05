@@ -3,6 +3,9 @@ import { initPhysics, createPhysicsBlock, updatePhysics, isPhysicsStepping, hasP
 import { Block } from './Block.js';
 import { createLights, createGrid, setGradientBackground, setupFog } from './scene.js';
 import { validateStructure, validateSolvability, calculateDifficulty, getBlockCells, fixOverlappingBlocks, checkAndFixAllOverlaps, canBlockExit } from './puzzle_validation.js';
+import { initStats, startLevelStats, trackMove, trackSpin, trackBlockRemoved, completeLevel, getLevelComparison } from './stats/stats.js';
+import { updateLevelCompleteModal, showOfflineIndicator, hideOfflineIndicator, updateStreakStatsBar, showLocalOnlyIndicator } from './stats/statsUI.js';
+import { isOnline, isLocalOnlyMode } from './stats/statsAPI.js';
 import appVersionRaw from '../VERSION?raw';
 
 // Build-time constant injected by Vite (see vite.config.js). Falls back to '' if not defined.
@@ -495,6 +498,28 @@ function updateLightsForCamera(lights, azimuth, elevation, center) {
 
 // Initialize Rapier physics
 const physics = await initPhysics();
+
+// Initialize stats system
+await initStats();
+
+// Initialize streak display (local-only; safe even before any community stats exist)
+updateStreakStatsBar();
+
+// Set up offline indicator
+if (isLocalOnlyMode()) {
+    // Strict local-only mode: no network calls, no sync events.
+    showLocalOnlyIndicator();
+} else {
+    if (!isOnline()) {
+        showOfflineIndicator();
+    }
+    window.addEventListener('online', () => {
+        hideOfflineIndicator();
+    });
+    window.addEventListener('offline', () => {
+        showOfflineIndicator();
+    });
+}
 
 // Create random blocks
 const blocks = [];
@@ -2114,6 +2139,9 @@ async function generateSolvablePuzzle(level = 1) {
     // Reset move counter for new level
     totalMoves = 0;
     
+    // Start stats tracking for new level
+    startLevelStats(currentLevel);
+    
     // Update button states after level generation
     updateUndoButtonState();
     
@@ -2234,6 +2262,9 @@ function recordMoveState(block, preMoveState) {
     if (moveHistory.length > 50) {
         moveHistory.shift();
     }
+
+    // Track move for stats
+    trackMove();
 
     updateUndoButtonState();
 }
@@ -2516,6 +2547,8 @@ function removeBlockWithAnimation(block) {
             const index = blocks.indexOf(this);
             if (index > -1) {
                 blocks.splice(index, 1);
+                // Track block removal for stats
+                trackBlockRemoved();
             }
             // Keep move history entries even if a block is removed.
             // Undo can resurrect the last-removed block back onto the board.
@@ -2542,6 +2575,9 @@ async function restartCurrentLevel() {
     moveHistory = [];
     totalMoves = 0;
     
+    // Reset stats tracking for current level
+    startLevelStats(currentLevel);
+    
     // Regenerate current level
     await generateSolvablePuzzle(currentLevel);
 }
@@ -2567,6 +2603,9 @@ async function startNewGame() {
     
     // Hide level complete modal if visible
     hideLevelCompleteModal();
+    
+    // Reset stats tracking
+    startLevelStats(currentLevel);
     
     // Generate level 0
     await generateSolvablePuzzle(currentLevel);
@@ -2908,6 +2947,9 @@ function spinRandomBlocks() {
     // Decrement spin counter
     remainingSpins--;
     updateSpinCounterDisplay();
+    
+    // Track spin for stats
+    trackSpin();
     
     // Spin each block with slight duration randomization for visual variety
     eligibleBlocks.forEach((block, index) => {
@@ -4577,7 +4619,26 @@ function animate() {
             } catch (e) {
                 console.warn('Failed to save progress on level completion:', e);
             }
+            // Get final time for stats
+            let elapsedSeconds = timerPausedTime;
+            if (isTimerRunning && timerStartTime !== null) {
+                elapsedSeconds += (performance.now() / 1000) - timerStartTime;
+            }
+            
+            // Show level complete modal immediately
             showLevelCompleteModal(currentLevel);
+            
+            // Complete level and get stats (non-blocking)
+            (async () => {
+                try {
+                    const userStats = await completeLevel(elapsedSeconds);
+                    const comparison = await getLevelComparison(userStats);
+                    updateLevelCompleteModal(userStats, comparison);
+                } catch (error) {
+                    console.error('Error processing stats:', error);
+                    // Modal already shown, so continue
+                }
+            })();
         }
         
     }
