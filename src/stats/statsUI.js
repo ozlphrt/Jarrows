@@ -60,7 +60,7 @@ function closeHistoryModal() {
     if (existing) existing.remove();
 }
 
-function showPersonalHistoryModal() {
+export function showPersonalHistoryModal() {
     closeHistoryModal();
 
     const overlay = document.createElement('div');
@@ -133,7 +133,7 @@ function showPersonalHistoryModal() {
     const levels = getLocalRunsByLevel();
     if (!levels.length) {
         const empty = document.createElement('div');
-        empty.textContent = 'No local runs yet.';
+        empty.textContent = 'No local runs yet. Complete a level once to populate this history.';
         empty.style.cssText = `
             padding: 12px;
             border-radius: 12px;
