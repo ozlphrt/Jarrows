@@ -23,9 +23,20 @@
                 var debug = params.get('debug') === '1' || localStorage.getItem('jarrows_debug') === '1';
                 if (debug) return;
                 var noop = function () {};
+                var origWarn = console.warn;
                 console.log = noop;
                 console.info = noop;
                 console.debug = noop;
+                // Filter known noisy 3rd-party warnings (keep other warnings).
+                console.warn = function () {
+                    try {
+                        var first = arguments && arguments.length ? arguments[0] : '';
+                        if (typeof first === 'string' && first.indexOf('deprecated parameters for the initialization function') !== -1) {
+                            return;
+                        }
+                    } catch (_) {}
+                    return origWarn.apply(console, arguments);
+                };
             } catch (_) {
                 // ignore
             }
