@@ -201,6 +201,11 @@ export async function completeLevel(finalTime) {
     // Store locally
     storeLocalStats(stats);
 
+    // Strict local-only: do not queue or attempt submission.
+    if (isLocalOnlyMode()) {
+        return stats;
+    }
+
     // Try to submit (will queue if offline)
     try {
         if (isOnline()) {

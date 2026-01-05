@@ -13,6 +13,24 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        // Reduce console noise by default (keep warn/error). Opt-in debug:
+        // - URL: ?debug=1
+        // - or run in console: localStorage.setItem('jarrows_debug', '1') then refresh
+        (function () {
+            try {
+                var params = new URLSearchParams(location.search);
+                var debug = params.get('debug') === '1' || localStorage.getItem('jarrows_debug') === '1';
+                if (debug) return;
+                var noop = function () {};
+                console.log = noop;
+                console.info = noop;
+                console.debug = noop;
+            } catch (_) {
+                // ignore
+            }
+        })();
+    </script>
     <style>
         body {
             margin: 0;

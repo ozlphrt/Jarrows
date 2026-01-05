@@ -36,8 +36,8 @@ async function loadRapier() {
             if (initFn) {
                 console.log('Initializing Rapier WASM...');
                 // New API: init() can be called without parameters or with an options object
-                // For rapier3d-compat, we can call it without parameters
-                await initFn();
+                // Pass an options object to avoid deprecated-parameters warning in newer rapier builds.
+                await initFn({});
                 console.log('Rapier WASM initialized');
             } else {
                 // If init() is not found, this is a critical error
