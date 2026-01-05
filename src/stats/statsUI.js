@@ -107,6 +107,14 @@ function updateComparisonDisplay(section, userStats, comparison) {
         // Remove any previously-added overall badge(s)
         const existingBadges = title.querySelectorAll('[data-stats-overall-badge=\"1\"]');
         existingBadges.forEach((b) => b.remove());
+
+        // Update title based on comparison source
+        if (comparison?.source === 'personal') {
+            const n = typeof comparison.sampleSize === 'number' ? comparison.sampleSize : null;
+            title.textContent = n ? `Personal Comparison (${n} runs)` : 'Personal Comparison';
+        } else {
+            title.textContent = 'Community Comparison';
+        }
     }
 
     // Clear existing comparisons

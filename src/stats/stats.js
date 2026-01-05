@@ -127,7 +127,8 @@ export async function completeLevel(finalTime) {
         time: finalTime || getElapsedTime(),
         moves: currentLevelStats.moves,
         spins: currentLevelStats.initialSpins - currentLevelStats.spins, // Spins used
-        blocksRemoved: currentLevelStats.blocksRemoved
+        blocksRemoved: currentLevelStats.blocksRemoved,
+        timestamp: Date.now(),
     };
 
     // Store locally
@@ -173,7 +174,8 @@ function storeLocalStats(stats) {
         // Add new completion
         existing.push({
             ...stats,
-            timestamp: Date.now()
+            // Keep provided timestamp if present; fall back for older callers.
+            timestamp: typeof stats.timestamp === 'number' ? stats.timestamp : Date.now(),
         });
 
         // Keep only last 10 completions per level
@@ -239,6 +241,72 @@ export async function loadCommunityStats(level) {
     return null;
 }
 
+function quantile(sortedAsc, q) {
+    if (!sortedAsc.length) return null;
+    if (sortedAsc.length === 1) return sortedAsc[0];
+    const pos = (sortedAsc.length - 1) * q;
+    const base = Math.floor(pos);
+    const rest = pos - base;
+    const a = sortedAsc[base];
+    const b = sortedAsc[Math.min(base + 1, sortedAsc.length - 1)];
+    return a + (b - a) * rest;
+}
+
+function median(sortedAsc) {
+    return quantile(sortedAsc, 0.5);
+}
+
+function computePersonalAggregates(level, runs) {
+    const times = runs.map((s) => s.time).filter((x) => typeof x === 'number' && Number.isFinite(x)).sort((a, b) => a - b);
+    const moves = runs.map((s) => s.moves).filter((x) => typeof x === 'number' && Number.isFinite(x)).sort((a, b) => a - b);
+    const spins = runs.map((s) => s.spins).filter((x) => typeof x === 'number' && Number.isFinite(x)).sort((a, b) => a - b);
+    const blocksRemoved = runs.map((s) => s.blocksRemoved).filter((x) => typeof x === 'number' && Number.isFinite(x)).sort((a, b) => a - b);
+
+    const movesPerBlockArr = runs
+        .map((s) => (s.blocksRemoved > 0 ? s.moves / s.blocksRemoved : s.moves))
+        .filter((x) => typeof x === 'number' && Number.isFinite(x))
+        .sort((a, b) => a - b);
+    const timePerMoveArr = runs
+        .map((s) => (s.moves > 0 ? s.time / s.moves : s.time))
+        .filter((x) => typeof x === 'number' && Number.isFinite(x))
+        .sort((a, b) => a - b);
+    const blocksPerSpinArr = runs
+        .map((s) => (s.spins > 0 ? s.blocksRemoved / s.spins : s.blocksRemoved))
+        .filter((x) => typeof x === 'number' && Number.isFinite(x))
+        .sort((a, b) => a - b);
+
+    const avgMovesPerBlock = movesPerBlockArr.reduce((acc, v) => acc + v, 0) / (movesPerBlockArr.length || 1);
+    const avgTimePerMove = timePerMoveArr.reduce((acc, v) => acc + v, 0) / (timePerMoveArr.length || 1);
+    const avgBlocksPerSpin = blocksPerSpinArr.reduce((acc, v) => acc + v, 0) / (blocksPerSpinArr.length || 1);
+
+    return {
+        level,
+        medianTime: median(times),
+        medianMoves: median(moves),
+        medianSpins: median(spins),
+        medianBlocksRemoved: median(blocksRemoved),
+        p25Time: quantile(times, 0.25),
+        p75Time: quantile(times, 0.75),
+        p25Moves: quantile(moves, 0.25),
+        p75Moves: quantile(moves, 0.75),
+        completionRate: 1,
+        totalAttempts: runs.length,
+        lastUpdated: Date.now(),
+        avgMovesPerBlock,
+        avgTimePerMove,
+        avgBlocksPerSpin,
+        medianMovesPerBlock: median(movesPerBlockArr),
+        p25MovesPerBlock: quantile(movesPerBlockArr, 0.25),
+        p75MovesPerBlock: quantile(movesPerBlockArr, 0.75),
+        medianTimePerMove: median(timePerMoveArr),
+        p25TimePerMove: quantile(timePerMoveArr, 0.25),
+        p75TimePerMove: quantile(timePerMoveArr, 0.75),
+        medianBlocksPerSpin: median(blocksPerSpinArr),
+        p25BlocksPerSpin: quantile(blocksPerSpinArr, 0.25),
+        p75BlocksPerSpin: quantile(blocksPerSpinArr, 0.75),
+    };
+}
+
 /**
  * Get comparison data for completed level
  */
@@ -246,13 +314,81 @@ export async function getLevelComparison(userStats) {
     const communityStats = await loadCommunityStats(userStats.level);
 
     if (!communityStats) {
-        const badgeEval = evaluateBadges({ userStats, comparison: { available: false } });
+        // Strict local-only / offline: fall back to personal comparison using local history.
+        const history = getLocalStats(userStats.level);
+        const baseline = Array.isArray(history)
+            ? history.filter((r) => typeof r?.timestamp === 'number' ? r.timestamp !== userStats.timestamp : true)
+            : [];
+
+        if (baseline.length) {
+            const personalStats = computePersonalAggregates(userStats.level, baseline);
+
+            const timeComparison = getComparison(userStats.time, personalStats.medianTime, true);
+            timeComparison.percentile = calculateTimePercentile(userStats.time, personalStats);
+
+            const movesComparison = getComparison(userStats.moves, personalStats.medianMoves, true);
+            movesComparison.percentile = calculateMovesPercentile(userStats.moves, personalStats);
+
+            const spinsComparison = getComparison(userStats.spins, personalStats.medianSpins, true);
+            spinsComparison.percentile = calculateSpinsPercentile(userStats.spins, personalStats);
+
+            const movesPerBlock = userStats.blocksRemoved > 0 ? userStats.moves / userStats.blocksRemoved : userStats.moves;
+            const timePerMove = userStats.moves > 0 ? userStats.time / userStats.moves : userStats.time;
+            const blocksPerSpin = userStats.spins > 0 ? userStats.blocksRemoved / userStats.spins : userStats.blocksRemoved;
+
+            const movesPerBlockComparison = getComparison(movesPerBlock, personalStats.medianMovesPerBlock ?? personalStats.avgMovesPerBlock, true);
+            movesPerBlockComparison.percentile = calculateMovesPerBlockPercentile(movesPerBlock, personalStats);
+
+            const timePerMoveComparison = getComparison(timePerMove, personalStats.medianTimePerMove ?? personalStats.avgTimePerMove, true);
+            timePerMoveComparison.percentile = calculateTimePerMovePercentile(timePerMove, personalStats);
+
+            const blocksPerSpinComparison = getComparison(blocksPerSpin, personalStats.medianBlocksPerSpin ?? personalStats.avgBlocksPerSpin, false);
+            blocksPerSpinComparison.percentile = calculateBlocksPerSpinPercentile(blocksPerSpin, personalStats);
+
+            const overall = getOverallRating(userStats, personalStats);
+
+            const badgeEval = evaluateBadges({
+                userStats,
+                comparison: {
+                    available: true,
+                    source: 'personal',
+                    time: timeComparison,
+                    moves: movesComparison,
+                    spins: spinsComparison,
+                    overall,
+                },
+            });
+            if (badgeEval.earned.length) {
+                persistBadges({ level: userStats.level, badgeIds: badgeEval.earned });
+            }
+
+            return {
+                available: true,
+                source: 'personal',
+                sampleSize: baseline.length,
+                time: timeComparison,
+                moves: movesComparison,
+                spins: spinsComparison,
+                efficiency: {
+                    movesPerBlock: { value: movesPerBlock, comparison: movesPerBlockComparison },
+                    timePerMove: { value: timePerMove, comparison: timePerMoveComparison },
+                    blocksPerSpin: { value: blocksPerSpin, comparison: blocksPerSpinComparison },
+                },
+                overall,
+                communityStats: personalStats, // UI expects this shape
+                badges: badgeEval.earned,
+                badgesPending: true,
+            };
+        }
+
+        const badgeEval = evaluateBadges({ userStats, comparison: { available: false, source: 'none' } });
         if (badgeEval.earned.length) {
             persistBadges({ level: userStats.level, badgeIds: badgeEval.earned });
         }
         // Offline-safe rule: do not update streaks when community comparison isn't available.
         return {
             available: false,
+            source: 'none',
             time: null,
             moves: null,
             spins: null,
@@ -315,6 +451,7 @@ export async function getLevelComparison(userStats) {
         userStats,
         comparison: {
             available: true,
+            source: 'community',
             time: timeComparison,
             moves: movesComparison,
             spins: spinsComparison,
@@ -337,6 +474,7 @@ export async function getLevelComparison(userStats) {
 
     return {
         available: true,
+        source: 'community',
         time: timeComparison,
         moves: movesComparison,
         spins: spinsComparison,
