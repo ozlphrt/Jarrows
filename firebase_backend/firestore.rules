@@ -1,0 +1,19 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Public reads for aggregated stats (safe, anonymous).
+    match /level_stats/{levelId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Raw submissions are never publicly readable.
+    match /submissions/{docId} {
+      allow read: if false;
+      // Writes only via Cloud Functions Admin SDK (server-side).
+      allow write: if false;
+    }
+  }
+}
+
+
