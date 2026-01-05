@@ -1751,10 +1751,6 @@ export class Block {
         let tempGridZ = this.gridZ;
         let hitObstacle = false;
         let hitEdge = false;
-        // If the block exits the board, we implode it "in-place" at the last on-board position.
-        // This is in grid space (board coordinates), later converted to local (towerGroup) space.
-        let exitGridX = null;
-        let exitGridZ = null;
         let collidedBlock = null; // Track which block we collided with
         let headOnCollision = null; // Track head-on collision: {block, gridX, gridZ, originalDirection, stepsToCollision}
         let headOnCollisionCount = 0; // Safety counter to prevent infinite head-on collision loops
@@ -2010,10 +2006,6 @@ export class Block {
             // If all cubes are off the board, stop and fall
             if (allCubesOff) {
                 hitEdge = true;
-                // Back up one step so the block stays at the last on-board position before exiting.
-                // (Without this, tempGridX/Z are fully off-board and the block would animate out.)
-                exitGridX = tempGridX - this.direction.x;
-                exitGridZ = tempGridZ - this.direction.z;
                 break; // Block has entirely left the board
             }
         }
@@ -2026,14 +2018,6 @@ export class Block {
         
         // If no movement possible, return
         if (stepsToObstacle === 0) {
-            // If we're "exiting" from the edge with no on-board travel, implode immediately.
-            if (hitEdge) {
-                // Record this move for Undo (single source of truth, independent of input handler)
-                if (typeof window !== 'undefined' && typeof window.recordMoveState === 'function') {
-                    window.recordMoveState(this, preMoveState);
-                }
-                this.startImplodeRemoval(blocks);
-            }
             return;
         }
 
@@ -2044,9 +2028,8 @@ export class Block {
         
         this.isAnimating = true;
         
-        // If we exited the board, we stop at the last on-board position for the implode.
-        let finalGridX = hitEdge && exitGridX !== null ? exitGridX : tempGridX;
-        let finalGridZ = hitEdge && exitGridZ !== null ? exitGridZ : tempGridZ;
+        let finalGridX = tempGridX;
+        let finalGridZ = tempGridZ;
         
         // Calculate start position first (needed for extension calculation)
         // startX/startZ are in local coordinates relative to towerGroup (already offset)
@@ -2076,8 +2059,25 @@ export class Block {
             }
         }
         
-        // NOTE: Previously, edge-exiting blocks extended far off-board and then used physics + "catapult".
-        // We now keep them in-place (at the last on-board position) and implode them on completion.
+        // If block is going off the board, extend final position far enough to completely disappear
+        // Calculate direction vector for extension
+        if (hitEdge) {
+            const directionX = finalX - startX;
+            const directionZ = finalZ - startZ;
+            const directionLength = Math.sqrt(directionX * directionX + directionZ * directionZ);
+            
+            if (directionLength > 0) {
+                // Normalize direction
+                const normalizedX = directionX / directionLength;
+                const normalizedZ = directionZ / directionLength;
+                
+                // Extend final position by at least 2x the board size to ensure complete disappearance
+                // Use block's maximum dimension (length * cubeSize) to ensure it's fully off screen
+                const extensionDistance = Math.max(gridSize * this.cubeSize * 2, this.length * this.cubeSize * 3);
+                finalX = finalX + normalizedX * extensionDistance;
+                finalZ = finalZ + normalizedZ * extensionDistance;
+            }
+        }
         
         // Smooth easing function (ease-out cubic for smooth deceleration)
         const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
@@ -2094,9 +2094,9 @@ export class Block {
         // Animation parameters
         const totalDistance = Math.sqrt((finalX - startX) ** 2 + (finalZ - startZ) ** 2);
         
-        // Recalculate total distance (kept for structure; no off-board extension now)
+        // Recalculate total distance after potential extension for blocks going off board
         const recalculatedTotalDistance = Math.sqrt((finalX - startX) ** 2 + (finalZ - startZ) ** 2);
-        const isCatapult = false; // Catapult removed; edge exits implode in-place
+        const isCatapult = hitEdge; // Catapult when flying off edge
         
         // Constant speed for all block movements (linear interpolation)
         // Speed: pixels per millisecond (adjust for desired speed)
@@ -2181,10 +2181,6 @@ export class Block {
             // Normal movement: use constant speed (linear) - no easing
             duration = recalculatedTotalDistance / constantSpeed;
         }
-
-        // Guard: zero-distance moves (e.g., exiting from the edge) would produce duration=0,
-        // which can yield NaN progress on the first frame (0/0). Clamp to a minimal duration.
-        duration = Math.max(duration, 1);
         
         const startTime = performance.now();
         
@@ -2229,12 +2225,9 @@ export class Block {
                         // Pause at collision position (still at original Y level)
                         this.group.position.x = collisionX;
                         this.group.position.z = collisionZ;
-                        // Start the "drop" immediately (no delay) during the rotation pause.
-                        // Group Y position = yOffset (mesh bottom at yOffset, center at yOffset + blockHeight/2)
+                        // Keep Y at original level during rotation pause (group Y = yOffset, mesh bottom at yOffset)
                         const originalYOffset = headOnCollision.originalYOffset;
-                        const newYOffset = this.yOffset;
-                        const dropProgress = timeSinceCollision / rotationPauseDuration;
-                        this.group.position.y = originalYOffset + (newYOffset - originalYOffset) * dropProgress;
+                        this.group.position.y = originalYOffset;
                         
                         // Mark rotation as started
                         if (!rotationStarted) {
@@ -2321,12 +2314,42 @@ export class Block {
                     this.updateWorldPosition();
                     this.addBounceEffect(blocks);
                 } else if (hitEdge) {
-                    // Hit edge - implode in-place instead of flying out / falling via physics.
+                    // Hit edge - start falling immediately without snapping to grid
+                    // Position is already correct from animation, don't recalculate
                     this.isAnimating = false;
                     if (typeof window !== 'undefined' && typeof window.updateUndoButtonState === 'function') {
                         window.updateUndoButtonState();
                     }
-                    this.startImplodeRemoval(blocks);
+                    
+                    let velX, velZ, velY;
+                    
+                    // Use this.direction directly - it represents the arrow direction
+                    // Direction values: {x: 1, z: 0} = East, {x: -1, z: 0} = West, {x: 0, z: 1} = South, {x: 0, z: -1} = North
+                    // These are direction vectors in grid space, which map directly to world space velocities
+                    const dirX = this.direction.x;
+                    const dirZ = this.direction.z;
+                    
+                    if (isCatapult) {
+                        // CATAPULT: explosive launch with high velocity and upward arc
+                        const catapultSpeed = 8.0; // Much faster horizontal speed
+                        const launchAngle = 0.3; // Upward arc (radians, ~17 degrees)
+                        
+                        // Apply velocity in the direction of the arrow
+                        velX = dirX * catapultSpeed;
+                        velZ = dirZ * catapultSpeed;
+                        velY = Math.sin(launchAngle) * catapultSpeed * 0.6; // Upward velocity for arc
+                        
+                        this.fall(velX, velZ, velY);
+                    } else {
+                        // Normal fall: use direction with moderate speed
+                        const fallSpeed = 3.5; // Moderate speed for natural continuation
+                        
+                        // Apply velocity in the direction of the arrow
+                        velX = dirX * fallSpeed;
+                        velZ = dirZ * fallSpeed;
+                        
+                        this.fall(velX, velZ);
+                    }
             } else {
                 // Normal completion - snap to exact grid position
                 // Reset scale before snapping
@@ -2341,105 +2364,11 @@ export class Block {
                 if (typeof window !== 'undefined' && typeof window.updateUndoButtonState === 'function') {
                     window.updateUndoButtonState();
                 }
-                // Movement completion can remove support for blocks above; request immediate support check (next frame).
-                if (typeof window !== 'undefined' && typeof window.requestImmediateSupportCheck === 'function') {
-                    window.requestImmediateSupportCheck();
-                }
             }
             }
         };
         
         animate();
-    }
-
-    startImplodeRemoval(blocks) {
-        // In-place removal effect used when a block exits the board.
-        // Keeps the block at its current local (towerGroup) position and scales it down to zero.
-        if (this.isRemoved || this.removalStartTime) return;
-
-        // Stop any physics involvement (edge exits shouldn't create physics bodies).
-        this.isFalling = false;
-        this.needsPhysicsBody = false;
-        this.pendingAngularVel = null;
-        this.pendingLinearVel = null;
-
-        if (this.physicsBody) {
-            removePhysicsBody(this.physics, this.physicsBody, true);
-            this.physicsBody = null;
-            this.physicsCollider = null;
-        }
-
-        this.isAnimating = true;
-        this.isRemoved = false;
-        this.removalStartTime = performance.now();
-        this.meltDuration = 180; // implode should feel snappy (ms); reuse the removal timing field
-
-        const originalScale = this.group.scale.clone();
-        const originalRotation = this.group.rotation.clone();
-
-        // Prepare materials for opacity fade; store original opacities so Undo can restore by resetting scale/flags.
-        const prepMaterial = (mat) => {
-            if (!mat) return;
-            if (!mat.transparent) mat.transparent = true;
-            if (typeof mat.opacity !== 'number') mat.opacity = 1.0;
-            mat.opacity = 1.0;
-        };
-
-        if (Array.isArray(this.cubes)) {
-            this.cubes.forEach((cube) => prepMaterial(cube.material));
-        }
-        if (this.arrow) {
-            this.arrow.traverse((child) => prepMaterial(child.material));
-        }
-        if (this.directionIndicators) {
-            this.directionIndicators.traverse((child) => prepMaterial(child.material));
-        }
-
-        // Reuse the existing main-loop hook: main.js calls `block.updateMeltAnimation(...)` while `removalStartTime` is set.
-        this.updateMeltAnimation = function updateImplodeAnimation(deltaTime) {
-            if (!this.removalStartTime) return;
-
-            const elapsed = performance.now() - this.removalStartTime;
-            const progress = Math.min(elapsed / this.meltDuration, 1.0);
-
-            // Ease-in-out for a clean "implode" feel.
-            const eased = progress < 0.5
-                ? 2 * progress * progress
-                : 1 - Math.pow(-2 * progress + 2, 2) / 2;
-
-            const s = Math.max(0, 1 - eased);
-            this.group.scale.set(originalScale.x * s, originalScale.y * s, originalScale.z * s);
-
-            // Subtle twist inward as it collapses
-            const twist = (1 - s) * 0.25;
-            this.group.rotation.x = originalRotation.x + twist * 0.2;
-            this.group.rotation.y = originalRotation.y + twist * 0.6;
-            this.group.rotation.z = originalRotation.z + twist * 0.15;
-
-            const opacity = Math.max(0, 1 - eased);
-
-            if (Array.isArray(this.cubes)) {
-                this.cubes.forEach((cube) => {
-                    if (cube.material) cube.material.opacity = opacity;
-                });
-            }
-            if (this.arrow) {
-                this.arrow.traverse((child) => {
-                    if (child.material) child.material.opacity = opacity;
-                });
-            }
-            if (this.directionIndicators) {
-                this.directionIndicators.traverse((child) => {
-                    if (child.material) child.material.opacity = opacity;
-                });
-            }
-
-            if (progress >= 1.0) {
-                this.isRemoved = true;
-                this.remove();
-                this.updateMeltAnimation = null;
-            }
-        };
     }
     
     addBounceEffect(blocks = []) {
