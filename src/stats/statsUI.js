@@ -7,6 +7,211 @@ import { formatPercentile } from './statsComparison.js';
 import { getBadgeMeta } from './badges.js';
 import { loadStreakState, formatStreakShort } from './streaks.js';
 
+const METRIC_INFO = {
+    'T/M': {
+        title: 'T/M',
+        name: 'Time per move',
+        description: 'Average time spent per move.',
+        better: 'lower',
+        formula: 'time / moves',
+        zeroNote: 'If moves is 0, we treat T/M as the total time.',
+    },
+    'M/B': {
+        title: 'M/B',
+        name: 'Moves per block removed',
+        description: 'How many moves you used per block removed.',
+        better: 'lower',
+        formula: 'moves / blocksRemoved',
+        zeroNote: 'If blocksRemoved is 0, we treat M/B as moves.',
+    },
+    'B/S': {
+        title: 'B/S',
+        name: 'Blocks per spin',
+        description: 'How many blocks you removed per spin used.',
+        better: 'higher',
+        formula: 'blocksRemoved / spins',
+        zeroNote: 'If spins is 0, we treat B/S as blocksRemoved.',
+    },
+};
+
+function getMetricKey(label) {
+    if (!label) return null;
+    // Normalize variants (future-proof)
+    if (label === 'All T/M') return 'T/M';
+    if (label === 'All M/B') return 'M/B';
+    if (label === 'All B/S') return 'B/S';
+    return METRIC_INFO[label] ? label : null;
+}
+
+function closeMetricInfoModal() {
+    const existing = document.getElementById('metric-info-modal');
+    if (existing) existing.remove();
+}
+
+function showMetricInfoModal({ label, currentValue, baselineValue }) {
+    const key = getMetricKey(label);
+    const meta = key ? METRIC_INFO[key] : null;
+    if (!meta) return;
+
+    closeMetricInfoModal();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'metric-info-modal';
+    overlay.style.cssText = `
+        position: fixed;
+        inset: 0;
+        z-index: 3000;
+        background: rgba(0,0,0,0.55);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 18px;
+    `;
+
+    const panel = document.createElement('div');
+    panel.style.cssText = `
+        width: min(520px, 100%);
+        background: rgba(17, 24, 39, 0.55);
+        border: 1px solid rgba(255,255,255,0.18);
+        border-radius: 18px;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.14);
+        padding: 18px 16px 16px;
+        color: rgba(255,255,255,0.92);
+        font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    `;
+
+    const header = document.createElement('div');
+    header.style.cssText = `
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 10px;
+    `;
+
+    const titleWrap = document.createElement('div');
+
+    const title = document.createElement('div');
+    title.textContent = `${meta.title} — ${meta.name}`;
+    title.style.cssText = `
+        font-weight: 800;
+        font-size: 14px;
+        letter-spacing: 0.3px;
+        margin-bottom: 6px;
+    `;
+
+    const subtitle = document.createElement('div');
+    subtitle.textContent = `${meta.description} (${meta.better} is better)`;
+    subtitle.style.cssText = `
+        font-size: 12px;
+        color: rgba(255,255,255,0.75);
+        line-height: 1.35;
+    `;
+
+    const formula = document.createElement('div');
+    formula.textContent = `Formula: ${meta.formula}`;
+    formula.style.cssText = `
+        margin-top: 8px;
+        font-size: 11px;
+        color: rgba(255,255,255,0.65);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    `;
+
+    titleWrap.appendChild(title);
+    titleWrap.appendChild(subtitle);
+    titleWrap.appendChild(formula);
+
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.textContent = 'Close';
+    closeBtn.style.cssText = `
+        border: 1px solid rgba(255,255,255,0.18);
+        background: rgba(255,255,255,0.10);
+        color: rgba(255,255,255,0.9);
+        border-radius: 10px;
+        padding: 8px 10px;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+        flex: 0 0 auto;
+    `;
+    closeBtn.addEventListener('click', closeMetricInfoModal);
+
+    header.appendChild(titleWrap);
+    header.appendChild(closeBtn);
+
+    const values = document.createElement('div');
+    values.style.cssText = `
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-top: 12px;
+    `;
+
+    function valueCard(labelText, valueText) {
+        const wrap = document.createElement('div');
+        wrap.style.cssText = `
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 14px;
+            padding: 10px;
+        `;
+        const l = document.createElement('div');
+        l.textContent = labelText;
+        l.style.cssText = `
+            font-size: 10px;
+            font-weight: 800;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: rgba(255,255,255,0.55);
+            margin-bottom: 6px;
+        `;
+        const v = document.createElement('div');
+        v.textContent = valueText || '—';
+        v.style.cssText = `
+            font-size: 18px;
+            font-weight: 900;
+            color: rgba(255,255,255,0.95);
+        `;
+        wrap.appendChild(l);
+        wrap.appendChild(v);
+        return wrap;
+    }
+
+    values.appendChild(valueCard('Current', currentValue));
+    values.appendChild(valueCard('Median baseline', baselineValue));
+
+    const note = document.createElement('div');
+    note.textContent = meta.zeroNote;
+    note.style.cssText = `
+        margin-top: 10px;
+        font-size: 11px;
+        color: rgba(255,255,255,0.65);
+        line-height: 1.35;
+    `;
+
+    panel.appendChild(header);
+    panel.appendChild(values);
+    panel.appendChild(note);
+    overlay.appendChild(panel);
+
+    // Close behaviors
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) closeMetricInfoModal();
+    });
+    window.addEventListener(
+        'keydown',
+        (e) => {
+            if (e.key === 'Escape') closeMetricInfoModal();
+        },
+        { once: true },
+    );
+
+    document.body.appendChild(overlay);
+}
+
 /**
  * Update level complete modal with comparison stats
  */
@@ -321,6 +526,31 @@ function createComparisonCard(label, userValue, medianValue, comparison, icon) {
     card.appendChild(medianValueEl);
     if (percentileEl.textContent) {
         card.appendChild(percentileEl);
+    }
+
+    // Make specific metric cards tappable to open an explanation modal.
+    // Only for the "hard-to-grasp" efficiency metrics.
+    const metricKey = getMetricKey(label);
+    if (metricKey) {
+        card.style.cursor = 'pointer';
+        card.setAttribute('role', 'button');
+        card.tabIndex = 0;
+        card.title = 'Tap for explanation';
+
+        const open = () => {
+            showMetricInfoModal({
+                label,
+                currentValue: userValue,
+                baselineValue: medianValue,
+            });
+        };
+        card.addEventListener('click', open);
+        card.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                open();
+            }
+        });
     }
 
     return card;
