@@ -33,3 +33,24 @@ If you need to trigger deployment manually:
 2. Click "Deploy to GitHub Pages"
 3. Click "Run workflow"
 
+## Competitive Stats Backend (Free Plan)
+
+If you want competitive stats while staying on Firebase **Spark (free)**, deploy the stats API to a free host (Render) and store data in Firestore.
+
+### Render setup (recommended)
+
+- Create a Render Web Service from this repo
+- Root Directory: `mock_backend`
+- Build Command: `npm install`
+- Start Command: `npm start`
+
+Set Render env vars:
+- `STATS_STORAGE=firestore`
+- `STATS_BASE_PATH=/v1`
+- `FIREBASE_PROJECT_ID=<your-firebase-project-id>` (lowercase, e.g. `jarrows-443ec`)
+- `FIREBASE_SERVICE_ACCOUNT=<paste full JSON>`
+- `CORS_ORIGIN=https://ozlphrt.github.io` (or your site origin)
+
+Then set the frontend env:
+- `VITE_STATS_API_URL=https://<your-render-service>.onrender.com/v1`
+
