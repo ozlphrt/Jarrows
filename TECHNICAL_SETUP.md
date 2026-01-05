@@ -94,7 +94,7 @@ VITE_STATS_MODE=local
 
 When `VITE_STATS_MODE=local`:
 - No requests are sent to `VITE_STATS_API_URL`
-- The offline/sync banner becomes a **local-only** banner
 - Community comparison is disabled (user stats still record locally)
+ - No connectivity banners are shown (offline/online UI is suppressed)
 
 

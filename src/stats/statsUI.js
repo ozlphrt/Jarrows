@@ -5,19 +5,419 @@
 
 import { formatPercentile } from './statsComparison.js';
 import { getBadgeMeta } from './badges.js';
-import { loadStreakState, formatStreakShort } from './streaks.js';
+// Streak logic remains internal, but the top-bar streak UI has been removed.
+
+const METRIC_INFO = {
+    'T/M': {
+        title: 'T/M',
+        name: 'Time per move',
+        description: 'Average time spent per move.',
+        better: 'lower',
+        formula: 'time / moves',
+        zeroNote: 'If moves is 0, we treat T/M as the total time.',
+    },
+    'M/B': {
+        title: 'M/B',
+        name: 'Moves per block removed',
+        description: 'How many moves you used per block removed.',
+        better: 'lower',
+        formula: 'moves / blocksRemoved',
+        zeroNote: 'If blocksRemoved is 0, we treat M/B as moves.',
+    },
+    'B/S': {
+        title: 'B/S',
+        name: 'Blocks per spin',
+        description: 'How many blocks you removed per spin used.',
+        better: 'higher',
+        formula: 'blocksRemoved / spins',
+        zeroNote: 'If spins is 0, we treat B/S as blocksRemoved.',
+    },
+};
+
+function getLocalRunsByLevel() {
+    const levels = [];
+    try {
+        for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (!k || !k.startsWith('jarrows_level_') || !k.endsWith('_stats')) continue;
+            const levelStr = k.slice('jarrows_level_'.length, -'_stats'.length);
+            const level = Number(levelStr);
+            if (!Number.isFinite(level)) continue;
+            const raw = localStorage.getItem(k);
+            const arr = raw ? JSON.parse(raw) : [];
+            if (!Array.isArray(arr)) continue;
+            levels.push({ level, runs: arr });
+        }
+    } catch {
+        // ignore
+    }
+    levels.sort((a, b) => a.level - b.level);
+    return levels;
+}
+
+function closeHistoryModal() {
+    const existing = document.getElementById('personal-history-modal');
+    if (existing) existing.remove();
+}
+
+function showPersonalHistoryModal() {
+    closeHistoryModal();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'personal-history-modal';
+    overlay.style.cssText = `
+        position: fixed;
+        inset: 0;
+        z-index: 2600;
+        background: rgba(0,0,0,0.55);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        display: flex;
+        align-items: stretch;
+        justify-content: stretch;
+    `;
+
+    const panel = document.createElement('div');
+    panel.style.cssText = `
+        width: 100vw;
+        height: 100vh;
+        box-sizing: border-box;
+        padding: calc(18px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) calc(18px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
+        background: rgba(17, 24, 39, 0.55);
+        border: 1px solid rgba(255,255,255,0.18);
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.12);
+        overflow: auto;
+        -webkit-overflow-scrolling: touch;
+        color: rgba(255,255,255,0.92);
+        font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    `;
+
+    const header = document.createElement('div');
+    header.style.cssText = `
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 14px;
+    `;
+
+    const title = document.createElement('div');
+    title.textContent = 'Your History';
+    title.style.cssText = `
+        font-size: 16px;
+        font-weight: 900;
+        letter-spacing: 0.4px;
+    `;
+
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.textContent = 'Close';
+    closeBtn.style.cssText = `
+        border: 1px solid rgba(255,255,255,0.18);
+        background: rgba(255,255,255,0.10);
+        color: rgba(255,255,255,0.9);
+        border-radius: 10px;
+        padding: 10px 12px;
+        font-size: 12px;
+        font-weight: 800;
+        cursor: pointer;
+        flex: 0 0 auto;
+    `;
+    closeBtn.addEventListener('click', closeHistoryModal);
+
+    header.appendChild(title);
+    header.appendChild(closeBtn);
+
+    const body = document.createElement('div');
+
+    const levels = getLocalRunsByLevel();
+    if (!levels.length) {
+        const empty = document.createElement('div');
+        empty.textContent = 'No local runs yet.';
+        empty.style.cssText = `
+            padding: 12px;
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.12);
+            background: rgba(255,255,255,0.05);
+            color: rgba(255,255,255,0.78);
+            font-size: 12px;
+        `;
+        body.appendChild(empty);
+    } else {
+        for (const { level, runs } of levels) {
+            const card = document.createElement('div');
+            card.style.cssText = `
+                margin-bottom: 12px;
+                padding: 12px;
+                border-radius: 16px;
+                border: 1px solid rgba(255,255,255,0.14);
+                background: rgba(255,255,255,0.06);
+            `;
+
+            const h = document.createElement('div');
+            h.textContent = `Level ${level}`;
+            h.style.cssText = `
+                font-weight: 900;
+                font-size: 13px;
+                margin-bottom: 8px;
+            `;
+            card.appendChild(h);
+
+            const list = document.createElement('div');
+            list.style.cssText = `
+                display: grid;
+                grid-template-columns: 1fr;
+                gap: 6px;
+            `;
+
+            // show newest first
+            const sorted = [...runs].sort((a, b) => (b?.timestamp || 0) - (a?.timestamp || 0));
+            for (const r of sorted.slice(0, 10)) {
+                const moves = Number(r.moves || 0);
+                const time = Number(r.time || 0);
+                const spins = Number(r.spins || 0);
+                const blocksRemoved = Number(r.blocksRemoved || 0);
+                const tm = moves > 0 ? time / moves : time;
+                const mb = blocksRemoved > 0 ? moves / blocksRemoved : moves;
+                const bs = spins > 0 ? blocksRemoved / spins : blocksRemoved;
+
+                const row = document.createElement('div');
+                row.style.cssText = `
+                    display: grid;
+                    grid-template-columns: 74px 62px 1fr;
+                    gap: 10px;
+                    align-items: center;
+                    padding: 8px 10px;
+                    border-radius: 12px;
+                    border: 1px solid rgba(255,255,255,0.10);
+                    background: rgba(0,0,0,0.12);
+                    font-size: 12px;
+                    color: rgba(255,255,255,0.85);
+                `;
+
+                const left = document.createElement('div');
+                left.textContent = formatTime(time);
+                left.style.cssText = `font-weight: 900;`;
+
+                const mid = document.createElement('div');
+                mid.textContent = `${moves} mv`;
+                mid.style.cssText = `opacity: 0.9;`;
+
+                const right = document.createElement('div');
+                right.textContent = `T/M ${formatSeconds(tm)}  •  M/B ${formatRatio(mb)}  •  B/S ${formatRatio(bs)}`;
+                right.style.cssText = `opacity: 0.9;`;
+
+                row.appendChild(left);
+                row.appendChild(mid);
+                row.appendChild(right);
+                list.appendChild(row);
+            }
+
+            card.appendChild(list);
+            body.appendChild(card);
+        }
+    }
+
+    panel.appendChild(header);
+    panel.appendChild(body);
+    overlay.appendChild(panel);
+
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) closeHistoryModal();
+    });
+    window.addEventListener(
+        'keydown',
+        (e) => {
+            if (e.key === 'Escape') closeHistoryModal();
+        },
+        { once: true },
+    );
+
+    document.body.appendChild(overlay);
+}
+
+function getMetricKey(label) {
+    if (!label) return null;
+    // Normalize variants (future-proof)
+    if (label === 'All T/M') return 'T/M';
+    if (label === 'All M/B') return 'M/B';
+    if (label === 'All B/S') return 'B/S';
+    return METRIC_INFO[label] ? label : null;
+}
+
+function closeMetricInfoModal() {
+    const existing = document.getElementById('metric-info-modal');
+    if (existing) existing.remove();
+}
+
+function showMetricInfoModal({ label, currentValue, baselineValue }) {
+    const key = getMetricKey(label);
+    const meta = key ? METRIC_INFO[key] : null;
+    if (!meta) return;
+
+    closeMetricInfoModal();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'metric-info-modal';
+    overlay.style.cssText = `
+        position: fixed;
+        inset: 0;
+        z-index: 3000;
+        background: rgba(0,0,0,0.55);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 18px;
+    `;
+
+    const panel = document.createElement('div');
+    panel.style.cssText = `
+        width: min(520px, 100%);
+        background: rgba(17, 24, 39, 0.55);
+        border: 1px solid rgba(255,255,255,0.18);
+        border-radius: 18px;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.14);
+        padding: 18px 16px 16px;
+        color: rgba(255,255,255,0.92);
+        font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    `;
+
+    const header = document.createElement('div');
+    header.style.cssText = `
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 10px;
+    `;
+
+    const titleWrap = document.createElement('div');
+
+    const title = document.createElement('div');
+    title.textContent = `${meta.title} — ${meta.name}`;
+    title.style.cssText = `
+        font-weight: 800;
+        font-size: 14px;
+        letter-spacing: 0.3px;
+        margin-bottom: 6px;
+    `;
+
+    const subtitle = document.createElement('div');
+    subtitle.textContent = `${meta.description} (${meta.better} is better)`;
+    subtitle.style.cssText = `
+        font-size: 12px;
+        color: rgba(255,255,255,0.75);
+        line-height: 1.35;
+    `;
+
+    const formula = document.createElement('div');
+    formula.textContent = `Formula: ${meta.formula}`;
+    formula.style.cssText = `
+        margin-top: 8px;
+        font-size: 11px;
+        color: rgba(255,255,255,0.65);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    `;
+
+    titleWrap.appendChild(title);
+    titleWrap.appendChild(subtitle);
+    titleWrap.appendChild(formula);
+
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.textContent = 'Close';
+    closeBtn.style.cssText = `
+        border: 1px solid rgba(255,255,255,0.18);
+        background: rgba(255,255,255,0.10);
+        color: rgba(255,255,255,0.9);
+        border-radius: 10px;
+        padding: 8px 10px;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+        flex: 0 0 auto;
+    `;
+    closeBtn.addEventListener('click', closeMetricInfoModal);
+
+    header.appendChild(titleWrap);
+    header.appendChild(closeBtn);
+
+    const values = document.createElement('div');
+    values.style.cssText = `
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-top: 12px;
+    `;
+
+    function valueCard(labelText, valueText) {
+        const wrap = document.createElement('div');
+        wrap.style.cssText = `
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 14px;
+            padding: 10px;
+        `;
+        const l = document.createElement('div');
+        l.textContent = labelText;
+        l.style.cssText = `
+            font-size: 10px;
+            font-weight: 800;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: rgba(255,255,255,0.55);
+            margin-bottom: 6px;
+        `;
+        const v = document.createElement('div');
+        v.textContent = valueText || '—';
+        v.style.cssText = `
+            font-size: 18px;
+            font-weight: 900;
+            color: rgba(255,255,255,0.95);
+        `;
+        wrap.appendChild(l);
+        wrap.appendChild(v);
+        return wrap;
+    }
+
+    values.appendChild(valueCard('Current', currentValue));
+    values.appendChild(valueCard('Median baseline', baselineValue));
+
+    const note = document.createElement('div');
+    note.textContent = meta.zeroNote;
+    note.style.cssText = `
+        margin-top: 10px;
+        font-size: 11px;
+        color: rgba(255,255,255,0.65);
+        line-height: 1.35;
+    `;
+
+    panel.appendChild(header);
+    panel.appendChild(values);
+    panel.appendChild(note);
+    overlay.appendChild(panel);
+
+    // Close behaviors
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) closeMetricInfoModal();
+    });
+    window.addEventListener(
+        'keydown',
+        (e) => {
+            if (e.key === 'Escape') closeMetricInfoModal();
+        },
+        { once: true },
+    );
+
+    document.body.appendChild(overlay);
+}
 
 /**
  * Update level complete modal with comparison stats
  */
 export function updateLevelCompleteModal(userStats, comparison) {
-    if (!comparison || !comparison.available) {
-        // No comparison data available - show user stats only
-        // (Includes strict local-only mode where community stats are disabled.)
-        updateStreakStatsBar();
-        return;
-    }
-
     // Add comparison section to modal if it doesn't exist
     let comparisonSection = document.getElementById('stats-comparison-section');
     
@@ -39,7 +439,12 @@ export function updateLevelCompleteModal(userStats, comparison) {
 
     // Update comparison data
     updateComparisonDisplay(comparisonSection, userStats, comparison);
-    updateStreakStatsBar();
+
+    const historyBtn = document.getElementById('history-button');
+    if (historyBtn && !historyBtn.dataset.bound) {
+        historyBtn.dataset.bound = '1';
+        historyBtn.addEventListener('click', () => showPersonalHistoryModal());
+    }
 }
 
 /**
@@ -111,7 +516,9 @@ function updateComparisonDisplay(section, userStats, comparison) {
         // Update title based on comparison source
         if (comparison?.source === 'personal') {
             const n = typeof comparison.sampleSize === 'number' ? comparison.sampleSize : null;
-            title.textContent = n ? `Personal Comparison (${n} runs)` : 'Personal Comparison';
+            title.textContent = n ? `Personal (${n})` : 'Personal';
+        } else if (comparison?.source === 'none') {
+            title.textContent = 'Personal';
         } else {
             title.textContent = 'Community Comparison';
         }
@@ -133,6 +540,27 @@ function updateComparisonDisplay(section, userStats, comparison) {
         if (comparison.badgesPending && ids.length === 0) {
             badgeRow.appendChild(createPendingPill());
         }
+    }
+
+    // No per-level baseline yet: show a clear helper message, but still show global baseline if available.
+    if (!comparison?.available) {
+        const msg = document.createElement('div');
+        msg.style.cssText = `
+            grid-column: 1 / -1;
+            padding: 10px 12px;
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.12);
+            background: rgba(255,255,255,0.05);
+            color: rgba(255,255,255,0.78);
+            font-size: 12px;
+            line-height: 1.35;
+            margin-bottom: 10px;
+        `;
+        msg.textContent =
+            comparison?.reason === 'no_level_baseline'
+                ? 'No baseline yet for this level. Finish it again to compare against your own median.'
+                : 'No baseline available yet.';
+        grid.appendChild(msg);
     }
 
     // Time comparison
@@ -200,6 +628,39 @@ function updateComparisonDisplay(section, userStats, comparison) {
             formatRatio(comparison.communityStats.medianBlocksPerSpin ?? comparison.communityStats.avgBlocksPerSpin),
             c,
             '🌀'
+        ));
+    }
+
+    // Global normalized baseline across ALL levels (local history)
+    if (comparison?.globalNormalized?.available && comparison.globalNormalized.efficiency && comparison.globalNormalized.baselineStats) {
+        const gs = comparison.globalNormalized.baselineStats;
+        const ge = comparison.globalNormalized.efficiency;
+
+        // Spacer
+        const spacer = document.createElement('div');
+        spacer.style.cssText = `grid-column: 1 / -1; height: 8px;`;
+        grid.appendChild(spacer);
+
+        grid.appendChild(createComparisonCard(
+            'All M/B',
+            formatRatio(ge.movesPerBlock.value),
+            formatRatio(gs.medianMovesPerBlock ?? gs.avgMovesPerBlock),
+            ge.movesPerBlock.comparison,
+            '🌐'
+        ));
+        grid.appendChild(createComparisonCard(
+            'All T/M',
+            formatSeconds(ge.timePerMove.value),
+            formatSeconds(gs.medianTimePerMove ?? gs.avgTimePerMove),
+            ge.timePerMove.comparison,
+            '🌐'
+        ));
+        grid.appendChild(createComparisonCard(
+            'All B/S',
+            formatRatio(ge.blocksPerSpin.value),
+            formatRatio(gs.medianBlocksPerSpin ?? gs.avgBlocksPerSpin),
+            ge.blocksPerSpin.comparison,
+            '🌐'
         ));
     }
 
@@ -275,9 +736,11 @@ function createComparisonCard(label, userValue, medianValue, comparison, icon) {
         margin-bottom: 6px;
     `;
 
-    const userValueEl = document.createElement('div');
-    userValueEl.textContent = userValue;
-    userValueEl.style.cssText = `
+    // The main stats grid already shows the user's raw values (time/moves/etc).
+    // To avoid duplicate info, comparison cards show only "delta" + baseline median.
+    const deltaEl = document.createElement('div');
+    deltaEl.textContent = comparison?.text || '—';
+    deltaEl.style.cssText = `
         font-size: 16px;
         font-weight: 700;
         color: ${comparison.better ? 'rgba(74, 222, 128, 0.95)' : comparison.badge === 'equal' ? 'rgba(255, 255, 255, 0.9)' : 'rgba(255, 107, 107, 0.95)'};
@@ -285,7 +748,7 @@ function createComparisonCard(label, userValue, medianValue, comparison, icon) {
     `;
 
     const vsEl = document.createElement('div');
-    vsEl.textContent = 'vs';
+    vsEl.textContent = 'median';
     vsEl.style.cssText = `
         font-size: 9px;
         color: rgba(255, 255, 255, 0.4);
@@ -314,11 +777,36 @@ function createComparisonCard(label, userValue, medianValue, comparison, icon) {
 
     card.appendChild(iconEl);
     card.appendChild(labelEl);
-    card.appendChild(userValueEl);
+    card.appendChild(deltaEl);
     card.appendChild(vsEl);
     card.appendChild(medianValueEl);
     if (percentileEl.textContent) {
         card.appendChild(percentileEl);
+    }
+
+    // Make specific metric cards tappable to open an explanation modal.
+    // Only for the "hard-to-grasp" efficiency metrics.
+    const metricKey = getMetricKey(label);
+    if (metricKey) {
+        card.style.cursor = 'pointer';
+        card.setAttribute('role', 'button');
+        card.tabIndex = 0;
+        card.title = 'Tap for explanation';
+
+        const open = () => {
+            showMetricInfoModal({
+                label,
+                currentValue: userValue,
+                baselineValue: medianValue,
+            });
+        };
+        card.addEventListener('click', open);
+        card.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                open();
+            }
+        });
     }
 
     return card;
@@ -461,11 +949,5 @@ export function hideOfflineIndicator() {
 /**
  * Update the top-left stats bar streak display from local storage.
  */
-export function updateStreakStatsBar() {
-    const el = document.getElementById('streak-value');
-    if (!el) return;
-    const state = loadStreakState();
-    el.textContent = formatStreakShort(state);
-    el.title = `Speed best: ${state.speed.best} | Moves best: ${state.moves.best} | Perfect best: ${state.perfect.best}`;
-}
+// (streak UI removed)
 

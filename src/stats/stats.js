@@ -307,11 +307,75 @@ function computePersonalAggregates(level, runs) {
     };
 }
 
+function getAllLocalRuns() {
+    const runs = [];
+    try {
+        for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (!k || !k.startsWith('jarrows_level_') || !k.endsWith('_stats')) continue;
+            const raw = localStorage.getItem(k);
+            const arr = raw ? JSON.parse(raw) : [];
+            if (Array.isArray(arr)) runs.push(...arr);
+        }
+    } catch {
+        // best-effort
+    }
+    return runs;
+}
+
+function computeGlobalNormalizedBaseline(userStats) {
+    const all = getAllLocalRuns();
+    const baseline = Array.isArray(all)
+        ? all.filter((r) => (typeof r?.timestamp === 'number' ? r.timestamp !== userStats.timestamp : true))
+        : [];
+
+    if (!baseline.length) return null;
+
+    const baselineStats = computePersonalAggregates(-1, baseline);
+
+    const movesPerBlock = userStats.blocksRemoved > 0 ? userStats.moves / userStats.blocksRemoved : userStats.moves;
+    const timePerMove = userStats.moves > 0 ? userStats.time / userStats.moves : userStats.time;
+    const blocksPerSpin = userStats.spins > 0 ? userStats.blocksRemoved / userStats.spins : userStats.blocksRemoved;
+
+    const movesPerBlockComparison = getComparison(
+        movesPerBlock,
+        baselineStats.medianMovesPerBlock ?? baselineStats.avgMovesPerBlock,
+        true,
+    );
+    movesPerBlockComparison.percentile = calculateMovesPerBlockPercentile(movesPerBlock, baselineStats);
+
+    const timePerMoveComparison = getComparison(
+        timePerMove,
+        baselineStats.medianTimePerMove ?? baselineStats.avgTimePerMove,
+        true,
+    );
+    timePerMoveComparison.percentile = calculateTimePerMovePercentile(timePerMove, baselineStats);
+
+    const blocksPerSpinComparison = getComparison(
+        blocksPerSpin,
+        baselineStats.medianBlocksPerSpin ?? baselineStats.avgBlocksPerSpin,
+        false,
+    );
+    blocksPerSpinComparison.percentile = calculateBlocksPerSpinPercentile(blocksPerSpin, baselineStats);
+
+    return {
+        available: true,
+        sampleSize: baseline.length,
+        baselineStats,
+        efficiency: {
+            movesPerBlock: { value: movesPerBlock, comparison: movesPerBlockComparison },
+            timePerMove: { value: timePerMove, comparison: timePerMoveComparison },
+            blocksPerSpin: { value: blocksPerSpin, comparison: blocksPerSpinComparison },
+        },
+    };
+}
+
 /**
  * Get comparison data for completed level
  */
 export async function getLevelComparison(userStats) {
     const communityStats = await loadCommunityStats(userStats.level);
+    const globalNormalized = computeGlobalNormalizedBaseline(userStats);
 
     if (!communityStats) {
         // Strict local-only / offline: fall back to personal comparison using local history.
@@ -366,6 +430,7 @@ export async function getLevelComparison(userStats) {
                 available: true,
                 source: 'personal',
                 sampleSize: baseline.length,
+                globalNormalized,
                 time: timeComparison,
                 moves: movesComparison,
                 spins: spinsComparison,
@@ -389,6 +454,8 @@ export async function getLevelComparison(userStats) {
         return {
             available: false,
             source: 'none',
+            reason: 'no_level_baseline',
+            globalNormalized,
             time: null,
             moves: null,
             spins: null,
@@ -475,6 +542,7 @@ export async function getLevelComparison(userStats) {
     return {
         available: true,
         source: 'community',
+        globalNormalized,
         time: timeComparison,
         moves: movesComparison,
         spins: spinsComparison,

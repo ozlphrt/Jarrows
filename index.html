@@ -125,8 +125,9 @@
             backdrop-filter: blur(10px);
             -webkit-backdrop-filter: blur(10px);
             z-index: 2000;
-            justify-content: center;
-            align-items: center;
+            justify-content: stretch;
+            align-items: stretch;
+            padding: 0;
         }
         
         #level-complete-modal.show {
@@ -138,17 +139,29 @@
             background: rgba(17, 24, 39, 0.42);
             backdrop-filter: blur(28px) saturate(180%);
             -webkit-backdrop-filter: blur(28px) saturate(180%);
-            padding: 48px 64px;
-            border-radius: 24px;
+            /* Full-screen panel */
+            width: 100vw;
+            height: 100vh;
+            max-width: none;
+            max-height: none;
+            box-sizing: border-box;
+            padding:
+              calc(28px + env(safe-area-inset-top))
+              calc(22px + env(safe-area-inset-right))
+              calc(24px + env(safe-area-inset-bottom))
+              calc(22px + env(safe-area-inset-left));
+            border-radius: 0;
             border: 1px solid rgba(255, 255, 255, 0.22);
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3),
                         0 4px 16px rgba(0, 0, 0, 0.1),
                         inset 0 1px 0 rgba(255, 255, 255, 0.22);
             text-align: center;
-            max-width: 500px;
             animation: modalFadeIn 0.3s ease-out;
             position: relative;
-            overflow: hidden;
+            /* Allow content to scroll within the full-screen panel */
+            overflow-x: hidden;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
         }
         
@@ -167,7 +180,7 @@
             flex-direction: column;
             align-items: center;
             gap: 10px;
-            margin-bottom: 22px;
+            margin-bottom: 14px;
         }
         
         .modal-icon-wrap {
@@ -347,6 +360,22 @@
             gap: 10px;
             border-bottom: 4px solid rgba(0, 0, 0, 0.35);
         }
+
+        .modal-actions {
+            display: flex;
+            gap: 10px;
+            width: 100%;
+            margin-top: 10px;
+        }
+
+        .modal-actions .modal-button {
+            flex: 1 1 0;
+        }
+
+        .modal-button.secondary {
+            background: rgba(255, 255, 255, 0.10);
+            border-color: rgba(255, 255, 255, 0.18);
+        }
         
         .modal-button .modal-button-arrow {
             display: inline-block;
@@ -374,9 +403,13 @@
         
         @media (max-width: 560px) {
             .modal-content {
-                padding: 34px 22px;
-                border-radius: 20px;
-                max-width: calc(100vw - 24px);
+                padding:
+                  calc(22px + env(safe-area-inset-top))
+                  calc(16px + env(safe-area-inset-right))
+                  calc(18px + env(safe-area-inset-bottom))
+                  calc(16px + env(safe-area-inset-left));
+                border-radius: 0;
+                max-width: none;
             }
             .modal-title {
                 font-size: 34px;
@@ -395,6 +428,9 @@
             .modal-button {
                 width: 100%;
                 padding: 14px 18px;
+            }
+            .modal-actions {
+                flex-direction: column;
             }
         }
         
@@ -713,19 +749,6 @@
         <div class="modal-content">
             <div class="modal-top-accent"></div>
             <div class="modal-hero">
-                <div class="modal-icon-wrap" aria-hidden="true">
-                    <div class="modal-icon-glow"></div>
-                    <!-- Trophy icon (layout inspired by provided reference) -->
-                    <svg class="modal-icon" viewBox="0 0 24 24" fill="none">
-                        <path d="M8 4h8v3c0 2.2-1.8 4-4 4s-4-1.8-4-4V4Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
-                        <path d="M6 6H4c0 3 2 5 4 5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                        <path d="M18 6h2c0 3-2 5-4 5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                        <path d="M12 11v3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                        <path d="M9 20h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                        <path d="M10 14h4l-1 6h-2l-1-6Z" fill="currentColor" opacity="0.25"/>
-                    </svg>
-                </div>
-                <h2 class="modal-title" id="level-complete-title">Level Complete!</h2>
                 <p class="modal-message" id="level-complete-message"></p>
             </div>
             
@@ -766,10 +789,15 @@
                 </div>
             </div>
             
-            <button class="modal-button" id="next-level-button">
-                <span>Next Level</span>
-                <span class="modal-button-arrow" aria-hidden="true">→</span>
-            </button>
+            <div class="modal-actions">
+                <button class="modal-button secondary" id="history-button" type="button">
+                    <span>History</span>
+                </button>
+                <button class="modal-button" id="next-level-button" type="button">
+                    <span>Next Level</span>
+                    <span class="modal-button-arrow" aria-hidden="true">→</span>
+                </button>
+            </div>
         </div>
     </div>
     
@@ -879,47 +907,33 @@
         </div>
     </div>
     
-    <script type="module" src="/src/main.js"></script>
-    <script>
-        // Aggressively unregister ALL service workers in dev mode to ensure HMR works
-        (function() {
-            if ('serviceWorker' in navigator) {
-                // Unregister all service workers immediately
-                navigator.serviceWorker.getRegistrations().then(function(registrations) {
-                    console.log('Found', registrations.length, 'service worker(s)');
-                    for(let registration of registrations) {
-                        registration.unregister().then(function(success) {
-                            console.log('Service worker unregistered:', success);
-                        }).catch(function(err) {
-                            console.error('Error unregistering service worker:', err);
-                        });
+    <script type="module">
+        // DEV ONLY: prevent a previously-registered Service Worker from serving stale cached assets
+        // (common cause of "localhost shows an old version").
+        // We do this BEFORE loading the game module.
+        async function unregisterServiceWorkersAndClearCaches() {
+            try {
+                if ('serviceWorker' in navigator) {
+                    const regs = await navigator.serviceWorker.getRegistrations();
+                    for (const reg of regs) {
+                        try { await reg.unregister(); } catch {}
                     }
-                }).catch(function(err) {
-                    console.error('Error getting service worker registrations:', err);
-                });
-                
-                // Also try to unregister by scope
-                navigator.serviceWorker.getRegistration().then(function(registration) {
-                    if (registration) {
-                        registration.unregister().then(function(success) {
-                            console.log('Service worker unregistered by scope:', success);
-                        });
-                    }
-                });
+                }
+                if ('caches' in window) {
+                    const names = await caches.keys();
+                    await Promise.allSettled(names.map((n) => caches.delete(n)));
+                }
+            } catch (e) {
+                // best-effort
             }
-            
-            // Clear all caches
-            if ('caches' in window) {
-                caches.keys().then(function(names) {
-                    for (let name of names) {
-                        caches.delete(name).then(function(success) {
-                            console.log('Cache deleted:', name, success);
-                        });
-                    }
-                });
-            }
-        })();
-        
+        }
+
+        if (import.meta.env.DEV) {
+            await unregisterServiceWorkersAndClearCaches();
+        }
+
+        await import('/src/main.js');
+
         // Wait for main.js to load and expose scene/blocks
         let blocks;
         // Load preferences from localStorage
