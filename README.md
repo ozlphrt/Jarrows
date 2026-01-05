@@ -31,6 +31,12 @@ npm run build
 
 ## Releases
 
+### v4.5.8 - Settings UI Polish (Quality Label Styling)
+- **Tree**: https://github.com/ozlphrt/Jarrows/tree/v4.5.8
+- **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v4.5.8
+- **Live**: https://ozlphrt.github.io/Jarrows/
+- Aligned the BATT/BAL/PERF label styling with other Settings toggles (white + matching opacity)
+
 ### v4.5.7 - Fix Post-Spawn Shadow Pop on Tower Top
 - **Tree**: https://github.com/ozlphrt/Jarrows/tree/v4.5.7
 - **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v4.5.7
