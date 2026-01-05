@@ -17,6 +17,39 @@ npm install
 npm run dev
 ```
 
+## Competitive Stats (Local Mock Backend)
+
+This repo includes a local mock API for testing competitive stats aggregation.
+
+1. Start the mock backend:
+
+```bash
+npm run stats:mock
+```
+
+2. Create `.env.local` (not committed) and point the frontend at it:
+
+```bash
+VITE_STATS_API_URL=http://localhost:8787/v1
+```
+
+More details: see `TECHNICAL_SETUP.md` and `mock_backend/README.md`.
+
+## Competitive Stats (Firebase Production Backend)
+
+If you want a hosted backend (instead of the local mock), we support Firebase (Firestore + Cloud Functions).
+
+Setup guide: `FIREBASE_SETUP.md`.
+
+## Competitive Stats (Free Plan Hosted Backend)
+
+If you want hosted stats while staying on Firebase **Spark (free)**:
+
+- Deploy the stats API in `mock_backend/` to a free host (Render recommended)
+- Store submissions in Firestore using a service account JSON (no Cloud Functions required)
+
+Setup: see `mock_backend/README.md` and `DEPLOY.md`.
+
 ## Build
 
 ```bash

@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: jarrows-stats-api
+    env: node
+    plan: free
+    rootDir: mock_backend
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: STATS_BASE_PATH
+        value: /v1
+      - key: STATS_STORAGE
+        value: firestore
+      - key: FIREBASE_PROJECT_ID
+        sync: false
+      - key: FIREBASE_SERVICE_ACCOUNT
+        sync: false
+      - key: CORS_ORIGIN
+        value: "*"
+
+

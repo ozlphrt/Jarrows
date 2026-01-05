@@ -2,6 +2,15 @@ name: Deploy Firebase Stats Backend
 
 on:
   workflow_dispatch:
+    inputs:
+      deploy_only:
+        description: "What to deploy (Spark/free plan can't deploy functions)"
+        required: true
+        default: "firestore:rules,functions"
+        type: choice
+        options:
+          - "firestore:rules,functions"
+          - "firestore:rules"
 
 jobs:
   deploy:
@@ -76,10 +85,13 @@ jobs:
           fi
 
           # Use token auth if available, else rely on GOOGLE_APPLICATION_CREDENTIALS.
+          DEPLOY_ONLY="${{ inputs.deploy_only }}"
+          echo "Deploying: ${DEPLOY_ONLY}"
+
           if [[ -n "${FIREBASE_TOKEN:-}" ]]; then
-            firebase deploy --project "$FIREBASE_PROJECT_ID" --only firestore:rules,functions --non-interactive --token "$FIREBASE_TOKEN"
+            firebase deploy --project "$FIREBASE_PROJECT_ID" --only "${DEPLOY_ONLY}" --non-interactive --token "$FIREBASE_TOKEN"
           else
-            firebase deploy --project "$FIREBASE_PROJECT_ID" --only firestore:rules,functions --non-interactive
+            firebase deploy --project "$FIREBASE_PROJECT_ID" --only "${DEPLOY_ONLY}" --non-interactive
           fi
 
 

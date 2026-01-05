@@ -1,0 +1,17 @@
+{
+  "name": "jarrows-stats-backend",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "18"
+  },
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.22.1",
+    "firebase-admin": "^12.7.0",
+    "sliding-blocks-puzzle": "file:.."
+  }
+}
