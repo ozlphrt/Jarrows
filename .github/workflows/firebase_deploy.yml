@@ -1,0 +1,50 @@
+name: Deploy Firebase Stats Backend
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+          cache-dependency-path: firebase_backend/functions/package-lock.json
+
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+
+      # Auth via service account JSON (stored as a GitHub Secret).
+      # Expected secrets:
+      # - FIREBASE_PROJECT_ID
+      # - FIREBASE_SERVICE_ACCOUNT (full JSON)
+      - name: Configure Firebase service account
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/firebase_sa.json" << 'EOF'
+          ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          EOF
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/firebase_sa.json" >> "$GITHUB_ENV"
+
+      - name: Install functions dependencies
+        working-directory: firebase_backend/functions
+        run: npm ci
+
+      - name: Deploy Firestore rules + Functions
+        working-directory: firebase_backend
+        env:
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+        run: |
+          firebase deploy --project "$FIREBASE_PROJECT_ID" --only firestore:rules,functions --non-interactive
+
+
