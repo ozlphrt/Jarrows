@@ -275,9 +275,11 @@ function createComparisonCard(label, userValue, medianValue, comparison, icon) {
         margin-bottom: 6px;
     `;
 
-    const userValueEl = document.createElement('div');
-    userValueEl.textContent = userValue;
-    userValueEl.style.cssText = `
+    // The main stats grid already shows the user's raw values (time/moves/etc).
+    // To avoid duplicate info, comparison cards show only "delta" + baseline median.
+    const deltaEl = document.createElement('div');
+    deltaEl.textContent = comparison?.text || '—';
+    deltaEl.style.cssText = `
         font-size: 16px;
         font-weight: 700;
         color: ${comparison.better ? 'rgba(74, 222, 128, 0.95)' : comparison.badge === 'equal' ? 'rgba(255, 255, 255, 0.9)' : 'rgba(255, 107, 107, 0.95)'};
@@ -285,7 +287,7 @@ function createComparisonCard(label, userValue, medianValue, comparison, icon) {
     `;
 
     const vsEl = document.createElement('div');
-    vsEl.textContent = 'vs';
+    vsEl.textContent = 'median';
     vsEl.style.cssText = `
         font-size: 9px;
         color: rgba(255, 255, 255, 0.4);
@@ -314,7 +316,7 @@ function createComparisonCard(label, userValue, medianValue, comparison, icon) {
 
     card.appendChild(iconEl);
     card.appendChild(labelEl);
-    card.appendChild(userValueEl);
+    card.appendChild(deltaEl);
     card.appendChild(vsEl);
     card.appendChild(medianValueEl);
     if (percentileEl.textContent) {
