@@ -4,7 +4,7 @@ import { Block } from './Block.js';
 import { createLights, createGrid, setGradientBackground, setupFog } from './scene.js';
 import { validateStructure, validateSolvability, calculateDifficulty, getBlockCells, fixOverlappingBlocks, checkAndFixAllOverlaps, canBlockExit } from './puzzle_validation.js';
 import { initStats, startLevelStats, trackMove, trackSpin, trackBlockRemoved, completeLevel, getLevelComparison } from './stats/stats.js';
-import { updateLevelCompleteModal, showOfflineIndicator, hideOfflineIndicator } from './stats/statsUI.js';
+import { updateLevelCompleteModal, showOfflineIndicator, hideOfflineIndicator, showPersonalHistoryModal } from './stats/statsUI.js';
 import { isOnline, isLocalOnlyMode } from './stats/statsAPI.js';
 import appVersionRaw from '../VERSION?raw';
 
@@ -514,6 +514,13 @@ if (!isLocalOnlyMode()) {
     window.addEventListener('offline', () => {
         showOfflineIndicator();
     });
+}
+
+// History button should work immediately when the level-complete modal appears.
+// (The modal is shown before async stats processing finishes.)
+const historyButton = document.getElementById('history-button');
+if (historyButton) {
+    historyButton.addEventListener('click', () => showPersonalHistoryModal());
 }
 
 // Create random blocks
