@@ -4,7 +4,7 @@ import { Block } from './Block.js';
 import { createLights, createGrid, setGradientBackground, setupFog } from './scene.js';
 import { validateStructure, validateSolvability, calculateDifficulty, getBlockCells, fixOverlappingBlocks, checkAndFixAllOverlaps, canBlockExit } from './puzzle_validation.js';
 import { initStats, startLevelStats, trackMove, trackSpin, trackBlockRemoved, completeLevel, getLevelComparison } from './stats/stats.js';
-import { updateLevelCompleteModal, showOfflineIndicator, hideOfflineIndicator, updateStreakStatsBar, showLocalOnlyIndicator } from './stats/statsUI.js';
+import { updateLevelCompleteModal, showOfflineIndicator, hideOfflineIndicator, updateStreakStatsBar } from './stats/statsUI.js';
 import { isOnline, isLocalOnlyMode } from './stats/statsAPI.js';
 import appVersionRaw from '../VERSION?raw';
 
@@ -506,10 +506,8 @@ await initStats();
 updateStreakStatsBar();
 
 // Set up offline indicator
-if (isLocalOnlyMode()) {
-    // Strict local-only mode: no network calls, no sync events.
-    showLocalOnlyIndicator();
-} else {
+// In strict local-only mode, we don't show any connectivity banner.
+if (!isLocalOnlyMode()) {
     if (!isOnline()) {
         showOfflineIndicator();
     }
