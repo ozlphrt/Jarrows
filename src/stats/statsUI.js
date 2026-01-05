@@ -60,7 +60,7 @@ function closeHistoryModal() {
     if (existing) existing.remove();
 }
 
-export function showPersonalHistoryModal() {
+export function showPersonalHistoryModal({ focusLevel = null } = {}) {
     closeHistoryModal();
 
     const overlay = document.createElement('div');
@@ -102,11 +102,73 @@ export function showPersonalHistoryModal() {
     `;
 
     const title = document.createElement('div');
-    title.textContent = 'Your History';
+    title.textContent = 'History';
     title.style.cssText = `
         font-size: 16px;
         font-weight: 900;
         letter-spacing: 0.4px;
+    `;
+
+    const controls = document.createElement('div');
+    controls.style.cssText = `
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+    `;
+
+    function makeSelect(options) {
+        const sel = document.createElement('select');
+        sel.style.cssText = `
+            border: 1px solid rgba(255,255,255,0.18);
+            background: rgba(255,255,255,0.08);
+            color: rgba(255,255,255,0.92);
+            border-radius: 10px;
+            padding: 8px 10px;
+            font-size: 12px;
+            font-weight: 800;
+            outline: none;
+        `;
+        for (const { value, label } of options) {
+            const opt = document.createElement('option');
+            opt.value = value;
+            opt.textContent = label;
+            sel.appendChild(opt);
+        }
+        return sel;
+    }
+
+    const filterSelect = makeSelect([
+        { value: 'this', label: 'This level' },
+        { value: 'all', label: 'All levels' },
+    ]);
+
+    const sortSelect = makeSelect([
+        { value: 'newest', label: 'Newest' },
+        { value: 'best_tm', label: 'Best T/M' },
+        { value: 'best_mb', label: 'Best M/B' },
+        { value: 'best_bs', label: 'Best B/S' },
+    ]);
+
+    if (focusLevel === null || focusLevel === undefined) {
+        filterSelect.value = 'all';
+    } else {
+        filterSelect.value = 'this';
+    }
+
+    const clearBtn = document.createElement('button');
+    clearBtn.type = 'button';
+    clearBtn.textContent = 'Clear';
+    clearBtn.style.cssText = `
+        border: 1px solid rgba(255,255,255,0.18);
+        background: rgba(255,255,255,0.08);
+        color: rgba(255,255,255,0.9);
+        border-radius: 10px;
+        padding: 8px 10px;
+        font-size: 12px;
+        font-weight: 800;
+        cursor: pointer;
     `;
 
     const closeBtn = document.createElement('button');
@@ -125,98 +187,280 @@ export function showPersonalHistoryModal() {
     `;
     closeBtn.addEventListener('click', closeHistoryModal);
 
+    controls.appendChild(filterSelect);
+    controls.appendChild(sortSelect);
+    controls.appendChild(clearBtn);
+    controls.appendChild(closeBtn);
+
     header.appendChild(title);
-    header.appendChild(closeBtn);
+    header.appendChild(controls);
 
     const body = document.createElement('div');
 
-    const levels = getLocalRunsByLevel();
-    if (!levels.length) {
-        const empty = document.createElement('div');
-        empty.textContent = 'No local runs yet. Complete a level once to populate this history.';
-        empty.style.cssText = `
-            padding: 12px;
-            border-radius: 12px;
-            border: 1px solid rgba(255,255,255,0.12);
-            background: rgba(255,255,255,0.05);
-            color: rgba(255,255,255,0.78);
-            font-size: 12px;
-        `;
-        body.appendChild(empty);
-    } else {
+    const summary = document.createElement('div');
+    summary.style.cssText = `
+        padding: 12px;
+        border-radius: 16px;
+        border: 1px solid rgba(255,255,255,0.14);
+        background: rgba(255,255,255,0.06);
+        margin-bottom: 12px;
+    `;
+    body.appendChild(summary);
+
+    const listWrap = document.createElement('div');
+    body.appendChild(listWrap);
+
+    function medianFromSorted(sorted) {
+        if (!sorted.length) return null;
+        const mid = Math.floor(sorted.length / 2);
+        if (sorted.length % 2 === 1) return sorted[mid];
+        return (sorted[mid - 1] + sorted[mid]) / 2;
+    }
+
+    function fmt(val, kind) {
+        if (typeof val !== 'number' || !Number.isFinite(val)) return '—';
+        if (kind === 'seconds') return formatSeconds(val);
+        return formatRatio(val);
+    }
+
+    function computeMedians(runs) {
+        const tm = [];
+        const mb = [];
+        const bs = [];
+        for (const r of runs) {
+            const moves = Number(r?.moves || 0);
+            const time = Number(r?.time || 0);
+            const spins = Number(r?.spins || 0);
+            const blocksRemoved = Number(r?.blocksRemoved || 0);
+            tm.push(moves > 0 ? time / moves : time);
+            mb.push(blocksRemoved > 0 ? moves / blocksRemoved : moves);
+            bs.push(spins > 0 ? blocksRemoved / spins : blocksRemoved);
+        }
+        tm.sort((a, b) => a - b);
+        mb.sort((a, b) => a - b);
+        bs.sort((a, b) => a - b);
+        return {
+            tm: medianFromSorted(tm),
+            mb: medianFromSorted(mb),
+            bs: medianFromSorted(bs),
+            count: runs.length,
+        };
+    }
+
+    function clearHistory() {
+        const ok = window.confirm('Clear all local history? This cannot be undone.');
+        if (!ok) return;
+        try {
+            const keys = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                const k = localStorage.key(i);
+                if (!k) continue;
+                if (k.startsWith('jarrows_level_') && k.endsWith('_stats')) keys.push(k);
+            }
+            for (const k of keys) localStorage.removeItem(k);
+        } catch {
+            // ignore
+        }
+        render();
+    }
+
+    clearBtn.addEventListener('click', clearHistory);
+
+    function flatten(levels) {
+        const out = [];
         for (const { level, runs } of levels) {
-            const card = document.createElement('div');
-            card.style.cssText = `
-                margin-bottom: 12px;
-                padding: 12px;
-                border-radius: 16px;
-                border: 1px solid rgba(255,255,255,0.14);
-                background: rgba(255,255,255,0.06);
-            `;
+            for (const r of runs) out.push({ level, ...r });
+        }
+        return out;
+    }
 
-            const h = document.createElement('div');
-            h.textContent = `Level ${level}`;
-            h.style.cssText = `
+    function render() {
+        const levels = getLocalRunsByLevel();
+        const allRuns = flatten(levels).filter((r) => typeof r?.timestamp === 'number');
+
+        const activeRuns =
+            filterSelect.value === 'this' && Number.isFinite(focusLevel)
+                ? allRuns.filter((r) => r.level === focusLevel)
+                : allRuns;
+
+        // Summary
+        const med = computeMedians(activeRuns);
+        summary.innerHTML = '';
+
+        const sumTitle = document.createElement('div');
+        sumTitle.textContent =
+            filterSelect.value === 'this' && Number.isFinite(focusLevel) ? `Level ${focusLevel} medians` : 'All-level medians (normalized)';
+        sumTitle.style.cssText = `
+            font-weight: 900;
+            font-size: 13px;
+            margin-bottom: 8px;
+        `;
+
+        const sumBody = document.createElement('div');
+        sumBody.style.cssText = `
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 8px;
+        `;
+
+        function mini(label, value) {
+            const c = document.createElement('div');
+            c.style.cssText = `
+                padding: 10px 10px;
+                border-radius: 14px;
+                border: 1px solid rgba(255,255,255,0.12);
+                background: rgba(0,0,0,0.10);
+                text-align: center;
+            `;
+            const l = document.createElement('div');
+            l.textContent = label;
+            l.style.cssText = `
+                font-size: 10px;
+                font-weight: 800;
+                letter-spacing: 1px;
+                text-transform: uppercase;
+                color: rgba(255,255,255,0.55);
+                margin-bottom: 6px;
+            `;
+            const v = document.createElement('div');
+            v.textContent = value;
+            v.style.cssText = `
+                font-size: 16px;
                 font-weight: 900;
-                font-size: 13px;
-                margin-bottom: 8px;
+                color: rgba(255,255,255,0.95);
             `;
-            card.appendChild(h);
+            c.appendChild(l);
+            c.appendChild(v);
+            return c;
+        }
 
-            const list = document.createElement('div');
-            list.style.cssText = `
+        sumBody.appendChild(mini('T/M', fmt(med.tm, 'seconds')));
+        sumBody.appendChild(mini('M/B', fmt(med.mb, 'ratio')));
+        sumBody.appendChild(mini('B/S', fmt(med.bs, 'ratio')));
+
+        const sumFooter = document.createElement('div');
+        sumFooter.textContent = med.count ? `${med.count} run${med.count === 1 ? '' : 's'}` : 'No runs yet';
+        sumFooter.style.cssText = `
+            margin-top: 8px;
+            font-size: 11px;
+            color: rgba(255,255,255,0.65);
+        `;
+
+        summary.appendChild(sumTitle);
+        summary.appendChild(sumBody);
+        summary.appendChild(sumFooter);
+
+        // List
+        listWrap.innerHTML = '';
+        if (!activeRuns.length) {
+            const empty = document.createElement('div');
+            empty.textContent =
+                filterSelect.value === 'this' && Number.isFinite(focusLevel)
+                    ? 'No runs yet for this level. Complete it once to populate.'
+                    : 'No local runs yet. Complete a level once to populate this history.';
+            empty.style.cssText = `
+                padding: 12px;
+                border-radius: 12px;
+                border: 1px solid rgba(255,255,255,0.12);
+                background: rgba(255,255,255,0.05);
+                color: rgba(255,255,255,0.78);
+                font-size: 12px;
+            `;
+            listWrap.appendChild(empty);
+            return;
+        }
+
+        const sorted = [...activeRuns].sort((a, b) => {
+            const movesA = Number(a.moves || 0);
+            const timeA = Number(a.time || 0);
+            const spinsA = Number(a.spins || 0);
+            const blocksA = Number(a.blocksRemoved || 0);
+            const tmA = movesA > 0 ? timeA / movesA : timeA;
+            const mbA = blocksA > 0 ? movesA / blocksA : movesA;
+            const bsA = spinsA > 0 ? blocksA / spinsA : blocksA;
+
+            const movesB = Number(b.moves || 0);
+            const timeB = Number(b.time || 0);
+            const spinsB = Number(b.spins || 0);
+            const blocksB = Number(b.blocksRemoved || 0);
+            const tmB = movesB > 0 ? timeB / movesB : timeB;
+            const mbB = blocksB > 0 ? movesB / blocksB : movesB;
+            const bsB = spinsB > 0 ? blocksB / spinsB : blocksB;
+
+            switch (sortSelect.value) {
+                case 'best_tm':
+                    return tmA - tmB;
+                case 'best_mb':
+                    return mbA - mbB;
+                case 'best_bs':
+                    return bsB - bsA; // higher is better
+                default:
+                    return (b.timestamp || 0) - (a.timestamp || 0);
+            }
+        });
+
+        const list = document.createElement('div');
+        list.style.cssText = `
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 6px;
+        `;
+
+        for (const r of sorted.slice(0, 50)) {
+            const moves = Number(r.moves || 0);
+            const time = Number(r.time || 0);
+            const spins = Number(r.spins || 0);
+            const blocksRemoved = Number(r.blocksRemoved || 0);
+            const tm = moves > 0 ? time / moves : time;
+            const mb = blocksRemoved > 0 ? moves / blocksRemoved : moves;
+            const bs = spins > 0 ? blocksRemoved / spins : blocksRemoved;
+
+            const row = document.createElement('div');
+            row.style.cssText = `
                 display: grid;
-                grid-template-columns: 1fr;
-                gap: 6px;
+                grid-template-columns: 70px 62px 1fr ${filterSelect.value === 'all' ? '56px' : ''};
+                gap: 10px;
+                align-items: center;
+                padding: 8px 10px;
+                border-radius: 12px;
+                border: 1px solid rgba(255,255,255,0.10);
+                background: rgba(0,0,0,0.12);
+                font-size: 12px;
+                color: rgba(255,255,255,0.85);
             `;
 
-            // show newest first
-            const sorted = [...runs].sort((a, b) => (b?.timestamp || 0) - (a?.timestamp || 0));
-            for (const r of sorted.slice(0, 10)) {
-                const moves = Number(r.moves || 0);
-                const time = Number(r.time || 0);
-                const spins = Number(r.spins || 0);
-                const blocksRemoved = Number(r.blocksRemoved || 0);
-                const tm = moves > 0 ? time / moves : time;
-                const mb = blocksRemoved > 0 ? moves / blocksRemoved : moves;
-                const bs = spins > 0 ? blocksRemoved / spins : blocksRemoved;
+            const left = document.createElement('div');
+            left.textContent = formatTime(time);
+            left.style.cssText = `font-weight: 900;`;
 
-                const row = document.createElement('div');
-                row.style.cssText = `
-                    display: grid;
-                    grid-template-columns: 74px 62px 1fr;
-                    gap: 10px;
-                    align-items: center;
-                    padding: 8px 10px;
-                    border-radius: 12px;
-                    border: 1px solid rgba(255,255,255,0.10);
-                    background: rgba(0,0,0,0.12);
-                    font-size: 12px;
-                    color: rgba(255,255,255,0.85);
-                `;
+            const mid = document.createElement('div');
+            mid.textContent = `${moves} mv`;
+            mid.style.cssText = `opacity: 0.9;`;
 
-                const left = document.createElement('div');
-                left.textContent = formatTime(time);
-                left.style.cssText = `font-weight: 900;`;
+            const right = document.createElement('div');
+            right.textContent = `T/M ${formatSeconds(tm)}  •  M/B ${formatRatio(mb)}  •  B/S ${formatRatio(bs)}`;
+            right.style.cssText = `opacity: 0.9;`;
 
-                const mid = document.createElement('div');
-                mid.textContent = `${moves} mv`;
-                mid.style.cssText = `opacity: 0.9;`;
+            row.appendChild(left);
+            row.appendChild(mid);
+            row.appendChild(right);
 
-                const right = document.createElement('div');
-                right.textContent = `T/M ${formatSeconds(tm)}  •  M/B ${formatRatio(mb)}  •  B/S ${formatRatio(bs)}`;
-                right.style.cssText = `opacity: 0.9;`;
-
-                row.appendChild(left);
-                row.appendChild(mid);
-                row.appendChild(right);
-                list.appendChild(row);
+            if (filterSelect.value === 'all') {
+                const lvl = document.createElement('div');
+                lvl.textContent = `L${r.level}`;
+                lvl.style.cssText = `opacity: 0.75; text-align: right; font-weight: 800;`;
+                row.appendChild(lvl);
             }
 
-            card.appendChild(list);
-            body.appendChild(card);
+            list.appendChild(row);
         }
+
+        listWrap.appendChild(list);
     }
+
+    filterSelect.addEventListener('change', render);
+    sortSelect.addEventListener('change', render);
+    render();
 
     panel.appendChild(header);
     panel.appendChild(body);
@@ -250,7 +494,7 @@ function closeMetricInfoModal() {
     if (existing) existing.remove();
 }
 
-function showMetricInfoModal({ label, currentValue, baselineValue }) {
+function showMetricInfoModal({ label, currentValue, baselineValue, scope = null, sampleSize = null }) {
     const key = getMetricKey(label);
     const meta = key ? METRIC_INFO[key] : null;
     if (!meta) return;
@@ -320,6 +564,18 @@ function showMetricInfoModal({ label, currentValue, baselineValue }) {
         color: rgba(255,255,255,0.65);
         font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
     `;
+
+    if (scope === 'all') {
+        const scopeLine = document.createElement('div');
+        const n = typeof sampleSize === 'number' ? sampleSize : null;
+        scopeLine.textContent = n ? `Baseline: all levels (normalized) • ${n} runs` : 'Baseline: all levels (normalized)';
+        scopeLine.style.cssText = `
+            margin-top: 8px;
+            font-size: 11px;
+            color: rgba(255,255,255,0.70);
+        `;
+        titleWrap.appendChild(scopeLine);
+    }
 
     titleWrap.appendChild(title);
     titleWrap.appendChild(subtitle);
@@ -642,25 +898,29 @@ function updateComparisonDisplay(section, userStats, comparison) {
         spacer.style.cssText = `grid-column: 1 / -1; height: 8px;`;
         grid.appendChild(spacer);
 
+        const allMB = { ...ge.movesPerBlock.comparison, scope: 'all', sampleSize: comparison.globalNormalized.sampleSize };
+        const allTM = { ...ge.timePerMove.comparison, scope: 'all', sampleSize: comparison.globalNormalized.sampleSize };
+        const allBS = { ...ge.blocksPerSpin.comparison, scope: 'all', sampleSize: comparison.globalNormalized.sampleSize };
+
         grid.appendChild(createComparisonCard(
             'All M/B',
             formatRatio(ge.movesPerBlock.value),
             formatRatio(gs.medianMovesPerBlock ?? gs.avgMovesPerBlock),
-            ge.movesPerBlock.comparison,
+            allMB,
             '🌐'
         ));
         grid.appendChild(createComparisonCard(
             'All T/M',
             formatSeconds(ge.timePerMove.value),
             formatSeconds(gs.medianTimePerMove ?? gs.avgTimePerMove),
-            ge.timePerMove.comparison,
+            allTM,
             '🌐'
         ));
         grid.appendChild(createComparisonCard(
             'All B/S',
             formatRatio(ge.blocksPerSpin.value),
             formatRatio(gs.medianBlocksPerSpin ?? gs.avgBlocksPerSpin),
-            ge.blocksPerSpin.comparison,
+            allBS,
             '🌐'
         ));
     }
@@ -799,6 +1059,8 @@ function createComparisonCard(label, userValue, medianValue, comparison, icon) {
                 label,
                 currentValue: userValue,
                 baselineValue: medianValue,
+                scope: comparison?.scope || null,
+                sampleSize: comparison?.sampleSize || null,
             });
         };
         card.addEventListener('click', open);

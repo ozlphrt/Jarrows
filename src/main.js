@@ -520,7 +520,7 @@ if (!isLocalOnlyMode()) {
 // (The modal is shown before async stats processing finishes.)
 const historyButton = document.getElementById('history-button');
 if (historyButton) {
-    historyButton.addEventListener('click', () => showPersonalHistoryModal());
+    historyButton.addEventListener('click', () => showPersonalHistoryModal({ focusLevel: currentLevel }));
 }
 
 // Create random blocks

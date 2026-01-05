@@ -35,6 +35,70 @@ let communityStatsCache = {};
 // Initialization flag
 let initialized = false;
 
+const LOCAL_STATS_STORAGE_VERSION_KEY = 'jarrows_stats_storage_version';
+const LOCAL_STATS_STORAGE_VERSION = 1;
+
+function sanitizeRun(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    const level = Number(raw.level);
+    const time = Number(raw.time);
+    const moves = Number(raw.moves);
+    const spins = Number(raw.spins);
+    const blocksRemoved = Number(raw.blocksRemoved);
+    const timestamp = Number(raw.timestamp);
+
+    if (!Number.isInteger(level) || level < 0) return null;
+    if (!Number.isFinite(time) || time < 0 || time > 60 * 60) return null;
+    if (!Number.isFinite(moves) || moves < 0 || moves > 100000) return null;
+    if (!Number.isFinite(spins) || spins < 0 || spins > 1000) return null;
+    if (!Number.isFinite(blocksRemoved) || blocksRemoved < 0 || blocksRemoved > 100000) return null;
+
+    return {
+        level,
+        time,
+        moves: Math.trunc(moves),
+        spins: Math.trunc(spins),
+        blocksRemoved: Math.trunc(blocksRemoved),
+        timestamp: Number.isFinite(timestamp) && timestamp > 0 ? timestamp : Date.now(),
+    };
+}
+
+function migrateAndCleanLocalStats() {
+    try {
+        const current = Number(localStorage.getItem(LOCAL_STATS_STORAGE_VERSION_KEY) || '0');
+        if (current >= LOCAL_STATS_STORAGE_VERSION) return;
+
+        const keys = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (!k || !k.startsWith('jarrows_level_') || !k.endsWith('_stats')) continue;
+            keys.push(k);
+        }
+
+        for (const key of keys) {
+            const raw = localStorage.getItem(key);
+            let arr = [];
+            try {
+                const parsed = raw ? JSON.parse(raw) : [];
+                if (Array.isArray(parsed)) arr = parsed;
+            } catch {
+                arr = [];
+            }
+
+            const sanitized = arr.map(sanitizeRun).filter(Boolean);
+            sanitized.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+
+            // Keep only last 10 per level (consistent with storeLocalStats behavior)
+            const trimmed = sanitized.slice(Math.max(0, sanitized.length - 10));
+            localStorage.setItem(key, JSON.stringify(trimmed));
+        }
+
+        localStorage.setItem(LOCAL_STATS_STORAGE_VERSION_KEY, String(LOCAL_STATS_STORAGE_VERSION));
+    } catch {
+        // best-effort: never break gameplay
+    }
+}
+
 /**
  * Initialize stats tracking system
  */
@@ -45,6 +109,9 @@ export async function initStats() {
     }
 
     try {
+        // Best-effort cleanup of local stats from older/invalid formats
+        migrateAndCleanLocalStats();
+
         // Initialize IndexedDB
         await initStatsDB();
 
@@ -196,7 +263,9 @@ export function getLocalStats(level) {
     try {
         const key = `jarrows_level_${level}_stats`;
         const stats = JSON.parse(localStorage.getItem(key) || '[]');
-        return stats;
+        if (!Array.isArray(stats)) return [];
+        // Defensive: filter malformed entries
+        return stats.map(sanitizeRun).filter(Boolean);
     } catch (error) {
         console.error('Failed to get local stats:', error);
         return [];
