@@ -31,6 +31,12 @@ npm run build
 
 ## Releases
 
+### v4.5.11 - Redeploy (No UI Change)
+- **Tree**: https://github.com/ozlphrt/Jarrows/tree/v4.5.11
+- **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v4.5.11
+- **Live**: https://ozlphrt.github.io/Jarrows/
+- Triggered a fresh GitHub Pages deploy (no gameplay/UI changes)
+
 ### v4.5.10 - Remove Framing Control UI
 - **Tree**: https://github.com/ozlphrt/Jarrows/tree/v4.5.10
 - **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v4.5.10
