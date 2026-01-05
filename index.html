@@ -564,15 +564,20 @@
             opacity: 0.6;
         }
 
-        /* Quality preset (BATT / BAL / PERF) should visually match other toggle icons */
-        #quality-toggle {
-            width: 44px;
+        /* Quality preset (BATT / BAL / PERF) + VER should match the same 32x32 footprint as other toggles */
+        #quality-toggle,
+        #ver-toggle {
+            width: 32px;
+            min-width: 32px;
         }
 
         #quality-label {
             color: white;
             opacity: 0.9;
             text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+            font-size: 10px;
+            font-weight: 900;
+            letter-spacing: 0.4px;
             user-select: none;
             -webkit-user-select: none;
             pointer-events: none;
@@ -580,6 +585,23 @@
 
         /* Match the inactive icon opacity treatment */
         #quality-toggle:not(.active) #quality-label {
+            opacity: 0.6;
+        }
+
+        /* VER button label should match the same white/opacity treatment (it's text, not an SVG). */
+        #ver-label {
+            color: white;
+            opacity: 0.9;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+            font-size: 10px;
+            font-weight: 900;
+            letter-spacing: 0.4px;
+            user-select: none;
+            -webkit-user-select: none;
+            pointer-events: none;
+        }
+
+        #ver-toggle:not(.active) #ver-label {
             opacity: 0.6;
         }
         
@@ -803,10 +825,17 @@
                     </svg>
                 </button>
                 <!-- Quality preset: cycles Balanced → Performance → Battery -->
-                <button class="toggle-icon" id="quality-toggle" title="Quality Preset" style="width: 44px;">
-                    <span id="quality-label" style="font-size: 12px; font-weight: 900; letter-spacing: 0.6px;">BAL</span>
+                <button class="toggle-icon" id="quality-toggle" title="Quality Preset">
+                    <span id="quality-label">BAL</span>
                 </button>
                 <!-- Framing control removed -->
+                <button class="toggle-icon" id="ver-toggle" title="Show build version">
+                    <span id="ver-label">VER</span>
+                </button>
+                <div id="settings-version"
+                    style="display:none; padding: 6px 10px; font-size: 11px; font-weight: 800; letter-spacing: 0.6px; opacity: 0.85; color: white; user-select: text;">
+                    v—
+                </div>
             </div>
         </div>
     </div>
@@ -826,6 +855,26 @@
             </div>
             <div style="display:flex; gap:10px; justify-content:flex-end; margin-top: 12px;">
                 <button id="quality-modal-ok" class="game-button" style="padding: 10px 14px;">Got it</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Build Info Modal (VER) -->
+    <div id="ver-modal" style="display:none; position: fixed; inset: 0; z-index: 3200; background: rgba(0,0,0,0.55); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); align-items: center; justify-content: center;">
+        <div style="max-width: 520px; width: calc(100vw - 32px); margin: 16px; padding: 18px 18px 14px 18px; border-radius: 14px; background: rgba(0,0,0,0.62); border: 1px solid rgba(255,255,255,0.22); color: white; box-shadow: 0 20px 60px rgba(0,0,0,0.35); font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;">
+            <div style="display:flex; align-items:center; justify-content: space-between; gap: 12px; margin-bottom: 10px;">
+                <div style="font-size: 16px; font-weight: 900;">Build Info</div>
+                <button id="ver-modal-close-x" class="game-button" style="padding: 8px 10px; min-width: 40px;">✕</button>
+            </div>
+            <div style="font-size: 12px; line-height: 1.35; opacity: 0.9; margin-bottom: 10px;">
+                Use this ID to restore the exact code later on GitHub (tag/version + commit SHA when available).
+            </div>
+            <div id="ver-modal-value" style="font-size: 14px; font-weight: 900; letter-spacing: 0.4px; padding: 10px 12px; border-radius: 10px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.16); user-select: text; word-break: break-word;">
+                v—
+            </div>
+            <div style="display:flex; gap:10px; justify-content:flex-end; margin-top: 12px;">
+                <button id="ver-modal-copy" class="game-button" style="padding: 10px 14px;">Copy</button>
+                <button id="ver-modal-ok" class="game-button" style="padding: 10px 14px;">Close</button>
             </div>
         </div>
     </div>
@@ -1102,6 +1151,23 @@
                 if (qualityToggle) qualityToggle.classList.add('active');
             }
 
+            // Version label (set by main.js via window.jarrowsVersion)
+            function getBuildIdString() {
+                const v = (window.jarrowsVersion || '').toString().trim();
+                const sha = (window.jarrowsGitSha || '').toString().trim();
+                // Unique reference to restore later: release version (tag) + git SHA when available.
+                // Example: v4.5.11 @ abc1234
+                if (v) return `v${v}` + (sha ? ` @ ${sha}` : '');
+                if (sha) return `commit ${sha}`;
+                return 'v—';
+            }
+
+            function updateVersionUI() {
+                const versionEl = document.getElementById('settings-version');
+                if (!versionEl) return;
+                versionEl.textContent = getBuildIdString();
+            }
+
             if (qualityToggle) {
                 qualityToggle.addEventListener('click', function(e) {
                     e.preventDefault();
@@ -1121,11 +1187,59 @@
                     }
                 });
             }
+
+            // VER button: reveal version/build id for quick copy/reference.
+            const verToggle = document.getElementById('ver-toggle');
+            if (verToggle) {
+                // Keep brightness consistent with other toggles that are always "on" (like Quality).
+                verToggle.classList.add('active');
+                verToggle.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    // Close settings dropdown (so modal overlays cleanly)
+                    if (settingsMenu) settingsMenu.classList.remove('show');
+                    // Open modal
+                    const modal = document.getElementById('ver-modal');
+                    const valueEl = document.getElementById('ver-modal-value');
+                    if (valueEl) valueEl.textContent = getBuildIdString();
+                    if (modal) modal.style.display = 'flex';
+                });
+            }
+
+            // VER modal close / copy handlers
+            const verModal = document.getElementById('ver-modal');
+            const verModalOk = document.getElementById('ver-modal-ok');
+            const verModalCloseX = document.getElementById('ver-modal-close-x');
+            const verModalCopy = document.getElementById('ver-modal-copy');
+            function closeVerModal() {
+                if (verModal) verModal.style.display = 'none';
+            }
+            if (verModalOk) verModalOk.addEventListener('click', closeVerModal);
+            if (verModalCloseX) verModalCloseX.addEventListener('click', closeVerModal);
+            if (verModal) {
+                verModal.addEventListener('click', function(e) {
+                    // Click outside the card closes
+                    if (e.target === verModal) closeVerModal();
+                });
+            }
+            if (verModalCopy) {
+                verModalCopy.addEventListener('click', async function() {
+                    const text = getBuildIdString();
+                    try {
+                        await navigator.clipboard.writeText(text);
+                        verModalCopy.textContent = 'Copied';
+                        setTimeout(() => { verModalCopy.textContent = 'Copy'; }, 900);
+                    } catch {
+                        // Fallback: do nothing (user can select/copy manually)
+                    }
+                });
+            }
             
             // Initialize icons and apply default theme/colors
             updateThemeIcon();
             updateColorsIcon();
             updateQualityUI();
+            updateVersionUI(); // prepares text; hidden until VER is pressed
             updateBlockColors(); // Apply white blocks on initial load
             
             console.log('Toggle handlers setup complete');

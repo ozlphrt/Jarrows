@@ -46,6 +46,10 @@ export class Block {
         this.isFalling = false;
         this.needsTransitionToFalling = false;
         this.needsStop = false;
+        // Catapult shadow policy (Battery preset only): suppress shadows only while a catapulted block is moving.
+        this.wasCatapulted = false;
+        this._catapultShadowSuppressed = false;
+        this._catapultRestStartMs = 0;
         this.scene = scene;
         this.physics = physics;
         this.gridSize = gridSize;
@@ -1335,6 +1339,7 @@ export class Block {
             
             // Read all values with individual try-catch for each operation
             let x, y, z, qx, qy, qz, qw;
+            let lvx = 0, lvy = 0, lvz = 0, avx = 0, avy = 0, avz = 0;
             let readSuccess = false;
             
             try {
@@ -1366,6 +1371,25 @@ export class Block {
                 // If rotation read fails, use default values
                 qx = 0; qy = 0; qz = 0; qw = 1;
             }
+
+            // Best-effort velocity reads (used for Battery-mode catapult shadow suppression).
+            // If reads fail, we default to "moving" semantics only if already suppressed.
+            try {
+                if (!isPhysicsStepping()) {
+                    const lv = this.physicsBody.linvel();
+                    if (lv) { lvx = lv.x; lvy = lv.y; lvz = lv.z; }
+                }
+            } catch {
+                // ignore
+            }
+            try {
+                if (!isPhysicsStepping()) {
+                    const av = this.physicsBody.angvel();
+                    if (av) { avx = av.x; avy = av.y; avz = av.z; }
+                }
+            } catch {
+                // ignore
+            }
             
             if (!readSuccess) return;
             
@@ -1381,6 +1405,36 @@ export class Block {
                 z - towerCenterOffset
             );
             this.group.quaternion.set(qx, qy, qz, qw);
+
+            // Remove shadows ONLY from catapulted blocks, and only while they are moving.
+            // Space note: this only affects shading (renderer shadow terms), not physics; no transforms involved.
+            try {
+                if (this.wasCatapulted && this.cubes && this.cubes[0]) {
+                    const linSpeed = Math.sqrt(lvx * lvx + lvy * lvy + lvz * lvz);
+                    const angSpeed = Math.sqrt(avx * avx + avy * avy + avz * avz);
+                    const isMoving = linSpeed > 0.06 || angSpeed > 0.06;
+                    const now = performance.now();
+
+                    if (isMoving) {
+                        this._catapultRestStartMs = 0;
+                        if (!this._catapultShadowSuppressed) {
+                            this.cubes[0].castShadow = false;
+                            this.cubes[0].receiveShadow = false;
+                            this._catapultShadowSuppressed = true;
+                        }
+                    } else {
+                        if (!this._catapultRestStartMs) this._catapultRestStartMs = now;
+                        // Require a short stable window before restoring to avoid flicker on near-zero jitter.
+                        if (this._catapultShadowSuppressed && (now - this._catapultRestStartMs) > 250) {
+                            this.cubes[0].castShadow = true;
+                            this.cubes[0].receiveShadow = true;
+                            this._catapultShadowSuppressed = false;
+                        }
+                    }
+                }
+            } catch {
+                // best-effort
+            }
             
             // Remove block if:
             // 1. It has fallen well below the grid (y < -2, accounting for block height)
@@ -2097,6 +2151,20 @@ export class Block {
         // Recalculate total distance after potential extension for blocks going off board
         const recalculatedTotalDistance = Math.sqrt((finalX - startX) ** 2 + (finalZ - startZ) ** 2);
         const isCatapult = hitEdge; // Catapult when flying off edge
+        // Hide shadows for catapulted blocks during motion (includes this off-board animation phase).
+        if (isCatapult) {
+            this.wasCatapulted = true;
+            this._catapultRestStartMs = 0;
+            try {
+                if (this.cubes && this.cubes[0]) {
+                    this.cubes[0].castShadow = false;
+                    this.cubes[0].receiveShadow = false;
+                    this._catapultShadowSuppressed = true;
+                }
+            } catch {
+                // best-effort
+            }
+        }
         
         // Constant speed for all block movements (linear interpolation)
         // Speed: pixels per millisecond (adjust for desired speed)
@@ -2538,6 +2606,26 @@ export class Block {
         
         // Check if this is a catapult launch (has upward velocity)
         const isCatapult = verticalVelY !== null && verticalVelY > 0;
+
+        // Remove shadows ONLY from catapulted blocks, and only while they are moving.
+        // We mark the block as catapulted here and let updateFromPhysics() restore when it settles.
+        this.wasCatapulted = !!isCatapult;
+        this._catapultRestStartMs = 0;
+        if (!isCatapult && this._catapultShadowSuppressed && this.cubes && this.cubes[0]) {
+            // Defensive: if this instance gets reused/resurrected, restore default shadow behavior.
+            this.cubes[0].castShadow = true;
+            this.cubes[0].receiveShadow = true;
+            this._catapultShadowSuppressed = false;
+        }
+        try {
+            if (isCatapult && this.cubes && this.cubes[0]) {
+                this.cubes[0].castShadow = false;
+                this.cubes[0].receiveShadow = false;
+                this._catapultShadowSuppressed = true;
+            }
+        } catch {
+            // best-effort
+        }
         
         // Calculate initial velocities for natural tumbling
         const isXAligned = Math.abs(this.direction.x) > 0;

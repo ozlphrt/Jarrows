@@ -1,12 +1,25 @@
 import wasm from 'vite-plugin-wasm';
 import topLevelAwait from 'vite-plugin-top-level-await';
 import { VitePWA } from 'vite-plugin-pwa';
+import { execSync } from 'node:child_process';
 
 export default ({ command }) => {
   // Determine base path and icon paths based on build mode
   const base = command === 'build' ? '/Jarrows/' : '/';
   const iconBase = command === 'build' ? '/Jarrows' : '';
   const isDev = command === 'serve';
+
+  // Build identifier for "VER" button (short git SHA when available).
+  // This is embedded at build time, so deployed builds have a stable code reference.
+  let gitSha = '';
+  try {
+    gitSha = execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString()
+      .trim();
+  } catch {
+    // Not a git checkout (or git unavailable) — keep empty and fall back to VERSION only.
+    gitSha = '';
+  }
   
   // Build plugins array conditionally
   const plugins = [
@@ -77,6 +90,9 @@ export default ({ command }) => {
     // In dev mode, use root path to avoid module resolution issues
     base,
     plugins,
+    define: {
+      __JARROWS_GIT_SHA__: JSON.stringify(gitSha),
+    },
     server: {
       port: 3000,
       open: true,

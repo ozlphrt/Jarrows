@@ -3,6 +3,30 @@ import { initPhysics, createPhysicsBlock, updatePhysics, isPhysicsStepping, hasP
 import { Block } from './Block.js';
 import { createLights, createGrid, setGradientBackground, setupFog } from './scene.js';
 import { validateStructure, validateSolvability, calculateDifficulty, getBlockCells, fixOverlappingBlocks, checkAndFixAllOverlaps, canBlockExit } from './puzzle_validation.js';
+import appVersionRaw from '../VERSION?raw';
+
+// Build-time constant injected by Vite (see vite.config.js). Falls back to '' if not defined.
+// eslint-disable-next-line no-undef
+const JARROWS_GIT_SHA = (typeof __JARROWS_GIT_SHA__ !== 'undefined') ? __JARROWS_GIT_SHA__ : '';
+
+function parseVersionString(raw) {
+    if (!raw) return '';
+    // VERSION file on Windows may accidentally be saved as UTF-16 (BOM + NUL bytes).
+    // Normalize: drop NULs, BOMs, and non-printable chars, then extract the numeric version.
+    const normalized = String(raw)
+        .replace(/\u0000/g, '')
+        .replace(/^\uFEFF/, '')
+        .replace(/[^\x20-\x7E]/g, '')
+        .trim();
+    const m = normalized.match(/[0-9]+(?:\.[0-9]+)*/);
+    return m ? m[0] : '';
+}
+
+function sanitizeGitSha(raw) {
+    if (!raw) return '';
+    const s = String(raw).trim().match(/[0-9a-f]+/i);
+    return s ? s[0].slice(0, 12) : '';
+}
 
 // Platform/perf heuristics (battery-focused, especially for iPhone ProMotion)
 const isIOS = (() => {
@@ -37,14 +61,16 @@ function getQualityCaps(preset) {
     // iPhone 13 Pro tuned breakeven:
     // - Performance: 60fps active, higher DPR cap (sharper)
     // - Balanced: 60fps active, moderate DPR cap (recommended default)
-    // - Battery: 30fps active, lowest DPR cap
+    // - Battery: keep interaction smooth (60fps), save power via lower DPR + aggressive idle downclock + less shadow work
     //
     // These are caps; actual FPS depends on device load.
     if (preset === 'performance') {
         return { activeFps: isIOS ? 60 : 60, idleFps: isIOS ? 30 : 30, dprCap: isIOS ? 2.0 : 2 };
     }
     if (preset === 'battery') {
-        return { activeFps: isIOS ? 30 : 60, idleFps: isIOS ? 10 : 30, dprCap: isIOS ? 1.25 : 2 };
+        // Battery mode: avoid the very noticeable "30fps drag" feeling; instead reduce internal resolution a bit
+        // and rely on idle downclock + shadow gating for battery savings.
+        return { activeFps: isIOS ? 60 : 60, idleFps: isIOS ? 10 : 30, dprCap: isIOS ? 1.45 : 2 };
     }
     // balanced (default)
     return { activeFps: isIOS ? 60 : 60, idleFps: isIOS ? 24 : 30, dprCap: isIOS ? 1.6 : 2 };
@@ -64,6 +90,9 @@ window.gameScene = scene;
 window.THREE = THREE;
 window.setGradientBackground = setGradientBackground;
 window.setupFog = setupFog;
+// Expose app version (from root VERSION file) for Settings UI
+window.jarrowsVersion = parseVersionString(appVersionRaw);
+window.jarrowsGitSha = sanitizeGitSha(JARROWS_GIT_SHA);
 
 // Global arrow style
 let currentArrowStyle = 2;
@@ -99,10 +128,11 @@ const DRAG_THRESHOLD = 3; // pixels - minimum movement to consider it a drag
 let isDraggingCamera = false;
 let lastMouseX = 0;
 let lastMouseY = 0;
+let isRightDraggingFraming = false;
 
 // Mouse controls for camera orbit
 renderer.domElement.addEventListener('mousedown', (event) => {
-    // Only handle left-click for camera orbit
+    // Left-click: orbit (azimuth/elevation)
     if (event.button === 0) {
         isDraggingCamera = true;
         lastMouseX = event.clientX;
@@ -113,6 +143,20 @@ renderer.domElement.addEventListener('mousedown', (event) => {
         mouseDownTime = performance.now();
         isCameraDragging = false;
         wasCameraDragging = false; // Reset drag flag on new mouse down
+        isRightDraggingFraming = false;
+        return;
+    }
+
+    // Right-click: framing tilt (matches dual-touch non-pinch drag)
+    if (event.button === 2) {
+        event.preventDefault();
+        isRightDraggingFraming = true;
+        lastMouseX = event.clientX;
+        lastMouseY = event.clientY;
+        isDraggingCamera = false;
+        // Prevent block click selection after a framing drag
+        isCameraDragging = true;
+        wasCameraDragging = true;
     }
 }, { passive: true });
 
@@ -139,6 +183,22 @@ renderer.domElement.addEventListener('mousemove', (event) => {
                 wasCameraDragging = true; // Mark that a drag occurred
             }
         }
+    } else if (isRightDraggingFraming) {
+        const dy = event.clientY - lastMouseY;
+        lastMouseY = event.clientY;
+
+        // World-space framing tilt (look-at offset on +Y)
+        const next = clampFramingOffsetY(framingOffsetY + (dy * TWO_FINGER_FRAMING_SENSITIVITY));
+        if (next !== framingOffsetY) {
+            framingOffsetY = next;
+            if (typeof window !== 'undefined') window.framingOffsetY = framingOffsetY;
+            updateCameraPosition();
+            try {
+                localStorage.setItem('jarrows_framing', framingOffsetY.toString());
+            } catch {
+                // ignore
+            }
+        }
     } else if (mouseDownPos) {
         // Track mouse movement for block click detection
         const dx = event.clientX - mouseDownPos.x;
@@ -155,6 +215,9 @@ renderer.domElement.addEventListener('mouseup', (event) => {
     if (event.button === 0) {
         isDraggingCamera = false;
     }
+    if (event.button === 2) {
+        isRightDraggingFraming = false;
+    }
     
     // Note: Don't reset wasCameraDragging here - let click handler check it first
     // Reset drag state after a short delay to allow click handler to check
@@ -164,10 +227,16 @@ renderer.domElement.addEventListener('mouseup', (event) => {
 
 renderer.domElement.addEventListener('mouseleave', () => {
     isDraggingCamera = false;
+    isRightDraggingFraming = false;
     mouseDownPos = null;
     isCameraDragging = false;
     wasCameraDragging = false; // Reset on mouse leave
 });
+
+// Disable the native context menu on the canvas so right-drag feels like an intentional control.
+renderer.domElement.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+}, { passive: false });
 
 // Mouse wheel for zoom
 renderer.domElement.addEventListener('wheel', (event) => {
@@ -301,6 +370,40 @@ function calculateInitialCameraPosition() {
 const _effectiveTowerCenter = new THREE.Vector3();
 const _lookAtOffset = new THREE.Vector3();
 const _lookAtTarget = new THREE.Vector3();
+
+// Camera framing (tilt) via look-at offset in WORLD space.
+// Spaces:
+// - towerCenter/towerPositionOffset: world
+// - lookAt target: world
+// - Matrix trace: vec_ndc = projection * view * model * vec_local
+const DEFAULT_FRAMING_OFFSET_Y = 6.5;
+const MIN_FRAMING_OFFSET_Y = 2.5;
+const MAX_FRAMING_OFFSET_Y = 10.5;
+// Two-finger drag (non-pinch): pixels → world-Y offset mapping:
+// value_next = clamp(value_prev + sensitivity * delta_pixels, min, max)
+const TWO_FINGER_FRAMING_SENSITIVITY = 0.02; // world-units per pixel
+
+function clampFramingOffsetY(value) {
+    return Math.max(MIN_FRAMING_OFFSET_Y, Math.min(MAX_FRAMING_OFFSET_Y, value));
+}
+
+function loadFramingOffsetY() {
+    try {
+        const saved = localStorage.getItem('jarrows_framing');
+        const parsed = saved !== null ? parseFloat(saved) : NaN;
+        if (!Number.isFinite(parsed)) return DEFAULT_FRAMING_OFFSET_Y;
+        return clampFramingOffsetY(parsed);
+    } catch {
+        return DEFAULT_FRAMING_OFFSET_Y;
+    }
+}
+
+let framingOffsetY = loadFramingOffsetY();
+// Expose for debugging and any legacy consumers.
+if (typeof window !== 'undefined') {
+    window.framingOffsetY = framingOffsetY;
+}
+
 function updateCameraPosition() {
     // Calculate effective tower center (with offset)
     _effectiveTowerCenter.copy(towerCenter).add(towerPositionOffset);
@@ -317,10 +420,9 @@ function updateCameraPosition() {
         _effectiveTowerCenter.z + z
     );
     
-// Look at point higher above tower center to move base plate down in frame (closer to bottom)
-// Framing control removed: keep a fixed offset for consistent gameplay.
-const DEFAULT_FRAMING_OFFSET_Y = 6.5;
-_lookAtOffset.set(0, DEFAULT_FRAMING_OFFSET_Y, 0);
+    // Look at a point above tower center to move base plate down in frame (closer to bottom).
+    // Two-finger drag adjusts this by changing the WORLD-space look-at target.
+    _lookAtOffset.set(0, framingOffsetY, 0);
     _lookAtTarget.copy(_effectiveTowerCenter).add(_lookAtOffset);
     camera.lookAt(_lookAtTarget);
     
@@ -2177,6 +2279,25 @@ function undoLastMove() {
         block.removalStartTime = null;
         block.updateMeltAnimation = null;
 
+        // Restore shadow casting (Battery mode may have disabled casting during fall).
+        try {
+            if (block.cubes && block.cubes[0]) {
+                block.cubes[0].castShadow = true;
+                block.cubes[0].receiveShadow = true;
+            }
+        } catch {
+            // best-effort
+        }
+        
+        // Reset catapult shadow state (Battery-mode catapult suppression)
+        try {
+            block.wasCatapulted = false;
+            block._catapultShadowSuppressed = false;
+            block._catapultRestStartMs = 0;
+        } catch {
+            // best-effort
+        }
+
         // Physics state (falling uses physics bodies)
         block.physicsBody = null;
         block.physicsCollider = null;
@@ -3873,7 +3994,7 @@ renderer.domElement.addEventListener('touchmove', (event) => {
             }
         }
     } else if (currentTouches.length === 2 && touchState.touches.length === 2) {
-        // Dual touch - pinch to zoom
+        // Dual touch - pinch to zoom OR (non-pinch) framing tilt
         touchState.hadDoubleTouch = true; // Ensure flag is set if we're in a double touch gesture
         
         const touch1 = currentTouches[0];
@@ -3890,12 +4011,9 @@ renderer.domElement.addEventListener('touchmove', (event) => {
             y: (touch1.clientY + touch2.clientY) / 2
         };
         
-        const centerDeltaY = Math.abs(currentCenter.y - touchState.lastCenter.y);
-        const centerDeltaX = Math.abs(currentCenter.x - touchState.lastCenter.x);
-        const centerMovement = Math.sqrt(centerDeltaX * centerDeltaX + centerDeltaY * centerDeltaY);
-        
+        const PINCH_THRESHOLD = 0.05;
         // Determine gesture: pinch (distance change)
-        if (distanceChange > 0.05) {
+        if (distanceChange > PINCH_THRESHOLD) {
             if (!touchState.isPinching) {
                 touchState.isPinching = true;
             }
@@ -3903,6 +4021,25 @@ renderer.domElement.addEventListener('touchmove', (event) => {
             const zoomFactor = currentDistance / touchState.startDistance;
             targetRadius /= zoomFactor;
             targetRadius = Math.max(MIN_RADIUS, Math.min(MAX_RADIUS, targetRadius));
+            touchState.startDistance = currentDistance;
+        } else {
+            // Not pinching: treat as framing drag (vertical, center-of-two-fingers).
+            touchState.isPinching = false;
+
+            const deltaY = currentCenter.y - touchState.lastCenter.y;
+            const next = clampFramingOffsetY(framingOffsetY + (deltaY * TWO_FINGER_FRAMING_SENSITIVITY));
+            if (next !== framingOffsetY) {
+                framingOffsetY = next;
+                if (typeof window !== 'undefined') window.framingOffsetY = framingOffsetY;
+                updateCameraPosition(); // apply immediately; light/shadow updates are gated elsewhere
+                try {
+                    localStorage.setItem('jarrows_framing', framingOffsetY.toString());
+                } catch {
+                    // ignore
+                }
+            }
+
+            // Rebase distance so minor drift doesn't eventually trip the pinch threshold.
             touchState.startDistance = currentDistance;
         }
 
@@ -4273,6 +4410,7 @@ function animate() {
     updateCameraPosition();
     
     // Determine if we need expensive shadow updates this frame
+    const isBatteryQuality = qualityPreset === 'battery';
     const interacting = isDraggingCamera || (touchState && touchState.isActive);
     const hasFallingBlocks = blocks.some(block => block.isFalling);
     const cameraStillMoving = (dr >= SNAP_EPS) || (da >= SNAP_EPS) || (de >= SNAP_EPS);
@@ -4282,7 +4420,15 @@ function animate() {
     
     // Keep shadow updates "warm" while the camera is settling (smoothing) and for a short cooldown after interaction.
     // This prevents noticeable shadow direction/strength jumps when updates are gated too aggressively.
-    if (isGeneratingLevel || interacting || cameraStillMoving || hasFallingBlocks || hasActiveAnimations) {
+    // Battery preset: don't burn battery refreshing shadow maps during block motion/catapult/melt;
+    // only update shadows during camera interaction/settle and during level generation.
+    const shouldWarmShadows =
+        isGeneratingLevel ||
+        interacting ||
+        cameraStillMoving ||
+        (!isBatteryQuality && (hasFallingBlocks || hasActiveAnimations));
+
+    if (shouldWarmShadows) {
         shadowUpdateCooldownUntilMs = currentTime + SHADOW_UPDATE_COOLDOWN_MS;
     }
     const needShadowsThisFrame = currentTime < shadowUpdateCooldownUntilMs;

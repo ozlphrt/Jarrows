@@ -31,6 +31,13 @@ npm run build
 
 ## Releases
 
+### v4.5.12 - Stable Presets + Build ID (VER)
+- **Tree**: https://github.com/ozlphrt/Jarrows/tree/v4.5.12
+- **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v4.5.12
+- **Live**: https://ozlphrt.github.io/Jarrows/
+- Added a VER button in Settings that shows `vX.Y.Z @ <commit>` for reliable restore references
+- Catapulted blocks suppress shadows only during motion (all presets), reducing motion artifacts
+
 ### v4.5.11 - Redeploy (No UI Change)
 - **Tree**: https://github.com/ozlphrt/Jarrows/tree/v4.5.11
 - **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v4.5.11
