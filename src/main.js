@@ -4,7 +4,7 @@ import { Block } from './Block.js';
 import { createLights, createGrid, setGradientBackground, setupFog } from './scene.js';
 import { validateStructure, validateSolvability, calculateDifficulty, getBlockCells, fixOverlappingBlocks, checkAndFixAllOverlaps, canBlockExit } from './puzzle_validation.js';
 import { initStats, startLevelStats, trackMove, trackSpin, trackBlockRemoved, completeLevel, getLevelComparison } from './stats/stats.js';
-import { updateLevelCompleteModal, showOfflineIndicator, hideOfflineIndicator, showPersonalHistoryModal } from './stats/statsUI.js';
+import { updateLevelCompleteModal, showOfflineIndicator, hideOfflineIndicator, showPersonalHistoryModal, showProfileModal } from './stats/statsUI.js';
 import { isOnline, isLocalOnlyMode } from './stats/statsAPI.js';
 import appVersionRaw from '../VERSION?raw';
 
@@ -521,6 +521,16 @@ if (!isLocalOnlyMode()) {
 const historyButton = document.getElementById('history-button');
 if (historyButton) {
     historyButton.addEventListener('click', () => showPersonalHistoryModal({ focusLevel: currentLevel }));
+}
+
+const profileToggle = document.getElementById('profile-toggle');
+if (profileToggle) {
+    profileToggle.addEventListener('click', () => {
+        showProfileModal();
+        // Hide settings menu if open
+        const settingsMenu = document.getElementById('settings-menu');
+        if (settingsMenu) settingsMenu.style.display = 'none';
+    });
 }
 
 // Create random blocks

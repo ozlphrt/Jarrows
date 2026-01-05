@@ -439,6 +439,21 @@ function computeGlobalNormalizedBaseline(userStats) {
     };
 }
 
+function computeBestForLevel(runs) {
+    let bestTime = null;
+    let bestMoves = null;
+    let bestSpins = null;
+    for (const r of runs) {
+        const t = Number(r?.time);
+        const m = Number(r?.moves);
+        const s = Number(r?.spins);
+        if (Number.isFinite(t)) bestTime = bestTime === null ? t : Math.min(bestTime, t);
+        if (Number.isFinite(m)) bestMoves = bestMoves === null ? m : Math.min(bestMoves, m);
+        if (Number.isFinite(s)) bestSpins = bestSpins === null ? s : Math.min(bestSpins, s);
+    }
+    return { bestTime, bestMoves, bestSpins };
+}
+
 /**
  * Get comparison data for completed level
  */
@@ -455,6 +470,7 @@ export async function getLevelComparison(userStats) {
 
         if (baseline.length) {
             const personalStats = computePersonalAggregates(userStats.level, baseline);
+            const personalBest = computeBestForLevel(baseline);
 
             const timeComparison = getComparison(userStats.time, personalStats.medianTime, true);
             timeComparison.percentile = calculateTimePercentile(userStats.time, personalStats);
@@ -499,6 +515,7 @@ export async function getLevelComparison(userStats) {
                 available: true,
                 source: 'personal',
                 sampleSize: baseline.length,
+                personalBest,
                 globalNormalized,
                 time: timeComparison,
                 moves: movesComparison,
