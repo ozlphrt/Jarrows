@@ -31,6 +31,13 @@ npm run build
 
 ## Releases
 
+### v4.5.4 - Performance Presets (Battery / Balanced / Performance)
+- **Tree**: https://github.com/ozlphrt/Jarrows/tree/v4.5.4
+- **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v4.5.4
+- **Live**: https://ozlphrt.github.io/Jarrows/
+- Added a Quality preset in Settings to trade off smoothness/sharpness vs battery
+- Added a one-time in-game notice explaining the presets
+
 ### v4.5.3 - Shadow Stability (Battery Optimizations Follow-up)
 - **Tree**: https://github.com/ozlphrt/Jarrows/tree/v4.5.3
 - **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v4.5.3

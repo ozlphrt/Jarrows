@@ -23,6 +23,32 @@ const isMobileLike = (() => {
     }
 })();
 
+// Quality preset (Battery / Balanced / Performance)
+function loadQualityPreset() {
+    try {
+        const saved = localStorage.getItem('jarrows_quality');
+        return (saved === 'battery' || saved === 'balanced' || saved === 'performance') ? saved : 'balanced';
+    } catch {
+        return 'balanced';
+    }
+}
+
+function getQualityCaps(preset) {
+    // iPhone 13 Pro: tuned breakeven between battery and fluidity.
+    // Note: these are caps; actual FPS depends on load.
+    if (preset === 'performance') {
+        return { activeFps: isIOS ? 60 : 60, idleFps: isIOS ? 30 : 30, dprCap: isIOS ? 2.0 : 2 };
+    }
+    if (preset === 'battery') {
+        return { activeFps: isIOS ? 30 : 60, idleFps: isIOS ? 10 : 30, dprCap: isIOS ? 1.25 : 2 };
+    }
+    // balanced (default)
+    return { activeFps: isIOS ? 60 : 60, idleFps: isIOS ? 24 : 30, dprCap: isIOS ? 1.6 : 2 };
+}
+
+let qualityPreset = loadQualityPreset();
+let qualityCaps = getQualityCaps(qualityPreset);
+
 // Scene setup
 const scene = new THREE.Scene();
 // Dark theme: much darker grey gradient (default)
@@ -47,8 +73,8 @@ const renderer = new THREE.WebGLRenderer({
     powerPreference: (isIOS || isMobileLike) ? 'low-power' : 'high-performance',
 });
 renderer.setSize(window.innerWidth, window.innerHeight);
-// Limit pixel ratio for performance/battery on mobile (iPhone ProMotion is especially sensitive)
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, (isIOS || isMobileLike) ? 1.25 : 2));
+// Limit pixel ratio via quality preset (keeps UI size the same; changes internal render resolution)
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, qualityCaps.dprCap));
 renderer.shadowMap.enabled = true;
 // On iOS, prefer cheaper PCF shadows over PCFSoft (significant battery win)
 renderer.shadowMap.type = isIOS ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
@@ -4311,10 +4337,8 @@ if (typeof window !== 'undefined') {
 }
 
 // Battery/perf: cap frame rate on iOS (avoids 120Hz ProMotion drain) and downclock further when idle.
-const ACTIVE_FPS = isIOS ? 30 : 60;
-const IDLE_FPS = isIOS ? 10 : 30;
-const ACTIVE_FRAME_MS = 1000 / ACTIVE_FPS;
-const IDLE_FRAME_MS = 1000 / IDLE_FPS;
+let ACTIVE_FRAME_MS = 1000 / qualityCaps.activeFps;
+let IDLE_FRAME_MS = 1000 / qualityCaps.idleFps;
 let nextFrameDelayMs = ACTIVE_FRAME_MS;
 let lastFrameTick = performance.now();
 let rafId = null;
@@ -4337,6 +4361,33 @@ let fpsFrameCount = 0;
 let fpsLastUpdate = performance.now();
 let fpsUpdateInterval = 500; // Update FPS display every 500ms
 const fpsElement = document.getElementById('fps-counter');
+
+function applyQualityPreset(nextPreset) {
+    const normalized = (nextPreset === 'battery' || nextPreset === 'balanced' || nextPreset === 'performance')
+        ? nextPreset
+        : 'balanced';
+
+    qualityPreset = normalized;
+    qualityCaps = getQualityCaps(qualityPreset);
+
+    ACTIVE_FRAME_MS = 1000 / qualityCaps.activeFps;
+    IDLE_FRAME_MS = 1000 / qualityCaps.idleFps;
+
+    // Apply DPR immediately
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, qualityCaps.dprCap));
+
+    // Persist (Settings UI also persists, but keep engine robust)
+    try {
+        localStorage.setItem('jarrows_quality', qualityPreset);
+    } catch {
+        // ignore
+    }
+}
+
+// Expose for Settings UI (index.html inline script)
+if (typeof window !== 'undefined') {
+    window.applyQualityPreset = applyQualityPreset;
+}
 
 function scheduleNextFrame() {
     if (isPaused) return;
