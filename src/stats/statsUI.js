@@ -111,7 +111,7 @@ function updateComparisonDisplay(section, userStats, comparison) {
         // Update title based on comparison source
         if (comparison?.source === 'personal') {
             const n = typeof comparison.sampleSize === 'number' ? comparison.sampleSize : null;
-            title.textContent = n ? `Personal Comparison (${n} runs)` : 'Personal Comparison';
+            title.textContent = n ? `Personal (${n})` : 'Personal';
         } else {
             title.textContent = 'Community Comparison';
         }
