@@ -563,6 +563,25 @@
         .toggle-icon:not(.active) svg {
             opacity: 0.6;
         }
+
+        /* Quality preset (BATT / BAL / PERF) should visually match other toggle icons */
+        #quality-toggle {
+            width: 44px;
+        }
+
+        #quality-label {
+            color: white;
+            opacity: 0.9;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+            user-select: none;
+            -webkit-user-select: none;
+            pointer-events: none;
+        }
+
+        /* Match the inactive icon opacity treatment */
+        #quality-toggle:not(.active) #quality-label {
+            opacity: 0.6;
+        }
         
         #dice-button svg {
             opacity: 1 !important;
@@ -1140,6 +1159,8 @@
                 qualityLabel.textContent =
                     qualityPreset === 'performance' ? 'PERF' :
                     qualityPreset === 'battery' ? 'BATT' : 'BAL';
+                // Keep brightness consistent with other "active" toggles (icons use opacity rules).
+                if (qualityToggle) qualityToggle.classList.add('active');
             }
 
             if (qualityToggle) {
