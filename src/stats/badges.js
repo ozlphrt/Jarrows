@@ -80,7 +80,8 @@ export function evaluateBadges({ userStats, comparison }) {
     if (userStats.spins === 0) earned.push('no_spins');
     if (userStats.moves <= 3) earned.push('no_spills'); // early levels can be tiny
 
-    if (!comparison?.available) {
+    // Community badges require a real community comparison (not personal/local).
+    if (!comparison?.available || comparison?.source !== 'community') {
         return {
             earned,
             pendingCommunity: true,
