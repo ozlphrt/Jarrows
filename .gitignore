@@ -1,5 +1,9 @@
 node_modules/
 dist/
+.env.local
+public/key/
 .DS_Store
 *.log
 
+firebase_backend/.firebaserc
+firebase_backend/.firebase/
