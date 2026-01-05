@@ -2106,6 +2106,15 @@ async function generateSolvablePuzzle(level = 1) {
         console.log('  Level generation complete, support checking enabled');
         
         // Vertically center the tower after all blocks are spawned
+        // Shadows are manual/gated; keep them updating briefly so the post-spawn recenter doesn't "pop" a new shadow band.
+        try {
+            shadowUpdateCooldownUntilMs = performance.now() + 800;
+            lastLightUpdateMs = 0;
+            lastShadowMapUpdateMs = 0;
+            if (renderer.shadowMap) renderer.shadowMap.needsUpdate = true;
+        } catch (e) {
+            // best-effort
+        }
         centerTowerVertically();
     }, 1500); // 1.5 seconds to ensure all blocks are initialized
     
@@ -4487,7 +4496,7 @@ function animate() {
     
     // Keep shadow updates "warm" while the camera is settling (smoothing) and for a short cooldown after interaction.
     // This prevents noticeable shadow direction/strength jumps when updates are gated too aggressively.
-    if (interacting || cameraStillMoving || hasFallingBlocks || hasActiveAnimations) {
+    if (isGeneratingLevel || interacting || cameraStillMoving || hasFallingBlocks || hasActiveAnimations) {
         shadowUpdateCooldownUntilMs = currentTime + SHADOW_UPDATE_COOLDOWN_MS;
     }
     const needShadowsThisFrame = currentTime < shadowUpdateCooldownUntilMs;
