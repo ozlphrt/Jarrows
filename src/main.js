@@ -4363,7 +4363,8 @@ function applyQualityPreset(nextPreset) {
             // Increase iOS shadow map resolution for cleaner moving shadows (trade battery for quality).
             if (lights && lights.keyLight && lights.keyLight.shadow) {
                 lights.keyLight.shadow.mapSize.set(2048, 2048);
-                lights.keyLight.shadow.radius = 2;
+                // Slightly softer edges for a less "cutout" look.
+                lights.keyLight.shadow.radius = 3;
                 // Force a resize by disposing existing shadow map if present.
                 if (lights.keyLight.shadow.map) {
                     lights.keyLight.shadow.map.dispose();

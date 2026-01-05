@@ -60,12 +60,14 @@ export function createLights(scene) {
 
     // Dramatic lighting setup: low ambient, strong key light, minimal fill
     
-    // Ambient Light - reduced for more dramatic shadows
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.08); // Reduced from 0.15 for darker shadows
+    // Ambient Light
+    // Slightly higher to reduce harsh shadow contrast (more natural, especially on mobile).
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.10);
     scene.add(ambientLight);
     
     // Key Light (Main Light) - primary light source, casts dramatic shadows
-    const keyLight = new THREE.DirectionalLight(0xffffff, 2.0); // Increased from 1.5 for stronger light
+    // Slightly reduced intensity to soften shadow "amount" (contrast).
+    const keyLight = new THREE.DirectionalLight(0xffffff, 1.8);
     keyLight.position.set(10, 20, 10);
     keyLight.castShadow = true;
     // Shadow camera bounds: keep tight for better precision + less wasted shadow-map area.
@@ -86,12 +88,15 @@ export function createLights(scene) {
     keyLight.shadow.mapSize.width = shadowSize;
     keyLight.shadow.mapSize.height = shadowSize;
     keyLight.shadow.bias = -0.0001;
-    keyLight.shadow.radius = isIOS ? 1 : 2; // iOS: cheaper/less softening
+    // Soften edges a bit (effective when using PCFSoftShadowMap).
+    // iOS Balanced/Battery may use PCFShadowMap (radius ignored), but Performance switches to PCFSoft.
+    keyLight.shadow.radius = isIOS ? 2 : 3;
     keyLight.shadow.normalBias = 0.02; // Reduce shadow acne
     scene.add(keyLight);
     
     // Fill Light - minimal fill light for dramatic contrast (reduced significantly)
-    const fillLight = new THREE.DirectionalLight(0xffffff, 0.1); // Reduced from 0.3 for more dramatic shadows
+    // Slightly increased to reduce extreme contrast without flattening the scene.
+    const fillLight = new THREE.DirectionalLight(0xffffff, 0.12);
     fillLight.position.set(-8, 12, -8);
     scene.add(fillLight);
     

@@ -31,6 +31,12 @@ npm run build
 
 ## Releases
 
+### v4.5.9 - Softer Shadows (Less Harsh Edges/Contrast)
+- **Tree**: https://github.com/ozlphrt/Jarrows/tree/v4.5.9
+- **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v4.5.9
+- **Live**: https://ozlphrt.github.io/Jarrows/
+- Softened shadow edges and reduced shadow contrast (slightly higher ambient + softer key shadow radius; perf preset also softened)
+
 ### v4.5.8 - Settings UI Polish (Quality Label Styling)
 - **Tree**: https://github.com/ozlphrt/Jarrows/tree/v4.5.8
 - **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v4.5.8
