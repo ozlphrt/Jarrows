@@ -31,6 +31,12 @@ npm run build
 
 ## Releases
 
+### v4.5.6 - Performance Preset Shadow Quality Fix (Catapult)
+- **Tree**: https://github.com/ozlphrt/Jarrows/tree/v4.5.6
+- **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v4.5.6
+- **Live**: https://ozlphrt.github.io/Jarrows/
+- Performance preset now updates shadow maps more frequently on iOS and increases shadow quality during fast catapult/fall motion
+
 ### v4.5.5 - Performance Presets (Fixed) + Restore v4.5.3 Gameplay/Visual Baseline
 - **Tree**: https://github.com/ozlphrt/Jarrows/tree/v4.5.5
 - **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v4.5.5

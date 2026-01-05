@@ -4317,9 +4317,9 @@ const TIMER_UI_INTERVAL_MS = 250; // 4Hz is enough; avoids per-frame DOM writes 
 
 // Shadow update gating: only update expensive shadow maps when interaction or physics motion occurs.
 let lastLightUpdateMs = 0;
-const LIGHT_UPDATE_INTERVAL_MS = isIOS ? 80 : 33; // ~12.5Hz iOS, ~30Hz desktop while interacting
+let LIGHT_UPDATE_INTERVAL_MS = isIOS ? 80 : 33; // iOS: conservative by default; adjusted by quality preset
 let lastShadowMapUpdateMs = 0;
-const SHADOW_MAP_UPDATE_INTERVAL_MS = isIOS ? 80 : 33;
+let SHADOW_MAP_UPDATE_INTERVAL_MS = isIOS ? 80 : 33;
 let shadowUpdateCooldownUntilMs = 0;
 const SHADOW_UPDATE_COOLDOWN_MS = isIOS ? 600 : 350; // keep shadows stable briefly after interaction ends
 
@@ -4343,6 +4343,46 @@ function applyQualityPreset(nextPreset) {
     // Apply DPR immediately
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, qualityCaps.dprCap));
 
+    // Performance preset: improve shadow "motion" quality for fast-moving blocks (catapult/fall).
+    // Root issue: with high FPS/DPR, the previous iOS shadow update cadence (~80ms) makes shadows step/flicker.
+    if (isIOS) {
+        if (qualityPreset === 'performance') {
+            LIGHT_UPDATE_INTERVAL_MS = 33;           // ~30Hz light tracking while in the shadow update window
+            SHADOW_MAP_UPDATE_INTERVAL_MS = 33;      // ~30Hz shadow refresh during motion
+            // In performance mode, allow softer filtering on iOS (more natural penumbra at higher DPR).
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            // Increase iOS shadow map resolution for cleaner moving shadows (trade battery for quality).
+            if (lights && lights.keyLight && lights.keyLight.shadow) {
+                lights.keyLight.shadow.mapSize.set(2048, 2048);
+                lights.keyLight.shadow.radius = 2;
+                // Force a resize by disposing existing shadow map if present.
+                if (lights.keyLight.shadow.map) {
+                    lights.keyLight.shadow.map.dispose();
+                    lights.keyLight.shadow.map = null;
+                }
+                renderer.shadowMap.needsUpdate = true;
+            }
+        } else {
+            // Battery/Balanced: keep conservative iOS shadow settings
+            LIGHT_UPDATE_INTERVAL_MS = 80;
+            SHADOW_MAP_UPDATE_INTERVAL_MS = 80;
+            renderer.shadowMap.type = THREE.PCFShadowMap;
+            if (lights && lights.keyLight && lights.keyLight.shadow) {
+                lights.keyLight.shadow.mapSize.set(1024, 1024);
+                lights.keyLight.shadow.radius = 1;
+                if (lights.keyLight.shadow.map) {
+                    lights.keyLight.shadow.map.dispose();
+                    lights.keyLight.shadow.map = null;
+                }
+                renderer.shadowMap.needsUpdate = true;
+            }
+        }
+        // Warm shadows briefly so the new settings take effect immediately.
+        shadowUpdateCooldownUntilMs = performance.now() + SHADOW_UPDATE_COOLDOWN_MS;
+        lastLightUpdateMs = 0;
+        lastShadowMapUpdateMs = 0;
+    }
+
     // Persist (Settings UI also persists, but keep engine robust)
     try {
         localStorage.setItem('jarrows_quality', qualityPreset);
@@ -4355,6 +4395,9 @@ function applyQualityPreset(nextPreset) {
 if (typeof window !== 'undefined') {
     window.applyQualityPreset = applyQualityPreset;
 }
+
+// Apply saved preset once lights exist (ensures shadow-quality overrides can take effect)
+applyQualityPreset(qualityPreset);
 
 function scheduleNextFrame() {
     if (isPaused) return;
