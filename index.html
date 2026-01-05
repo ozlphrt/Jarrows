@@ -360,6 +360,22 @@
             gap: 10px;
             border-bottom: 4px solid rgba(0, 0, 0, 0.35);
         }
+
+        .modal-actions {
+            display: flex;
+            gap: 10px;
+            width: 100%;
+            margin-top: 10px;
+        }
+
+        .modal-actions .modal-button {
+            flex: 1 1 0;
+        }
+
+        .modal-button.secondary {
+            background: rgba(255, 255, 255, 0.10);
+            border-color: rgba(255, 255, 255, 0.18);
+        }
         
         .modal-button .modal-button-arrow {
             display: inline-block;
@@ -412,6 +428,9 @@
             .modal-button {
                 width: 100%;
                 padding: 14px 18px;
+            }
+            .modal-actions {
+                flex-direction: column;
             }
         }
         
@@ -770,10 +789,15 @@
                 </div>
             </div>
             
-            <button class="modal-button" id="next-level-button">
-                <span>Next Level</span>
-                <span class="modal-button-arrow" aria-hidden="true">→</span>
-            </button>
+            <div class="modal-actions">
+                <button class="modal-button secondary" id="history-button" type="button">
+                    <span>History</span>
+                </button>
+                <button class="modal-button" id="next-level-button" type="button">
+                    <span>Next Level</span>
+                    <span class="modal-button-arrow" aria-hidden="true">→</span>
+                </button>
+            </div>
         </div>
     </div>
     
