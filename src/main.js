@@ -4,7 +4,7 @@ import { Block } from './Block.js';
 import { createLights, createGrid, setGradientBackground, setupFog } from './scene.js';
 import { validateStructure, validateSolvability, calculateDifficulty, getBlockCells, fixOverlappingBlocks, checkAndFixAllOverlaps, canBlockExit } from './puzzle_validation.js';
 import { initStats, startLevelStats, trackMove, trackSpin, trackBlockRemoved, completeLevel, getLevelComparison } from './stats/stats.js';
-import { updateLevelCompleteModal, showOfflineIndicator, hideOfflineIndicator, updateStreakStatsBar } from './stats/statsUI.js';
+import { updateLevelCompleteModal, showOfflineIndicator, hideOfflineIndicator } from './stats/statsUI.js';
 import { isOnline, isLocalOnlyMode } from './stats/statsAPI.js';
 import appVersionRaw from '../VERSION?raw';
 
@@ -501,9 +501,6 @@ const physics = await initPhysics();
 
 // Initialize stats system
 await initStats();
-
-// Initialize streak display (local-only; safe even before any community stats exist)
-updateStreakStatsBar();
 
 // Set up offline indicator
 // In strict local-only mode, we don't show any connectivity banner.

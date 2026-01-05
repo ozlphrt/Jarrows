@@ -5,7 +5,7 @@
 
 import { formatPercentile } from './statsComparison.js';
 import { getBadgeMeta } from './badges.js';
-import { loadStreakState, formatStreakShort } from './streaks.js';
+// Streak logic remains internal, but the top-bar streak UI has been removed.
 
 const METRIC_INFO = {
     'T/M': {
@@ -219,7 +219,6 @@ export function updateLevelCompleteModal(userStats, comparison) {
     if (!comparison || !comparison.available) {
         // No comparison data available - show user stats only
         // (Includes strict local-only mode where community stats are disabled.)
-        updateStreakStatsBar();
         return;
     }
 
@@ -244,7 +243,6 @@ export function updateLevelCompleteModal(userStats, comparison) {
 
     // Update comparison data
     updateComparisonDisplay(comparisonSection, userStats, comparison);
-    updateStreakStatsBar();
 }
 
 /**
@@ -693,11 +691,5 @@ export function hideOfflineIndicator() {
 /**
  * Update the top-left stats bar streak display from local storage.
  */
-export function updateStreakStatsBar() {
-    const el = document.getElementById('streak-value');
-    if (!el) return;
-    const state = loadStreakState();
-    el.textContent = formatStreakShort(state);
-    el.title = `Speed best: ${state.speed.best} | Moves best: ${state.moves.best} | Perfect best: ${state.perfect.best}`;
-}
+// (streak UI removed)
 
