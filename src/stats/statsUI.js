@@ -55,6 +55,167 @@ function getLocalRunsByLevel() {
     return levels;
 }
 
+function computeAllLevelMedians() {
+    const levels = getLocalRunsByLevel();
+    const all = [];
+    for (const { runs } of levels) all.push(...runs);
+    const tm = [];
+    const mb = [];
+    const bs = [];
+    for (const r of all) {
+        const moves = Number(r?.moves || 0);
+        const time = Number(r?.time || 0);
+        const spins = Number(r?.spins || 0);
+        const blocksRemoved = Number(r?.blocksRemoved || 0);
+        tm.push(moves > 0 ? time / moves : time);
+        mb.push(blocksRemoved > 0 ? moves / blocksRemoved : moves);
+        bs.push(spins > 0 ? blocksRemoved / spins : blocksRemoved);
+    }
+    tm.sort((a, b) => a - b);
+    mb.sort((a, b) => a - b);
+    bs.sort((a, b) => a - b);
+    const mid = (arr) => {
+        if (!arr.length) return null;
+        const m = Math.floor(arr.length / 2);
+        if (arr.length % 2 === 1) return arr[m];
+        return (arr[m - 1] + arr[m]) / 2;
+    };
+    return { tm: mid(tm), mb: mid(mb), bs: mid(bs), count: all.length, levels: levels.length };
+}
+
+export function showProfileModal() {
+    // Reuse the same full-screen modal style as History.
+    closeHistoryModal();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'personal-history-modal';
+    overlay.style.cssText = `
+        position: fixed;
+        inset: 0;
+        z-index: 2600;
+        background: rgba(0,0,0,0.55);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        display: flex;
+        align-items: stretch;
+        justify-content: stretch;
+    `;
+
+    const panel = document.createElement('div');
+    panel.style.cssText = `
+        width: 100vw;
+        height: 100vh;
+        box-sizing: border-box;
+        padding: calc(18px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) calc(18px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
+        background: rgba(17, 24, 39, 0.55);
+        border: 1px solid rgba(255,255,255,0.18);
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.12);
+        overflow: auto;
+        -webkit-overflow-scrolling: touch;
+        color: rgba(255,255,255,0.92);
+        font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    `;
+
+    const header = document.createElement('div');
+    header.style.cssText = `
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 14px;
+    `;
+
+    const title = document.createElement('div');
+    title.textContent = 'Profile';
+    title.style.cssText = `font-size: 16px; font-weight: 900; letter-spacing: 0.4px;`;
+
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.textContent = 'Close';
+    closeBtn.style.cssText = `
+        border: 1px solid rgba(255,255,255,0.18);
+        background: rgba(255,255,255,0.10);
+        color: rgba(255,255,255,0.9);
+        border-radius: 10px;
+        padding: 10px 12px;
+        font-size: 12px;
+        font-weight: 800;
+        cursor: pointer;
+    `;
+    closeBtn.addEventListener('click', () => overlay.remove());
+
+    header.appendChild(title);
+    header.appendChild(closeBtn);
+
+    const med = computeAllLevelMedians();
+
+    const card = document.createElement('div');
+    card.style.cssText = `
+        padding: 12px;
+        border-radius: 16px;
+        border: 1px solid rgba(255,255,255,0.14);
+        background: rgba(255,255,255,0.06);
+        margin-bottom: 12px;
+    `;
+
+    const desc = document.createElement('div');
+    desc.textContent = 'All-level medians (normalized)';
+    desc.style.cssText = `font-weight: 900; font-size: 13px; margin-bottom: 8px;`;
+
+    const grid = document.createElement('div');
+    grid.style.cssText = `display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;`;
+
+    const mini = (label, value) => {
+        const c = document.createElement('div');
+        c.style.cssText = `
+            padding: 10px 10px;
+            border-radius: 14px;
+            border: 1px solid rgba(255,255,255,0.12);
+            background: rgba(0,0,0,0.10);
+            text-align: center;
+        `;
+        const l = document.createElement('div');
+        l.textContent = label;
+        l.style.cssText = `font-size: 10px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: rgba(255,255,255,0.55); margin-bottom: 6px;`;
+        const v = document.createElement('div');
+        v.textContent = value;
+        v.style.cssText = `font-size: 16px; font-weight: 900; color: rgba(255,255,255,0.95);`;
+        c.appendChild(l);
+        c.appendChild(v);
+        return c;
+    };
+
+    grid.appendChild(mini('T/M', typeof med.tm === 'number' ? formatSeconds(med.tm) : '—'));
+    grid.appendChild(mini('M/B', typeof med.mb === 'number' ? formatRatio(med.mb) : '—'));
+    grid.appendChild(mini('B/S', typeof med.bs === 'number' ? formatRatio(med.bs) : '—'));
+
+    const footer = document.createElement('div');
+    footer.textContent = `${med.count || 0} runs • ${med.levels || 0} levels`;
+    footer.style.cssText = `margin-top: 8px; font-size: 11px; color: rgba(255,255,255,0.65);`;
+
+    card.appendChild(desc);
+    card.appendChild(grid);
+    card.appendChild(footer);
+
+    panel.appendChild(header);
+    panel.appendChild(card);
+
+    overlay.appendChild(panel);
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) overlay.remove();
+    });
+
+    window.addEventListener(
+        'keydown',
+        (e) => {
+            if (e.key === 'Escape') overlay.remove();
+        },
+        { once: true },
+    );
+
+    document.body.appendChild(overlay);
+}
+
 function closeHistoryModal() {
     const existing = document.getElementById('personal-history-modal');
     if (existing) existing.remove();
@@ -818,6 +979,46 @@ function updateComparisonDisplay(section, userStats, comparison) {
                 ? 'No baseline yet for this level. Finish it again to compare against your own median.'
                 : 'No baseline available yet.';
         grid.appendChild(msg);
+    }
+
+    // Personal baseline summary row (median + best) for same-level comparisons
+    if (comparison?.source === 'personal' && comparison.communityStats && comparison.personalBest) {
+        const row = document.createElement('div');
+        row.style.cssText = `
+            grid-column: 1 / -1;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 12px;
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.12);
+            background: rgba(0,0,0,0.10);
+            color: rgba(255,255,255,0.82);
+            font-size: 12px;
+            margin-bottom: 10px;
+        `;
+
+        const left = document.createElement('div');
+        left.textContent = `Your median (${comparison.sampleSize || 0})`;
+        left.style.cssText = `font-weight: 900; letter-spacing: 0.2px;`;
+
+        const mid = document.createElement('div');
+        mid.textContent = `Time ${formatTime(comparison.communityStats.medianTime)} • Moves ${comparison.communityStats.medianMoves?.toFixed?.(0) ?? comparison.communityStats.medianMoves} • Spins ${comparison.communityStats.medianSpins?.toFixed?.(0) ?? comparison.communityStats.medianSpins}`;
+        mid.style.cssText = `opacity: 0.9;`;
+
+        const best = document.createElement('div');
+        const bt = comparison.personalBest.bestTime;
+        const bm = comparison.personalBest.bestMoves;
+        const bs = comparison.personalBest.bestSpins;
+        best.textContent = `Best: ${bt !== null ? formatTime(bt) : '—'} / ${bm !== null ? bm : '—'} / ${bs !== null ? bs : '—'}`;
+        best.style.cssText = `opacity: 0.85; font-weight: 800;`;
+
+        row.appendChild(left);
+        row.appendChild(mid);
+        row.appendChild(best);
+        grid.appendChild(row);
     }
 
     // Time comparison

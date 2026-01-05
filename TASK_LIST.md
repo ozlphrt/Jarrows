@@ -175,6 +175,11 @@ We are intentionally deferring online/community backend work for now.
   - `M/B` (moves per block removed, lower is better)
   - `B/S` (blocks per spin, higher is better)
 
+### Personal Profile + Baseline UX
+
+- [x] **L4** Profile modal (all-level summary)
+- [x] **L5** Per-level baseline summary row in the level-complete comparison section (median + best)
+
 ---
 
 ## Phase 2: Enhanced Features
