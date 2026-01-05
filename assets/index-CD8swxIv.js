@@ -22610,13 +22610,13 @@ void main() {
       } catch {
         return false;
       }
-    })(), e = new Fh(16777215, 0.08);
+    })(), e = new Fh(16777215, 0.1);
     s.add(e);
-    const n = new Ea(16777215, 2);
+    const n = new Ea(16777215, 1.8);
     n.position.set(10, 20, 10), n.castShadow = true, n.shadow.camera.left = -12, n.shadow.camera.right = 12, n.shadow.camera.top = 14, n.shadow.camera.bottom = -14, n.shadow.camera.near = 1, n.shadow.camera.far = t ? 60 : 50, n.shadow.camera.position.set(0, 25, 0), n.shadow.camera.lookAt(0, 0, 0);
     const i = t ? 1024 : 2048;
-    n.shadow.mapSize.width = i, n.shadow.mapSize.height = i, n.shadow.bias = -1e-4, n.shadow.radius = t ? 1 : 2, n.shadow.normalBias = 0.02, s.add(n);
-    const r = new Ea(16777215, 0.1);
+    n.shadow.mapSize.width = i, n.shadow.mapSize.height = i, n.shadow.bias = -1e-4, n.shadow.radius = t ? 2 : 3, n.shadow.normalBias = 0.02, s.add(n);
+    const r = new Ea(16777215, 0.12);
     return r.position.set(-8, 12, -8), s.add(r), {
       ambientLight: e,
       keyLight: n,
@@ -24792,7 +24792,7 @@ void main() {
   let sc = 0, rc = performance.now(), Rb = 500;
   const nf = document.getElementById("fps-counter");
   function zm(s) {
-    Bs = s === "battery" || s === "balanced" || s === "performance" ? s : "balanced", Qi = Tm(Bs), $h = 1e3 / Qi.activeFps, Om = 1e3 / Qi.idleFps, jt.setPixelRatio(Math.min(window.devicePixelRatio || 1, Qi.dprCap)), Ce && (Bs === "performance" ? (nh = 33, ih = 33, jt.shadowMap.type = ka, Ae && Ae.keyLight && Ae.keyLight.shadow && (Ae.keyLight.shadow.mapSize.set(2048, 2048), Ae.keyLight.shadow.radius = 2, Ae.keyLight.shadow.map && (Ae.keyLight.shadow.map.dispose(), Ae.keyLight.shadow.map = null), jt.shadowMap.needsUpdate = true)) : (nh = 80, ih = 80, jt.shadowMap.type = oo, Ae && Ae.keyLight && Ae.keyLight.shadow && (Ae.keyLight.shadow.mapSize.set(1024, 1024), Ae.keyLight.shadow.radius = 1, Ae.keyLight.shadow.map && (Ae.keyLight.shadow.map.dispose(), Ae.keyLight.shadow.map = null), jt.shadowMap.needsUpdate = true)), Fa = performance.now() + Nm, Na = 0, za = 0);
+    Bs = s === "battery" || s === "balanced" || s === "performance" ? s : "balanced", Qi = Tm(Bs), $h = 1e3 / Qi.activeFps, Om = 1e3 / Qi.idleFps, jt.setPixelRatio(Math.min(window.devicePixelRatio || 1, Qi.dprCap)), Ce && (Bs === "performance" ? (nh = 33, ih = 33, jt.shadowMap.type = ka, Ae && Ae.keyLight && Ae.keyLight.shadow && (Ae.keyLight.shadow.mapSize.set(2048, 2048), Ae.keyLight.shadow.radius = 3, Ae.keyLight.shadow.map && (Ae.keyLight.shadow.map.dispose(), Ae.keyLight.shadow.map = null), jt.shadowMap.needsUpdate = true)) : (nh = 80, ih = 80, jt.shadowMap.type = oo, Ae && Ae.keyLight && Ae.keyLight.shadow && (Ae.keyLight.shadow.mapSize.set(1024, 1024), Ae.keyLight.shadow.radius = 1, Ae.keyLight.shadow.map && (Ae.keyLight.shadow.map.dispose(), Ae.keyLight.shadow.map = null), jt.shadowMap.needsUpdate = true)), Fa = performance.now() + Nm, Na = 0, za = 0);
     try {
       localStorage.setItem("jarrows_quality", Bs);
     } catch {
