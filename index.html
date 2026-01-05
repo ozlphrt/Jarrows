@@ -1131,7 +1131,7 @@
                     });
                     canvas.addEventListener('touchstart', function(e) {
                         settingsMenu.classList.remove('show');
-                    });
+                    }, { passive: true });
                 }
             }
             
