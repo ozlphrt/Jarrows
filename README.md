@@ -64,6 +64,14 @@ npm run build
 
 ## Releases
 
+### v4.5.13 - Extended Local-Only Stats
+- **Tree**: https://github.com/ozlphrt/Jarrows/tree/v4.5.13
+- **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v4.5.13
+- **Live**: https://ozlphrt.github.io/Jarrows/
+- Strict local-only stats mode (`VITE_STATS_MODE=local`) + self-comparison (per-level + all-level normalized)
+- Tappable metric explain modals (T/M, M/B, B/S) + improved history/profile views
+- Level-complete modal UX refresh (full-screen, simplified headers/actions)
+
 ### v4.5.12 - Stable Presets + Build ID (VER)
 - **Tree**: https://github.com/ozlphrt/Jarrows/tree/v4.5.12
 - **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v4.5.12
