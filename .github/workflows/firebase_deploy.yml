@@ -45,6 +45,24 @@ jobs:
         env:
           FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
         run: |
+          if [[ -z "${FIREBASE_PROJECT_ID}" ]]; then
+            echo "Missing FIREBASE_PROJECT_ID secret. Set it in GitHub: Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+
+          # Firebase project IDs must be all-lowercase; GitHub masks secrets in logs (***),
+          # so validate here and fail with a clear message.
+          if [[ "${FIREBASE_PROJECT_ID}" != "${FIREBASE_PROJECT_ID,,}" ]]; then
+            echo "Invalid FIREBASE_PROJECT_ID: must be all lowercase (use Firebase Console -> Project settings -> Project ID)."
+            exit 1
+          fi
+
+          # Conservative validation: Firebase project IDs are typically lowercase letters, digits, and hyphens.
+          if ! [[ "${FIREBASE_PROJECT_ID}" =~ ^[a-z0-9-]+$ ]]; then
+            echo "Invalid FIREBASE_PROJECT_ID: unexpected characters. Make sure you pasted the Project ID, not the display name."
+            exit 1
+          fi
+
           firebase deploy --project "$FIREBASE_PROJECT_ID" --only firestore:rules,functions --non-interactive
 
 
