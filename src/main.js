@@ -607,27 +607,34 @@ const CURRENT_STORAGE_VERSION = '2.0'; // Increment to reset all users
 // One-time reset: Clear all existing progress for all users
 // This ensures everyone starts from level 0
 // Uses a flag to ensure reset only happens once per version
+// NOTE: This function is now deprecated - we preserve user progress by default
 function resetAllProgress() {
     try {
         const storedVersion = localStorage.getItem(STORAGE_VERSION_KEY);
         const resetFlag = localStorage.getItem(RESET_FLAG_KEY);
+        const hasExistingProgress = localStorage.getItem(STORAGE_KEY) !== null || 
+                                    localStorage.getItem(STORAGE_KEY_TIME_CHALLENGE) !== null ||
+                                    localStorage.getItem(STORAGE_HIGHEST_LEVEL_KEY) !== null;
         
-        // Check if we need to reset (version mismatch or reset not yet completed for this version)
-        const needsReset = storedVersion !== CURRENT_STORAGE_VERSION || 
-                          (storedVersion === CURRENT_STORAGE_VERSION && resetFlag !== 'true');
-        
-        if (needsReset) {
-            console.log('Resetting all progress: storage version mismatch or first run');
-            localStorage.removeItem(STORAGE_KEY);
-            localStorage.removeItem(STORAGE_KEY_TIME_CHALLENGE);
-            localStorage.removeItem(STORAGE_HIGHEST_LEVEL_KEY);
-            localStorage.setItem(STORAGE_VERSION_KEY, CURRENT_STORAGE_VERSION);
-            localStorage.setItem(RESET_FLAG_KEY, 'true'); // Mark reset as completed
-            console.log('All users reset to level 0 (reset flag set)');
-            return true; // Progress was reset
+        // Only reset if user has no existing progress (new user)
+        // Otherwise, just update version without clearing
+        if (storedVersion !== CURRENT_STORAGE_VERSION) {
+            if (!hasExistingProgress) {
+                // New user - set version and flag
+                console.log('New user - setting storage version');
+                localStorage.setItem(STORAGE_VERSION_KEY, CURRENT_STORAGE_VERSION);
+                localStorage.setItem(RESET_FLAG_KEY, 'true');
+                return false; // No reset needed (no progress to reset)
+            } else {
+                // Existing user - preserve progress, just update version
+                console.log('Updating storage version, preserving existing progress');
+                localStorage.setItem(STORAGE_VERSION_KEY, CURRENT_STORAGE_VERSION);
+                localStorage.setItem(RESET_FLAG_KEY, 'true');
+                return false; // No reset - progress preserved
+            }
         }
     } catch (e) {
-        console.warn('Failed to reset progress:', e);
+        console.warn('Failed to update storage version:', e);
     }
     return false; // No reset needed
 }
@@ -1092,24 +1099,30 @@ function loadProgress() {
         // Use different storage keys for different game modes
         const storageKey = isTimeChallengeMode() ? STORAGE_KEY_TIME_CHALLENGE : STORAGE_KEY;
         
-        // Check if we need to reset (only once per version, and only for the current mode)
+        // Check if we need to update version (but preserve existing progress)
         const storedVersion = localStorage.getItem(STORAGE_VERSION_KEY);
-        const resetFlag = localStorage.getItem(RESET_FLAG_KEY);
-        const needsReset = storedVersion !== CURRENT_STORAGE_VERSION || 
-                          (storedVersion === CURRENT_STORAGE_VERSION && resetFlag !== 'true');
+        const hasExistingProgress = localStorage.getItem(STORAGE_KEY) !== null || 
+                                    localStorage.getItem(STORAGE_KEY_TIME_CHALLENGE) !== null ||
+                                    localStorage.getItem(STORAGE_HIGHEST_LEVEL_KEY) !== null;
         
-        if (needsReset) {
-            // Only reset if this is the first time for this version
-            // Don't clear progress if version matches but flag is missing (might be a partial clear)
-            if (storedVersion !== CURRENT_STORAGE_VERSION) {
-                console.log('Storage version mismatch, clearing all progress');
-                localStorage.removeItem(STORAGE_KEY);
-                localStorage.removeItem(STORAGE_KEY_TIME_CHALLENGE);
-                localStorage.removeItem(STORAGE_HIGHEST_LEVEL_KEY);
+        // Only update version - don't reset if user has existing progress
+        if (storedVersion !== CURRENT_STORAGE_VERSION) {
+            if (hasExistingProgress) {
+                // User has progress - just update version without clearing
+                console.log('Updating storage version, preserving existing progress');
+                localStorage.setItem(STORAGE_VERSION_KEY, CURRENT_STORAGE_VERSION);
+                localStorage.setItem(RESET_FLAG_KEY, 'true');
+            } else {
+                // New user - set version and flag
+                console.log('New user - setting storage version');
+                localStorage.setItem(STORAGE_VERSION_KEY, CURRENT_STORAGE_VERSION);
+                localStorage.setItem(RESET_FLAG_KEY, 'true');
             }
-            // Set version and flag
-            localStorage.setItem(STORAGE_VERSION_KEY, CURRENT_STORAGE_VERSION);
-            localStorage.setItem(RESET_FLAG_KEY, 'true');
+        } else {
+            // Version matches - ensure flag is set
+            if (localStorage.getItem(RESET_FLAG_KEY) !== 'true') {
+                localStorage.setItem(RESET_FLAG_KEY, 'true');
+            }
         }
         
         // Now try to load saved progress
