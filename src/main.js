@@ -584,6 +584,7 @@ const TIME_CHALLENGE_START_SECONDS = 30;
 let timeLeftSec = TIME_CHALLENGE_START_SECONDS; // carryover across levels in this mode
 let timeChallengeActive = false;
 let timeChallengeRemovals = 0; // blocks removed in current run
+let timeChallengeResidualSec = 0; // Time left from previous level (carries over to next level)
 let timeFreezeReasons = new Set();
 let timeUpShown = false;
 
@@ -768,11 +769,48 @@ async function ensureModeSelected({ forcePrompt = false } = {}) {
 }
 
 function timeChallengeResetRun() {
+    // This is called when starting a NEW RUN (level 0, fresh start)
+    // For new levels within a run, use timeChallengeStartNewLevel() instead
     timeLeftSec = TIME_CHALLENGE_START_SECONDS;
     timeChallengeRemovals = 0;
+    timeChallengeResidualSec = 0;
     timeChallengeActive = true;
     timeUpShown = false;
     setTimeFrozen('time_up', false);
+}
+
+function timeChallengeGetBaseSecondsPerBlock(blockCount) {
+    // Table for initial time allocation per level:
+    // t1: 1–25 blocks → 4s per block
+    // t2: 26–75 blocks → 3s per block
+    // t3: 76–150 blocks → 2s per block
+    // t4: 151+ blocks → 1s per block
+    if (blockCount <= 25) return 4;
+    if (blockCount <= 75) return 3;
+    if (blockCount <= 150) return 2;
+    return 1; // 151+
+}
+
+function timeChallengeStartNewLevel(blockCount) {
+    if (!isTimeChallengeMode()) return;
+    
+    // Calculate base time for this level
+    const baseTimePerBlock = timeChallengeGetBaseSecondsPerBlock(blockCount);
+    const calculatedTime = blockCount * baseTimePerBlock;
+    const minTime = 30; // Minimum 30 seconds
+    
+    // Initial time = max(30, blockCount × baseTimePerBlock) + residual from previous level
+    timeLeftSec = Math.max(minTime, calculatedTime) + timeChallengeResidualSec;
+    timeChallengeResidualSec = 0; // Clear residual after using it
+    
+    // Keep removal counter cumulative across levels (for per-removal bonuses)
+    // Don't reset timeChallengeRemovals here
+    
+    timeChallengeActive = true;
+    timeUpShown = false;
+    setTimeFrozen('time_up', false);
+    
+    updateTimerDisplay();
 }
 
 function timeChallengeGetBaseSecondsForRemovalNumber(n) {
@@ -2214,6 +2252,11 @@ async function generateSolvablePuzzle(level = 1) {
     // Get target block count for this level
     const targetBlockCount = getBlocksForLevel(level);
     
+    // Time Challenge: calculate initial time for this level based on block count
+    if (isTimeChallengeMode()) {
+        timeChallengeStartNewLevel(targetBlockCount);
+    }
+    
     // Special case: Level 1 with head-on collisions for testing
     if (level === 1) {
         const headOnBlocks = createHeadOnCollisionBlocks(targetBlockCount);
@@ -2958,6 +3001,11 @@ function showLevelCompleteModal(completedLevel) {
         const initialBlockCount = getBlocksForLevel(completedLevel);
         if (blocksElement) {
             blocksElement.textContent = String(initialBlockCount);
+        }
+        
+        // Time Challenge: save residual time for next level
+        if (isTimeChallengeMode() && timeChallengeActive) {
+            timeChallengeResidualSec = Math.max(0, timeLeftSec);
         }
         
         modal.style.display = 'flex';
@@ -3724,9 +3772,10 @@ updateCameraPosition(); // Position camera immediately to avoid default (0,0,0) 
     await ensureModeSelected({ forcePrompt: false });
 
     if (isTimeChallengeMode()) {
-        // Time Challenge is a run mode: always start at level 0, fresh 30s countdown.
+        // Time Challenge is a run mode: always start at level 0
         currentLevel = 0;
-        timeChallengeResetRun();
+        timeChallengeResetRun(); // This sets residual to 0 and initializes state
+        // Initial time for level 0 will be calculated in generateSolvablePuzzle()
         remainingSpins = Number.POSITIVE_INFINITY;
     } else {
         // Free Flow uses saved progress.
