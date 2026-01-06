@@ -668,18 +668,26 @@ let timeAnimationTarget = 0;
 let timeAnimationDuration = 600; // 600ms animation
 
 function animateTimeAddition(deltaSeconds) {
-    if (!isTimeChallengeMode() || !timeChallengeActive) return;
+    if (!isTimeChallengeMode() || !timeChallengeActive) {
+        console.log('[Time Challenge] Animation skipped - mode check failed:', { isTimeChallengeMode: isTimeChallengeMode(), timeChallengeActive });
+        return;
+    }
     
     const deltaInt = Math.trunc(deltaSeconds);
-    if (deltaInt === 0) return;
+    if (deltaInt === 0) {
+        console.log('[Time Challenge] Animation skipped - delta is 0');
+        return;
+    }
     
     // If animation is already running, add to target
     if (timeAnimationActive) {
+        console.log('[Time Challenge] Animation already running, adding to target:', deltaInt);
         timeAnimationTarget += deltaInt;
         return;
     }
     
     // Start new animation
+    console.log('[Time Challenge] Starting animation:', { deltaInt, from: timeLeftSec, to: timeLeftSec + deltaInt });
     timeAnimationActive = true;
     timeAnimationStart = timeLeftSec;
     timeAnimationTarget = timeLeftSec + deltaInt;
@@ -687,34 +695,45 @@ function animateTimeAddition(deltaSeconds) {
     const startTime = performance.now();
     
     function animate(currentTime) {
+        if (!timeAnimationActive) {
+            // Animation was cancelled, exit
+            return;
+        }
+        
         const elapsed = currentTime - startTime;
         const progress = Math.min(elapsed / timeAnimationDuration, 1.0);
         
         // Ease-out curve for smooth animation
         const eased = 1 - Math.pow(1 - progress, 3);
         
-        // Interpolate time value
-        timeLeftSec = timeAnimationStart + (timeAnimationTarget - timeAnimationStart) * eased;
+        // Interpolate time value (countdown is paused during animation, so safe to set directly)
+        const newTime = timeAnimationStart + (timeAnimationTarget - timeAnimationStart) * eased;
+        timeLeftSec = Math.max(0, newTime); // Ensure non-negative
         updateTimerDisplay();
         
         if (progress < 1.0) {
             requestAnimationFrame(animate);
         } else {
             // Animation complete - snap to final value
-            timeLeftSec = timeAnimationTarget;
+            timeLeftSec = Math.max(0, timeAnimationTarget);
             updateTimerDisplay();
             timeAnimationActive = false;
+            console.log('[Time Challenge] Animation complete, final time:', timeLeftSec);
             
             // Check if there's more to animate (if target was updated during animation)
-            if (timeAnimationTarget > timeLeftSec) {
-                const remaining = timeAnimationTarget - timeLeftSec;
-                if (remaining > 0) {
+            // This shouldn't happen since we add to target, but just in case
+            const finalTarget = timeAnimationTarget;
+            if (finalTarget > timeLeftSec) {
+                const remaining = finalTarget - timeLeftSec;
+                if (remaining > 0.1) { // Small threshold to avoid infinite loops
+                    console.log('[Time Challenge] More time to animate, continuing:', remaining);
                     animateTimeAddition(remaining);
                 }
             }
         }
     }
     
+    // Start animation immediately
     requestAnimationFrame(animate);
 }
 
@@ -896,6 +915,7 @@ function timeChallengeAwardForBlockRemoved(blockLength) {
     const gained = base + bonus;
     
     // Animate time addition smoothly in real-time
+    console.log('[Time Challenge] Block removed, awarding time:', { blockLength, base, bonus, gained, currentTime: timeLeftSec });
     animateTimeAddition(gained);
     flashTimerDelta(gained);
 }
@@ -2311,8 +2331,11 @@ async function generateSolvablePuzzle(level = 1) {
     const targetBlockCount = getBlocksForLevel(level);
     
     // Time Challenge: calculate initial time for this level based on block count
+    // NOTE: This must happen AFTER blocks are cleared but BEFORE new blocks are placed
+    // to ensure timeChallengeActive is set before any blocks can be removed
     if (isTimeChallengeMode()) {
         timeChallengeStartNewLevel(targetBlockCount);
+        console.log('[Time Challenge] Level started, timeChallengeActive:', timeChallengeActive, 'timeLeftSec:', timeLeftSec);
     }
     
     // Special case: Level 1 with head-on collisions for testing
