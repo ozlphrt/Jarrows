@@ -4923,10 +4923,10 @@ function animate() {
 
     // Time Challenge countdown (survival)
     // - drains in real time (1.0x)
-    // - pauses during user pause, rules/modal overlays, level-complete modal, and background tab
+    // - pauses during user pause, rules/modal overlays, level-complete modal, background tab, and time animation
     // - does NOT drain during level generation (fairness)
     if (isTimeChallengeMode() && timeChallengeActive && !timeUpShown) {
-        const canDrain = !isTimeFrozen() && !isGeneratingLevel && !isPaused;
+        const canDrain = !isTimeFrozen() && !isGeneratingLevel && !isPaused && !timeAnimationActive;
         if (canDrain) {
             timeLeftSec -= deltaTime;
             if (timeLeftSec <= 0) {
