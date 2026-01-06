@@ -161,7 +161,7 @@ renderer.domElement.addEventListener('mousedown', (event) => {
         isCameraDragging = true;
         wasCameraDragging = true;
     }
-}, { passive: true });
+}, { passive: false });
 
 renderer.domElement.addEventListener('mousemove', (event) => {
     if (isDraggingCamera) {
@@ -585,6 +585,10 @@ let timeLeftSec = TIME_CHALLENGE_START_SECONDS; // carryover across levels in th
 let timeChallengeActive = false;
 let timeChallengeRemovals = 0; // blocks removed in current run
 let timeChallengeResidualSec = 0; // Time left from previous level (carries over to next level)
+let timeChallengeInitialTime = 0; // Initial time when level started (for calculating time collected)
+let timeChallengeTimeCollected = 0; // Total time collected from block removals this level
+let timeChallengeTimeCollectedAllTime = 0; // Cumulative time collected across all levels in this run
+let timeChallengeTimeCarriedOverAllTime = 0; // Cumulative time carried over across all levels in this run
 let timeFreezeReasons = new Set();
 let timeUpShown = false;
 
@@ -851,6 +855,10 @@ function timeChallengeResetRun() {
     // This is called when starting a NEW RUN (level 0, fresh start)
     // For new levels within a run, use timeChallengeStartNewLevel() instead
     timeLeftSec = TIME_CHALLENGE_START_SECONDS;
+    timeChallengeInitialTime = TIME_CHALLENGE_START_SECONDS;
+    timeChallengeTimeCollected = 0;
+    timeChallengeTimeCollectedAllTime = 0;
+    timeChallengeTimeCarriedOverAllTime = 0;
     timeChallengeRemovals = 0;
     timeChallengeResidualSec = 0;
     timeChallengeActive = true;
@@ -858,28 +866,26 @@ function timeChallengeResetRun() {
     setTimeFrozen('time_up', false);
 }
 
-function timeChallengeGetBaseSecondsPerBlock(blockCount) {
-    // Table for initial time allocation per level:
-    // t1: 1–25 blocks → 4s per block
-    // t2: 26–75 blocks → 3s per block
-    // t3: 76–150 blocks → 2s per block
-    // t4: 151+ blocks → 1s per block
-    if (blockCount <= 25) return 4;
-    if (blockCount <= 75) return 3;
-    if (blockCount <= 150) return 2;
-    return 1; // 151+
-}
-
-function timeChallengeStartNewLevel(blockCount) {
+function timeChallengeStartNewLevel(blocksArray) {
     if (!isTimeChallengeMode()) return;
     
-    // Calculate base time for this level
-    const baseTimePerBlock = timeChallengeGetBaseSecondsPerBlock(blockCount);
-    const calculatedTime = blockCount * baseTimePerBlock;
+    // Calculate base time by summing actual block lengths
+    // Length 1 (Red) = 1 second, Length 2 (Teal) = 2 seconds, Length 3+ (Yellow) = 3 seconds
+    let calculatedTime = 0;
+    for (const block of blocksArray) {
+        calculatedTime += timeChallengeGetColorBonusSeconds(block.length);
+    }
+    
     const minTime = 30; // Minimum 30 seconds
     
-    // Initial time = max(30, blockCount × baseTimePerBlock) + residual from previous level
+    // Initial time = max(30, sum of block lengths) + residual from previous level
     timeLeftSec = Math.max(minTime, calculatedTime) + timeChallengeResidualSec;
+    timeChallengeInitialTime = timeLeftSec; // Track initial time for this level
+    // Track carried over time before resetting
+    if (timeChallengeResidualSec > 0) {
+        timeChallengeTimeCarriedOverAllTime += timeChallengeResidualSec;
+    }
+    timeChallengeTimeCollected = 0; // Reset time collected counter for this level
     timeChallengeResidualSec = 0; // Clear residual after using it
     
     // Keep removal counter cumulative across levels (for per-removal bonuses)
@@ -912,21 +918,20 @@ function timeChallengeGetColorBonusSeconds(blockLength) {
 
 function timeChallengeAwardForBlockRemoved(blockLength) {
     if (!isTimeChallengeMode() || !timeChallengeActive || timeUpShown) return;
+    
     timeChallengeRemovals += 1;
-    const base = timeChallengeGetBaseSecondsForRemovalNumber(timeChallengeRemovals);
-    const bonus = timeChallengeGetColorBonusSeconds(blockLength);
-    const gained = base + bonus;
+    // Simplified: only use color bonus based on block length
+    const gained = timeChallengeGetColorBonusSeconds(blockLength);
+    timeChallengeTimeCollected += gained; // Track time collected this level
+    timeChallengeTimeCollectedAllTime += gained; // Track cumulative time collected across all levels
     
     // Add time immediately (like spin does), then show flash animation
     const before = timeLeftSec;
     timeLeftSec += gained;
-    const delta = Math.trunc(timeLeftSec) - Math.trunc(before);
     
     // Show flash animation (same as spin)
     flashTimerDelta(gained);
     updateTimerDisplay();
-    
-    console.log('[Time Challenge] Block removed, time added:', { blockLength, base, bonus, gained, before, after: timeLeftSec });
 }
 
 function timeChallengeApplySpinCost() {
@@ -980,6 +985,40 @@ function showTimeUpModal() {
     const stage = Math.floor(timeChallengeRemovals / 25);
     summary.innerHTML = `You reached <b>Stage ${stage}</b> and removed <b>${timeChallengeRemovals}</b> blocks.`;
     modal.style.display = 'flex';
+}
+
+async function restartTimeChallengeLevelFromTimeUp() {
+    const modal = document.getElementById('time-up-modal');
+    if (modal) modal.style.display = 'none';
+    setTimeFrozen('time_up', false);
+    timeUpShown = false;
+    
+    if (isGeneratingLevel) return;
+    
+    // Save the initial time for this level before regenerating
+    const savedInitialTime = timeChallengeInitialTime;
+    
+    // Reset level-specific stats (but keep run stats like timeChallengeRemovals, timeChallengeTimeCollectedAllTime)
+    timeChallengeTimeCollected = 0;
+    
+    // Clear move history
+    moveHistory = [];
+    totalMoves = 0;
+    
+    // Reset stats tracking for current level
+    startLevelStats(currentLevel);
+    
+    // Regenerate current level (this will recalculate initial time, but we'll restore it)
+    await generateSolvablePuzzle(currentLevel);
+    
+    // Restore timer to the saved initial time for this level
+    if (savedInitialTime > 0) {
+        timeLeftSec = savedInitialTime;
+        timeChallengeInitialTime = savedInitialTime;
+        updateTimerDisplay();
+    }
+    
+    updateUndoButtonState();
 }
 
 async function resetTimeChallengeRunFromTimeUp() {
@@ -2339,20 +2378,18 @@ async function generateSolvablePuzzle(level = 1) {
     // Get target block count for this level
     const targetBlockCount = getBlocksForLevel(level);
     
-    // Time Challenge: calculate initial time for this level based on block count
-    // NOTE: This must happen AFTER blocks are cleared but BEFORE new blocks are placed
-    // to ensure timeChallengeActive is set before any blocks can be removed
-    if (isTimeChallengeMode()) {
-        timeChallengeStartNewLevel(targetBlockCount);
-        console.log('[Time Challenge] Level started, timeChallengeActive:', timeChallengeActive, 'timeLeftSec:', timeLeftSec);
-    }
-    
     // Special case: Level 1 with head-on collisions for testing
     if (level === 1) {
         const headOnBlocks = createHeadOnCollisionBlocks(targetBlockCount);
         
         // Use the same animation system as normal generation
         await placeBlocksBatch(headOnBlocks);
+        
+        // Time Challenge: calculate initial time for this level based on actual block lengths
+        if (isTimeChallengeMode()) {
+            timeChallengeStartNewLevel(headOnBlocks);
+            console.log('[Time Challenge] Level started, timeChallengeActive:', timeChallengeActive, 'timeLeftSec:', timeLeftSec);
+        }
         
         isGeneratingLevel = false;
         return;
@@ -2510,6 +2547,14 @@ async function generateSolvablePuzzle(level = 1) {
     await placeBlocksBatch(allBlocks, 10, 10); // 10 blocks per batch, 10ms between batches
     console.log(`  Placement complete. Blocks array now has ${blocks.length} blocks`);
     
+    // Time Challenge: calculate initial time for this level based on actual block lengths
+    // NOTE: This must happen AFTER blocks are created and placed
+    // to ensure we can sum the actual block lengths
+    if (isTimeChallengeMode()) {
+        timeChallengeStartNewLevel(allBlocks);
+        console.log('[Time Challenge] Level started, timeChallengeActive:', timeChallengeActive, 'timeLeftSec:', timeLeftSec);
+    }
+    
     // CRITICAL: Support checking is already disabled by isGeneratingLevel flag
     // The flag will be set to false after a delay to ensure all blocks are initialized
     
@@ -2627,7 +2672,13 @@ function resetTimer() {
 // Update timer display
 function updateTimerDisplay() {
     const timerValueElement = document.getElementById('timer-value');
+    const timerLevelElement = document.getElementById('timer-level');
     if (!timerValueElement) return;
+
+    // Update level display
+    if (timerLevelElement) {
+        timerLevelElement.textContent = String(currentLevel);
+    }
 
     if (isTimeChallengeMode() && timeChallengeActive) {
         // During animation, show precise value for smooth visual feedback
@@ -3501,6 +3552,16 @@ if (modeToggleButton) {
             updateTimerDisplay();
             await startNewGame();
         }
+    });
+}
+
+// Time Up modal button: restart current level
+const timeUpRestartLevelBtn = document.getElementById('time-up-restart-level');
+if (timeUpRestartLevelBtn) {
+    timeUpRestartLevelBtn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        await restartTimeChallengeLevelFromTimeUp();
     });
 }
 
@@ -5155,6 +5216,17 @@ function animate() {
             // Melt animation cleanup is handled in updateMeltAnimation function
             
             if (block.isRemoved) {
+                // Distinguish between manual removal (has removalStartTime) and natural fall-off
+                // Manual removals already handled stats/time in the melt animation completion callback
+                // Natural fall-offs need stats/time tracking here
+                const isNaturalFall = !block.removalStartTime;
+                
+                if (isNaturalFall) {
+                    // Block fell off naturally - track stats and award time
+                    trackBlockRemoved();
+                    timeChallengeAwardForBlockRemoved(block.length);
+                }
+                
                 // Ensure block is removed from towerGroup (in case remove() didn't work)
                 if (block.group.parent) {
                     block.group.parent.remove(block.group);
@@ -5216,6 +5288,13 @@ function animate() {
             (async () => {
                 try {
                     const userStats = await completeLevel(elapsedSeconds);
+                    // Add Time Challenge specific stats
+                    if (isTimeChallengeMode() && timeChallengeActive) {
+                        userStats.timeCollectedLevel = timeChallengeTimeCollected;
+                        // All-time includes current level (already cumulative from block removals)
+                        userStats.timeCollectedAllTime = timeChallengeTimeCollectedAllTime;
+                        userStats.timeCarriedOverLevel = timeChallengeResidualSec;
+                    }
                     const comparison = await getLevelComparison(userStats);
                     updateLevelCompleteModal(userStats, comparison);
                 } catch (error) {

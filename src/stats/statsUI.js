@@ -109,12 +109,26 @@ export function showProfileModal() {
         padding: calc(18px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) calc(18px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
         background: rgba(17, 24, 39, 0.55);
         border: 1px solid rgba(255,255,255,0.18);
-        box-shadow: inset 0 1px 0 rgba(255,255,255,0.12);
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), 0 20px 60px rgba(0,0,0,0.35);
         overflow: auto;
         -webkit-overflow-scrolling: touch;
         color: rgba(255,255,255,0.92);
         font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        position: relative;
     `;
+    
+    // Add colored top accent
+    const accent = document.createElement('div');
+    accent.style.cssText = `
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 6px;
+        background: linear-gradient(90deg, rgba(96, 165, 250, 0.9), rgba(168, 85, 247, 0.9), rgba(236, 72, 153, 0.9));
+        opacity: 0.9;
+    `;
+    panel.appendChild(accent);
 
     const header = document.createElement('div');
     header.style.cssText = `
@@ -123,11 +137,22 @@ export function showProfileModal() {
         justify-content: space-between;
         gap: 12px;
         margin-bottom: 14px;
+        margin-top: 6px;
     `;
 
+    const titleWrap = document.createElement('div');
+    titleWrap.style.cssText = `display: flex; align-items: center; gap: 10px;`;
+    
+    const icon = document.createElement('span');
+    icon.textContent = '👤';
+    icon.style.cssText = `font-size: 24px;`;
+    
     const title = document.createElement('div');
     title.textContent = 'Profile';
     title.style.cssText = `font-size: 16px; font-weight: 900; letter-spacing: 0.4px;`;
+    
+    titleWrap.appendChild(icon);
+    titleWrap.appendChild(title);
 
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';
@@ -144,7 +169,7 @@ export function showProfileModal() {
     `;
     closeBtn.addEventListener('click', () => overlay.remove());
 
-    header.appendChild(title);
+    header.appendChild(titleWrap);
     header.appendChild(closeBtn);
 
     const med = computeAllLevelMedians();
@@ -246,12 +271,26 @@ export function showPersonalHistoryModal({ focusLevel = null } = {}) {
         padding: calc(18px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) calc(18px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
         background: rgba(17, 24, 39, 0.55);
         border: 1px solid rgba(255,255,255,0.18);
-        box-shadow: inset 0 1px 0 rgba(255,255,255,0.12);
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), 0 20px 60px rgba(0,0,0,0.35);
         overflow: auto;
         -webkit-overflow-scrolling: touch;
         color: rgba(255,255,255,0.92);
         font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        position: relative;
     `;
+    
+    // Add colored top accent
+    const accent = document.createElement('div');
+    accent.style.cssText = `
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 6px;
+        background: linear-gradient(90deg, rgba(96, 165, 250, 0.9), rgba(168, 85, 247, 0.9), rgba(236, 72, 153, 0.9));
+        opacity: 0.9;
+    `;
+    panel.appendChild(accent);
 
     const header = document.createElement('div');
     header.style.cssText = `
@@ -260,8 +299,16 @@ export function showPersonalHistoryModal({ focusLevel = null } = {}) {
         justify-content: space-between;
         gap: 12px;
         margin-bottom: 14px;
+        margin-top: 6px;
     `;
 
+    const titleWrap = document.createElement('div');
+    titleWrap.style.cssText = `display: flex; align-items: center; gap: 10px;`;
+    
+    const icon = document.createElement('span');
+    icon.textContent = '📊';
+    icon.style.cssText = `font-size: 24px;`;
+    
     const title = document.createElement('div');
     title.textContent = 'History';
     title.style.cssText = `
@@ -269,6 +316,9 @@ export function showPersonalHistoryModal({ focusLevel = null } = {}) {
         font-weight: 900;
         letter-spacing: 0.4px;
     `;
+    
+    titleWrap.appendChild(icon);
+    titleWrap.appendChild(title);
 
     const controls = document.createElement('div');
     controls.style.cssText = `
@@ -353,7 +403,7 @@ export function showPersonalHistoryModal({ focusLevel = null } = {}) {
     controls.appendChild(clearBtn);
     controls.appendChild(closeBtn);
 
-    header.appendChild(title);
+    header.appendChild(titleWrap);
     header.appendChild(controls);
 
     const body = document.createElement('div');
@@ -896,22 +946,11 @@ function createComparisonSection() {
     grid.className = 'comparison-grid';
     grid.style.cssText = `
         display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 8px;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
     `;
 
     section.appendChild(title);
-
-    const badgeRow = document.createElement('div');
-    badgeRow.className = 'comparison-badges';
-    badgeRow.style.cssText = `
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-        margin: 10px 0 12px;
-    `;
-    section.appendChild(badgeRow);
-
     section.appendChild(grid);
 
     return section;
@@ -924,213 +963,74 @@ function updateComparisonDisplay(section, userStats, comparison) {
     const grid = section.querySelector('.comparison-grid');
     if (!grid) return;
 
-    // Ensure the title doesn't accumulate multiple overall badges across updates.
+    // Remove title completely - no personal/community labels
     const title = section.querySelector('.comparison-title');
     if (title) {
-        // Remove any previously-added overall badge(s)
-        const existingBadges = title.querySelectorAll('[data-stats-overall-badge=\"1\"]');
-        existingBadges.forEach((b) => b.remove());
-
-        // Update title based on comparison source
-        if (comparison?.source === 'personal') {
-            const n = typeof comparison.sampleSize === 'number' ? comparison.sampleSize : null;
-            title.textContent = n ? `Personal (${n})` : 'Personal';
-        } else if (comparison?.source === 'none') {
-            title.textContent = 'Personal';
-        } else {
-            title.textContent = 'Community Comparison';
-        }
+        title.remove();
     }
 
     // Clear existing comparisons
     grid.innerHTML = '';
 
-    // Update badge row
-    const badgeRow = section.querySelector('.comparison-badges');
-    if (badgeRow) {
-        badgeRow.innerHTML = '';
-        const ids = Array.isArray(comparison.badges) ? comparison.badges : [];
-        for (const id of ids) {
-            const meta = getBadgeMeta(id);
-            if (!meta) continue;
-            badgeRow.appendChild(createBadgePill(meta));
-        }
-        if (comparison.badgesPending && ids.length === 0) {
-            badgeRow.appendChild(createPendingPill());
-        }
-    }
+    // No baseline message or personal median row - removed per request
 
-    // No per-level baseline yet: show a clear helper message, but still show global baseline if available.
-    if (!comparison?.available) {
-        const msg = document.createElement('div');
-        msg.style.cssText = `
-            grid-column: 1 / -1;
-            padding: 10px 12px;
-            border-radius: 12px;
-            border: 1px solid rgba(255,255,255,0.12);
-            background: rgba(255,255,255,0.05);
-            color: rgba(255,255,255,0.78);
-            font-size: 12px;
-            line-height: 1.35;
-            margin-bottom: 10px;
-        `;
-        msg.textContent =
-            comparison?.reason === 'no_level_baseline'
-                ? 'No baseline yet for this level. Finish it again to compare against your own median.'
-                : 'No baseline available yet.';
-        grid.appendChild(msg);
-    }
-
-    // Personal baseline summary row (median + best) for same-level comparisons
-    if (comparison?.source === 'personal' && comparison.communityStats && comparison.personalBest) {
-        const row = document.createElement('div');
-        row.style.cssText = `
-            grid-column: 1 / -1;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            align-items: center;
-            justify-content: space-between;
-            padding: 10px 12px;
-            border-radius: 12px;
-            border: 1px solid rgba(255,255,255,0.12);
-            background: rgba(0,0,0,0.10);
-            color: rgba(255,255,255,0.82);
-            font-size: 12px;
-            margin-bottom: 10px;
-        `;
-
-        const left = document.createElement('div');
-        left.textContent = `Your median (${comparison.sampleSize || 0})`;
-        left.style.cssText = `font-weight: 900; letter-spacing: 0.2px;`;
-
-        const mid = document.createElement('div');
-        mid.textContent = `Time ${formatTime(comparison.communityStats.medianTime)} • Moves ${comparison.communityStats.medianMoves?.toFixed?.(0) ?? comparison.communityStats.medianMoves} • Spins ${comparison.communityStats.medianSpins?.toFixed?.(0) ?? comparison.communityStats.medianSpins}`;
-        mid.style.cssText = `opacity: 0.9;`;
-
-        const best = document.createElement('div');
-        const bt = comparison.personalBest.bestTime;
-        const bm = comparison.personalBest.bestMoves;
-        const bs = comparison.personalBest.bestSpins;
-        best.textContent = `Best: ${bt !== null ? formatTime(bt) : '—'} / ${bm !== null ? bm : '—'} / ${bs !== null ? bs : '—'}`;
-        best.style.cssText = `opacity: 0.85; font-weight: 800;`;
-
-        row.appendChild(left);
-        row.appendChild(mid);
-        row.appendChild(best);
-        grid.appendChild(row);
-    }
-
-    // Time comparison
-    if (comparison.time) {
-        grid.appendChild(createComparisonCard(
-            'Time',
-            formatTime(userStats.time),
-            formatTime(comparison.communityStats.medianTime),
-            comparison.time,
-            '⚡'
+    // Time Challenge specific stats - show both level and all-time perspectives
+    if (userStats.timeCollectedLevel !== undefined) {
+        grid.appendChild(createTimeChallengeCard(
+            'Time Collected (Level)',
+            formatTime(userStats.timeCollectedLevel || 0),
+            '⏰'
         ));
     }
-
-    // Moves comparison
-    if (comparison.moves) {
-        grid.appendChild(createComparisonCard(
-            'Moves',
-            userStats.moves.toString(),
-            comparison.communityStats.medianMoves.toString(),
-            comparison.moves,
-            '🎯'
+    
+    if (userStats.timeCarriedOverLevel !== undefined) {
+        grid.appendChild(createTimeChallengeCard(
+            'Time Carried Over (Level)',
+            formatTime(userStats.timeCarriedOverLevel || 0),
+            '➡️'
         ));
     }
+}
 
-    // Spins comparison
-    if (comparison.spins) {
-        grid.appendChild(createComparisonCard(
-            'Spins',
-            userStats.spins.toString(),
-            comparison.communityStats.medianSpins.toFixed(1),
-            comparison.spins,
-            '💫'
-        ));
-    }
-
-    // Efficiency comparisons (derived metrics)
-    if (comparison.efficiency?.movesPerBlock) {
-        const v = comparison.efficiency.movesPerBlock.value;
-        const c = comparison.efficiency.movesPerBlock.comparison;
-        grid.appendChild(createComparisonCard(
-            'M/B',
-            formatRatio(v),
-            formatRatio(comparison.communityStats.medianMovesPerBlock ?? comparison.communityStats.avgMovesPerBlock),
-            c,
-            '🧱'
-        ));
-    }
-    if (comparison.efficiency?.timePerMove) {
-        const v = comparison.efficiency.timePerMove.value;
-        const c = comparison.efficiency.timePerMove.comparison;
-        grid.appendChild(createComparisonCard(
-            'T/M',
-            formatSeconds(v),
-            formatSeconds(comparison.communityStats.medianTimePerMove ?? comparison.communityStats.avgTimePerMove),
-            c,
-            '⏱'
-        ));
-    }
-    if (comparison.efficiency?.blocksPerSpin) {
-        const v = comparison.efficiency.blocksPerSpin.value;
-        const c = comparison.efficiency.blocksPerSpin.comparison;
-        grid.appendChild(createComparisonCard(
-            'B/S',
-            formatRatio(v),
-            formatRatio(comparison.communityStats.medianBlocksPerSpin ?? comparison.communityStats.avgBlocksPerSpin),
-            c,
-            '🌀'
-        ));
-    }
-
-    // Global normalized baseline across ALL levels (local history)
-    if (comparison?.globalNormalized?.available && comparison.globalNormalized.efficiency && comparison.globalNormalized.baselineStats) {
-        const gs = comparison.globalNormalized.baselineStats;
-        const ge = comparison.globalNormalized.efficiency;
-
-        // Spacer
-        const spacer = document.createElement('div');
-        spacer.style.cssText = `grid-column: 1 / -1; height: 8px;`;
-        grid.appendChild(spacer);
-
-        const allMB = { ...ge.movesPerBlock.comparison, scope: 'all', sampleSize: comparison.globalNormalized.sampleSize };
-        const allTM = { ...ge.timePerMove.comparison, scope: 'all', sampleSize: comparison.globalNormalized.sampleSize };
-        const allBS = { ...ge.blocksPerSpin.comparison, scope: 'all', sampleSize: comparison.globalNormalized.sampleSize };
-
-        grid.appendChild(createComparisonCard(
-            'All M/B',
-            formatRatio(ge.movesPerBlock.value),
-            formatRatio(gs.medianMovesPerBlock ?? gs.avgMovesPerBlock),
-            allMB,
-            '🌐'
-        ));
-        grid.appendChild(createComparisonCard(
-            'All T/M',
-            formatSeconds(ge.timePerMove.value),
-            formatSeconds(gs.medianTimePerMove ?? gs.avgTimePerMove),
-            allTM,
-            '🌐'
-        ));
-        grid.appendChild(createComparisonCard(
-            'All B/S',
-            formatRatio(ge.blocksPerSpin.value),
-            formatRatio(gs.medianBlocksPerSpin ?? gs.avgBlocksPerSpin),
-            allBS,
-            '🌐'
-        ));
-    }
-
-    // Overall rating badge
-    if (comparison.overall) {
-        const overallBadge = createOverallBadge(comparison.overall);
-        if (title && overallBadge) title.appendChild(overallBadge);
-    }
+function createTimeChallengeCard(label, value, icon) {
+    const card = document.createElement('div');
+    card.style.cssText = `
+        padding: 14px;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+    `;
+    
+    const iconEl = document.createElement('div');
+    iconEl.textContent = icon;
+    iconEl.style.cssText = `font-size: 20px;`;
+    
+    const labelEl = document.createElement('div');
+    labelEl.textContent = label;
+    labelEl.style.cssText = `
+        font-size: 11px;
+        font-weight: 700;
+        color: rgba(255, 255, 255, 0.7);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    `;
+    
+    const valueEl = document.createElement('div');
+    valueEl.textContent = value;
+    valueEl.style.cssText = `
+        font-size: 18px;
+        font-weight: 900;
+        color: rgba(255, 255, 255, 0.95);
+    `;
+    
+    card.appendChild(iconEl);
+    card.appendChild(labelEl);
+    card.appendChild(valueEl);
+    return card;
 }
 
 function createBadgePill(meta) {
