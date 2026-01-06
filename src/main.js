@@ -571,6 +571,22 @@ let removeModeActive = false;
 // Random spin counter (3 spins per game)
 let remainingSpins = 3;
 
+// Game mode (persisted)
+const GAME_MODE_KEY = 'jarrows_game_mode'; // 'free_flow' | 'time_challenge'
+const TIME_RULES_SEEN_KEY = 'jarrows_time_rules_seen';
+const MODE_FREE_FLOW = 'free_flow';
+const MODE_TIME_CHALLENGE = 'time_challenge';
+
+let gameMode = MODE_FREE_FLOW;
+
+// Time Challenge (survival) state
+const TIME_CHALLENGE_START_SECONDS = 30;
+let timeLeftSec = TIME_CHALLENGE_START_SECONDS; // carryover across levels in this mode
+let timeChallengeActive = false;
+let timeChallengeRemovals = 0; // blocks removed in current run
+let timeFreezeReasons = new Set();
+let timeUpShown = false;
+
 // Progress persistence using localStorage
 const STORAGE_KEY = 'jarrows_progress';
 const STORAGE_HIGHEST_LEVEL_KEY = 'jarrows_highest_level';
@@ -603,6 +619,250 @@ function resetAllProgress() {
         console.warn('Failed to reset progress:', e);
     }
     return false; // No reset needed
+}
+
+function isTimeChallengeMode() {
+    return gameMode === MODE_TIME_CHALLENGE;
+}
+
+function setBodyModeClass() {
+    try {
+        document.body.classList.toggle('mode-time-challenge', isTimeChallengeMode());
+    } catch {
+        // ignore
+    }
+}
+
+function loadGameMode() {
+    try {
+        const saved = localStorage.getItem(GAME_MODE_KEY);
+        return saved === MODE_TIME_CHALLENGE ? MODE_TIME_CHALLENGE : MODE_FREE_FLOW;
+    } catch {
+        return MODE_FREE_FLOW;
+    }
+}
+
+function saveGameMode(mode) {
+    try {
+        localStorage.setItem(GAME_MODE_KEY, mode);
+    } catch {
+        // ignore
+    }
+}
+
+function setTimeFrozen(reason, frozen) {
+    if (!reason) return;
+    if (frozen) timeFreezeReasons.add(reason);
+    else timeFreezeReasons.delete(reason);
+}
+
+function isTimeFrozen() {
+    return timeFreezeReasons.size > 0;
+}
+
+function flashTimerDelta(deltaSeconds) {
+    const timerEl = document.getElementById('timer-value');
+    const deltaEl = document.getElementById('timer-delta');
+    if (!timerEl || !deltaEl) return;
+
+    const deltaInt = Math.trunc(deltaSeconds);
+    if (deltaInt === 0) return;
+
+    const isGain = deltaInt > 0;
+    const klass = isGain ? 'timer-gain' : 'timer-loss';
+
+    timerEl.classList.remove('timer-gain', 'timer-loss');
+    // Force reflow to restart animation
+    void timerEl.offsetWidth;
+    timerEl.classList.add(klass);
+
+    deltaEl.textContent = (isGain ? `+${deltaInt}` : `${deltaInt}`) + 's';
+    deltaEl.style.color = isGain ? '#7CFF9A' : '#FF7C7C';
+    deltaEl.classList.remove('show');
+    void deltaEl.offsetWidth;
+    deltaEl.classList.add('show');
+    window.setTimeout(() => deltaEl.classList.remove('show'), 720);
+}
+
+function showModeSelectModal() {
+    const modal = document.getElementById('mode-select-modal');
+    const freeBtn = document.getElementById('mode-pick-free');
+    const timeBtn = document.getElementById('mode-pick-time');
+    if (!modal || !freeBtn || !timeBtn) return Promise.resolve(MODE_FREE_FLOW);
+
+    setTimeFrozen('mode_select', true);
+    modal.style.display = 'flex';
+
+    return new Promise((resolve) => {
+        const cleanup = (mode) => {
+            modal.style.display = 'none';
+            freeBtn.removeEventListener('click', onFree);
+            timeBtn.removeEventListener('click', onTime);
+            setTimeFrozen('mode_select', false);
+            resolve(mode);
+        };
+        const onFree = () => cleanup(MODE_FREE_FLOW);
+        const onTime = () => cleanup(MODE_TIME_CHALLENGE);
+        freeBtn.addEventListener('click', onFree);
+        timeBtn.addEventListener('click', onTime);
+    });
+}
+
+function showTimeRulesModalIfNeeded() {
+    const modal = document.getElementById('time-rules-modal');
+    const okBtn = document.getElementById('time-rules-ok');
+    if (!modal || !okBtn) return;
+
+    let alreadySeen = false;
+    try {
+        alreadySeen = localStorage.getItem(TIME_RULES_SEEN_KEY) === '1';
+    } catch {
+        alreadySeen = false;
+    }
+    if (alreadySeen) return;
+
+    setTimeFrozen('time_rules', true);
+    modal.style.display = 'flex';
+
+    const onOk = () => {
+        modal.style.display = 'none';
+        okBtn.removeEventListener('click', onOk);
+        setTimeFrozen('time_rules', false);
+        try {
+            localStorage.setItem(TIME_RULES_SEEN_KEY, '1');
+        } catch {
+            // ignore
+        }
+    };
+    okBtn.addEventListener('click', onOk);
+}
+
+async function ensureModeSelected({ forcePrompt = false } = {}) {
+    let mode = loadGameMode();
+
+    let hasKey = true;
+    try {
+        hasKey = localStorage.getItem(GAME_MODE_KEY) !== null;
+    } catch {
+        hasKey = true;
+    }
+
+    if (forcePrompt || !hasKey) {
+        mode = await showModeSelectModal();
+        saveGameMode(mode);
+    }
+
+    gameMode = mode;
+    setBodyModeClass();
+
+    if (isTimeChallengeMode()) {
+        showTimeRulesModalIfNeeded();
+    }
+
+    // Expose a simple hook for any UI callers
+    if (typeof window !== 'undefined') {
+        window.jarrowsGameMode = gameMode;
+    }
+
+    return gameMode;
+}
+
+function timeChallengeResetRun() {
+    timeLeftSec = TIME_CHALLENGE_START_SECONDS;
+    timeChallengeRemovals = 0;
+    timeChallengeActive = true;
+    timeUpShown = false;
+    setTimeFrozen('time_up', false);
+}
+
+function timeChallengeGetBaseSecondsForRemovalNumber(n) {
+    // Survival table:
+    // 1–25: +4s, 26–75: +3s, 76–150: +2s, 151–250: +1s, 251+: +0s
+    if (n <= 25) return 4;
+    if (n <= 75) return 3;
+    if (n <= 150) return 2;
+    if (n <= 250) return 1;
+    return 0;
+}
+
+function timeChallengeGetColorBonusSeconds(blockLength) {
+    // Block.js uses [Red, Teal, Yellow] mapping by length (1,2,3).
+    // We treat any length >= 3 as Yellow for time bonus.
+    if (blockLength >= 3) return 3; // Yellow
+    if (blockLength === 2) return 2; // Teal
+    return 1; // Red (default)
+}
+
+function timeChallengeAwardForBlockRemoved(blockLength) {
+    if (!isTimeChallengeMode() || !timeChallengeActive || timeUpShown) return;
+    timeChallengeRemovals += 1;
+    const base = timeChallengeGetBaseSecondsForRemovalNumber(timeChallengeRemovals);
+    const bonus = timeChallengeGetColorBonusSeconds(blockLength);
+    const gained = base + bonus;
+    timeLeftSec += gained;
+    flashTimerDelta(gained);
+    updateTimerDisplay();
+}
+
+function timeChallengeApplySpinCost() {
+    if (!isTimeChallengeMode() || !timeChallengeActive || timeUpShown) return;
+    // Cost: 1/3 of remaining time.
+    const before = timeLeftSec;
+    timeLeftSec = timeLeftSec * (2 / 3);
+    const delta = Math.trunc(timeLeftSec) - Math.trunc(before);
+    // Prefer to show a clear negative number of seconds.
+    const spent = Math.max(1, Math.ceil(before / 3));
+    flashTimerDelta(-spent);
+    updateTimerDisplay();
+}
+
+function showPauseModal() {
+    const modal = document.getElementById('pause-modal');
+    if (!modal) return;
+    setTimeFrozen('user_pause', true);
+    modal.style.display = 'flex';
+
+    // Pause render loop too (and cancel any pending raf/timers).
+    isPaused = true;
+    if (rafId !== null) cancelAnimationFrame(rafId);
+    rafId = null;
+    if (frameCapTimeoutId !== null) {
+        clearTimeout(frameCapTimeoutId);
+        frameCapTimeoutId = null;
+    }
+}
+
+function hidePauseModalAndResume() {
+    const modal = document.getElementById('pause-modal');
+    if (!modal) return;
+    modal.style.display = 'none';
+    setTimeFrozen('user_pause', false);
+
+    // Resume render loop
+    isPaused = false;
+    lastTime = performance.now();
+    lastFrameTick = lastTime;
+    scheduleNextFrame();
+}
+
+function showTimeUpModal() {
+    const modal = document.getElementById('time-up-modal');
+    const summary = document.getElementById('time-up-summary');
+    if (!modal || !summary) return;
+    setTimeFrozen('time_up', true);
+    timeUpShown = true;
+
+    const stage = Math.floor(timeChallengeRemovals / 25);
+    summary.innerHTML = `You reached <b>Stage ${stage}</b> and removed <b>${timeChallengeRemovals}</b> blocks.`;
+    modal.style.display = 'flex';
+}
+
+async function resetTimeChallengeRunFromTimeUp() {
+    const modal = document.getElementById('time-up-modal');
+    if (modal) modal.style.display = 'none';
+    setTimeFrozen('time_up', false);
+    timeChallengeResetRun();
+    await startNewGame(); // starts from level 0
 }
 
 // Save current progress
@@ -1905,8 +2165,12 @@ async function generateSolvablePuzzle(level = 1) {
     isGeneratingLevel = true;
     levelCompleteShown = false; // Reset level complete flag for new level
     
-    // Reset spin counter for new level
-    remainingSpins = 3;
+    // Reset spin counter for new level (Free Flow only; Time Challenge is unlimited spins)
+    if (!isTimeChallengeMode()) {
+        remainingSpins = 3;
+    } else {
+        remainingSpins = Number.POSITIVE_INFINITY;
+    }
     updateSpinCounterDisplay();
     
     // Ensure randomization by consuming some random numbers at start
@@ -2231,7 +2495,14 @@ function resetTimer() {
 function updateTimerDisplay() {
     const timerValueElement = document.getElementById('timer-value');
     if (!timerValueElement) return;
-    
+
+    if (isTimeChallengeMode() && timeChallengeActive) {
+        // Countdown: show ceil so players don't feel robbed at 0.1s remaining.
+        const displaySeconds = Math.max(0, Math.ceil(timeLeftSec));
+        timerValueElement.textContent = formatTime(displaySeconds);
+        return;
+    }
+
     let elapsedSeconds = timerPausedTime;
     
     if (isTimerRunning && timerStartTime !== null) {
@@ -2568,6 +2839,8 @@ function removeBlockWithAnimation(block) {
                 blocks.splice(index, 1);
                 // Track block removal for stats
                 trackBlockRemoved();
+                // Time Challenge: gaining time is based on block removals (efficient moves)
+                timeChallengeAwardForBlockRemoved(this.length);
             }
             // Keep move history entries even if a block is removed.
             // Undo can resurrect the last-removed block back onto the board.
@@ -2585,7 +2858,14 @@ function removeBlockWithAnimation(block) {
 
 // Restart current level
 async function restartCurrentLevel() {
-    // Reset spin counter
+    // In Time Challenge, "restart level" would be an exploit (it would freeze drain during generation).
+    // Treat it as restarting the run instead.
+    if (isTimeChallengeMode()) {
+        await startNewGame();
+        return;
+    }
+
+    // Reset spin counter (Free Flow)
     remainingSpins = 3;
     updateSpinCounterDisplay();
     if (isGeneratingLevel) return;
@@ -2614,11 +2894,13 @@ async function startNewGame() {
     totalMoves = 0;
     
     // Reset spin counter
-    remainingSpins = 3;
+    remainingSpins = isTimeChallengeMode() ? Number.POSITIVE_INFINITY : 3;
     updateSpinCounterDisplay();
     
-    // Clear saved progress
-    clearProgress();
+    // Clear saved progress only for Free Flow (Time Challenge is a run mode)
+    if (!isTimeChallengeMode()) {
+        clearProgress();
+    }
     
     // Hide level complete modal if visible
     hideLevelCompleteModal();
@@ -2647,12 +2929,22 @@ function showLevelCompleteModal(completedLevel) {
             levelNumber.textContent = String(completedLevel);
         }
         
-        // Get elapsed time
-        let elapsedSeconds = timerPausedTime;
-        if (isTimerRunning && timerStartTime !== null) {
-            elapsedSeconds += (performance.now() / 1000) - timerStartTime;
+        // Pause Time Challenge while modal is open
+        if (isTimeChallengeMode() && timeChallengeActive) {
+            setTimeFrozen('level_complete', true);
         }
-        const timeString = formatTime(elapsedSeconds);
+
+        // Get elapsed time (Free Flow) or remaining time (Time Challenge)
+        let timeString = '00:00';
+        if (isTimeChallengeMode() && timeChallengeActive) {
+            timeString = formatTime(Math.max(0, Math.ceil(timeLeftSec)));
+        } else {
+            let elapsedSeconds = timerPausedTime;
+            if (isTimerRunning && timerStartTime !== null) {
+                elapsedSeconds += (performance.now() / 1000) - timerStartTime;
+            }
+            timeString = formatTime(elapsedSeconds);
+        }
         if (timeElement) {
             timeElement.textContent = timeString;
         }
@@ -2677,6 +2969,9 @@ function hideLevelCompleteModal() {
     if (modal) {
         modal.style.display = 'none';
     }
+    if (isTimeChallengeMode() && timeChallengeActive) {
+        setTimeFrozen('level_complete', false);
+    }
 }
 
 // Next level button handler
@@ -2687,7 +2982,8 @@ if (nextLevelButton) {
         currentLevel++;
         moveHistory = []; // Clear move history for new level
         totalMoves = 0; // Reset move counter
-        saveProgress(); // Save progress when advancing to next level
+        // Save progress only for Free Flow
+        if (!isTimeChallengeMode()) saveProgress();
         await generateSolvablePuzzle(currentLevel);
     });
 }
@@ -2856,6 +3152,19 @@ if (restartLevelButton) {
 const newGameButton = document.getElementById('new-game-button');
 if (newGameButton) {
     newGameButton.addEventListener('click', async () => {
+        // Per requirement: New Game should re-prompt mode selection (user can switch modes easily).
+        await ensureModeSelected({ forcePrompt: true });
+        if (isTimeChallengeMode()) {
+            timeChallengeResetRun();
+            remainingSpins = Number.POSITIVE_INFINITY;
+        } else {
+            timeChallengeActive = false;
+            timeFreezeReasons = new Set();
+            timeUpShown = false;
+            remainingSpins = 3;
+        }
+        updateSpinCounterDisplay();
+        updateTimerDisplay();
         await startNewGame();
         updateUndoButtonState();
     });
@@ -2877,12 +3186,17 @@ if (undoButton) {
 function updateSpinCounterDisplay() {
     const spinCounter = document.getElementById('spin-counter');
     if (spinCounter) {
-        spinCounter.textContent = remainingSpins.toString();
-}
+        if (isTimeChallengeMode()) {
+            // Unlimited spins in Time Challenge
+            spinCounter.textContent = '∞';
+        } else {
+            spinCounter.textContent = remainingSpins.toString();
+        }
+    }
 
-const diceButton = document.getElementById('dice-button');
-if (diceButton) {
-        if (remainingSpins === 0) {
+    const diceButton = document.getElementById('dice-button');
+    if (diceButton) {
+        if (!isTimeChallengeMode() && remainingSpins === 0) {
             diceButton.disabled = true;
             diceButton.style.opacity = '0.5';
             diceButton.style.cursor = 'not-allowed';
@@ -2938,8 +3252,13 @@ function autoSpinAfterSpawn() {
 
 // Spin random blocks (vertical and single-cell blocks) to break interlock situations
 function spinRandomBlocks() {
+    // Disallow spin while user-paused or in modal freezes (prevents weird UX and free actions)
+    if (isTimeChallengeMode() && isTimeFrozen()) {
+        return;
+    }
+
     // Check if spins are available
-    if (remainingSpins <= 0) {
+    if (!isTimeChallengeMode() && remainingSpins <= 0) {
         console.log('No spins remaining');
         return;
     }
@@ -2963,9 +3282,14 @@ function spinRandomBlocks() {
         return; // No eligible blocks to spin
     }
     
-    // Decrement spin counter
-    remainingSpins--;
-    updateSpinCounterDisplay();
+    // Time Challenge: spin is a "purchase" that costs 1/3 of remaining time (unlimited spins).
+    if (isTimeChallengeMode() && timeChallengeActive && !timeUpShown) {
+        timeChallengeApplySpinCost();
+    } else {
+        // Free Flow: Decrement spin counter
+        remainingSpins--;
+        updateSpinCounterDisplay();
+    }
     
     // Track spin for stats
     trackSpin();
@@ -2992,6 +3316,60 @@ function spinRandomBlocks() {
                 console.error('Error spinning block:', error);
             }
         }, delay);
+    });
+}
+
+// Pause button + pause modal (applies to both modes; timer freezes in Time Challenge)
+const pauseButton = document.getElementById('pause-button');
+if (pauseButton) {
+    pauseButton.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        showPauseModal();
+    });
+}
+
+const pauseResumeButton = document.getElementById('pause-resume');
+if (pauseResumeButton) {
+    pauseResumeButton.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        hidePauseModalAndResume();
+    });
+}
+
+// Settings: MODE toggle opens the mode picker. Changing mode starts a fresh run/game.
+const modeToggleButton = document.getElementById('mode-toggle');
+if (modeToggleButton) {
+    modeToggleButton.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const prevMode = gameMode;
+        await ensureModeSelected({ forcePrompt: true });
+        if (gameMode !== prevMode) {
+            if (isTimeChallengeMode()) {
+                timeChallengeResetRun();
+                remainingSpins = Number.POSITIVE_INFINITY;
+            } else {
+                timeChallengeActive = false;
+                timeFreezeReasons = new Set();
+                timeUpShown = false;
+                remainingSpins = 3;
+            }
+            updateSpinCounterDisplay();
+            updateTimerDisplay();
+            await startNewGame();
+        }
+    });
+}
+
+// Time Up modal button: start a new Time Challenge run
+const timeUpNewGameBtn = document.getElementById('time-up-new-game');
+if (timeUpNewGameBtn) {
+    timeUpNewGameBtn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        await resetTimeChallengeRunFromTimeUp();
     });
 }
 
@@ -3341,9 +3719,26 @@ if (typeof window !== 'undefined') {
 calculateInitialCameraPosition();
 updateCameraPosition(); // Position camera immediately to avoid default (0,0,0) view on first frame
 
-// Initialize game - load saved progress or start at level 0
-currentLevel = loadProgress();
-generateSolvablePuzzle(currentLevel);
+// Initialize game (mode selection before spawning the first puzzle)
+(async function boot() {
+    await ensureModeSelected({ forcePrompt: false });
+
+    if (isTimeChallengeMode()) {
+        // Time Challenge is a run mode: always start at level 0, fresh 30s countdown.
+        currentLevel = 0;
+        timeChallengeResetRun();
+        remainingSpins = Number.POSITIVE_INFINITY;
+    } else {
+        // Free Flow uses saved progress.
+        currentLevel = loadProgress();
+        timeChallengeActive = false;
+        remainingSpins = 3;
+    }
+
+    updateSpinCounterDisplay();
+    updateTimerDisplay();
+    await generateSolvablePuzzle(currentLevel);
+})();
 
 // Initialize button states
 updateUndoButtonState();
@@ -4418,6 +4813,22 @@ function animate() {
 
     const deltaTime = (currentTime - lastTime) / 1000;
     lastTime = currentTime;
+
+    // Time Challenge countdown (survival)
+    // - drains in real time (1.0x)
+    // - pauses during user pause, rules/modal overlays, level-complete modal, and background tab
+    // - does NOT drain during level generation (fairness)
+    if (isTimeChallengeMode() && timeChallengeActive && !timeUpShown) {
+        const canDrain = !isTimeFrozen() && !isGeneratingLevel && !isPaused;
+        if (canDrain) {
+            timeLeftSec -= deltaTime;
+            if (timeLeftSec <= 0) {
+                timeLeftSec = 0;
+                updateTimerDisplay();
+                showTimeUpModal();
+            }
+        }
+    }
     
     // Update tower group position
     _towerGroupWorldCenter.copy(towerCenter).add(towerPositionOffset);
@@ -4732,6 +5143,8 @@ window.testBlockCounts = async function(maxLevel = 5) {
 // Pause render loop when tab is backgrounded / screen locked (big battery win on mobile)
 document.addEventListener('visibilitychange', () => {
     isPaused = document.hidden;
+    // Time Challenge should pause when app is backgrounded.
+    setTimeFrozen('hidden', document.hidden);
     if (isPaused) {
         if (rafId !== null) cancelAnimationFrame(rafId);
         rafId = null;

@@ -93,6 +93,70 @@
             font-weight: 700;
             text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
         }
+
+        /* Time Challenge: make timer the primary HUD element */
+        body.mode-time-challenge #stats-bar {
+            left: 50%;
+            transform: translateX(-50%);
+            top: 10px;
+            padding: 10px 14px;
+            gap: 10px;
+        }
+
+        body.mode-time-challenge #stats-bar .stats-item:not(#timer-item),
+        body.mode-time-challenge #stats-bar .stats-separator {
+            display: none !important;
+        }
+
+        body.mode-time-challenge #timer-label {
+            display: none;
+        }
+
+        #timer-value {
+            font-variant-numeric: tabular-nums;
+            letter-spacing: 0.6px;
+        }
+
+        body.mode-time-challenge #timer-value {
+            font-size: 34px;
+            font-weight: 900;
+            letter-spacing: 1px;
+        }
+
+        #timer-delta {
+            margin-left: 10px;
+            font-size: 16px;
+            font-weight: 900;
+            opacity: 0;
+            transform: translateY(2px);
+            pointer-events: none;
+            user-select: none;
+            -webkit-user-select: none;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+        }
+
+        #timer-value.timer-gain { animation: timerGain 420ms ease-out; }
+        #timer-value.timer-loss { animation: timerLoss 520ms ease-out; }
+        #timer-delta.show { animation: timerDelta 700ms ease-out; }
+
+        @keyframes timerGain {
+            0% { transform: scale(1); color: white; }
+            35% { transform: scale(1.12); color: #7CFF9A; }
+            100% { transform: scale(1); color: white; }
+        }
+
+        @keyframes timerLoss {
+            0% { transform: scale(1); color: white; }
+            35% { transform: scale(1.12); color: #FF7C7C; }
+            70% { transform: scale(0.98); }
+            100% { transform: scale(1); color: white; }
+        }
+
+        @keyframes timerDelta {
+            0% { opacity: 0; transform: translateY(6px); }
+            15% { opacity: 1; transform: translateY(0); }
+            100% { opacity: 0; transform: translateY(-6px); }
+        }
         
         .stats-separator {
             font-size: 12px;
@@ -767,9 +831,10 @@
             <span class="stats-value" id="block-value">0</span>
         </span>
         <span class="stats-separator">|</span>
-        <span class="stats-item">
-            <span class="stats-label">Timer:</span>
+        <span class="stats-item" id="timer-item">
+            <span class="stats-label" id="timer-label">Timer:</span>
             <span class="stats-value" id="timer-value">00:00</span>
+            <span id="timer-delta" aria-hidden="true"></span>
         </span>
     </div>
     
@@ -840,6 +905,9 @@
             <div>NEW</div>
             <div>GAME</div>
         </button>
+            <button class="game-button" id="pause-button" title="Pause" style="display:flex; align-items:center; justify-content:center;">
+                <span style="font-size: 16px; font-weight: 900; line-height: 1;">⏸</span>
+            </button>
             <button class="game-button" id="dice-button" title="Random" style="position: relative; display: flex; align-items: center; gap: 6px;">
                 <svg id="dice-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 20px; height: 20px; flex-shrink: 0;">
                     <!-- Refresh/Reload Icon -->
@@ -885,8 +953,8 @@
                 <button class="toggle-icon" id="quality-toggle" title="Quality Preset">
                     <span id="quality-label">BAL</span>
                 </button>
-                <button class="toggle-icon" id="profile-toggle" title="Profile">
-                    <span style="font-size: 11px; font-weight: 900; letter-spacing: 0.8px;">PRO</span>
+                <button class="toggle-icon" id="mode-toggle" title="Game Mode">
+                    <span style="font-size: 11px; font-weight: 900; letter-spacing: 0.8px;">MODE</span>
                 </button>
                 <!-- Framing control removed -->
                 <button class="toggle-icon" id="ver-toggle" title="Show build version">
@@ -935,6 +1003,60 @@
             <div style="display:flex; gap:10px; justify-content:flex-end; margin-top: 12px;">
                 <button id="ver-modal-copy" class="game-button" style="padding: 10px 14px;">Copy</button>
                 <button id="ver-modal-ok" class="game-button" style="padding: 10px 14px;">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mode Select Modal (one-time unless user triggers via Settings/New Game) -->
+    <div id="mode-select-modal" style="display:none; position: fixed; inset: 0; z-index: 3300; background: rgba(0,0,0,0.62); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); align-items: center; justify-content: center;">
+        <div style="max-width: 520px; width: calc(100vw - 32px); margin: 16px; padding: 18px; border-radius: 14px; background: rgba(0,0,0,0.62); border: 1px solid rgba(255,255,255,0.22); color: white; box-shadow: 0 20px 60px rgba(0,0,0,0.35); font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;">
+            <div style="font-size: 16px; font-weight: 900; margin-bottom: 8px;">Choose Mode</div>
+            <div style="font-size: 13px; line-height: 1.38; opacity: 0.95; margin-bottom: 14px;">
+                You can change this later via <b>Settings → MODE</b> or by starting a <b>New Game</b>.
+            </div>
+            <div style="display:flex; gap:10px; flex-wrap: wrap;">
+                <button id="mode-pick-free" class="game-button" style="padding: 12px 14px; flex:1;">Free Flow</button>
+                <button id="mode-pick-time" class="game-button" style="padding: 12px 14px; flex:1;">Time Challenge</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Time Challenge Rules Modal -->
+    <div id="time-rules-modal" style="display:none; position: fixed; inset: 0; z-index: 3400; background: rgba(0,0,0,0.62); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); align-items: center; justify-content: center;">
+        <div style="max-width: 560px; width: calc(100vw - 32px); margin: 16px; padding: 18px; border-radius: 14px; background: rgba(0,0,0,0.68); border: 1px solid rgba(255,255,255,0.22); color: white; box-shadow: 0 20px 60px rgba(0,0,0,0.35); font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;">
+            <div style="font-size: 16px; font-weight: 900; margin-bottom: 8px;">Time Challenge</div>
+            <div style="font-size: 13px; line-height: 1.4; opacity: 0.95;">
+                <ul style="margin: 10px 0 10px 18px;">
+                    <li>Start with <b>30s</b>. Timer drains in real time.</li>
+                    <li>Remove blocks to gain time: <b>Yellow +3s</b>, <b>Teal +2s</b>, <b>Red +1s</b> (plus base time).</li>
+                    <li><b>Spin costs 1/3</b> of your remaining time.</li>
+                    <li>Win by removing <b>all blocks</b>. Don’t let the timer hit zero.</li>
+                </ul>
+            </div>
+            <div style="display:flex; gap:10px; justify-content:flex-end; margin-top: 12px;">
+                <button id="time-rules-ok" class="game-button" style="padding: 10px 14px;">Start</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pause Modal -->
+    <div id="pause-modal" style="display:none; position: fixed; inset: 0; z-index: 3500; background: rgba(0,0,0,0.62); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); align-items: center; justify-content: center;">
+        <div style="max-width: 520px; width: calc(100vw - 32px); margin: 16px; padding: 18px; border-radius: 14px; background: rgba(0,0,0,0.68); border: 1px solid rgba(255,255,255,0.22); color: white; box-shadow: 0 20px 60px rgba(0,0,0,0.35); font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;">
+            <div style="font-size: 16px; font-weight: 900; margin-bottom: 8px;">Paused</div>
+            <div style="font-size: 13px; line-height: 1.4; opacity: 0.95;">Timer is paused. Tap resume to continue.</div>
+            <div style="display:flex; gap:10px; justify-content:flex-end; margin-top: 12px;">
+                <button id="pause-resume" class="game-button" style="padding: 10px 14px;">Resume</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Time Up Modal -->
+    <div id="time-up-modal" style="display:none; position: fixed; inset: 0; z-index: 3600; background: rgba(0,0,0,0.70); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); align-items: center; justify-content: center;">
+        <div style="max-width: 560px; width: calc(100vw - 32px); margin: 16px; padding: 18px; border-radius: 14px; background: rgba(0,0,0,0.78); border: 1px solid rgba(255,255,255,0.22); color: white; box-shadow: 0 20px 60px rgba(0,0,0,0.45); font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;">
+            <div style="font-size: 16px; font-weight: 900; margin-bottom: 8px;">Time’s Up</div>
+            <div id="time-up-summary" style="font-size: 13px; line-height: 1.4; opacity: 0.95;">—</div>
+            <div style="display:flex; gap:10px; justify-content:flex-end; margin-top: 12px;">
+                <button id="time-up-new-game" class="game-button" style="padding: 10px 14px;">New Run</button>
             </div>
         </div>
     </div>
