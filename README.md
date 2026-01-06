@@ -64,6 +64,18 @@ npm run build
 
 ## Releases
 
+### v4.6.0 - Time Challenge Mode
+- **Tree**: https://github.com/ozlphrt/Jarrows/tree/v4.6.0
+- **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v4.6.0
+- **Live**: https://ozlphrt.github.io/Jarrows/
+- Added Time Challenge game mode with countdown timer
+- Timer calculates initial time based on actual block lengths (1s red, 2s teal, 3s yellow)
+- Time gain animations for block removals and spin cost (1/3 of remaining time)
+- Time carryover between levels with residual time tracking
+- Added Restart Level and New Run options in Time Up modal
+- Level display next to timer with proper alignment (desktop and mobile)
+- Simplified stats modal to show only Time Collected and Time Carried Over (Level)
+
 ### v4.5.13 - Extended Local-Only Stats
 - **Tree**: https://github.com/ozlphrt/Jarrows/tree/v4.5.13
 - **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v4.5.13
