@@ -324,6 +324,9 @@ const MAX_ELEVATION = Math.PI / 2 - 0.1;
 const ZOOM_PADDING = 2;
 const SPAWN_ZOOM_PADDING = 4; // Extra padding during spawn to show all blocks
 const SPAWN_ZOOM_MULTIPLIER = 1.3; // Additional multiplier for spawn zoom
+// During generation, computing a world-space bounding box by expanding each block object
+// (updateMatrixWorld + expandByObject) is expensive. Throttle it to avoid long rAF frames.
+const SPAWN_ZOOM_UPDATE_INTERVAL_MS = 120;
 const DRAG_SENSITIVITY = 0.0025; // Slightly increased for more responsive rotation
 const PAN_SENSITIVITY = 0.01;
 // Mobile touch rotation sensitivity (higher for faster rotation on mobile)
@@ -373,6 +376,10 @@ function calculateInitialCameraPosition() {
 const _effectiveTowerCenter = new THREE.Vector3();
 const _lookAtOffset = new THREE.Vector3();
 const _lookAtTarget = new THREE.Vector3();
+const _towerGroupWorldCenter = new THREE.Vector3();
+const _spawnZoomBox = new THREE.Box3();
+const _spawnZoomSize = new THREE.Vector3();
+let lastSpawnZoomUpdateMs = 0;
 
 // Camera framing (tilt) via look-at offset in WORLD space.
 // Spaces:
@@ -4413,35 +4420,40 @@ function animate() {
     lastTime = currentTime;
     
     // Update tower group position
-    towerGroup.position.copy(towerCenter.clone().add(towerPositionOffset));
+    _towerGroupWorldCenter.copy(towerCenter).add(towerPositionOffset);
+    towerGroup.position.copy(_towerGroupWorldCenter);
     towerGroup.rotation.set(0, 0, 0); // Always locked to zero
     
     // Dynamic zoom during spawn
     if (isGeneratingLevel && blocks.length > 0) {
-        // Calculate bounding box of all blocks
-        const box = new THREE.Box3();
-        for (const block of blocks) {
-            block.group.updateMatrixWorld(true);
-            box.expandByObject(block.group);
+        // Throttle expensive bounding-box calculation to avoid long rAF frames.
+        if ((currentTime - lastSpawnZoomUpdateMs) > SPAWN_ZOOM_UPDATE_INTERVAL_MS) {
+            lastSpawnZoomUpdateMs = currentTime;
+
+            _spawnZoomBox.makeEmpty();
+            for (const block of blocks) {
+                if (!block || !block.group) continue;
+                block.group.updateMatrixWorld(true);
+                _spawnZoomBox.expandByObject(block.group);
+            }
+
+            const size = _spawnZoomBox.getSize(_spawnZoomSize);
+
+            // Calculate required distance to fit all blocks
+            const fov = camera.fov * (Math.PI / 180);
+            const aspect = camera.aspect;
+
+            // Calculate distance needed for height (with extra padding for spawn)
+            const heightDistance = (size.y + SPAWN_ZOOM_PADDING) / (2 * Math.tan(fov / 2));
+
+            // Calculate distance needed for width/depth (with extra padding for spawn)
+            const baseDiagonal = Math.sqrt(size.x * size.x + size.z * size.z);
+            const widthDistance = (baseDiagonal + SPAWN_ZOOM_PADDING) / (2 * Math.tan(fov / 2) * aspect);
+
+            // Use the larger distance and apply multiplier for extra zoom out
+            const requiredDistance = Math.max(heightDistance, widthDistance) * SPAWN_ZOOM_MULTIPLIER;
+            targetRadius = Math.max(MIN_RADIUS, Math.min(MAX_RADIUS, requiredDistance));
         }
-        
-        const size = box.getSize(new THREE.Vector3());
-        const center = box.getCenter(new THREE.Vector3());
-        
-        // Calculate required distance to fit all blocks
-        const fov = camera.fov * (Math.PI / 180);
-        const aspect = camera.aspect;
-        
-        // Calculate distance needed for height (with extra padding for spawn)
-        const heightDistance = (size.y + SPAWN_ZOOM_PADDING) / (2 * Math.tan(fov / 2));
-        
-        // Calculate distance needed for width/depth (with extra padding for spawn)
-        const baseDiagonal = Math.sqrt(size.x * size.x + size.z * size.z);
-        const widthDistance = (baseDiagonal + SPAWN_ZOOM_PADDING) / (2 * Math.tan(fov / 2) * aspect);
-        
-        // Use the larger distance and apply multiplier for extra zoom out
-        const requiredDistance = Math.max(heightDistance, widthDistance) * SPAWN_ZOOM_MULTIPLIER;
-        targetRadius = Math.max(MIN_RADIUS, Math.min(MAX_RADIUS, requiredDistance));
     }
     
     // Smooth interpolation with heavier feel (momentum/inertia)
@@ -4466,9 +4478,22 @@ function animate() {
     // Determine if we need expensive shadow updates this frame
     const isBatteryQuality = qualityPreset === 'battery';
     const interacting = isDraggingCamera || (touchState && touchState.isActive);
-    const hasFallingBlocks = blocks.some(block => block.isFalling);
+    // Avoid multiple full-array scans per frame; compute flags in one pass.
+    let hasFallingBlocks = false;
+    let hasActiveAnimations = false;
+    let hasPhysicsBlocks = false;
+    for (const block of blocks) {
+        if (!block) continue;
+        if (block.isFalling) {
+            hasFallingBlocks = true;
+            if (block.physicsBody) hasPhysicsBlocks = true;
+        }
+        if (block.isAnimating || (block.removalStartTime && !block.isRemoved)) {
+            hasActiveAnimations = true;
+        }
+        if (hasFallingBlocks && hasActiveAnimations && hasPhysicsBlocks) break;
+    }
     const cameraStillMoving = (dr >= SNAP_EPS) || (da >= SNAP_EPS) || (de >= SNAP_EPS);
-    const hasActiveAnimations = blocks.some(block => (block.isAnimating) || (block.removalStartTime && !block.isRemoved));
     const isActiveFrame = interacting || hasFallingBlocks || cameraStillMoving || hasActiveAnimations || isGeneratingLevel;
     nextFrameDelayMs = isActiveFrame ? ACTIVE_FRAME_MS : IDLE_FRAME_MS;
     
@@ -4491,7 +4516,7 @@ function animate() {
     // Moving the shadow-casting light forces a shadow-map re-render, so rate-limit this.
     if (needShadowsThisFrame && (currentTime - lastLightUpdateMs) > LIGHT_UPDATE_INTERVAL_MS) {
         lastLightUpdateMs = currentTime;
-        updateLightsForCamera(lights, currentAzimuth, currentElevation, towerCenter.clone().add(towerPositionOffset));
+        updateLightsForCamera(lights, currentAzimuth, currentElevation, _towerGroupWorldCenter);
         if (renderer.shadowMap) renderer.shadowMap.needsUpdate = true;
     }
 
@@ -4526,9 +4551,6 @@ function animate() {
     // Reset frame flag
     physicsUpdatedThisFrame = false;
     
-    // Check if any blocks are falling
-    const hasPhysicsBlocks = blocks.some(block => block.isFalling && block.physicsBody);
-    
     // CRITICAL: Only call updatePhysics ONCE per frame, before any reads
     // Process operations and step physics
     if (!physicsUpdatedThisFrame && (hasPhysicsBlocks || hasPendingOperations() || hasFallingBlocks)) {
@@ -4541,11 +4563,8 @@ function animate() {
     if (!isPhysicsStepping() && !isPhysicsProcessing()) {
         // Include blocks that are falling, even if they don't have a physics body yet
         // (they need updateFromPhysics to create the physics body)
-        const blocksToUpdate = blocks.filter(block => 
-            !block.isRemoved && block.isFalling
-        );
-        
-        for (const block of blocksToUpdate) {
+        for (const block of blocks) {
+            if (!block || block.isRemoved || !block.isFalling) continue;
             block.updateFromPhysics();
         }
         
