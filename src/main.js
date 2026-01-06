@@ -661,6 +661,63 @@ function isTimeFrozen() {
     return timeFreezeReasons.size > 0;
 }
 
+// Animate time addition smoothly over duration
+let timeAnimationActive = false;
+let timeAnimationStart = 0;
+let timeAnimationTarget = 0;
+let timeAnimationDuration = 600; // 600ms animation
+
+function animateTimeAddition(deltaSeconds) {
+    if (!isTimeChallengeMode() || !timeChallengeActive) return;
+    
+    const deltaInt = Math.trunc(deltaSeconds);
+    if (deltaInt === 0) return;
+    
+    // If animation is already running, add to target
+    if (timeAnimationActive) {
+        timeAnimationTarget += deltaInt;
+        return;
+    }
+    
+    // Start new animation
+    timeAnimationActive = true;
+    timeAnimationStart = timeLeftSec;
+    timeAnimationTarget = timeLeftSec + deltaInt;
+    
+    const startTime = performance.now();
+    
+    function animate(currentTime) {
+        const elapsed = currentTime - startTime;
+        const progress = Math.min(elapsed / timeAnimationDuration, 1.0);
+        
+        // Ease-out curve for smooth animation
+        const eased = 1 - Math.pow(1 - progress, 3);
+        
+        // Interpolate time value
+        timeLeftSec = timeAnimationStart + (timeAnimationTarget - timeAnimationStart) * eased;
+        updateTimerDisplay();
+        
+        if (progress < 1.0) {
+            requestAnimationFrame(animate);
+        } else {
+            // Animation complete - snap to final value
+            timeLeftSec = timeAnimationTarget;
+            updateTimerDisplay();
+            timeAnimationActive = false;
+            
+            // Check if there's more to animate (if target was updated during animation)
+            if (timeAnimationTarget > timeLeftSec) {
+                const remaining = timeAnimationTarget - timeLeftSec;
+                if (remaining > 0) {
+                    animateTimeAddition(remaining);
+                }
+            }
+        }
+    }
+    
+    requestAnimationFrame(animate);
+}
+
 function flashTimerDelta(deltaSeconds) {
     const timerEl = document.getElementById('timer-value');
     const deltaEl = document.getElementById('timer-delta');
@@ -837,9 +894,10 @@ function timeChallengeAwardForBlockRemoved(blockLength) {
     const base = timeChallengeGetBaseSecondsForRemovalNumber(timeChallengeRemovals);
     const bonus = timeChallengeGetColorBonusSeconds(blockLength);
     const gained = base + bonus;
-    timeLeftSec += gained;
+    
+    // Animate time addition smoothly in real-time
+    animateTimeAddition(gained);
     flashTimerDelta(gained);
-    updateTimerDisplay();
 }
 
 function timeChallengeApplySpinCost() {
