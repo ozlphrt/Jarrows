@@ -6,7 +6,8 @@
 // API base URL - will be configured based on backend choice
 // For now, using a placeholder that can be easily changed
 const API_BASE_URL = import.meta.env.VITE_STATS_API_URL || 'https://api.jarrows.stats/v1';
-const STATS_MODE = (import.meta.env.VITE_STATS_MODE || 'remote').toLowerCase(); // 'remote' | 'local'
+// Default to local mode since API server is not yet deployed
+const STATS_MODE = (import.meta.env.VITE_STATS_MODE || 'local').toLowerCase(); // 'remote' | 'local'
 
 export function isLocalOnlyMode() {
     return STATS_MODE === 'local';
