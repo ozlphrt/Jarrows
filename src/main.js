@@ -917,10 +917,16 @@ function timeChallengeAwardForBlockRemoved(blockLength) {
     const bonus = timeChallengeGetColorBonusSeconds(blockLength);
     const gained = base + bonus;
     
-    // Animate time addition smoothly in real-time
-    console.log('[Time Challenge] Block removed, awarding time:', { blockLength, base, bonus, gained, currentTime: timeLeftSec });
-    animateTimeAddition(gained);
+    // Add time immediately (like spin does), then show flash animation
+    const before = timeLeftSec;
+    timeLeftSec += gained;
+    const delta = Math.trunc(timeLeftSec) - Math.trunc(before);
+    
+    // Show flash animation (same as spin)
     flashTimerDelta(gained);
+    updateTimerDisplay();
+    
+    console.log('[Time Challenge] Block removed, time added:', { blockLength, base, bonus, gained, before, after: timeLeftSec });
 }
 
 function timeChallengeApplySpinCost() {
