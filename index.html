@@ -1109,6 +1109,13 @@
                         <rect x="3" y="14" width="7" height="7" rx="1" fill="white"></rect>
                     </svg>
                 </button>
+                <button class="toggle-icon active" id="audio-toggle" title="Audio On/Off">
+                    <svg id="audio-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <!-- Speaker icon -->
+                        <path d="M11 5L6 9H2v6h4l5 4V5z"></path>
+                        <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                    </svg>
+                </button>
                 <!-- Quality preset: cycles Balanced → Performance → Battery -->
                 <button class="toggle-icon" id="quality-toggle" title="Quality Preset">
                     <span id="quality-label">BAL</span>
@@ -1488,6 +1495,38 @@
                 savePreferences();
             });
 
+            // Audio toggle handler
+            const audioToggle = document.getElementById('audio-toggle');
+            const audioIcon = document.getElementById('audio-icon');
+            
+            function updateAudioIcon() {
+                if (!audioToggle || !audioIcon) return;
+                const enabled = window.isAudioEnabled ? window.isAudioEnabled() : true;
+                if (enabled) {
+                    // Show speaker icon (audio on)
+                    audioIcon.innerHTML = '<path d="M11 5L6 9H2v6h4l5 4V5z"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>';
+                    audioToggle.classList.add('active');
+                } else {
+                    // Show muted speaker icon (audio off)
+                    audioIcon.innerHTML = '<path d="M11 5L6 9H2v6h4l5 4V5z"></path><path d="M23 9l-6 6M17 9l6 6"></path>';
+                    audioToggle.classList.remove('active');
+                }
+            }
+            
+            if (audioToggle) {
+                // Initialize icon state
+                updateAudioIcon();
+                
+                audioToggle.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (window.toggleAudio) {
+                        window.toggleAudio();
+                        updateAudioIcon();
+                    }
+                });
+            }
+
             // Quality preset toggle handler (cycles Balanced → Performance → Battery)
             function updateQualityUI() {
                 if (!qualityLabel) return;
@@ -1585,6 +1624,7 @@
             // Initialize icons and apply default theme/colors
             updateThemeIcon();
             updateColorsIcon();
+            updateAudioIcon();
             updateQualityUI();
             updateVersionUI(); // prepares text; hidden until VER is pressed
             updateBlockColors(); // Apply white blocks on initial load

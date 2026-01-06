@@ -6,6 +6,7 @@ import { validateStructure, validateSolvability, calculateDifficulty, getBlockCe
 import { initStats, startLevelStats, trackMove, trackSpin, trackBlockRemoved, completeLevel, getLevelComparison } from './stats/stats.js';
 import { updateLevelCompleteModal, showOfflineIndicator, hideOfflineIndicator, showPersonalHistoryModal, showProfileModal } from './stats/statsUI.js';
 import { isOnline, isLocalOnlyMode } from './stats/statsAPI.js';
+import { initAudio, playSound, toggleAudio, isAudioEnabled } from './audio.js';
 import appVersionRaw from '../VERSION?raw';
 
 // Build-time constant injected by Vite (see vite.config.js). Falls back to '' if not defined.
@@ -509,6 +510,9 @@ const physics = await initPhysics();
 // Initialize stats system
 await initStats();
 
+// Initialize audio system
+await initAudio();
+
 // Set up offline indicator
 // In strict local-only mode, we don't show any connectivity banner.
 if (!isLocalOnlyMode()) {
@@ -931,6 +935,9 @@ function timeChallengeAwardForBlockRemoved(blockLength) {
     const before = timeLeftSec;
     timeLeftSec += gained;
     
+    // Play time added sound effect
+    playSound('timeAdded', 0.6);
+    
     // Show flash animation (same as spin)
     flashTimerDelta(gained);
     updateTimerDisplay();
@@ -944,6 +951,10 @@ function timeChallengeApplySpinCost() {
     const delta = Math.trunc(timeLeftSec) - Math.trunc(before);
     // Prefer to show a clear negative number of seconds.
     const spent = Math.max(1, Math.ceil(before / 3));
+    
+    // Play time removed sound effect
+    playSound('timeRemoved', 0.5);
+    
     flashTimerDelta(-spent);
     updateTimerDisplay();
 }
@@ -3174,6 +3185,9 @@ function showLevelCompleteModal(completedLevel) {
         if (isTimeChallengeMode() && timeChallengeActive) {
             timeChallengeResidualSec = Math.max(0, timeLeftSec);
         }
+        
+        // Play level complete sound effect
+        playSound('levelComplete', 0.7);
         
         modal.style.display = 'flex';
     }
