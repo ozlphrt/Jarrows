@@ -64,6 +64,16 @@ npm run build
 
 ## Releases
 
+### v4.6.1 - Bug Fixes & Animation Improvements
+- **Tree**: https://github.com/ozlphrt/Jarrows/tree/v4.6.1
+- **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v4.6.1
+- **Live**: https://ozlphrt.github.io/Jarrows/
+- Fixed level persistence for Time Challenge mode (separate storage keys per mode)
+- Fixed overlap recovery to preserve current level instead of resetting to 0
+- Improved spin animation: smoother damping, slower initial oscillation, eliminated flick at transition
+- Fixed edge block clickability (blocks at edge now properly fall when clicked)
+- Fixed blocks stopping at n-1 edge cell (blocks now move to edge before falling)
+
 ### v4.6.0 - Time Challenge Mode
 - **Tree**: https://github.com/ozlphrt/Jarrows/tree/v4.6.0
 - **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v4.6.0

@@ -594,6 +594,7 @@ let timeUpShown = false;
 
 // Progress persistence using localStorage
 const STORAGE_KEY = 'jarrows_progress';
+const STORAGE_KEY_TIME_CHALLENGE = 'jarrows_progress_time_challenge'; // Separate key for Time Challenge
 const STORAGE_HIGHEST_LEVEL_KEY = 'jarrows_highest_level';
 const STORAGE_VERSION_KEY = 'jarrows_storage_version';
 const RESET_FLAG_KEY = 'jarrows_reset_completed';
@@ -614,6 +615,7 @@ function resetAllProgress() {
         if (needsReset) {
             console.log('Resetting all progress: storage version mismatch or first run');
             localStorage.removeItem(STORAGE_KEY);
+            localStorage.removeItem(STORAGE_KEY_TIME_CHALLENGE);
             localStorage.removeItem(STORAGE_HIGHEST_LEVEL_KEY);
             localStorage.setItem(STORAGE_VERSION_KEY, CURRENT_STORAGE_VERSION);
             localStorage.setItem(RESET_FLAG_KEY, 'true'); // Mark reset as completed
@@ -1042,9 +1044,10 @@ function saveProgress() {
             }
         }
         
-        // Save current level
-        localStorage.setItem(STORAGE_KEY, currentLevel.toString());
-        console.log(`Progress saved: Level ${currentLevel}`);
+        // Save current level (use correct storage key for current mode)
+        const storageKey = isTimeChallengeMode() ? STORAGE_KEY_TIME_CHALLENGE : STORAGE_KEY;
+        localStorage.setItem(storageKey, currentLevel.toString());
+        console.log(`Progress saved: Level ${currentLevel} (${isTimeChallengeMode() ? 'Time Challenge' : 'Free Flow'})`);
         
         // Also track highest level reached
         const highestLevel = parseInt(localStorage.getItem(STORAGE_HIGHEST_LEVEL_KEY) || '0', 10);
@@ -1054,7 +1057,7 @@ function saveProgress() {
         }
         
         // Verify save was successful
-        const verify = localStorage.getItem(STORAGE_KEY);
+        const verify = localStorage.getItem(storageKey);
         if (verify !== currentLevel.toString()) {
             console.error('Progress save verification failed!');
             return false;
@@ -1075,35 +1078,57 @@ function saveProgress() {
 // Load saved progress
 function loadProgress() {
     try {
-        // First, check if we need to reset all progress
-        resetAllProgress();
+        // Use different storage keys for different game modes
+        const storageKey = isTimeChallengeMode() ? STORAGE_KEY_TIME_CHALLENGE : STORAGE_KEY;
+        
+        // Check if we need to reset (only once per version, and only for the current mode)
+        const storedVersion = localStorage.getItem(STORAGE_VERSION_KEY);
+        const resetFlag = localStorage.getItem(RESET_FLAG_KEY);
+        const needsReset = storedVersion !== CURRENT_STORAGE_VERSION || 
+                          (storedVersion === CURRENT_STORAGE_VERSION && resetFlag !== 'true');
+        
+        if (needsReset) {
+            // Only reset if this is the first time for this version
+            // Don't clear progress if version matches but flag is missing (might be a partial clear)
+            if (storedVersion !== CURRENT_STORAGE_VERSION) {
+                console.log('Storage version mismatch, clearing all progress');
+                localStorage.removeItem(STORAGE_KEY);
+                localStorage.removeItem(STORAGE_KEY_TIME_CHALLENGE);
+                localStorage.removeItem(STORAGE_HIGHEST_LEVEL_KEY);
+            }
+            // Set version and flag
+            localStorage.setItem(STORAGE_VERSION_KEY, CURRENT_STORAGE_VERSION);
+            localStorage.setItem(RESET_FLAG_KEY, 'true');
+        }
         
         // Now try to load saved progress
-        const savedLevel = localStorage.getItem(STORAGE_KEY);
+        const savedLevel = localStorage.getItem(storageKey);
         if (savedLevel !== null && savedLevel !== '') {
             const level = parseInt(savedLevel, 10);
             // Validate level is a valid number
             if (!isNaN(level) && level >= 0) {
-                console.log(`Progress loaded: Level ${level}`);
+                console.log(`Progress loaded: Level ${level} (${isTimeChallengeMode() ? 'Time Challenge' : 'Free Flow'})`);
                 return level;
             } else {
                 console.warn('Invalid saved level, resetting to 0');
-                localStorage.removeItem(STORAGE_KEY);
+                localStorage.removeItem(storageKey);
             }
         }
     } catch (e) {
         console.warn('Failed to load progress:', e);
     }
-    console.log('Starting from level 0 (no saved progress)');
+    console.log(`Starting from level 0 (no saved progress for ${isTimeChallengeMode() ? 'Time Challenge' : 'Free Flow'})`);
     return 0; // Default to level 0 if no saved progress
 }
 
 // Clear saved progress
 function clearProgress() {
     try {
-        localStorage.removeItem(STORAGE_KEY);
+        // Clear progress for the current game mode
+        const storageKey = isTimeChallengeMode() ? STORAGE_KEY_TIME_CHALLENGE : STORAGE_KEY;
+        localStorage.removeItem(storageKey);
         // Keep storage version and highest level for tracking
-        console.log('Progress cleared - user will start from level 0 on next load');
+        console.log(`Progress cleared - user will start from level 0 on next load (${isTimeChallengeMode() ? 'Time Challenge' : 'Free Flow'})`);
         return true;
     } catch (e) {
         console.warn('Failed to clear progress:', e);
@@ -3084,10 +3109,8 @@ async function startNewGame() {
     remainingSpins = isTimeChallengeMode() ? Number.POSITIVE_INFINITY : 3;
     updateSpinCounterDisplay();
     
-    // Clear saved progress only for Free Flow (Time Challenge is a run mode)
-    if (!isTimeChallengeMode()) {
-        clearProgress();
-    }
+    // Clear saved progress for both modes when starting a new game
+    clearProgress();
     
     // Hide level complete modal if visible
     hideLevelCompleteModal();
@@ -3174,8 +3197,8 @@ if (nextLevelButton) {
         currentLevel++;
         moveHistory = []; // Clear move history for new level
         totalMoves = 0; // Reset move counter
-        // Save progress only for Free Flow
-        if (!isTimeChallengeMode()) saveProgress();
+        // Save progress for both modes
+        saveProgress();
         await generateSolvablePuzzle(currentLevel);
     });
 }
@@ -3926,10 +3949,10 @@ updateCameraPosition(); // Position camera immediately to avoid default (0,0,0) 
     await ensureModeSelected({ forcePrompt: false });
 
     if (isTimeChallengeMode()) {
-        // Time Challenge is a run mode: always start at level 0
-        currentLevel = 0;
+        // Time Challenge: load saved progress (or start at level 0 if no progress)
+        currentLevel = loadProgress();
         timeChallengeResetRun(); // This sets residual to 0 and initializes state
-        // Initial time for level 0 will be calculated in generateSolvablePuzzle()
+        // Initial time for the level will be calculated in generateSolvablePuzzle()
         remainingSpins = Number.POSITIVE_INFINITY;
     } else {
         // Free Flow uses saved progress.
@@ -4095,7 +4118,22 @@ function onMouseClick(event) {
         if (fixResult.fixed) {
             console.warn(`Fixed ${fixResult.movedBlocks.length} overlapping block(s). Please click again.`);
         } else {
-            console.error('Failed to fix overlaps - manual intervention may be needed');
+            if (fixResult.failedOverlaps && fixResult.failedOverlaps.length > 0) {
+                console.error(`Failed to fix ${fixResult.failedOverlaps.length} overlap(s) - manual intervention may be needed.`, fixResult.failedOverlaps);
+            } else {
+                console.error('Failed to fix overlaps - structure still invalid after fix attempt');
+            }
+            // Try to regenerate the level as a last resort
+            // Capture current level to ensure we regenerate the same level, not level 0
+            const levelToRegenerate = currentLevel;
+            console.warn(`Attempting to regenerate level ${levelToRegenerate} to recover from invalid state...`);
+            setTimeout(async () => {
+                // Ensure we're using the captured level, not a potentially reset currentLevel
+                currentLevel = levelToRegenerate;
+                await generateSolvablePuzzle(levelToRegenerate);
+                // Save progress after regeneration to ensure level is preserved
+                saveProgress();
+            }, 500);
         }
         return;
     }
@@ -4199,7 +4237,19 @@ function onMouseClick(event) {
             if (fixResult.fixed) {
                 console.log(`Fixed ${fixResult.movedBlocks.length} overlapping block(s)`);
             } else {
-                console.error('Failed to fix overlaps - manual intervention may be needed');
+                if (fixResult.failedOverlaps && fixResult.failedOverlaps.length > 0) {
+                    console.error(`Failed to fix ${fixResult.failedOverlaps.length} overlap(s) after move`, fixResult.failedOverlaps);
+                } else {
+                    console.error('Failed to fix overlaps after move - structure still invalid');
+                }
+                // Regenerate current level to recover (preserve level)
+                const levelToRegenerate = currentLevel;
+                console.warn(`Regenerating level ${levelToRegenerate} to recover from post-move overlap...`);
+                setTimeout(async () => {
+                    currentLevel = levelToRegenerate;
+                    await generateSolvablePuzzle(levelToRegenerate);
+                    saveProgress();
+                }, 500);
             }
         }
     }, 100);
@@ -4843,7 +4893,19 @@ function onTouchEnd(event) {
             if (fixResult.fixed) {
                 console.log(`Fixed ${fixResult.movedBlocks.length} overlapping block(s)`);
             } else {
-                console.error('Failed to fix overlaps - manual intervention may be needed');
+                if (fixResult.failedOverlaps && fixResult.failedOverlaps.length > 0) {
+                    console.error(`Failed to fix ${fixResult.failedOverlaps.length} overlap(s) after move`, fixResult.failedOverlaps);
+                } else {
+                    console.error('Failed to fix overlaps after move - structure still invalid');
+                }
+                // Regenerate current level to recover (preserve level)
+                const levelToRegenerate = currentLevel;
+                console.warn(`Regenerating level ${levelToRegenerate} to recover from post-move overlap...`);
+                setTimeout(async () => {
+                    currentLevel = levelToRegenerate;
+                    await generateSolvablePuzzle(levelToRegenerate);
+                    saveProgress();
+                }, 500);
             }
         }
     }, 100);

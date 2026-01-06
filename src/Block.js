@@ -968,13 +968,17 @@ export class Block {
         const rotationDirection = angleDiff >= 0 ? 1 : -1;
         const endAngle = startAngle + (rotationDirection * totalRotation) + angleDiff;
         
+        // Normalize endAngle to be equivalent to targetAngle (modulo 2π) to prevent flick
+        // This ensures smooth transition from spin to oscillation
+        const normalizedEndAngle = targetAngle + (Math.round((endAngle - targetAngle) / (Math.PI * 2)) * Math.PI * 2);
+        
         // Update direction to target immediately (for movement logic)
         this.direction = { x: targetDirection.x, z: targetDirection.z };
         
         // Animate arrow rotation with ease-out curve (fast start, slow end)
         const startTime = performance.now();
-        const spinDuration = duration * 0.8; // Use 80% of duration for spin, 20% for oscillation
-        const oscillationDuration = duration * 0.2; // 20% for compass needle oscillation
+        const spinDuration = duration * 0.7; // Use 70% of duration for spin, 30% for oscillation
+        const oscillationDuration = duration * 0.3; // 30% for compass needle oscillation
         
         const animate = () => {
             const elapsed = performance.now() - startTime;
@@ -984,28 +988,36 @@ export class Block {
                 // Spin phase: fast start, slow end
                 // Using cubic ease-out: 1 - (1 - t)^3
                 const eased = 1 - Math.pow(1 - spinProgress, 3);
-                const currentAngle = startAngle + (endAngle - startAngle) * eased;
+                const currentAngle = startAngle + (normalizedEndAngle - startAngle) * eased;
                 topArrow.rotation.z = currentAngle;
                 requestAnimationFrame(animate);
             } else {
+                // Ensure smooth transition: set to normalized end angle (equivalent to targetAngle)
+                topArrow.rotation.z = normalizedEndAngle;
+                
                 // Oscillation phase: compass needle effect (magnetic settling)
                 const oscillationStartTime = performance.now();
-                const oscillationAmplitude = Math.PI / 8; // 22.5 degrees oscillation
-                const oscillationCycles = 3; // Number of back-and-forth oscillations
+                const oscillationAmplitude = Math.PI / 10; // ~18 degrees for smoother oscillation
+                const oscillationCycles = 3; // Back to 3 cycles as requested
                 
                 const oscillate = () => {
                     const oscillationElapsed = performance.now() - oscillationStartTime;
                     const oscillationProgress = Math.min(oscillationElapsed / oscillationDuration, 1);
                     
                     if (oscillationProgress < 1) {
-                        // Damped oscillation: amplitude decreases exponentially over time
-                        // Using exponential decay: e^(-kt) where k controls decay rate
-                        const decayRate = 3; // Higher = faster decay
-                        const dampingFactor = Math.exp(-decayRate * oscillationProgress);
+                        // Even smoother damping: use cubic ease-out for very gradual settling
+                        // This creates the smoothest, most natural settling motion
+                        const easeOutDamping = 1 - Math.pow(1 - oscillationProgress, 3); // Cubic ease-out for smoother damping
+                        const dampingFactor = 1 - easeOutDamping; // Invert so amplitude decreases very gradually
                         
-                        // Oscillate with decreasing amplitude
-                        const oscillation = Math.sin(oscillationProgress * Math.PI * oscillationCycles * 2) * oscillationAmplitude * dampingFactor;
-                        topArrow.rotation.z = targetAngle + oscillation;
+                        // Slow down oscillation frequency at the start for smoother initial motion
+                        // Use a slower frequency multiplier that increases over time
+                        const frequencyMultiplier = 0.5 + (oscillationProgress * 0.5); // Start at 0.5x, end at 1.0x speed
+                        
+                        // Oscillate with decreasing amplitude and gradually increasing frequency
+                        // Use normalizedEndAngle (which equals targetAngle) as base for smooth continuity
+                        const oscillation = Math.sin(oscillationProgress * Math.PI * oscillationCycles * 2 * frequencyMultiplier) * oscillationAmplitude * dampingFactor;
+                        topArrow.rotation.z = normalizedEndAngle + oscillation;
                         requestAnimationFrame(oscillate);
                     } else {
                         // Final settle: ensure exact target angle
@@ -1816,6 +1828,37 @@ export class Block {
             const nextGridX = tempGridX + this.direction.x;
             const nextGridZ = tempGridZ + this.direction.z;
             
+            // Check if ANY cube would be off the board at the next position BEFORE moving
+            // This prevents blocks from stopping at the edge when they should fall
+            let anyCubeOff = false;
+            
+            if (this.isVertical) {
+                if (nextGridX < 0 || nextGridX >= gridSize || nextGridZ < 0 || nextGridZ >= gridSize) {
+                    anyCubeOff = true;
+                }
+            } else {
+                const isXAligned = Math.abs(this.direction.x) > 0;
+                for (let i = 0; i < this.length; i++) {
+                    const checkX = nextGridX + (isXAligned ? i : 0);
+                    const checkZ = nextGridZ + (isXAligned ? 0 : i);
+                    if (checkX < 0 || checkX >= gridSize || checkZ < 0 || checkZ >= gridSize) {
+                        anyCubeOff = true;
+                        break;
+                    }
+                }
+            }
+            
+            // If any cube would be off the board at next position, allow one more step then trigger fall
+            if (anyCubeOff) {
+                hitEdge = true;
+                // Allow the block to move one step toward the edge before falling
+                // This ensures blocks at n-1 position can still move to the edge and fall
+                tempGridX = nextGridX;
+                tempGridZ = nextGridZ;
+                stepsToObstacle++;
+                break; // Now fall from this position (one step closer to edge)
+            }
+            
             // Check for collisions with other blocks first
             // Check for 3D overlaps: blocks cannot move to a position where they would overlap with another block
             // This includes checking blocks at different Y levels that might overlap in 3D space
@@ -2031,37 +2074,10 @@ export class Block {
                 }
             }
             
-            // Move to next position
+            // Move to next position (only reached if no edge detected above)
             stepsToObstacle++;
             tempGridX = nextGridX;
             tempGridZ = nextGridZ;
-            
-            // Check if all cubes are now off the board at this new position
-            let allCubesOff = true;
-            
-            if (this.isVertical) {
-                if (tempGridX >= 0 && tempGridX < gridSize && tempGridZ >= 0 && tempGridZ < gridSize) {
-                    allCubesOff = false;
-                }
-            } else {
-                const isXAligned = Math.abs(this.direction.x) > 0;
-                
-                for (let i = 0; i < this.length; i++) {
-                    const checkX = tempGridX + (isXAligned ? i : 0);
-                    const checkZ = tempGridZ + (isXAligned ? 0 : i);
-                    if (checkX >= 0 && checkX < gridSize && checkZ >= 0 && checkZ < gridSize) {
-                        // At least one cube is still on the board
-                        allCubesOff = false;
-                        break;
-                    }
-                }
-            }
-            
-            // If all cubes are off the board, stop and fall
-            if (allCubesOff) {
-                hitEdge = true;
-                break; // Block has entirely left the board
-            }
         }
         
         // If blocked immediately with no movement, add bounce effect
@@ -2070,8 +2086,8 @@ export class Block {
             return; // Can't move
         }
         
-        // If no movement possible, return
-        if (stepsToObstacle === 0) {
+        // If no movement possible, return (unless hitting edge - edge blocks should still fall)
+        if (stepsToObstacle === 0 && !hitEdge) {
             return;
         }
 
@@ -2116,21 +2132,36 @@ export class Block {
         // If block is going off the board, extend final position far enough to completely disappear
         // Calculate direction vector for extension
         if (hitEdge) {
-            const directionX = finalX - startX;
-            const directionZ = finalZ - startZ;
-            const directionLength = Math.sqrt(directionX * directionX + directionZ * directionZ);
+            let directionX = finalX - startX;
+            let directionZ = finalZ - startZ;
+            let directionLength = Math.sqrt(directionX * directionX + directionZ * directionZ);
             
-            if (directionLength > 0) {
-                // Normalize direction
-                const normalizedX = directionX / directionLength;
-                const normalizedZ = directionZ / directionLength;
-                
-                // Extend final position by at least 2x the board size to ensure complete disappearance
-                // Use block's maximum dimension (length * cubeSize) to ensure it's fully off screen
-                const extensionDistance = Math.max(gridSize * this.cubeSize * 2, this.length * this.cubeSize * 3);
-                finalX = finalX + normalizedX * extensionDistance;
-                finalZ = finalZ + normalizedZ * extensionDistance;
+            // If no movement (stepsToObstacle === 0), use block's direction vector instead
+            if (directionLength === 0 || stepsToObstacle === 0) {
+                // Use block's movement direction to calculate extension direction
+                const dirX = this.direction.x;
+                const dirZ = this.direction.z;
+                directionLength = Math.sqrt(dirX * dirX + dirZ * dirZ);
+                if (directionLength > 0) {
+                    directionX = dirX / directionLength;
+                    directionZ = dirZ / directionLength;
+                } else {
+                    // Fallback: use a default direction if direction is invalid
+                    directionX = 1;
+                    directionZ = 0;
+                    directionLength = 1;
+                }
+            } else {
+                // Normalize direction from position difference
+                directionX = directionX / directionLength;
+                directionZ = directionZ / directionLength;
             }
+            
+            // Extend final position by at least 2x the board size to ensure complete disappearance
+            // Use block's maximum dimension (length * cubeSize) to ensure it's fully off screen
+            const extensionDistance = Math.max(gridSize * this.cubeSize * 2, this.length * this.cubeSize * 3);
+            finalX = finalX + directionX * extensionDistance;
+            finalZ = finalZ + directionZ * extensionDistance;
         }
         
         // Smooth easing function (ease-out cubic for smooth deceleration)

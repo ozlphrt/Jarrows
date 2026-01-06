@@ -235,6 +235,7 @@ export function fixOverlappingBlocks(blocks, gridSize) {
     }
 
     // Fix overlaps: try snapping, then search both DOWN and UP for a safe layer
+    const failedOverlaps = [];
     for (const overlap of overlaps) {
         const b1 = overlap.block1;
         const b2 = overlap.block2;
@@ -256,7 +257,7 @@ export function fixOverlappingBlocks(blocks, gridSize) {
 
         // Candidate list: snapped base, then alternate down/up by layer.
         const candidates = [base];
-        const MAX_STEPS = 12;
+        const MAX_STEPS = 20; // Increased from 12 to allow more search space
         for (let i = 1; i <= MAX_STEPS; i++) {
             candidates.push(Math.max(0, base - i * cubeSize));
             candidates.push(base + i * cubeSize);
@@ -276,12 +277,23 @@ export function fixOverlappingBlocks(blocks, gridSize) {
                 blockToMove.updateWorldPosition();
             }
             if (!movedBlocks.includes(blockToMove)) movedBlocks.push(blockToMove);
+        } else if (chosen === null) {
+            // Could not find a safe position - this overlap failed to fix
+            failedOverlaps.push({
+                block1: { gridX: b1.gridX, gridZ: b1.gridZ, yOffset: b1Y, isVertical: b1.isVertical, length: b1.length },
+                block2: { gridX: b2.gridX, gridZ: b2.gridZ, yOffset: b2Y, isVertical: b2.isVertical, length: b2.length },
+                cell: overlap.cell,
+                attemptedBlock: { gridX: blockToMove.gridX, gridZ: blockToMove.gridZ, yOffset: base }
+            });
         }
     }
 
     // Only report fixed if structure is actually valid afterwards.
     const recheck = validateStructure(blocks, gridSize);
-    return { fixed: recheck.valid, movedBlocks };
+    if (!recheck.valid && failedOverlaps.length > 0) {
+        console.warn(`fixOverlappingBlocks: Could not resolve ${failedOverlaps.length} overlap(s):`, failedOverlaps);
+    }
+    return { fixed: recheck.valid, movedBlocks, failedOverlaps };
 }
 
 /**
