@@ -100,7 +100,7 @@ async function initAudio() {
     // Use relative paths that work with Vite's base path configuration
     const basePath = import.meta.env.BASE_URL || '/';
     await Promise.all([
-        loadSound('timeAdded', `${basePath}sound/time added.mp3`),
+        loadSound('timeAdded', `${basePath}sound/time added.wav`),
         loadSound('timeRemoved', `${basePath}sound/time removed.wav`),
         loadSound('levelComplete', `${basePath}sound/level complete.wav`)
     ]);
