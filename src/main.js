@@ -709,7 +709,10 @@ function animateTimeAddition(deltaSeconds) {
         // Interpolate time value (countdown is paused during animation, so safe to set directly)
         const newTime = timeAnimationStart + (timeAnimationTarget - timeAnimationStart) * eased;
         timeLeftSec = Math.max(0, newTime); // Ensure non-negative
+        // Force immediate update during animation (bypass throttling)
         updateTimerDisplay();
+        // Also update lastTimerUiMs to prevent throttling from skipping this update
+        lastTimerUiMs = currentTime;
         
         if (progress < 1.0) {
             requestAnimationFrame(animate);
@@ -2621,8 +2624,11 @@ function updateTimerDisplay() {
     if (!timerValueElement) return;
 
     if (isTimeChallengeMode() && timeChallengeActive) {
-        // Countdown: show ceil so players don't feel robbed at 0.1s remaining.
-        const displaySeconds = Math.max(0, Math.ceil(timeLeftSec));
+        // During animation, show precise value for smooth visual feedback
+        // Otherwise, show ceil so players don't feel robbed at 0.1s remaining
+        const displaySeconds = timeAnimationActive 
+            ? Math.max(0, Math.round(timeLeftSec * 10) / 10) // Show 1 decimal during animation
+            : Math.max(0, Math.ceil(timeLeftSec));
         timerValueElement.textContent = formatTime(displaySeconds);
         return;
     }
