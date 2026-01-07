@@ -1147,37 +1147,27 @@ function createCarriedOverGraph(history) {
         box-sizing: border-box;
     `;
     
-    const title = document.createElement('div');
-    title.textContent = 'Carried Over Progress';
-    title.style.cssText = `
-        font-size: 11px;
-        font-weight: 700;
-        color: rgba(255, 255, 255, 0.7);
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        margin-bottom: 12px;
-        text-align: center;
-    `;
+    // Title removed per request
     
     const canvas = document.createElement('canvas');
     // Use high DPI resolution for crisp rendering on all displays
     const dpr = window.devicePixelRatio || 1;
     const baseHeight = 150;
+    const labelAreaHeight = 30; // Space for level numbers below bars
     canvas.style.cssText = `
         width: 100%;
-        height: ${baseHeight}px;
+        height: ${baseHeight + labelAreaHeight}px;
         max-width: 100%;
         display: block;
     `;
     
-    graphContainer.appendChild(title);
     graphContainer.appendChild(canvas);
     
     // Get actual rendered width after appending to DOM
     const actualWidth = canvas.offsetWidth || 400;
     const baseWidth = actualWidth;
     canvas.width = baseWidth * dpr;
-    canvas.height = baseHeight * dpr;
+    canvas.height = (baseHeight + labelAreaHeight) * dpr;
     
     // Draw stacked bar chart
     const ctx = canvas.getContext('2d');
@@ -1185,7 +1175,7 @@ function createCarriedOverGraph(history) {
     ctx.scale(dpr, dpr);
     const padding = 15; // Reduced padding for more chart space
     const graphWidth = baseWidth - padding * 2;
-    const graphHeight = baseHeight - padding * 2;
+    const graphHeight = baseHeight - padding; // Reduced bottom padding to leave space for labels
     
     // Find max values for scaling (unused + collected for positive, spin for negative)
     const maxPositive = Math.max(...history.map(h => {
