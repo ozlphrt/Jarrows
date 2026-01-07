@@ -593,6 +593,7 @@ let timeChallengeInitialTime = 0; // Initial time when level started (for calcul
 let timeChallengeTimeCollected = 0; // Total time collected from block removals this level
 let timeChallengeTimeCollectedAllTime = 0; // Cumulative time collected across all levels in this run
 let timeChallengeTimeCarriedOverAllTime = 0; // Cumulative time carried over across all levels in this run
+let timeChallengeSpinCost = 0; // Total time spent on spins this level
 let timeFreezeReasons = new Set();
 let timeUpShown = false;
 
@@ -872,6 +873,7 @@ function timeChallengeResetRun() {
     timeChallengeTimeCollected = 0;
     timeChallengeTimeCollectedAllTime = 0;
     timeChallengeTimeCarriedOverAllTime = 0;
+    timeChallengeSpinCost = 0;
     timeChallengeRemovals = 0;
     timeChallengeResidualSec = 0;
     timeChallengeActive = true;
@@ -899,6 +901,7 @@ function timeChallengeStartNewLevel(blocksArray) {
         timeChallengeTimeCarriedOverAllTime += timeChallengeResidualSec;
     }
     timeChallengeTimeCollected = 0; // Reset time collected counter for this level
+    timeChallengeSpinCost = 0; // Reset spin cost counter for this level
     timeChallengeResidualSec = 0; // Clear residual after using it
     
     // Keep removal counter cumulative across levels (for per-removal bonuses)
@@ -958,6 +961,9 @@ function timeChallengeApplySpinCost() {
     const delta = Math.trunc(timeLeftSec) - Math.trunc(before);
     // Prefer to show a clear negative number of seconds.
     const spent = Math.max(1, Math.ceil(before / 3));
+    
+    // Track total spin cost for this level
+    timeChallengeSpinCost += spent;
     
     // Play time removed sound effect
     playSound('timeRemoved', 0.5);
@@ -1020,6 +1026,7 @@ async function restartTimeChallengeLevelFromTimeUp() {
     
     // Reset level-specific stats (but keep run stats like timeChallengeRemovals, timeChallengeTimeCollectedAllTime)
     timeChallengeTimeCollected = 0;
+    timeChallengeSpinCost = 0;
     
     // Clear move history
     moveHistory = [];
@@ -5384,9 +5391,8 @@ function animate() {
                         // All-time includes current level (already cumulative from block removals)
                         userStats.timeCollectedAllTime = timeChallengeTimeCollectedAllTime;
                         userStats.timeCarriedOverLevel = timeChallengeResidualSec;
-                        // Calculate time lost: unused + collected - carried over = lost
-                        // Rearranged: lost = unused + collected - carried over
-                        userStats.timeLostLevel = Math.max(0, timeChallengeInitialTime + timeChallengeTimeCollected - timeChallengeResidualSec);
+                        // Use actual spin cost (time spent on spins) instead of calculated lost time
+                        userStats.timeLostLevel = timeChallengeSpinCost;
                     }
                     const comparison = await getLevelComparison(userStats);
                     updateLevelCompleteModal(userStats, comparison);
