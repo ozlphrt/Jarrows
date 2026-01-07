@@ -1264,19 +1264,19 @@ function createCarriedOverGraph(history) {
                 collectedHeight = 0;
                 spinHeight = (spin / maxIndividual) * graphHeight;
             } else {
-                // Both positive and negative - use unified scale for all components
+                // Both positive and negative - scale to fit available space
                 // Calculate available space for positive and negative
                 const positiveHeight = baselineY - padding;
                 const negativeHeight = (padding + graphHeight) - baselineY;
-                // Scale all components using unified maxIndividual scale
-                // Map to available space based on positive/negative ratio
-                const totalValueRange = maxPositive + maxNegative;
-                const positiveSpaceRatio = maxPositive / totalValueRange;
-                const negativeSpaceRatio = maxNegative / totalValueRange;
-                // Scale each component using unified scale, then map to appropriate space
-                unusedHeight = (unused / maxIndividual) * graphHeight * positiveSpaceRatio;
-                collectedHeight = (collected / maxIndividual) * graphHeight * positiveSpaceRatio;
-                spinHeight = (spin / maxIndividual) * graphHeight * negativeSpaceRatio;
+                
+                // Scale positive components to fit positive space
+                // maxPositive (sum of unused + collected) should use full positiveHeight
+                // Scale negative components to fit negative space  
+                // maxNegative (spin) should use full negativeHeight
+                // This ensures automatic scaling and correct proportions
+                unusedHeight = (unused / maxPositive) * positiveHeight;
+                collectedHeight = (collected / maxPositive) * positiveHeight;
+                spinHeight = (spin / maxNegative) * negativeHeight;
             }
             
             // Draw positive components (stacked upward from baseline)
