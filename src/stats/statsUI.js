@@ -1208,7 +1208,9 @@ function createCarriedOverGraph(history) {
         // Both positive and negative - position baseline based on ratio
         const totalRange = maxPositive + maxNegative;
         const positiveRatio = maxPositive / totalRange;
-        baselineY = padding + graphHeight - (graphHeight * positiveRatio);
+        // Fix: baseline should be positioned so larger values get more space
+        // When maxPositive is larger, positiveRatio is larger, so baseline should be lower (more positive space above)
+        baselineY = padding + graphHeight * positiveRatio;
     }
     
     // Draw grid lines (horizontal)
@@ -1264,19 +1266,26 @@ function createCarriedOverGraph(history) {
                 collectedHeight = 0;
                 spinHeight = (spin / maxIndividual) * graphHeight;
             } else {
-                // Both positive and negative - scale to fit available space
+                // Both positive and negative - use unified scale for all individual components
                 // Calculate available space for positive and negative
                 const positiveHeight = baselineY - padding;
                 const negativeHeight = (padding + graphHeight) - baselineY;
                 
-                // Scale positive components to fit positive space
-                // maxPositive (sum of unused + collected) should use full positiveHeight
-                // Scale negative components to fit negative space  
-                // maxNegative (spin) should use full negativeHeight
-                // This ensures automatic scaling and correct proportions
-                unusedHeight = (unused / maxPositive) * positiveHeight;
-                collectedHeight = (collected / maxPositive) * positiveHeight;
-                spinHeight = (spin / maxNegative) * negativeHeight;
+                // Use unified maxIndividual scale for all components
+                // This ensures collected (1:56) and spin (3:16) are visually proportional
+                
+                // Calculate how much space the max values would need at unified scale
+                const maxPositiveStackHeight = ((maxUnused + maxCollected) / maxIndividual) * graphHeight;
+                const maxNegativeHeight = (maxSpin / maxIndividual) * graphHeight;
+                
+                // Calculate scale factors to map unified scale to allocated spaces
+                const positiveScale = positiveHeight / maxPositiveStackHeight;
+                const negativeScale = negativeHeight / maxNegativeHeight;
+                
+                // Scale all components using unified scale, then apply space mapping
+                unusedHeight = (unused / maxIndividual) * graphHeight * positiveScale;
+                collectedHeight = (collected / maxIndividual) * graphHeight * positiveScale;
+                spinHeight = (spin / maxIndividual) * graphHeight * negativeScale;
             }
             
             // Draw positive components (stacked upward from baseline)
