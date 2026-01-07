@@ -1260,73 +1260,29 @@ function createCarriedOverGraph(history) {
             const spin = point.spin || 0;
             const carriedOver = point.carriedOver || 0;
             
-            // Bar height = carried over value (scaled)
+            // Simple: bar height = carried over value (scaled)
             // Longest bar = max carried over value
-            // Individual components remain visually proportional
             
-            // Calculate the visual height for this bar based on carried over value
-            const visualHeight = maxCarriedOver > 0 
+            // Calculate the bar height based on carried over value
+            const barHeight = maxCarriedOver > 0 
                 ? (carriedOver / maxCarriedOver) * graphHeight 
                 : 0;
             
-            // Scale all components using unified maxIndividual scale (for visual proportions)
-            const baseScale = graphHeight / maxIndividual;
-            let unusedHeightRaw = unused * baseScale;
-            let collectedHeightRaw = collected * baseScale;
-            let spinHeightRaw = spin * baseScale;
-            
-            // Calculate the net height at this scale (positive - negative)
-            const netHeightRaw = unusedHeightRaw + collectedHeightRaw - spinHeightRaw;
-            
-            // Scale all components so that net height = visualHeight
-            // This maintains proportions between unused, collected, spin
-            let unusedHeight, collectedHeight, spinHeight;
-            if (Math.abs(netHeightRaw) > 0.001) { // Avoid division by zero
-                const scaleFactor = visualHeight / netHeightRaw;
-                unusedHeight = unusedHeightRaw * scaleFactor;
-                collectedHeight = collectedHeightRaw * scaleFactor;
-                spinHeight = spinHeightRaw * scaleFactor;
+            // Draw single bar representing carried over value
+            // Positive values go above baseline, negative values go below
+            if (carriedOver >= 0) {
+                // Positive: draw bar upward from baseline
+                ctx.fillStyle = '#4ADE80'; // Green - same as "carried over" color in formula
+                const barY = baselineY - barHeight;
+                ctx.fillRect(x, barY, barWidth, barHeight);
             } else {
-                // If net height is zero, use raw values
-                unusedHeight = unusedHeightRaw;
-                collectedHeight = collectedHeightRaw;
-                spinHeight = spinHeightRaw;
-            }
-            
-            // Auto-scale: scale down all bars proportionally if maximum bar exceeds graphHeight
-            // This ensures all bars fit while maintaining "bar height = carried over" relationship
-            const totalBarHeight = unusedHeight + collectedHeight + spinHeight;
-            const maxTotalHeight = maxTotalBarHeight;
-            if (maxTotalHeight > graphHeight && graphHeight > 0) {
-                const globalScale = graphHeight / maxTotalHeight;
-                unusedHeight *= globalScale;
-                collectedHeight *= globalScale;
-                spinHeight *= globalScale;
-            }
-            
-            // Draw positive components (stacked upward from baseline)
-            let currentY = baselineY;
-            
-            // Unused (orange/golden - same as level number) - bottom segment
-            if (unused > 0) {
-                ctx.fillStyle = '#FBBF24'; // Orange/Golden - rgba(251, 191, 36, 0.95)
-                currentY -= unusedHeight;
-                ctx.fillRect(x, currentY, barWidth, unusedHeight);
-            }
-            
-            // Collected (green - same as blocks icon) - stacked on top of unused
-            if (collected > 0) {
-                ctx.fillStyle = '#4ADE80'; // Green - rgba(74, 222, 128, 0.95)
-                const collectedY = currentY - collectedHeight;
-                ctx.fillRect(x, collectedY, barWidth, collectedHeight);
-                currentY = collectedY;
-            }
-            
-            // Draw negative component (spin) - downward from baseline
-            if (spin > 0) {
+                // Negative: draw bar downward from baseline
                 ctx.fillStyle = '#FF6B6B'; // Red
-                ctx.fillRect(x, baselineY, barWidth, spinHeight);
+                ctx.fillRect(x, baselineY, barWidth, Math.abs(barHeight));
             }
+            
+            // Store for label positioning
+            const currentY = carriedOver >= 0 ? baselineY - barHeight : baselineY + Math.abs(barHeight);
             
             // Draw level label below bar
             ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
