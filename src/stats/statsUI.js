@@ -974,15 +974,16 @@ function updateComparisonDisplay(section, userStats, comparison) {
 
     // No baseline message or personal median row - removed per request
 
-    // Time Challenge specific stats - show combined formula: Time Collected - Time lost = Time Carried Over
-    if (userStats.timeCollectedLevel !== undefined && userStats.timeCarriedOverLevel !== undefined) {
+    // Time Challenge specific stats - show formula: unused + collected - lost = carried over (in mm:ss)
+    if (userStats.timeUnusedLevel !== undefined && userStats.timeCollectedLevel !== undefined && userStats.timeCarriedOverLevel !== undefined) {
+        const timeUnused = userStats.timeUnusedLevel || 0;
         const timeCollected = userStats.timeCollectedLevel || 0;
         const timeLost = userStats.timeLostLevel || 0;
         const timeCarriedOver = userStats.timeCarriedOverLevel || 0;
         
         grid.appendChild(createTimeChallengeCard(
-            `Time Collected - Time lost = Time Carried Over`,
-            `${formatTime(timeCollected)} - ${formatTime(timeLost)} = ${formatTime(timeCarriedOver)}`,
+            `unused + collected - lost = carried over`,
+            `${formatTime(timeUnused)} + ${formatTime(timeCollected)} - ${formatTime(timeLost)} = ${formatTime(timeCarriedOver)}`,
             '⏰'
         ));
     }

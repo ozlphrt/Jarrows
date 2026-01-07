@@ -5379,13 +5379,14 @@ function animate() {
                     const userStats = await completeLevel(elapsedSeconds);
                     // Add Time Challenge specific stats
                     if (isTimeChallengeMode() && timeChallengeActive) {
+                        userStats.timeUnusedLevel = timeChallengeInitialTime; // Initial time at start of level
                         userStats.timeCollectedLevel = timeChallengeTimeCollected;
                         // All-time includes current level (already cumulative from block removals)
                         userStats.timeCollectedAllTime = timeChallengeTimeCollectedAllTime;
                         userStats.timeCarriedOverLevel = timeChallengeResidualSec;
-                        // Calculate time lost: Time Collected - Time Carried Over = Time Lost
-                        // This represents time lost from spins and natural drain
-                        userStats.timeLostLevel = Math.max(0, timeChallengeTimeCollected - timeChallengeResidualSec);
+                        // Calculate time lost: unused + collected - carried over = lost
+                        // Rearranged: lost = unused + collected - carried over
+                        userStats.timeLostLevel = Math.max(0, timeChallengeInitialTime + timeChallengeTimeCollected - timeChallengeResidualSec);
                     }
                     const comparison = await getLevelComparison(userStats);
                     updateLevelCompleteModal(userStats, comparison);
