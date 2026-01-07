@@ -399,10 +399,8 @@
             text-align: center;
             animation: modalFadeIn 0.3s ease-out;
             position: relative;
-            /* Allow content to scroll within the full-screen panel */
-            overflow-x: hidden;
-            overflow-y: auto;
-            -webkit-overflow-scrolling: touch;
+            /* Prevent scrolling - content should fit within viewport */
+            overflow: hidden;
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             /* Ensure content fits within viewport */
             display: flex;
