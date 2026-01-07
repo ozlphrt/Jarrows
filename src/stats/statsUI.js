@@ -1183,7 +1183,7 @@ function createCarriedOverGraph(history) {
     const ctx = canvas.getContext('2d');
     // Scale context for high DPI
     ctx.scale(dpr, dpr);
-    const padding = 30;
+    const padding = 15; // Reduced padding for more chart space
     const graphWidth = baseWidth - padding * 2;
     const graphHeight = baseHeight - padding * 2;
     
@@ -1193,15 +1193,28 @@ function createCarriedOverGraph(history) {
         const collected = h.collected || 0;
         return unused + collected;
     }), 1);
-    const maxNegative = Math.max(...history.map(h => h.spin || 0), 1);
+    const maxNegative = Math.max(...history.map(h => h.spin || 0), 0);
     const maxAbsValue = Math.max(maxPositive, maxNegative, 1);
     
     // Clear canvas
     ctx.fillStyle = 'rgba(0, 0, 0, 0)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
-    // Calculate baseline (zero line) - centered vertically
-    const baselineY = padding + graphHeight / 2;
+    // Calculate dynamic baseline (zero line)
+    // If no spin, baseline touches bottom. Otherwise, position based on positive/negative ratio
+    let baselineY;
+    if (maxNegative === 0) {
+        // No spin - baseline at bottom
+        baselineY = padding + graphHeight;
+    } else if (maxPositive === 0) {
+        // Only negative values - baseline at top
+        baselineY = padding;
+    } else {
+        // Both positive and negative - position baseline based on ratio
+        const totalRange = maxPositive + maxNegative;
+        const positiveRatio = maxPositive / totalRange;
+        baselineY = padding + graphHeight - (graphHeight * positiveRatio);
+    }
     
     // Draw grid lines (horizontal)
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
@@ -1243,10 +1256,26 @@ function createCarriedOverGraph(history) {
             const spin = point.spin || 0;
             const carriedOver = point.carriedOver || 0;
             
-            // Normalize values to graph height
-            const unusedHeight = (unused / maxAbsValue) * (graphHeight / 2);
-            const collectedHeight = (collected / maxAbsValue) * (graphHeight / 2);
-            const spinHeight = (spin / maxAbsValue) * (graphHeight / 2);
+            // Normalize values to graph height based on dynamic baseline
+            let unusedHeight, collectedHeight, spinHeight;
+            if (maxNegative === 0) {
+                // No spin - use full graph height for positive values
+                unusedHeight = (unused / maxPositive) * graphHeight;
+                collectedHeight = (collected / maxPositive) * graphHeight;
+                spinHeight = 0;
+            } else if (maxPositive === 0) {
+                // Only negative - use full graph height for negative values
+                unusedHeight = 0;
+                collectedHeight = 0;
+                spinHeight = (spin / maxNegative) * graphHeight;
+            } else {
+                // Both positive and negative - scale relative to baseline position
+                const positiveHeight = baselineY - padding;
+                const negativeHeight = (padding + graphHeight) - baselineY;
+                unusedHeight = (unused / maxPositive) * positiveHeight;
+                collectedHeight = (collected / maxPositive) * positiveHeight;
+                spinHeight = (spin / maxNegative) * negativeHeight;
+            }
             
             // Draw positive components (stacked upward from baseline)
             let currentY = baselineY;
