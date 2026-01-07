@@ -1014,80 +1014,84 @@ function createTimeChallengeCard(label, timeUnused, timeCollected, timeLost, tim
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: 6px;
+        gap: 8px;
         width: 100%;
         box-sizing: border-box;
     `;
     
-    const labelEl = document.createElement('div');
-    labelEl.textContent = label;
-    labelEl.style.cssText = `
-        font-size: 11px;
-        font-weight: 700;
-        color: rgba(255, 255, 255, 0.7);
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        margin-bottom: 4px;
-    `;
-    
-    // Create colored formula display
-    const valueEl = document.createElement('div');
-    valueEl.style.cssText = `
-        font-size: 18px;
-        font-weight: 900;
+    // Create formula display with labels aligned above numbers
+    const formulaContainer = document.createElement('div');
+    formulaContainer.style.cssText = `
         display: flex;
-        align-items: center;
-        gap: 6px;
+        align-items: flex-end;
+        gap: 8px;
         flex-wrap: wrap;
         justify-content: center;
+        width: 100%;
     `;
     
+    // Helper function to create label + value pair
+    function createLabelValuePair(labelText, value, color, isOperator = false) {
+        const container = document.createElement('div');
+        container.style.cssText = `
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+        `;
+        
+        if (!isOperator) {
+            const labelEl = document.createElement('div');
+            labelEl.textContent = labelText;
+            labelEl.style.cssText = `
+                font-size: 10px;
+                font-weight: 700;
+                color: rgba(255, 255, 255, 0.6);
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            `;
+            container.appendChild(labelEl);
+        }
+        
+        const valueEl = document.createElement('div');
+        valueEl.textContent = isOperator ? value : formatTime(value);
+        valueEl.style.cssText = `
+            font-size: 18px;
+            font-weight: 900;
+            color: ${color};
+            text-shadow: 0 0 8px ${color === '#FFE66D' ? 'rgba(255, 230, 109, 0.4)' : 
+                                    color === '#4ECDC4' ? 'rgba(78, 205, 196, 0.4)' : 
+                                    color === '#FF6B6B' ? 'rgba(255, 107, 107, 0.4)' : 'transparent'};
+            line-height: 1;
+        `;
+        container.appendChild(valueEl);
+        
+        return container;
+    }
+    
     // unused (yellow)
-    const unusedSpan = document.createElement('span');
-    unusedSpan.textContent = formatTime(timeUnused);
-    unusedSpan.style.cssText = `color: #FFE66D; text-shadow: 0 0 8px rgba(255, 230, 109, 0.4);`;
+    formulaContainer.appendChild(createLabelValuePair('unused', timeUnused, '#FFE66D'));
     
     // plus sign (white)
-    const plusSpan = document.createElement('span');
-    plusSpan.textContent = '+';
-    plusSpan.style.cssText = `color: rgba(255, 255, 255, 0.8);`;
+    formulaContainer.appendChild(createLabelValuePair('', '+', 'rgba(255, 255, 255, 0.8)', true));
     
     // collected (green)
-    const collectedSpan = document.createElement('span');
-    collectedSpan.textContent = formatTime(timeCollected);
-    collectedSpan.style.cssText = `color: #4ECDC4; text-shadow: 0 0 8px rgba(78, 205, 196, 0.4);`;
+    formulaContainer.appendChild(createLabelValuePair('collected', timeCollected, '#4ECDC4'));
     
     // minus sign (white)
-    const minusSpan = document.createElement('span');
-    minusSpan.textContent = '-';
-    minusSpan.style.cssText = `color: rgba(255, 255, 255, 0.8);`;
+    formulaContainer.appendChild(createLabelValuePair('', '-', 'rgba(255, 255, 255, 0.8)', true));
     
-    // lost (red)
-    const lostSpan = document.createElement('span');
-    lostSpan.textContent = formatTime(timeLost);
-    lostSpan.style.cssText = `color: #FF6B6B; text-shadow: 0 0 8px rgba(255, 107, 107, 0.4);`;
+    // spin (red)
+    formulaContainer.appendChild(createLabelValuePair('spin', timeLost, '#FF6B6B'));
     
     // equals sign (white)
-    const equalsSpan = document.createElement('span');
-    equalsSpan.textContent = '=';
-    equalsSpan.style.cssText = `color: rgba(255, 255, 255, 0.8);`;
+    formulaContainer.appendChild(createLabelValuePair('', '=', 'rgba(255, 255, 255, 0.8)', true));
     
     // carried over (green if positive, red if negative/zero)
-    const carriedOverSpan = document.createElement('span');
-    carriedOverSpan.textContent = formatTime(timeCarriedOver);
     const carriedOverColor = timeCarriedOver > 0 ? '#4ECDC4' : '#FF6B6B';
-    carriedOverSpan.style.cssText = `color: ${carriedOverColor}; text-shadow: 0 0 8px ${timeCarriedOver > 0 ? 'rgba(78, 205, 196, 0.4)' : 'rgba(255, 107, 107, 0.4)'};`;
+    formulaContainer.appendChild(createLabelValuePair('carried over', timeCarriedOver, carriedOverColor));
     
-    valueEl.appendChild(unusedSpan);
-    valueEl.appendChild(plusSpan);
-    valueEl.appendChild(collectedSpan);
-    valueEl.appendChild(minusSpan);
-    valueEl.appendChild(lostSpan);
-    valueEl.appendChild(equalsSpan);
-    valueEl.appendChild(carriedOverSpan);
-    
-    card.appendChild(labelEl);
-    card.appendChild(valueEl);
+    card.appendChild(formulaContainer);
     return card;
 }
 
