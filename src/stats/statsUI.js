@@ -1203,23 +1203,9 @@ function createCarriedOverGraph(history) {
     ctx.fillStyle = 'rgba(0, 0, 0, 0)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
-    // Calculate dynamic baseline (zero line)
-    // If no spin, baseline touches bottom. Otherwise, position based on positive/negative ratio
-    let baselineY;
-    if (maxNegative === 0) {
-        // No spin - baseline at bottom
-        baselineY = padding + graphHeight;
-    } else if (maxPositive === 0) {
-        // Only negative values - baseline at top
-        baselineY = padding;
-    } else {
-        // Both positive and negative - position baseline based on ratio
-        const totalRange = maxPositive + maxNegative;
-        const positiveRatio = maxPositive / totalRange;
-        // Fix: baseline should be positioned so larger values get more space
-        // When maxPositive is larger, positiveRatio is larger, so baseline should be lower (more positive space above)
-        baselineY = padding + graphHeight * positiveRatio;
-    }
+    // Calculate baseline position - use center for simplicity since we'll scale each bar individually
+    // The baseline will be used as a reference point, but each bar's height is based on carried over value
+    const baselineY = padding + graphHeight / 2;
     
     // Draw grid lines (horizontal)
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
@@ -1260,65 +1246,54 @@ function createCarriedOverGraph(history) {
             const spin = point.spin || 0;
             const carriedOver = point.carriedOver || 0;
             
-            // Auto-scale: use unified scale for all individual components
-            // This ensures collected (1:44) and spin (3:10) are visually proportional
+            // Bar height = carried over value (scaled)
+            // Longest bar = max carried over value
+            // Individual components remain visually proportional
+            
+            // Calculate the visual height for this bar based on carried over value
+            const visualHeight = maxCarriedOver > 0 
+                ? (carriedOver / maxCarriedOver) * graphHeight 
+                : 0;
+            
+            // Scale all components using unified maxIndividual scale (for visual proportions)
+            const baseScale = graphHeight / maxIndividual;
+            let unusedHeightRaw = unused * baseScale;
+            let collectedHeightRaw = collected * baseScale;
+            let spinHeightRaw = spin * baseScale;
+            
+            // Calculate the net height at this scale (positive - negative)
+            const netHeightRaw = unusedHeightRaw + collectedHeightRaw - spinHeightRaw;
+            
+            // Scale all components so that net height = visualHeight
+            // This maintains proportions between unused, collected, spin
             let unusedHeight, collectedHeight, spinHeight;
-            if (maxNegative === 0) {
-                // No spin - scale positive values to use full graph height
-                unusedHeight = (unused / maxIndividual) * graphHeight;
-                collectedHeight = (collected / maxIndividual) * graphHeight;
-                spinHeight = 0;
-            } else if (maxPositive === 0) {
-                // Only negative - scale negative values to use full graph height
-                unusedHeight = 0;
-                collectedHeight = 0;
-                spinHeight = (spin / maxIndividual) * graphHeight;
+            if (Math.abs(netHeightRaw) > 0.001) { // Avoid division by zero
+                const scaleFactor = visualHeight / netHeightRaw;
+                unusedHeight = unusedHeightRaw * scaleFactor;
+                collectedHeight = collectedHeightRaw * scaleFactor;
+                spinHeight = spinHeightRaw * scaleFactor;
             } else {
-                // Both positive and negative - use unified scale for all individual components
-                // Calculate available space for positive and negative
-                const positiveHeight = baselineY - padding;
-                const negativeHeight = (padding + graphHeight) - baselineY;
-                
-                // Scale all components using unified maxIndividual scale
-                // This ensures collected (3:38) is visually proportional to unused (10:08)
-                const baseScale = graphHeight / maxIndividual;
-                
-                let unusedHeightRaw = unused * baseScale;
-                let collectedHeightRaw = collected * baseScale;
-                let spinHeightRaw = spin * baseScale;
-                
-                // The visual bar height (positive stack - negative stack) should be proportional to carried over
-                // Scale so that maxCarriedOver uses the full graphHeight
-                const carriedOverScale = graphHeight / ((maxCarriedOver / maxIndividual) * graphHeight);
-                // Simplified: carriedOverScale = maxIndividual / maxCarriedOver
-                const carriedOverScaleFactor = maxIndividual / maxCarriedOver;
-                
-                // Apply carried over scaling to all components
-                unusedHeightRaw *= carriedOverScaleFactor;
-                collectedHeightRaw *= carriedOverScaleFactor;
-                spinHeightRaw *= carriedOverScaleFactor;
-                
-                // Now fit within allocated spaces while maintaining proportions
-                const totalPositiveRaw = unusedHeightRaw + collectedHeightRaw;
-                const totalNegativeRaw = spinHeightRaw;
-                
-                // Scale positive components to fit positive space
-                if (totalPositiveRaw > positiveHeight && positiveHeight > 0) {
-                    const positiveScale = positiveHeight / totalPositiveRaw;
-                    unusedHeight = unusedHeightRaw * positiveScale;
-                    collectedHeight = collectedHeightRaw * positiveScale;
-                } else {
-                    unusedHeight = unusedHeightRaw;
-                    collectedHeight = collectedHeightRaw;
-                }
-                
-                // Scale negative component to fit negative space
-                if (totalNegativeRaw > negativeHeight && negativeHeight > 0) {
-                    const negativeScale = negativeHeight / totalNegativeRaw;
-                    spinHeight = spinHeightRaw * negativeScale;
-                } else {
-                    spinHeight = spinHeightRaw;
-                }
+                // If net height is zero, use raw values
+                unusedHeight = unusedHeightRaw;
+                collectedHeight = collectedHeightRaw;
+                spinHeight = spinHeightRaw;
+            }
+            
+            // Ensure bars don't exceed graph boundaries
+            const totalPositiveHeight = unusedHeight + collectedHeight;
+            const totalNegativeHeight = spinHeight;
+            const maxPositiveSpace = baselineY - padding;
+            const maxNegativeSpace = (padding + graphHeight) - baselineY;
+            
+            // Scale down if needed to fit within graph
+            if (totalPositiveHeight > maxPositiveSpace && maxPositiveSpace > 0) {
+                const positiveScale = maxPositiveSpace / totalPositiveHeight;
+                unusedHeight *= positiveScale;
+                collectedHeight *= positiveScale;
+            }
+            if (totalNegativeHeight > maxNegativeSpace && maxNegativeSpace > 0) {
+                const negativeScale = maxNegativeSpace / totalNegativeHeight;
+                spinHeight *= negativeScale;
             }
             
             // Draw positive components (stacked upward from baseline)
