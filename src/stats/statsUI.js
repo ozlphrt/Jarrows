@@ -1191,6 +1191,14 @@ function createCarriedOverGraph(history) {
     // This ensures collected (1:44) and spin (3:10) are visually proportional
     const maxIndividual = Math.max(maxUnused, maxCollected, maxSpin, 1);
     
+    // Find maximum carried over value to ensure bar heights are proportional
+    const maxCarriedOver = Math.max(...history.map(h => {
+        const unused = h.unused || 0;
+        const collected = h.collected || 0;
+        const spin = h.spin || 0;
+        return unused + collected - spin;
+    }), 0);
+    
     // Clear canvas
     ctx.fillStyle = 'rgba(0, 0, 0, 0)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -1271,21 +1279,46 @@ function createCarriedOverGraph(history) {
                 const positiveHeight = baselineY - padding;
                 const negativeHeight = (padding + graphHeight) - baselineY;
                 
-                // Use unified maxIndividual scale for all components
-                // This ensures collected (1:56) and spin (3:16) are visually proportional
+                // Scale all components using unified maxIndividual scale
+                // This ensures collected (3:38) is visually proportional to unused (10:08)
+                const baseScale = graphHeight / maxIndividual;
                 
-                // Calculate how much space the max values would need at unified scale
-                const maxPositiveStackHeight = ((maxUnused + maxCollected) / maxIndividual) * graphHeight;
-                const maxNegativeHeight = (maxSpin / maxIndividual) * graphHeight;
+                let unusedHeightRaw = unused * baseScale;
+                let collectedHeightRaw = collected * baseScale;
+                let spinHeightRaw = spin * baseScale;
                 
-                // Calculate scale factors to map unified scale to allocated spaces
-                const positiveScale = positiveHeight / maxPositiveStackHeight;
-                const negativeScale = negativeHeight / maxNegativeHeight;
+                // The visual bar height (positive stack - negative stack) should be proportional to carried over
+                // Scale so that maxCarriedOver uses the full graphHeight
+                const carriedOverScale = graphHeight / ((maxCarriedOver / maxIndividual) * graphHeight);
+                // Simplified: carriedOverScale = maxIndividual / maxCarriedOver
+                const carriedOverScaleFactor = maxIndividual / maxCarriedOver;
                 
-                // Scale all components using unified scale, then apply space mapping
-                unusedHeight = (unused / maxIndividual) * graphHeight * positiveScale;
-                collectedHeight = (collected / maxIndividual) * graphHeight * positiveScale;
-                spinHeight = (spin / maxIndividual) * graphHeight * negativeScale;
+                // Apply carried over scaling to all components
+                unusedHeightRaw *= carriedOverScaleFactor;
+                collectedHeightRaw *= carriedOverScaleFactor;
+                spinHeightRaw *= carriedOverScaleFactor;
+                
+                // Now fit within allocated spaces while maintaining proportions
+                const totalPositiveRaw = unusedHeightRaw + collectedHeightRaw;
+                const totalNegativeRaw = spinHeightRaw;
+                
+                // Scale positive components to fit positive space
+                if (totalPositiveRaw > positiveHeight && positiveHeight > 0) {
+                    const positiveScale = positiveHeight / totalPositiveRaw;
+                    unusedHeight = unusedHeightRaw * positiveScale;
+                    collectedHeight = collectedHeightRaw * positiveScale;
+                } else {
+                    unusedHeight = unusedHeightRaw;
+                    collectedHeight = collectedHeightRaw;
+                }
+                
+                // Scale negative component to fit negative space
+                if (totalNegativeRaw > negativeHeight && negativeHeight > 0) {
+                    const negativeScale = negativeHeight / totalNegativeRaw;
+                    spinHeight = spinHeightRaw * negativeScale;
+                } else {
+                    spinHeight = spinHeightRaw;
+                }
             }
             
             // Draw positive components (stacked upward from baseline)
