@@ -1160,11 +1160,15 @@ function createCarriedOverGraph(history) {
     `;
     
     const canvas = document.createElement('canvas');
-    canvas.width = 400;
-    canvas.height = 150;
+    // Use high DPI resolution for crisp rendering on all displays
+    const dpr = window.devicePixelRatio || 1;
+    const baseWidth = 400;
+    const baseHeight = 150;
+    canvas.width = baseWidth * dpr;
+    canvas.height = baseHeight * dpr;
     canvas.style.cssText = `
-        width: 100%;
-        height: auto;
+        width: ${baseWidth}px;
+        height: ${baseHeight}px;
         max-width: 100%;
         display: block;
     `;
@@ -1174,6 +1178,8 @@ function createCarriedOverGraph(history) {
     
     // Draw stacked bar chart
     const ctx = canvas.getContext('2d');
+    // Scale context for high DPI
+    ctx.scale(dpr, dpr);
     const padding = 30;
     const graphWidth = canvas.width - padding * 2;
     const graphHeight = canvas.height - padding * 2;
@@ -1224,8 +1230,8 @@ function createCarriedOverGraph(history) {
     
     // Draw stacked bars
     if (history.length > 0) {
-        const barWidth = (graphWidth / history.length) * 0.85; // 85% of available space for bars
-        const barSpacing = (graphWidth / history.length) * 0.15; // 15% for spacing
+        const barWidth = (graphWidth / history.length) * 0.92; // 92% of available space for bars
+        const barSpacing = (graphWidth / history.length) * 0.08; // 8% for spacing (minimal gap)
         
         history.forEach((point, index) => {
             const x = padding + (graphWidth / history.length) * index + barSpacing / 2;
