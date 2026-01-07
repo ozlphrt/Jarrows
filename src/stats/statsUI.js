@@ -1019,29 +1019,29 @@ function createTimeChallengeCard(label, timeUnused, timeCollected, timeLost, tim
         box-sizing: border-box;
     `;
     
-    // Create formula display with labels aligned above numbers
+    // Create formula display with labels and numbers on same line
     const formulaContainer = document.createElement('div');
     formulaContainer.style.cssText = `
         display: flex;
-        align-items: flex-end;
+        align-items: center;
         gap: 8px;
         flex-wrap: wrap;
         justify-content: center;
         width: 100%;
     `;
     
-    // Helper function to create label + value pair
+    // Helper function to create label + value pair (horizontal layout)
     function createLabelValuePair(labelText, value, color, isOperator = false) {
         const container = document.createElement('div');
         container.style.cssText = `
             display: flex;
-            flex-direction: column;
+            flex-direction: row;
             align-items: center;
             gap: 4px;
         `;
         
         if (!isOperator) {
-            const labelEl = document.createElement('div');
+            const labelEl = document.createElement('span');
             labelEl.textContent = labelText;
             labelEl.style.cssText = `
                 font-size: 10px;
@@ -1053,7 +1053,7 @@ function createTimeChallengeCard(label, timeUnused, timeCollected, timeLost, tim
             container.appendChild(labelEl);
         }
         
-        const valueEl = document.createElement('div');
+        const valueEl = document.createElement('span');
         valueEl.textContent = isOperator ? value : formatTime(value);
         valueEl.style.cssText = `
             font-size: 18px;
