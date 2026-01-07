@@ -1162,12 +1162,9 @@ function createCarriedOverGraph(history) {
     const canvas = document.createElement('canvas');
     // Use high DPI resolution for crisp rendering on all displays
     const dpr = window.devicePixelRatio || 1;
-    const baseWidth = 400;
     const baseHeight = 150;
-    canvas.width = baseWidth * dpr;
-    canvas.height = baseHeight * dpr;
     canvas.style.cssText = `
-        width: ${baseWidth}px;
+        width: 100%;
         height: ${baseHeight}px;
         max-width: 100%;
         display: block;
@@ -1176,13 +1173,19 @@ function createCarriedOverGraph(history) {
     graphContainer.appendChild(title);
     graphContainer.appendChild(canvas);
     
+    // Get actual rendered width after appending to DOM
+    const actualWidth = canvas.offsetWidth || 400;
+    const baseWidth = actualWidth;
+    canvas.width = baseWidth * dpr;
+    canvas.height = baseHeight * dpr;
+    
     // Draw stacked bar chart
     const ctx = canvas.getContext('2d');
     // Scale context for high DPI
     ctx.scale(dpr, dpr);
     const padding = 30;
-    const graphWidth = canvas.width - padding * 2;
-    const graphHeight = canvas.height - padding * 2;
+    const graphWidth = baseWidth - padding * 2;
+    const graphHeight = baseHeight - padding * 2;
     
     // Find max values for scaling (unused + collected for positive, spin for negative)
     const maxPositive = Math.max(...history.map(h => {
