@@ -528,10 +528,11 @@
             font-weight: 800;
             line-height: 1;
             letter-spacing: -1px;
-            color: transparent;
+            color: rgba(251, 191, 36, 0.95); /* Fallback color for browsers that don't support background-clip */
             background: linear-gradient(180deg, rgba(251, 191, 36, 0.95), rgba(245, 158, 11, 0.95));
             -webkit-background-clip: text;
             background-clip: text;
+            -webkit-text-fill-color: transparent; /* Use this instead of color: transparent for better mobile support */
             text-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
             font-family: 'Fredoka', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
         }
@@ -666,6 +667,8 @@
             }
             .modal-level-number {
                 font-size: 80px;
+                color: rgba(251, 191, 36, 0.95); /* Ensure fallback color on mobile */
+                -webkit-text-fill-color: transparent; /* Ensure gradient works on mobile */
             }
             .modal-stats-grid {
                 gap: 6px;
@@ -1028,7 +1031,6 @@
             </div>
             
             <div class="modal-level-card" aria-label="Completed level">
-                <div class="modal-level-label">Level Cleared</div>
                 <div class="modal-level-number" id="level-complete-level">1</div>
             </div>
             
