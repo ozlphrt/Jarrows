@@ -379,9 +379,9 @@
             background: rgba(17, 24, 39, 0.42);
             backdrop-filter: blur(28px) saturate(180%);
             -webkit-backdrop-filter: blur(28px) saturate(180%);
-            /* Full-screen panel */
-            width: 100vw;
-            height: 100vh;
+            /* Full-screen panel - use 100% to avoid scrollbar issues */
+            width: 100%;
+            height: 100%;
             max-width: none;
             max-height: none;
             box-sizing: border-box;
@@ -403,7 +403,12 @@
             overflow-y: auto;
             -webkit-overflow-scrolling: touch;
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            /* Ensure content fits within viewport */
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
         }
+        
         
         .modal-top-accent {
             position: absolute;
@@ -839,6 +844,19 @@
         .toggle-icon:not(.active) svg {
             opacity: 0.6;
         }
+        
+        /* Auto-zoom icon: text should not be filled, only stroked elements */
+        #auto-zoom-icon text {
+            fill: currentColor !important;
+        }
+        
+        .toggle-icon.active #auto-zoom-icon text {
+            fill: white !important;
+        }
+        
+        .toggle-icon:not(.active) #auto-zoom-icon text {
+            fill: rgba(255, 255, 255, 0.6) !important;
+        }
 
         /* Quality preset (BATT / BAL / PERF) + VER should match the same 32x32 footprint as other toggles */
         #quality-toggle,
@@ -965,7 +983,7 @@
         /* Framing control removed from settings */
         
     </style>
-  <script type="module" crossorigin src="/Jarrows/assets/index-BS2BuMvm.js"></script>
+  <script type="module" crossorigin src="/Jarrows/assets/index-ti5ojIbZ.js"></script>
   <link rel="modulepreload" crossorigin href="/Jarrows/assets/preload-helper-Si1OKCYg.js">
 <link rel="manifest" href="/Jarrows/manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="/Jarrows/registerSW.js"></script></head>
 <body>
@@ -1116,6 +1134,14 @@
                         <!-- Speaker icon -->
                         <path d="M11 5L6 9H2v6h4l5 4V5z"></path>
                         <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                    </svg>
+                </button>
+                <button class="toggle-icon active" id="auto-zoom-toggle" title="Auto Zoom On/Off">
+                    <svg id="auto-zoom-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <!-- Magnifying glass with A in the middle -->
+                        <circle cx="11" cy="11" r="8" fill="none"></circle>
+                        <path d="m21 21-4.35-4.35" fill="none"></path>
+                        <text x="11" y="15" font-family="system-ui, -apple-system, sans-serif" font-size="8" font-weight="700" fill="currentColor" text-anchor="middle" dominant-baseline="central" style="pointer-events: none;">A</text>
                     </svg>
                 </button>
                 <!-- Quality preset: cycles Balanced → Performance → Battery -->
