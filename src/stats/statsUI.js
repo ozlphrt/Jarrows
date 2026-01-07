@@ -1199,6 +1199,20 @@ function createCarriedOverGraph(history) {
         return unused + collected - spin;
     }), 0);
     
+    // Find the maximum total bar height needed (positive + negative) across all bars
+    // This ensures we can scale everything to fit within graphHeight
+    const maxTotalBarHeight = Math.max(...history.map(h => {
+        const unused = h.unused || 0;
+        const collected = h.collected || 0;
+        const spin = h.spin || 0;
+        // At unified scale, calculate what the total height would be
+        const unusedH = (unused / maxIndividual) * graphHeight;
+        const collectedH = (collected / maxIndividual) * graphHeight;
+        const spinH = (spin / maxIndividual) * graphHeight;
+        // Total height needed = positive stack + negative stack
+        return unusedH + collectedH + spinH;
+    }), graphHeight);
+    
     // Clear canvas
     ctx.fillStyle = 'rgba(0, 0, 0, 0)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -1279,21 +1293,15 @@ function createCarriedOverGraph(history) {
                 spinHeight = spinHeightRaw;
             }
             
-            // Ensure bars don't exceed graph boundaries
-            const totalPositiveHeight = unusedHeight + collectedHeight;
-            const totalNegativeHeight = spinHeight;
-            const maxPositiveSpace = baselineY - padding;
-            const maxNegativeSpace = (padding + graphHeight) - baselineY;
-            
-            // Scale down if needed to fit within graph
-            if (totalPositiveHeight > maxPositiveSpace && maxPositiveSpace > 0) {
-                const positiveScale = maxPositiveSpace / totalPositiveHeight;
-                unusedHeight *= positiveScale;
-                collectedHeight *= positiveScale;
-            }
-            if (totalNegativeHeight > maxNegativeSpace && maxNegativeSpace > 0) {
-                const negativeScale = maxNegativeSpace / totalNegativeHeight;
-                spinHeight *= negativeScale;
+            // Auto-scale: scale down all bars proportionally if maximum bar exceeds graphHeight
+            // This ensures all bars fit while maintaining "bar height = carried over" relationship
+            const totalBarHeight = unusedHeight + collectedHeight + spinHeight;
+            const maxTotalHeight = maxTotalBarHeight;
+            if (maxTotalHeight > graphHeight && graphHeight > 0) {
+                const globalScale = graphHeight / maxTotalHeight;
+                unusedHeight *= globalScale;
+                collectedHeight *= globalScale;
+                spinHeight *= globalScale;
             }
             
             // Draw positive components (stacked upward from baseline)
