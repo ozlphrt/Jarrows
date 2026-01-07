@@ -1177,7 +1177,7 @@ function createCarriedOverGraph(history) {
     const graphWidth = baseWidth - padding * 2;
     const graphHeight = baseHeight - padding; // Reduced bottom padding to leave space for labels
     
-    // Find max values for scaling - use unified scale for all components
+    // Find max values for scaling - use unified scale for all individual components
     const maxUnused = Math.max(...history.map(h => h.unused || 0), 0);
     const maxCollected = Math.max(...history.map(h => h.collected || 0), 0);
     const maxSpin = Math.max(...history.map(h => h.spin || 0), 0);
@@ -1187,8 +1187,9 @@ function createCarriedOverGraph(history) {
         return unused + collected;
     }), 1);
     const maxNegative = maxSpin;
-    // Use unified scale: maximum of any individual component or their sum
-    const maxAbsValue = Math.max(maxUnused, maxCollected, maxSpin, maxPositive, maxNegative, 1);
+    // Use unified scale: maximum of any individual component (not the sum)
+    // This ensures collected (1:44) and spin (3:10) are visually proportional
+    const maxIndividual = Math.max(maxUnused, maxCollected, maxSpin, 1);
     
     // Clear canvas
     ctx.fillStyle = 'rgba(0, 0, 0, 0)';
@@ -1249,30 +1250,33 @@ function createCarriedOverGraph(history) {
             const spin = point.spin || 0;
             const carriedOver = point.carriedOver || 0;
             
-            // Auto-scale: scale positive and negative values independently to use full available space
-            // This ensures the chart automatically adjusts to fit all data
+            // Auto-scale: use unified scale for all individual components
+            // This ensures collected (1:44) and spin (3:10) are visually proportional
             let unusedHeight, collectedHeight, spinHeight;
             if (maxNegative === 0) {
                 // No spin - scale positive values to use full graph height
-                unusedHeight = (unused / maxPositive) * graphHeight;
-                collectedHeight = (collected / maxPositive) * graphHeight;
+                unusedHeight = (unused / maxIndividual) * graphHeight;
+                collectedHeight = (collected / maxIndividual) * graphHeight;
                 spinHeight = 0;
             } else if (maxPositive === 0) {
                 // Only negative - scale negative values to use full graph height
                 unusedHeight = 0;
                 collectedHeight = 0;
-                spinHeight = (spin / maxNegative) * graphHeight;
+                spinHeight = (spin / maxIndividual) * graphHeight;
             } else {
-                // Both positive and negative - scale each direction independently
+                // Both positive and negative - use unified scale for all components
                 // Calculate available space for positive and negative
                 const positiveHeight = baselineY - padding;
                 const negativeHeight = (padding + graphHeight) - baselineY;
-                // Scale positive values to fit positive space (maxPositive uses full positiveHeight)
-                // Scale negative values to fit negative space (maxNegative uses full negativeHeight)
-                // This ensures automatic vertical scaling - largest values use full available space
-                unusedHeight = (unused / maxPositive) * positiveHeight;
-                collectedHeight = (collected / maxPositive) * positiveHeight;
-                spinHeight = (spin / maxNegative) * negativeHeight;
+                // Scale all components using unified maxIndividual scale
+                // Map to available space based on positive/negative ratio
+                const totalValueRange = maxPositive + maxNegative;
+                const positiveSpaceRatio = maxPositive / totalValueRange;
+                const negativeSpaceRatio = maxNegative / totalValueRange;
+                // Scale each component using unified scale, then map to appropriate space
+                unusedHeight = (unused / maxIndividual) * graphHeight * positiveSpaceRatio;
+                collectedHeight = (collected / maxIndividual) * graphHeight * positiveSpaceRatio;
+                spinHeight = (spin / maxIndividual) * graphHeight * negativeSpaceRatio;
             }
             
             // Draw positive components (stacked upward from baseline)
