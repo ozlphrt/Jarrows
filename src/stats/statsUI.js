@@ -1199,20 +1199,6 @@ function createCarriedOverGraph(history) {
         return unused + collected - spin;
     }), 0);
     
-    // Find the maximum total bar height needed (positive + negative) across all bars
-    // This ensures we can scale everything to fit within graphHeight
-    const maxTotalBarHeight = Math.max(...history.map(h => {
-        const unused = h.unused || 0;
-        const collected = h.collected || 0;
-        const spin = h.spin || 0;
-        // At unified scale, calculate what the total height would be
-        const unusedH = (unused / maxIndividual) * graphHeight;
-        const collectedH = (collected / maxIndividual) * graphHeight;
-        const spinH = (spin / maxIndividual) * graphHeight;
-        // Total height needed = positive stack + negative stack
-        return unusedH + collectedH + spinH;
-    }), graphHeight);
-    
     // Clear canvas
     ctx.fillStyle = 'rgba(0, 0, 0, 0)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -1290,13 +1276,13 @@ function createCarriedOverGraph(history) {
             ctx.textAlign = 'center';
             ctx.fillText(point.level.toString(), x + barWidth / 2, padding + graphHeight + 18);
             
-            // Draw carried over value label at the top of the positive stack or bottom of negative
+            // Draw carried over value label at the top of the bar (if positive) or bottom (if negative)
             if (Math.abs(carriedOver) > 0) {
                 ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
                 ctx.font = '9px sans-serif';
                 const labelY = carriedOver >= 0 
-                    ? currentY - 6  // Above the positive stack
-                    : baselineY + spinHeight + 14; // Below the negative stack
+                    ? currentY - 6  // Above the bar
+                    : currentY + 14; // Below the bar
                 ctx.fillText(formatTime(carriedOver), x + barWidth / 2, labelY);
             }
         });
