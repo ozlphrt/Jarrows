@@ -1249,32 +1249,30 @@ function createCarriedOverGraph(history) {
             const spin = point.spin || 0;
             const carriedOver = point.carriedOver || 0;
             
-            // Normalize values to graph height using unified scale
-            // All components (unused, collected, spin) use the same maxAbsValue scale
-            // This ensures visual proportions are correct (e.g., 18:05 unused vs 6:25 spin)
+            // Auto-scale: scale positive and negative values independently to use full available space
+            // This ensures the chart automatically adjusts to fit all data
             let unusedHeight, collectedHeight, spinHeight;
             if (maxNegative === 0) {
-                // No spin - use full graph height for positive values
-                unusedHeight = (unused / maxAbsValue) * graphHeight;
-                collectedHeight = (collected / maxAbsValue) * graphHeight;
+                // No spin - scale positive values to use full graph height
+                unusedHeight = (unused / maxPositive) * graphHeight;
+                collectedHeight = (collected / maxPositive) * graphHeight;
                 spinHeight = 0;
             } else if (maxPositive === 0) {
-                // Only negative - use full graph height for negative values
+                // Only negative - scale negative values to use full graph height
                 unusedHeight = 0;
                 collectedHeight = 0;
-                spinHeight = (spin / maxAbsValue) * graphHeight;
+                spinHeight = (spin / maxNegative) * graphHeight;
             } else {
-                // Both positive and negative - use unified scale
+                // Both positive and negative - scale each direction independently
                 // Calculate available space for positive and negative
                 const positiveHeight = baselineY - padding;
                 const negativeHeight = (padding + graphHeight) - baselineY;
-                // Scale all values using maxAbsValue, then map to their respective spaces
-                // This ensures 18:05 unused appears larger than 6:25 spin visually
-                const positiveScale = positiveHeight / maxAbsValue;
-                const negativeScale = negativeHeight / maxAbsValue;
-                unusedHeight = unused * positiveScale;
-                collectedHeight = collected * positiveScale;
-                spinHeight = spin * negativeScale;
+                // Scale positive values to fit positive space (maxPositive uses full positiveHeight)
+                // Scale negative values to fit negative space (maxNegative uses full negativeHeight)
+                // This ensures automatic vertical scaling - largest values use full available space
+                unusedHeight = (unused / maxPositive) * positiveHeight;
+                collectedHeight = (collected / maxPositive) * positiveHeight;
+                spinHeight = (spin / maxNegative) * negativeHeight;
             }
             
             // Draw positive components (stacked upward from baseline)
