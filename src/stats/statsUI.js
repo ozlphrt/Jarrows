@@ -982,6 +982,10 @@ function updateComparisonDisplay(section, userStats, comparison) {
             grid-template-columns: 1fr;
             gap: 12px;
             width: 100%;
+            overflow-x: hidden;
+            overflow-y: hidden;
+            box-sizing: border-box;
+            max-width: 100%;
         `;
         
         const timeUnused = userStats.timeUnusedLevel || 0;
@@ -1017,19 +1021,47 @@ function createTimeChallengeCard(label, timeUnused, timeCollected, timeLost, tim
         gap: 8px;
         width: 100%;
         box-sizing: border-box;
+        overflow-x: hidden;
+        overflow-y: hidden;
+        max-width: 100%;
     `;
     
     // Create formula display with labels above numbers, all in one horizontal line
     const formulaContainer = document.createElement('div');
+    formulaContainer.className = 'time-challenge-formula-container';
     formulaContainer.style.cssText = `
         display: flex;
         align-items: flex-end;
-        gap: 6px;
+        gap: 4px;
         flex-wrap: nowrap;
         justify-content: center;
         width: 100%;
         overflow-x: hidden;
+        overflow-y: hidden;
+        max-width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
     `;
+    
+    // Add style to hide scrollbars if not already added
+    if (!document.getElementById('hide-scrollbar-style')) {
+        const style = document.createElement('style');
+        style.id = 'hide-scrollbar-style';
+        style.textContent = `
+            .time-challenge-formula-container::-webkit-scrollbar {
+                display: none !important;
+                width: 0 !important;
+                height: 0 !important;
+            }
+            .time-challenge-formula-container {
+                -ms-overflow-style: none !important;
+                scrollbar-width: none !important;
+                overflow-x: hidden !important;
+                overflow-y: hidden !important;
+            }
+        `;
+        document.head.appendChild(style);
+    }
     
     // Helper function to create label + value pair (vertical: label above number)
     function createLabelValuePair(labelText, value, color, isOperator = false) {
@@ -1046,25 +1078,25 @@ function createTimeChallengeCard(label, timeUnused, timeCollected, timeLost, tim
             const labelEl = document.createElement('div');
             labelEl.textContent = labelText;
             labelEl.style.cssText = `
-                font-size: 9px;
+                font-size: 8px;
                 font-weight: 700;
                 color: rgba(255, 255, 255, 0.6);
                 text-transform: uppercase;
-                letter-spacing: 0.5px;
+                letter-spacing: 0.3px;
                 white-space: nowrap;
             `;
             container.appendChild(labelEl);
         } else {
             // For operators, add empty space to align with numbers
             const spacer = document.createElement('div');
-            spacer.style.cssText = `height: 14px;`;
+            spacer.style.cssText = `height: 12px;`;
             container.appendChild(spacer);
         }
         
         const valueEl = document.createElement('div');
         valueEl.textContent = isOperator ? value : formatTime(value);
         valueEl.style.cssText = `
-            font-size: 16px;
+            font-size: 14px;
             font-weight: 900;
             color: ${color};
             text-shadow: 0 0 8px ${color === '#FFE66D' ? 'rgba(255, 230, 109, 0.4)' : 
