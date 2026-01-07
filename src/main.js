@@ -594,6 +594,7 @@ let timeChallengeTimeCollected = 0; // Total time collected from block removals 
 let timeChallengeTimeCollectedAllTime = 0; // Cumulative time collected across all levels in this run
 let timeChallengeTimeCarriedOverAllTime = 0; // Cumulative time carried over across all levels in this run
 let timeChallengeSpinCost = 0; // Total time spent on spins this level
+let timeChallengeCarriedOverHistory = []; // Array of { level, carriedOver } for graph
 let timeFreezeReasons = new Set();
 let timeUpShown = false;
 
@@ -876,6 +877,7 @@ function timeChallengeResetRun() {
     timeChallengeSpinCost = 0;
     timeChallengeRemovals = 0;
     timeChallengeResidualSec = 0;
+    timeChallengeCarriedOverHistory = []; // Reset history for new run
     timeChallengeActive = true;
     timeUpShown = false;
     setTimeFrozen('time_up', false);
@@ -3204,6 +3206,11 @@ function showLevelCompleteModal(completedLevel) {
         // Time Challenge: save residual time for next level
         if (isTimeChallengeMode() && timeChallengeActive) {
             timeChallengeResidualSec = Math.max(0, timeLeftSec);
+            // Track carried over time for graph
+            timeChallengeCarriedOverHistory.push({
+                level: completedLevel,
+                carriedOver: timeChallengeResidualSec
+            });
         }
         
         // Play level complete sound effect
@@ -5393,6 +5400,8 @@ function animate() {
                         userStats.timeCarriedOverLevel = timeChallengeResidualSec;
                         // Use actual spin cost (time spent on spins) instead of calculated lost time
                         userStats.timeLostLevel = timeChallengeSpinCost;
+                        // Include carried over history for graph
+                        userStats.carriedOverHistory = [...timeChallengeCarriedOverHistory];
                     }
                     const comparison = await getLevelComparison(userStats);
                     updateLevelCompleteModal(userStats, comparison);

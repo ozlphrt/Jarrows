@@ -996,6 +996,11 @@ function updateComparisonDisplay(section, userStats, comparison) {
             timeLost,
             timeCarriedOver
         ));
+        
+        // Add graph showing carried over progress over time
+        if (userStats.carriedOverHistory && userStats.carriedOverHistory.length > 0) {
+            grid.appendChild(createCarriedOverGraph(userStats.carriedOverHistory));
+        }
     }
 }
 
@@ -1084,6 +1089,141 @@ function createTimeChallengeCard(label, timeUnused, timeCollected, timeLost, tim
     card.appendChild(labelEl);
     card.appendChild(valueEl);
     return card;
+}
+
+function createCarriedOverGraph(history) {
+    const graphContainer = document.createElement('div');
+    graphContainer.style.cssText = `
+        padding: 14px;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        width: 100%;
+        box-sizing: border-box;
+    `;
+    
+    const title = document.createElement('div');
+    title.textContent = 'Carried Over Progress';
+    title.style.cssText = `
+        font-size: 11px;
+        font-weight: 700;
+        color: rgba(255, 255, 255, 0.7);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 12px;
+        text-align: center;
+    `;
+    
+    const canvas = document.createElement('canvas');
+    canvas.width = 400;
+    canvas.height = 150;
+    canvas.style.cssText = `
+        width: 100%;
+        height: auto;
+        max-width: 100%;
+        display: block;
+    `;
+    
+    graphContainer.appendChild(title);
+    graphContainer.appendChild(canvas);
+    
+    // Draw graph
+    const ctx = canvas.getContext('2d');
+    const padding = 30;
+    const graphWidth = canvas.width - padding * 2;
+    const graphHeight = canvas.height - padding * 2;
+    
+    // Find max value for scaling
+    const maxValue = Math.max(...history.map(h => h.carriedOver), 1);
+    const minValue = Math.min(...history.map(h => h.carriedOver), 0);
+    const range = maxValue - minValue || 1;
+    
+    // Clear canvas
+    ctx.fillStyle = 'rgba(0, 0, 0, 0)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw grid lines
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+        const y = padding + (graphHeight / 4) * i;
+        ctx.beginPath();
+        ctx.moveTo(padding, y);
+        ctx.lineTo(padding + graphWidth, y);
+        ctx.stroke();
+    }
+    
+    // Draw axes
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(padding, padding);
+    ctx.lineTo(padding, padding + graphHeight);
+    ctx.lineTo(padding + graphWidth, padding + graphHeight);
+    ctx.stroke();
+    
+    // Draw line graph
+    if (history.length > 0) {
+        ctx.strokeStyle = '#4ECDC4';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        
+        history.forEach((point, index) => {
+            const x = padding + (graphWidth / Math.max(1, history.length - 1)) * index;
+            const normalizedValue = (point.carriedOver - minValue) / range;
+            const y = padding + graphHeight - (normalizedValue * graphHeight);
+            
+            if (index === 0) {
+                ctx.moveTo(x, y);
+            } else {
+                ctx.lineTo(x, y);
+            }
+        });
+        
+        ctx.stroke();
+        
+        // Draw points
+        ctx.fillStyle = '#4ECDC4';
+        history.forEach((point, index) => {
+            const x = padding + (graphWidth / Math.max(1, history.length - 1)) * index;
+            const normalizedValue = (point.carriedOver - minValue) / range;
+            const y = padding + graphHeight - (normalizedValue * graphHeight);
+            
+            ctx.beginPath();
+            ctx.arc(x, y, 4, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Draw level label
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+            ctx.font = '10px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(point.level.toString(), x, padding + graphHeight + 18);
+            ctx.fillStyle = '#4ECDC4';
+        });
+        
+        // Draw value labels on first and last points
+        if (history.length > 0) {
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+            ctx.font = '9px sans-serif';
+            ctx.textAlign = 'center';
+            
+            // First point
+            const firstPoint = history[0];
+            const firstX = padding;
+            const firstNormalized = (firstPoint.carriedOver - minValue) / range;
+            const firstY = padding + graphHeight - (firstNormalized * graphHeight);
+            ctx.fillText(formatTime(firstPoint.carriedOver), firstX, firstY - 8);
+            
+            // Last point
+            const lastPoint = history[history.length - 1];
+            const lastX = padding + graphWidth;
+            const lastNormalized = (lastPoint.carriedOver - minValue) / range;
+            const lastY = padding + graphHeight - (lastNormalized * graphHeight);
+            ctx.fillText(formatTime(lastPoint.carriedOver), lastX, lastY - 8);
+        }
+    }
+    
+    return graphContainer;
 }
 
 function createBadgePill(meta) {
