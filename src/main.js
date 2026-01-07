@@ -3467,9 +3467,9 @@ function showLevelCompleteModal(completedLevel) {
         // Per request: remove the "Outstanding performance" line.
         if (message) message.textContent = '';
         
-        // Update title to include level number: "Level X Complete!"
+        // Update title to include level number: "Level X Complete!" with styled number
         if (title) {
-            title.textContent = `Level ${completedLevel} Complete!`;
+            title.innerHTML = `Level <span class="modal-level-number-inline">${completedLevel}</span> Complete!`;
         }
         
         // Hide the separate level number display since it's now in the title

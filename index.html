@@ -480,6 +480,22 @@
             letter-spacing: 1px;
         }
         
+        .modal-level-number-inline {
+            display: inline-block;
+            font-size: 72px;
+            font-weight: 800;
+            line-height: 1;
+            letter-spacing: -1px;
+            color: rgba(251, 191, 36, 0.95); /* Fallback color for browsers that don't support background-clip */
+            background: linear-gradient(180deg, rgba(251, 191, 36, 0.95), rgba(245, 158, 11, 0.95));
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent; /* Use this instead of color: transparent for better mobile support */
+            text-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+            vertical-align: middle;
+            margin: 0 4px;
+        }
+        
         .modal-message {
             color: rgba(255, 255, 255, 0.82);
             font-size: 14px;
@@ -660,6 +676,11 @@
             .modal-title {
                 font-size: 34px;
                 margin-bottom: 10px;
+            }
+            .modal-level-number-inline {
+                font-size: 56px;
+                color: rgba(251, 191, 36, 0.95); /* Ensure fallback color on mobile */
+                -webkit-text-fill-color: transparent; /* Ensure gradient works on mobile */
             }
             .modal-message {
                 font-size: 13px;
