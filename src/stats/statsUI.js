@@ -1019,50 +1019,59 @@ function createTimeChallengeCard(label, timeUnused, timeCollected, timeLost, tim
         box-sizing: border-box;
     `;
     
-    // Create formula display with labels and numbers on same line
+    // Create formula display with labels above numbers, all in one horizontal line
     const formulaContainer = document.createElement('div');
     formulaContainer.style.cssText = `
         display: flex;
-        align-items: center;
-        gap: 8px;
-        flex-wrap: wrap;
+        align-items: flex-end;
+        gap: 6px;
+        flex-wrap: nowrap;
         justify-content: center;
         width: 100%;
+        overflow-x: auto;
     `;
     
-    // Helper function to create label + value pair (horizontal layout)
+    // Helper function to create label + value pair (vertical: label above number)
     function createLabelValuePair(labelText, value, color, isOperator = false) {
         const container = document.createElement('div');
         container.style.cssText = `
             display: flex;
-            flex-direction: row;
+            flex-direction: column;
             align-items: center;
-            gap: 4px;
+            gap: 2px;
+            flex-shrink: 0;
         `;
         
         if (!isOperator) {
-            const labelEl = document.createElement('span');
+            const labelEl = document.createElement('div');
             labelEl.textContent = labelText;
             labelEl.style.cssText = `
-                font-size: 10px;
+                font-size: 9px;
                 font-weight: 700;
                 color: rgba(255, 255, 255, 0.6);
                 text-transform: uppercase;
                 letter-spacing: 0.5px;
+                white-space: nowrap;
             `;
             container.appendChild(labelEl);
+        } else {
+            // For operators, add empty space to align with numbers
+            const spacer = document.createElement('div');
+            spacer.style.cssText = `height: 14px;`;
+            container.appendChild(spacer);
         }
         
-        const valueEl = document.createElement('span');
+        const valueEl = document.createElement('div');
         valueEl.textContent = isOperator ? value : formatTime(value);
         valueEl.style.cssText = `
-            font-size: 18px;
+            font-size: 16px;
             font-weight: 900;
             color: ${color};
             text-shadow: 0 0 8px ${color === '#FFE66D' ? 'rgba(255, 230, 109, 0.4)' : 
                                     color === '#4ECDC4' ? 'rgba(78, 205, 196, 0.4)' : 
                                     color === '#FF6B6B' ? 'rgba(255, 107, 107, 0.4)' : 'transparent'};
             line-height: 1;
+            white-space: nowrap;
         `;
         container.appendChild(valueEl);
         
