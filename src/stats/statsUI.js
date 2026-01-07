@@ -1178,11 +1178,14 @@ function createCarriedOverGraph(history) {
     const graphWidth = canvas.width - padding * 2;
     const graphHeight = canvas.height - padding * 2;
     
-    // Find max and min values for scaling (need to handle both positive and negative)
-    const maxValue = Math.max(...history.map(h => Math.max(0, h.carriedOver)), 1);
-    const minValue = Math.min(...history.map(h => Math.min(0, h.carriedOver)), -1);
-    const maxAbsValue = Math.max(Math.abs(maxValue), Math.abs(minValue));
-    const range = maxAbsValue * 2 || 2; // Total range for both positive and negative
+    // Find max values for scaling (unused + collected for positive, spin for negative)
+    const maxPositive = Math.max(...history.map(h => {
+        const unused = h.unused || 0;
+        const collected = h.collected || 0;
+        return unused + collected;
+    }), 1);
+    const maxNegative = Math.max(...history.map(h => h.spin || 0), 1);
+    const maxAbsValue = Math.max(maxPositive, maxNegative, 1);
     
     // Clear canvas
     ctx.fillStyle = 'rgba(0, 0, 0, 0)';
@@ -1226,24 +1229,38 @@ function createCarriedOverGraph(history) {
         
         history.forEach((point, index) => {
             const x = padding + (graphWidth / history.length) * index + barSpacing / 2;
-            const value = point.carriedOver;
+            const unused = point.unused || 0;
+            const collected = point.collected || 0;
+            const spin = point.spin || 0;
+            const carriedOver = point.carriedOver || 0;
             
-            // Calculate bar height (normalized to graph height)
-            const normalizedValue = value / maxAbsValue;
-            const barHeight = Math.abs(normalizedValue) * (graphHeight / 2);
+            // Normalize values to graph height
+            const unusedHeight = (unused / maxAbsValue) * (graphHeight / 2);
+            const collectedHeight = (collected / maxAbsValue) * (graphHeight / 2);
+            const spinHeight = (spin / maxAbsValue) * (graphHeight / 2);
             
-            // Determine color based on positive/negative
-            const isPositive = value >= 0;
-            const color = isPositive ? '#4ECDC4' : '#FF6B6B';
+            // Draw positive components (stacked upward from baseline)
+            let currentY = baselineY;
             
-            // Draw bar
-            ctx.fillStyle = color;
-            if (isPositive) {
-                // Positive: bar goes up from baseline
-                ctx.fillRect(x, baselineY - barHeight, barWidth, barHeight);
-            } else {
-                // Negative: bar goes down from baseline
-                ctx.fillRect(x, baselineY, barWidth, barHeight);
+            // Unused (yellow) - bottom segment
+            if (unused > 0) {
+                ctx.fillStyle = '#FFE66D'; // Yellow
+                currentY -= unusedHeight;
+                ctx.fillRect(x, currentY, barWidth, unusedHeight);
+            }
+            
+            // Collected (teal) - stacked on top of unused
+            if (collected > 0) {
+                ctx.fillStyle = '#4ECDC4'; // Teal
+                const collectedY = currentY - collectedHeight;
+                ctx.fillRect(x, collectedY, barWidth, collectedHeight);
+                currentY = collectedY;
+            }
+            
+            // Draw negative component (spin) - downward from baseline
+            if (spin > 0) {
+                ctx.fillStyle = '#FF6B6B'; // Red
+                ctx.fillRect(x, baselineY, barWidth, spinHeight);
             }
             
             // Draw level label below bar
@@ -1252,14 +1269,14 @@ function createCarriedOverGraph(history) {
             ctx.textAlign = 'center';
             ctx.fillText(point.level.toString(), x + barWidth / 2, padding + graphHeight + 18);
             
-            // Draw value label on top/bottom of bar
-            if (Math.abs(value) > 0) {
+            // Draw carried over value label at the top of the positive stack or bottom of negative
+            if (Math.abs(carriedOver) > 0) {
                 ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
                 ctx.font = '9px sans-serif';
-                const labelY = isPositive 
-                    ? baselineY - barHeight - 6 
-                    : baselineY + barHeight + 14;
-                ctx.fillText(formatTime(value), x + barWidth / 2, labelY);
+                const labelY = carriedOver >= 0 
+                    ? currentY - 6  // Above the positive stack
+                    : baselineY + spinHeight + 14; // Below the negative stack
+                ctx.fillText(formatTime(carriedOver), x + barWidth / 2, labelY);
             }
         });
     }

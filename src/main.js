@@ -635,7 +635,7 @@ let timeChallengeTimeCollected = 0; // Total time collected from block removals 
 let timeChallengeTimeCollectedAllTime = 0; // Cumulative time collected across all levels in this run
 let timeChallengeTimeCarriedOverAllTime = 0; // Cumulative time carried over across all levels in this run
 let timeChallengeSpinCost = 0; // Total time spent on spins this level
-let timeChallengeCarriedOverHistory = []; // Array of { level, carriedOver } for graph
+let timeChallengeCarriedOverHistory = []; // Array of { level, carriedOver, unused, collected, spin } for graph
 let timeFreezeReasons = new Set();
 let timeUpShown = false;
 
@@ -3511,10 +3511,13 @@ function showLevelCompleteModal(completedLevel) {
         // Time Challenge: save residual time for next level
         if (isTimeChallengeMode() && timeChallengeActive) {
             timeChallengeResidualSec = Math.max(0, timeLeftSec);
-            // Track carried over time for graph
+            // Track carried over time for graph with all components
             timeChallengeCarriedOverHistory.push({
                 level: completedLevel,
-                carriedOver: timeChallengeResidualSec
+                carriedOver: timeChallengeResidualSec,
+                unused: timeChallengeInitialTime || 0,
+                collected: timeChallengeTimeCollected || 0,
+                spin: timeChallengeSpinCost || 0
             });
         }
         
