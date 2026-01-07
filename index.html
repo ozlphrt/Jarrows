@@ -733,6 +733,23 @@
             }
         }
         
+        /* Desktop: constrain modal width to maintain mobile aspect ratio */
+        @media (min-width: 769px) {
+            #level-complete-modal {
+                justify-content: center;
+                align-items: center;
+            }
+            
+            .modal-content {
+                width: 480px; /* Constrain width to mobile-like size */
+                max-width: 90vw; /* Don't exceed 90% of viewport width */
+                height: 100%;
+                max-height: 100vh;
+                border-radius: 16px; /* Add rounded corners for desktop */
+                margin: auto;
+            }
+        }
+        
         /* Game Control Buttons */
         #game-controls {
             position: fixed;
