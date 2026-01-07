@@ -990,7 +990,7 @@ function updateComparisonDisplay(section, userStats, comparison) {
         const timeCarriedOver = userStats.timeCarriedOverLevel || 0;
         
         grid.appendChild(createTimeChallengeCard(
-            `unused + collected - lost = carried over`,
+            `unused + collected - spin = carried over`,
             timeUnused,
             timeCollected,
             timeLost,
