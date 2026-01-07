@@ -1099,8 +1099,8 @@ function createTimeChallengeCard(label, timeUnused, timeCollected, timeLost, tim
             font-size: 14px;
             font-weight: 900;
             color: ${color};
-            text-shadow: 0 0 8px ${color === '#FFE66D' ? 'rgba(255, 230, 109, 0.4)' : 
-                                    color === '#4ECDC4' ? 'rgba(78, 205, 196, 0.4)' : 
+            text-shadow: 0 0 8px ${color === '#FBBF24' ? 'rgba(251, 191, 36, 0.4)' : 
+                                    color === '#4ADE80' ? 'rgba(74, 222, 128, 0.4)' : 
                                     color === '#FF6B6B' ? 'rgba(255, 107, 107, 0.4)' : 'transparent'};
             line-height: 1;
             white-space: nowrap;
@@ -1110,14 +1110,14 @@ function createTimeChallengeCard(label, timeUnused, timeCollected, timeLost, tim
         return container;
     }
     
-    // unused (yellow)
-    formulaContainer.appendChild(createLabelValuePair('unused', timeUnused, '#FFE66D'));
+    // unused (orange/golden - same as level number)
+    formulaContainer.appendChild(createLabelValuePair('unused', timeUnused, '#FBBF24')); // rgba(251, 191, 36, 0.95)
     
     // plus sign (white)
     formulaContainer.appendChild(createLabelValuePair('', '+', 'rgba(255, 255, 255, 0.8)', true));
     
-    // collected (green)
-    formulaContainer.appendChild(createLabelValuePair('collected', timeCollected, '#4ECDC4'));
+    // collected (green - same as blocks icon)
+    formulaContainer.appendChild(createLabelValuePair('collected', timeCollected, '#4ADE80')); // rgba(74, 222, 128, 0.95)
     
     // minus sign (white)
     formulaContainer.appendChild(createLabelValuePair('', '-', 'rgba(255, 255, 255, 0.8)', true));
@@ -1128,8 +1128,8 @@ function createTimeChallengeCard(label, timeUnused, timeCollected, timeLost, tim
     // equals sign (white)
     formulaContainer.appendChild(createLabelValuePair('', '=', 'rgba(255, 255, 255, 0.8)', true));
     
-    // carried over (green if positive, red if negative/zero)
-    const carriedOverColor = timeCarriedOver > 0 ? '#4ECDC4' : '#FF6B6B';
+    // carried over (green if positive, red if negative/zero - use same green as blocks icon)
+    const carriedOverColor = timeCarriedOver > 0 ? '#4ADE80' : '#FF6B6B';
     formulaContainer.appendChild(createLabelValuePair('carried over', timeCarriedOver, carriedOverColor));
     
     card.appendChild(formulaContainer);
@@ -1242,16 +1242,16 @@ function createCarriedOverGraph(history) {
             // Draw positive components (stacked upward from baseline)
             let currentY = baselineY;
             
-            // Unused (yellow) - bottom segment
+            // Unused (orange/golden - same as level number) - bottom segment
             if (unused > 0) {
-                ctx.fillStyle = '#FFE66D'; // Yellow
+                ctx.fillStyle = '#FBBF24'; // Orange/Golden - rgba(251, 191, 36, 0.95)
                 currentY -= unusedHeight;
                 ctx.fillRect(x, currentY, barWidth, unusedHeight);
             }
             
-            // Collected (teal) - stacked on top of unused
+            // Collected (green - same as blocks icon) - stacked on top of unused
             if (collected > 0) {
-                ctx.fillStyle = '#4ECDC4'; // Teal
+                ctx.fillStyle = '#4ADE80'; // Green - rgba(74, 222, 128, 0.95)
                 const collectedY = currentY - collectedHeight;
                 ctx.fillRect(x, collectedY, barWidth, collectedHeight);
                 currentY = collectedY;
