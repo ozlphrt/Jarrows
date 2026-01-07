@@ -250,6 +250,9 @@ renderer.domElement.addEventListener('wheel', (event) => {
     const zoomFactor = 1 + (event.deltaY > 0 ? zoomSpeed : -zoomSpeed);
     targetRadius *= zoomFactor;
     targetRadius = Math.max(MIN_RADIUS, Math.min(MAX_RADIUS, targetRadius));
+    
+    // Disable auto-zoom when user manually zooms
+    autoZoomDisabledUntilMs = performance.now() + AUTO_ZOOM_DISABLE_DURATION_MS;
 }, { passive: false });
 
 // Setup scene elements
@@ -323,8 +326,14 @@ const MAX_RADIUS = 50;
 const MIN_ELEVATION = -Math.PI / 2 + 0.1;
 const MAX_ELEVATION = Math.PI / 2 - 0.1;
 const ZOOM_PADDING = 2;
+const AUTO_ZOOM_MIN_BOUNDING_SIZE = 3; // Minimum bounding box size to prevent zooming in too much with few blocks
 const SPAWN_ZOOM_PADDING = 4; // Extra padding during spawn to show all blocks
 const SPAWN_ZOOM_MULTIPLIER = 1.3; // Additional multiplier for spawn zoom
+// Auto-zoom multiplier: platform-aware - larger on desktop (zoom out more), smaller on mobile (zoom in more)
+// Desktop needs more zoom-out to prevent blocks going out of frame
+// Mobile can zoom in more to reduce wasted space on sides
+const AUTO_ZOOM_MULTIPLIER_DESKTOP = 2.0; // Desktop: zoom out significantly more to fit all blocks
+const AUTO_ZOOM_MULTIPLIER_MOBILE = 0.95; // Mobile: zoom in more to reduce side space
 // During generation, computing a world-space bounding box by expanding each block object
 // (updateMatrixWorld + expandByObject) is expensive. Throttle it to avoid long rAF frames.
 const SPAWN_ZOOM_UPDATE_INTERVAL_MS = 120;
@@ -381,6 +390,15 @@ const _towerGroupWorldCenter = new THREE.Vector3();
 const _spawnZoomBox = new THREE.Box3();
 const _spawnZoomSize = new THREE.Vector3();
 let lastSpawnZoomUpdateMs = 0;
+
+// Auto-zoom bounding box and timing (for gameplay, excluding catapulted blocks)
+const _autoZoomBox = new THREE.Box3();
+const _autoZoomSize = new THREE.Vector3();
+const AUTO_ZOOM_UPDATE_INTERVAL_MS = 200; // Throttle expensive bounding box calculations
+let lastAutoZoomUpdateMs = 0;
+// User override: disable auto-zoom after manual zoom for this duration
+const AUTO_ZOOM_DISABLE_DURATION_MS = 5000; // 5 seconds
+let autoZoomDisabledUntilMs = 0; // Timestamp when auto-zoom should re-enable
 
 // Camera framing (tilt) via look-at offset in WORLD space.
 // Spaces:
@@ -566,6 +584,29 @@ const directions = [
 
 // Leveling system
 let currentLevel = 0;
+let _isStartingNewGame = false; // Flag to allow setting currentLevel to 0 only when starting new game
+
+// Safeguard function to set currentLevel - prevents accidental reset to 0
+function setCurrentLevel(newLevel, allowZero = false) {
+    if (newLevel === 0 && !allowZero && !_isStartingNewGame) {
+        const stack = new Error().stack;
+        console.error(`🚨 BLOCKED: Attempted to set currentLevel to 0!`);
+        console.error(`  Current level: ${currentLevel}`);
+        console.error(`  New level: ${newLevel}`);
+        console.error(`  Stack trace:`, stack);
+        // Try to recover from localStorage
+        const storageKey = isTimeChallengeMode() ? STORAGE_KEY_TIME_CHALLENGE : STORAGE_KEY;
+        const savedLevel = parseInt(localStorage.getItem(storageKey) || '0', 10);
+        if (savedLevel > 0) {
+            console.warn(`🚨 Recovery: Using saved level ${savedLevel} instead of 0`);
+            currentLevel = savedLevel;
+            return;
+        }
+        console.error(`🚨 Cannot recover - all sources invalid. Blocking set to 0.`);
+        return; // Block the assignment
+    }
+    currentLevel = newLevel;
+}
 let isGeneratingLevel = false; // Prevent multiple simultaneous level generations
 let levelCompleteShown = false; // Prevent showing level complete modal multiple times
 
@@ -1073,6 +1114,16 @@ function saveProgress() {
         
         // Save current level (use correct storage key for current mode)
         const storageKey = isTimeChallengeMode() ? STORAGE_KEY_TIME_CHALLENGE : STORAGE_KEY;
+        
+        // Safety check: Don't save level 0 unless there's a good reason (like starting new game)
+        // Check if we're overwriting a higher level with 0
+        const existingLevel = parseInt(localStorage.getItem(storageKey) || '0', 10);
+        if (currentLevel === 0 && existingLevel > 0) {
+            console.warn(`[saveProgress] WARNING: Attempted to save level 0 over existing level ${existingLevel}. This might be a bug. Stack trace:`, new Error().stack);
+            // Don't save 0 over a higher level - this prevents accidental progress loss
+            return;
+        }
+        
         localStorage.setItem(storageKey, currentLevel.toString());
         console.log(`Progress saved: Level ${currentLevel} (${isTimeChallengeMode() ? 'Time Challenge' : 'Free Flow'})`);
         
@@ -2378,22 +2429,112 @@ function createHeadOnCollisionBlocks(targetBlockCount = 10) {
 }
 
 // Generate solvable puzzle using reverse generation (guaranteed solvable)
-async function generateSolvablePuzzle(level = 1) {
+async function generateSolvablePuzzle(level = 1, isRestart = false) {
     if (isGeneratingLevel) {
-        console.warn('Level generation already in progress, skipping...');
         return;
+    }
+    
+    // ABSOLUTE HARD STOP: If isRestart and level is 0, reject immediately
+    // This is the last line of defense - should never be reached if restartCurrentLevel works correctly
+    if (isRestart && level <= 0) {
+        // Try emergency recovery
+        const emergencyStorageKey = isTimeChallengeMode() ? STORAGE_KEY_TIME_CHALLENGE : STORAGE_KEY;
+        const emergencyLevel = parseInt(localStorage.getItem(emergencyStorageKey) || '0', 10);
+        if (emergencyLevel > 0) {
+            level = emergencyLevel;
+            currentLevel = emergencyLevel;
+        } else {
+            console.error(`[generateSolvablePuzzle] Cannot restart: level is 0 and no recovery possible`);
+            alert(`Critical Error: Cannot restart level. Your progress may have been lost.`);
+            return;
+        }
+    }
+    
+    // CRITICAL HARD GUARD: Never accept level 0 for restart
+    // This prevents any possibility of restarting from level 0
+    if (isRestart && (level <= 0 || isNaN(level))) {
+        // Try to recover from localStorage
+        const storageKey = isTimeChallengeMode() ? STORAGE_KEY_TIME_CHALLENGE : STORAGE_KEY;
+        const savedLevel = parseInt(localStorage.getItem(storageKey) || '0', 10);
+        
+        if (savedLevel > 0) {
+            level = savedLevel;
+            currentLevel = savedLevel;
+        } else if (currentLevel > 0) {
+            level = currentLevel;
+        } else {
+            console.error(`[generateSolvablePuzzle] Cannot restart: all level sources are invalid`);
+            alert(`Error: Cannot restart level. Your progress appears to be lost. Please start a new game.`);
+            return;
+        }
+    }
+    
+    // CRITICAL: Validate level parameter - never generate level 0 unless explicitly starting new game
+    if (level <= 0 || isNaN(level)) {
+        // Try to recover from localStorage (for both restart and initial load)
+        const storageKey = isTimeChallengeMode() ? STORAGE_KEY_TIME_CHALLENGE : STORAGE_KEY;
+        const savedLevel = parseInt(localStorage.getItem(storageKey) || '0', 10);
+        
+        // If savedLevel > 0, we have progress - recover it (this shouldn't happen for new games)
+        if (savedLevel > 0) {
+            level = savedLevel;
+            currentLevel = savedLevel;
+        } else {
+            // No saved progress (savedLevel is 0 or null)
+            // This is OK for:
+            // 1. Initial page load (boot) - new game
+            // 2. startNewGame() - explicitly starting new game
+            // But NOT OK for:
+            // 3. restartCurrentLevel() - should never restart from 0
+            if (!isRestart) {
+                // Not a restart, so it's a new game - level 0 is valid
+                level = 0;
+                currentLevel = 0;
+            } else {
+                // This is a restart, but we have no saved progress - this is an error
+                console.error(`[generateSolvablePuzzle] Cannot restart: savedLevel is invalid and isRestart=true`);
+                alert(`Error: Cannot restart level. Your progress may have been lost. Please start a new game.`);
+                return;
+            }
+        }
     }
     
     isGeneratingLevel = true;
     levelCompleteShown = false; // Reset level complete flag for new level
     
-    // Reset spin counter for new level (Free Flow only; Time Challenge is unlimited spins)
-    if (!isTimeChallengeMode()) {
-        remainingSpins = 3;
-    } else {
-        remainingSpins = Number.POSITIVE_INFINITY;
+    // CRITICAL: Set currentLevel to the level parameter
+    // This ensures the level is preserved, especially when restarting
+    currentLevel = level;
+    
+    // CRITICAL: If this is a restart, NEVER save 0 to localStorage
+    // This prevents corruption if level parameter is somehow 0
+    if (isRestart && currentLevel <= 0) {
+        // Try to recover from localStorage one more time
+        const storageKey = isTimeChallengeMode() ? STORAGE_KEY_TIME_CHALLENGE : STORAGE_KEY;
+        const lastSavedLevel = parseInt(localStorage.getItem(storageKey) || '0', 10);
+        if (lastSavedLevel > 0) {
+            currentLevel = lastSavedLevel;
+            level = lastSavedLevel;
+        } else {
+            console.error(`[generateSolvablePuzzle] Cannot recover: all sources invalid`);
+            alert(`Error: Cannot restart level. Your progress may have been lost.`);
+            return;
+        }
     }
-    updateSpinCounterDisplay();
+    
+    // IMMEDIATELY save to prevent any loss
+    saveProgress();
+    
+    // Only reset spin counter for NEW level, not when restarting the same level
+    // When restarting, preserve remainingSpins (game-level state)
+    if (!isRestart) {
+        if (!isTimeChallengeMode()) {
+            remainingSpins = 3;
+        } else {
+            remainingSpins = Number.POSITIVE_INFINITY;
+        }
+        updateSpinCounterDisplay();
+    }
     
     // Ensure randomization by consuming some random numbers at start
     // This helps prevent identical layouts when generation happens quickly
@@ -2621,9 +2762,9 @@ async function generateSolvablePuzzle(level = 1) {
     if (!structureCheck.valid) {
         console.error(`✗ Structure validation failed: ${structureCheck.reason}`);
         console.error('  Regenerating puzzle...');
-        // Regenerate if validation fails
+        // Regenerate if validation fails - preserve isRestart flag
         isGeneratingLevel = false;
-        await generateSolvablePuzzle(level);
+        await generateSolvablePuzzle(level, isRestart);
         return;
     }
     
@@ -2631,6 +2772,13 @@ async function generateSolvablePuzzle(level = 1) {
     const levelValueElement = document.getElementById('level-value');
     if (levelValueElement) {
         levelValueElement.textContent = level;
+    }
+    
+    // CRITICAL: Ensure currentLevel matches the level parameter
+    // This is a safety check to prevent level from being wrong
+    if (currentLevel !== level) {
+        console.warn(`[generateSolvablePuzzle] Level mismatch: currentLevel=${currentLevel}, level=${level}. Fixing...`);
+        currentLevel = level;
     }
     
     // Keep isGeneratingLevel true for a bit longer to prevent support checking from running
@@ -3103,32 +3251,175 @@ function removeBlockWithAnimation(block) {
 
 // Restart current level
 async function restartCurrentLevel() {
-    // In Time Challenge, "restart level" would be an exploit (it would freeze drain during generation).
-    // Treat it as restarting the run instead.
-    if (isTimeChallengeMode()) {
-        await startNewGame();
+    // Don't reset game-level state (remainingSpins, currentLevel, etc.)
+    // Only reset level-specific state
+    if (isGeneratingLevel) {
         return;
     }
-
-    // Reset spin counter (Free Flow)
-    remainingSpins = 3;
-    updateSpinCounterDisplay();
-    if (isGeneratingLevel) return;
     
-    // Clear move history
+    // CRITICAL: Determine level to restart with PRIORITY system
+    // PRIORITY 1: currentLevel (most recent state, most reliable)
+    // PRIORITY 2: localStorage (persisted state, may be stale)
+    // PRIORITY 3: Error if both invalid
+    const storageKey = isTimeChallengeMode() ? STORAGE_KEY_TIME_CHALLENGE : STORAGE_KEY;
+    const savedLevelBefore = parseInt(localStorage.getItem(storageKey) || '0', 10);
+    
+    // CRITICAL: Determine level to restart with PRIORITY system
+    // PRIORITY 1: currentLevel (most recent state, most reliable)
+    // PRIORITY 2: localStorage (persisted state, may be stale)
+    // PRIORITY 3: Error if both invalid
+    let levelToRestart;
+    
+    if (currentLevel > 0) {
+        // PRIORITY 1: currentLevel is valid - use it
+        levelToRestart = currentLevel;
+        
+        // Verify localStorage matches, fix if not
+        if (savedLevelBefore !== currentLevel) {
+            localStorage.setItem(storageKey, String(currentLevel));
+            const verifyFix = parseInt(localStorage.getItem(storageKey) || '0', 10);
+            if (verifyFix !== currentLevel) {
+                console.error(`[Restart Level] Failed to fix localStorage! Expected ${currentLevel}, got ${verifyFix}`);
+                alert(`Error: Cannot save progress. Please check your browser's localStorage settings.`);
+                return;
+            }
+        }
+    } else if (savedLevelBefore > 0) {
+        // PRIORITY 2: currentLevel is invalid, but localStorage has valid level
+        levelToRestart = savedLevelBefore;
+        console.warn(`[Restart Level] currentLevel is invalid, using savedLevel ${savedLevelBefore} from localStorage`);
+        currentLevel = savedLevelBefore; // Fix currentLevel
+    } else {
+        // PRIORITY 3: Both are invalid
+        console.error(`[Restart Level] CRITICAL: Both currentLevel (${currentLevel}) and savedLevel (${savedLevelBefore}) are invalid!`);
+        alert(`Cannot restart: No level found. You appear to be at level 0. Please start a new game or continue to the next level.`);
+        return;
+    }
+    
+    // ALWAYS sync currentLevel to the level we're restarting
+    // This ensures consistency throughout the restart process
+    if (currentLevel !== levelToRestart) {
+        currentLevel = levelToRestart;
+    }
+    
+    // Safety check: Don't allow restarting if level is 0 or invalid
+    if (!levelToRestart || levelToRestart < 0 || isNaN(levelToRestart)) {
+        console.error(`[Restart Level] Invalid level to restart: ${levelToRestart}`);
+        alert(`Cannot restart: Invalid level (${levelToRestart}). Please start a new game.`);
+        return;
+    }
+    
+    // FINAL safety check: Never proceed if levelToRestart is 0
+    if (levelToRestart <= 0) {
+        console.error(`[Restart Level] FINAL CHECK FAILED: levelToRestart is ${levelToRestart}`);
+        alert(`Error: Cannot restart level ${levelToRestart}. Your progress may have been lost.`);
+        return;
+    }
+    
+    // Clear move history for this level
     moveHistory = [];
     totalMoves = 0;
     
     // Reset stats tracking for current level
-    startLevelStats(currentLevel);
+    startLevelStats(levelToRestart);
     
-    // Regenerate current level
-    await generateSolvablePuzzle(currentLevel);
+    // CRITICAL: Set currentLevel BEFORE calling generateSolvablePuzzle
+    // This ensures it's set correctly even if generateSolvablePuzzle has issues
+    currentLevel = levelToRestart;
+    
+    // IMMEDIATELY save progress to prevent any loss
+    saveProgress();
+    const savedAfter = parseInt(localStorage.getItem(storageKey) || '0', 10);
+    
+    // Verify save was successful
+    if (savedAfter !== levelToRestart) {
+        console.error(`[Restart Level] Save verification failed! Saved ${savedAfter}, expected ${levelToRestart}. Retrying...`);
+        currentLevel = levelToRestart;
+        saveProgress();
+        const verifyRetry = parseInt(localStorage.getItem(storageKey) || '0', 10);
+        if (verifyRetry !== levelToRestart) {
+            console.error(`[Restart Level] Retry also failed! Saved ${verifyRetry}, expected ${levelToRestart}`);
+            alert(`Error: Failed to save progress. Cannot restart level.`);
+            return;
+        }
+    }
+    
+    // FINAL FINAL SAFEGUARD: Read localStorage ONE MORE TIME right before generation
+    // This is the absolute last chance to catch any corruption
+    const finalCheckLevel = parseInt(localStorage.getItem(storageKey) || '0', 10);
+    const finalCheckCurrent = currentLevel;
+    
+    // If ANY of these are 0 or invalid, we have a problem
+    if (levelToRestart <= 0 || finalCheckCurrent <= 0 || finalCheckLevel <= 0) {
+        console.error(`[Restart Level] FINAL CHECK FAILED: levelToRestart=${levelToRestart}, currentLevel=${finalCheckCurrent}, localStorage=${finalCheckLevel}`);
+        
+        // Try one last recovery attempt
+        if (finalCheckLevel > 0) {
+            levelToRestart = finalCheckLevel;
+            currentLevel = finalCheckLevel;
+            localStorage.setItem(storageKey, String(finalCheckLevel));
+        } else if (finalCheckCurrent > 0) {
+            levelToRestart = finalCheckCurrent;
+            localStorage.setItem(storageKey, String(finalCheckCurrent));
+        } else {
+            console.error(`[Restart Level] ALL RECOVERY ATTEMPTS FAILED! Cannot proceed.`);
+            alert(`Error: Cannot restart level. All level sources are invalid. Please start a new game.`);
+            return;
+        }
+    }
+    
+    // Verify one more time that we have a valid level
+    if (levelToRestart <= 0) {
+        console.error(`[Restart Level] CRITICAL: levelToRestart is still 0 after all recovery attempts!`);
+        alert(`Error: Cannot restart level. Please start a new game.`);
+        return;
+    }
+    
+    // Update currentLevel to match levelToRestart one final time
+    currentLevel = levelToRestart;
+    
+    // Save one more time to ensure consistency
+    saveProgress();
+    
+    // Regenerate current level (keeps same level number)
+    // Pass isRestart=true to preserve game-level state (remainingSpins, etc.)
+    await generateSolvablePuzzle(levelToRestart, true);
+    
+    // Ensure currentLevel is still correct after generation
+    // This is a safety check in case something went wrong
+    if (currentLevel !== levelToRestart) {
+        console.error(`[Restart Level] CRITICAL: Level was changed from ${levelToRestart} to ${currentLevel}! Restoring...`);
+        currentLevel = levelToRestart;
+        saveProgress();
+    }
+    
+    // Save progress to ensure it's persisted (with the correct level)
+    saveProgress();
+    
+    // Final verification
+    const finalSavedLevel = parseInt(localStorage.getItem(storageKey) || '0', 10);
+    if (finalSavedLevel !== levelToRestart) {
+        console.error(`[Restart Level] CRITICAL: Final saved level (${finalSavedLevel}) doesn't match restart level (${levelToRestart})! Fixing...`);
+        currentLevel = levelToRestart;
+        saveProgress();
+    }
+    
+    // Update level display to ensure it shows the correct level
+    const levelValueElement = document.getElementById('level-value');
+    if (levelValueElement) {
+        levelValueElement.textContent = currentLevel;
+    }
 }
 
 // Start new game (reset to level 0)
 async function startNewGame() {
     if (isGeneratingLevel) return;
+    
+    console.log(`[startNewGame] Starting new game. Current level before reset: ${currentLevel}`);
+    
+    // Clear saved progress FIRST (before resetting currentLevel)
+    // This ensures localStorage is cleared before any validation checks
+    clearProgress();
     
     // Reset to level 0
     currentLevel = 0;
@@ -3142,17 +3433,24 @@ async function startNewGame() {
     remainingSpins = isTimeChallengeMode() ? Number.POSITIVE_INFINITY : 3;
     updateSpinCounterDisplay();
     
-    // Clear saved progress for both modes when starting a new game
-    clearProgress();
-    
     // Hide level complete modal if visible
     hideLevelCompleteModal();
     
     // Reset stats tracking
     startLevelStats(currentLevel);
     
-    // Generate level 0
-    await generateSolvablePuzzle(currentLevel);
+    // Verify localStorage is cleared
+    const storageKey = isTimeChallengeMode() ? STORAGE_KEY_TIME_CHALLENGE : STORAGE_KEY;
+    const savedLevel = parseInt(localStorage.getItem(storageKey) || '0', 10);
+    if (savedLevel !== 0) {
+        console.warn(`[startNewGame] WARNING: localStorage still has level ${savedLevel} after clearProgress(). Clearing again...`);
+        localStorage.removeItem(storageKey);
+    }
+    
+    console.log(`[startNewGame] Generating level 0 (currentLevel=${currentLevel}, savedLevel=${parseInt(localStorage.getItem(storageKey) || '0', 10)})`);
+    
+    // Generate level 0 - pass isRestart=false explicitly to indicate this is a new game
+    await generateSolvablePuzzle(0, false);
 }
 
 // Level completion modal functions
@@ -3235,11 +3533,23 @@ const nextLevelButton = document.getElementById('next-level-button');
 if (nextLevelButton) {
     nextLevelButton.addEventListener('click', async () => {
         hideLevelCompleteModal();
+        const previousLevel = currentLevel;
         currentLevel++;
+        console.log(`[Next Level] Incremented from ${previousLevel} to ${currentLevel}`);
         moveHistory = []; // Clear move history for new level
         totalMoves = 0; // Reset move counter
-        // Save progress for both modes
+        // CRITICAL: Save progress IMMEDIATELY after incrementing
+        // This ensures localStorage always has the correct level
         saveProgress();
+        // Verify save was successful
+        const storageKey = isTimeChallengeMode() ? STORAGE_KEY_TIME_CHALLENGE : STORAGE_KEY;
+        const savedLevel = parseInt(localStorage.getItem(storageKey) || '0', 10);
+        if (savedLevel !== currentLevel) {
+            console.error(`[Next Level] Save verification failed! Saved ${savedLevel}, expected ${currentLevel}. Retrying...`);
+            currentLevel = savedLevel > currentLevel ? savedLevel : currentLevel; // Use higher value
+            saveProgress();
+        }
+        console.log(`[Next Level] Starting level ${currentLevel} (saved: ${savedLevel})`);
         await generateSolvablePuzzle(currentLevel);
     });
 }
@@ -3400,8 +3710,13 @@ function recordNonMovingReport(report) {
 const restartLevelButton = document.getElementById('restart-level-button');
 if (restartLevelButton) {
     restartLevelButton.addEventListener('click', async () => {
-        await restartCurrentLevel();
-        updateUndoButtonState();
+        try {
+            await restartCurrentLevel();
+            updateUndoButtonState();
+        } catch (error) {
+            console.error('Error in restartCurrentLevel:', error);
+            alert(`Error restarting level: ${error.message}`);
+        }
     });
 }
 
@@ -4772,6 +5087,9 @@ renderer.domElement.addEventListener('touchmove', (event) => {
             targetRadius /= zoomFactor;
             targetRadius = Math.max(MIN_RADIUS, Math.min(MAX_RADIUS, targetRadius));
             touchState.startDistance = currentDistance;
+            
+            // Disable auto-zoom when user manually zooms
+            autoZoomDisabledUntilMs = performance.now() + AUTO_ZOOM_DISABLE_DURATION_MS;
         } else {
             // Not pinching: treat as framing drag (vertical, center-of-two-fingers).
             touchState.isPinching = false;
@@ -5173,6 +5491,74 @@ function animate() {
         }
     }
     
+    // Auto-zoom during gameplay (smoothly frame all blocks except catapulted ones)
+    // Skip if user has manually zoomed recently (allow override) or if auto-zoom is disabled in settings
+    const isAutoZoomDisabled = currentTime < autoZoomDisabledUntilMs;
+    const isAutoZoomEnabled = (typeof window !== 'undefined' && window.autoZoomEnabled !== undefined) 
+        ? window.autoZoomEnabled 
+        : true; // Default to enabled if not set
+    if (!isGeneratingLevel && blocks.length > 0 && !isAutoZoomDisabled && isAutoZoomEnabled) {
+        // Throttle expensive bounding-box calculation to avoid long rAF frames
+        if ((currentTime - lastAutoZoomUpdateMs) > AUTO_ZOOM_UPDATE_INTERVAL_MS) {
+            lastAutoZoomUpdateMs = currentTime;
+
+            _autoZoomBox.makeEmpty();
+            let hasNonCatapultedBlocks = false;
+            
+            for (const block of blocks) {
+                if (!block || !block.group || block.isRemoved) continue;
+                // Exclude catapulted blocks from auto-zoom calculation
+                if (block.wasCatapulted) continue;
+                
+                block.group.updateMatrixWorld(true);
+                _autoZoomBox.expandByObject(block.group);
+                hasNonCatapultedBlocks = true;
+            }
+
+            // Only update zoom if we have non-catapulted blocks to frame
+            if (hasNonCatapultedBlocks && !_autoZoomBox.isEmpty()) {
+                let size = _autoZoomBox.getSize(_autoZoomSize);
+
+                // Ensure minimum bounding box size to prevent zooming in too much with few blocks
+                // This ensures all blocks stay in frame even when there are very few blocks
+                if (size.x < AUTO_ZOOM_MIN_BOUNDING_SIZE) size.x = AUTO_ZOOM_MIN_BOUNDING_SIZE;
+                if (size.y < AUTO_ZOOM_MIN_BOUNDING_SIZE) size.y = AUTO_ZOOM_MIN_BOUNDING_SIZE;
+                if (size.z < AUTO_ZOOM_MIN_BOUNDING_SIZE) size.z = AUTO_ZOOM_MIN_BOUNDING_SIZE;
+
+                // Calculate required distance to fit all non-catapulted blocks
+                const fov = camera.fov * (Math.PI / 180);
+                const aspect = camera.aspect;
+
+                // Calculate distance needed for height (with extra padding for safety)
+                const heightDistance = (size.y + ZOOM_PADDING * 1.5) / (2 * Math.tan(fov / 2));
+
+                // Calculate distance needed for width/depth (with extra padding for safety)
+                const baseDiagonal = Math.sqrt(size.x * size.x + size.z * size.z);
+                const widthDistance = (baseDiagonal + ZOOM_PADDING * 1.5) / (2 * Math.tan(fov / 2) * aspect);
+
+                // Use the larger distance and apply platform-aware multiplier
+                // Desktop: zoom out more to prevent blocks going out of frame
+                // Mobile: zoom in more to reduce wasted space on sides
+                const platformMultiplier = isMobileLike ? AUTO_ZOOM_MULTIPLIER_MOBILE : AUTO_ZOOM_MULTIPLIER_DESKTOP;
+                const baseDistance = Math.max(heightDistance, widthDistance);
+                const requiredDistance = baseDistance * platformMultiplier;
+                targetRadius = Math.max(MIN_RADIUS, Math.min(MAX_RADIUS, requiredDistance));
+                
+                // Debug: log auto-zoom calculation (can be removed later)
+                if (typeof window !== 'undefined' && window.jarrows_debug === '1') {
+                    console.log('[Auto-zoom]', {
+                        platform: isMobileLike ? 'mobile' : 'desktop',
+                        multiplier: platformMultiplier,
+                        baseDistance: baseDistance.toFixed(2),
+                        requiredDistance: requiredDistance.toFixed(2),
+                        targetRadius: targetRadius.toFixed(2),
+                        size: { x: size.x.toFixed(2), y: size.y.toFixed(2), z: size.z.toFixed(2) }
+                    });
+                }
+            }
+        }
+    }
+    
     // Smooth interpolation with heavier feel (momentum/inertia)
     // Lower smoothing = slower acceleration/deceleration = heavier feel
     const smoothing = isGeneratingLevel ? 0.25 : 0.04; // Much slower during gameplay for heavy feel
@@ -5368,13 +5754,15 @@ function animate() {
             // We save the next level directly to localStorage without modifying currentLevel
             try {
                 const nextLevel = currentLevel + 1;
-                localStorage.setItem(STORAGE_KEY, nextLevel.toString());
+                // FIX: Use correct storage key based on game mode
+                const storageKey = isTimeChallengeMode() ? STORAGE_KEY_TIME_CHALLENGE : STORAGE_KEY;
+                localStorage.setItem(storageKey, nextLevel.toString());
                 // Also update highest level if needed
                 const highestLevel = parseInt(localStorage.getItem(STORAGE_HIGHEST_LEVEL_KEY) || '0', 10);
                 if (nextLevel > highestLevel) {
                     localStorage.setItem(STORAGE_HIGHEST_LEVEL_KEY, nextLevel.toString());
                 }
-                console.log(`Progress saved: Level ${nextLevel} (completed level ${currentLevel})`);
+                console.log(`Progress saved: Level ${nextLevel} (completed level ${currentLevel}, mode: ${isTimeChallengeMode() ? 'Time Challenge' : 'Free Flow'})`);
             } catch (e) {
                 console.warn('Failed to save progress on level completion:', e);
             }
