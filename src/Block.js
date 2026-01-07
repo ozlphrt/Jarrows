@@ -92,7 +92,7 @@ export class Block {
         );
         
         // Use Classic palette as default: original natural colors
-        const colors = [0xff6b6b, 0x4ecdc4, 0xffe66d]; // Red, Teal, Yellow
+        const colors = [0xff6b6b, 0x4ecdc4, 0xffc125]; // Red, Teal, Golden Yellow
         const whiteColor = 0xffffff;
         
         // Check global setting for default block color
@@ -768,7 +768,7 @@ export class Block {
         }
         
         // Update arrow color - ALWAYS use length-based color (for visibility), ignore passed arrowColor
-        const colors = [0xff6b6b, 0x4ecdc4, 0xffe66d]; // Red, Teal, Yellow
+        const colors = [0xff6b6b, 0x4ecdc4, 0xffc125]; // Red, Teal, Golden Yellow
         const finalArrowColor = colors[this.length - 1] || colors[0];
         // Arrow structure: this.arrow (Group) -> topArrow (Group) -> topArrowMesh (Mesh with material)
         if (this.arrow && this.arrow.children.length > 0) {
@@ -879,7 +879,7 @@ export class Block {
             this.group.remove(this.directionIndicators);
             // Use arrow color (length-based colored version) instead of block color
             // This preserves the colored dots/circles that match the arrow
-            const colors = [0xff6b6b, 0x4ecdc4, 0xffe66d]; // Red, Teal, Yellow
+            const colors = [0xff6b6b, 0x4ecdc4, 0xffc125]; // Red, Teal, Golden Yellow
             const arrowColor = colors[this.length - 1] || colors[0];
             this.createDirectionIndicators(arrowColor, this.arrowStyle);
         }
@@ -2726,11 +2726,11 @@ export class Block {
         }
         
         if (highlighted) {
-            // Create bright yellow highlighted material - make it VERY visible
+            // Create bright golden yellow highlighted material - make it VERY visible
             const highlightMaterial = this.originalMaterial.clone();
-            highlightMaterial.emissive = new THREE.Color(0xffff00); // Bright yellow
+            highlightMaterial.emissive = new THREE.Color(0xffc125); // Golden yellow
             highlightMaterial.emissiveIntensity = 2.0; // Very bright
-            highlightMaterial.color = new THREE.Color(0xffff00); // Change base color to yellow
+            highlightMaterial.color = new THREE.Color(0xffc125); // Change base color to golden yellow
             highlightMaterial.roughness = 0.1; // Make it shiny
             mesh.material = highlightMaterial;
             
