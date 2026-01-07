@@ -1225,13 +1225,12 @@ function createCarriedOverGraph(history) {
     ctx.lineTo(padding + graphWidth, baselineY);
     ctx.stroke();
     
-    // Draw axes
+    // Draw vertical axis only (horizontal line is the baseline)
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(padding, padding);
     ctx.lineTo(padding, padding + graphHeight);
-    ctx.lineTo(padding + graphWidth, padding + graphHeight);
     ctx.stroke();
     
     // Draw stacked bars
