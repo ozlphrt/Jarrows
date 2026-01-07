@@ -3457,6 +3457,7 @@ async function startNewGame() {
 function showLevelCompleteModal(completedLevel) {
     const modal = document.getElementById('level-complete-modal');
     const message = document.getElementById('level-complete-message');
+    const title = document.getElementById('level-complete-title');
     const levelNumber = document.getElementById('level-complete-level');
     const timeElement = document.getElementById('level-complete-time');
     const movesElement = document.getElementById('level-complete-moves');
@@ -3466,8 +3467,14 @@ function showLevelCompleteModal(completedLevel) {
         // Per request: remove the "Outstanding performance" line.
         if (message) message.textContent = '';
         
+        // Update title to include level number: "Level X Complete!"
+        if (title) {
+            title.textContent = `Level ${completedLevel} Complete!`;
+        }
+        
+        // Hide the separate level number display since it's now in the title
         if (levelNumber) {
-            levelNumber.textContent = String(completedLevel);
+            levelNumber.style.display = 'none';
         }
         
         // Pause Time Challenge while modal is open
