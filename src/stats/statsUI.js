@@ -991,13 +991,15 @@ function updateComparisonDisplay(section, userStats, comparison) {
         
         grid.appendChild(createTimeChallengeCard(
             `unused + collected - lost = carried over`,
-            `${formatTime(timeUnused)} + ${formatTime(timeCollected)} - ${formatTime(timeLost)} = ${formatTime(timeCarriedOver)}`,
-            '⏰'
+            timeUnused,
+            timeCollected,
+            timeLost,
+            timeCarriedOver
         ));
     }
 }
 
-function createTimeChallengeCard(label, value, icon) {
+function createTimeChallengeCard(label, timeUnused, timeCollected, timeLost, timeCarriedOver) {
     const card = document.createElement('div');
     card.style.cssText = `
         padding: 14px;
@@ -1012,10 +1014,6 @@ function createTimeChallengeCard(label, value, icon) {
         box-sizing: border-box;
     `;
     
-    const iconEl = document.createElement('div');
-    iconEl.textContent = icon;
-    iconEl.style.cssText = `font-size: 20px;`;
-    
     const labelEl = document.createElement('div');
     labelEl.textContent = label;
     labelEl.style.cssText = `
@@ -1024,17 +1022,65 @@ function createTimeChallengeCard(label, value, icon) {
         color: rgba(255, 255, 255, 0.7);
         text-transform: uppercase;
         letter-spacing: 0.5px;
+        margin-bottom: 4px;
     `;
     
+    // Create colored formula display
     const valueEl = document.createElement('div');
-    valueEl.textContent = value;
     valueEl.style.cssText = `
         font-size: 18px;
         font-weight: 900;
-        color: rgba(255, 255, 255, 0.95);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+        justify-content: center;
     `;
     
-    card.appendChild(iconEl);
+    // unused (yellow)
+    const unusedSpan = document.createElement('span');
+    unusedSpan.textContent = formatTime(timeUnused);
+    unusedSpan.style.cssText = `color: #FFE66D; text-shadow: 0 0 8px rgba(255, 230, 109, 0.4);`;
+    
+    // plus sign (white)
+    const plusSpan = document.createElement('span');
+    plusSpan.textContent = '+';
+    plusSpan.style.cssText = `color: rgba(255, 255, 255, 0.8);`;
+    
+    // collected (green)
+    const collectedSpan = document.createElement('span');
+    collectedSpan.textContent = formatTime(timeCollected);
+    collectedSpan.style.cssText = `color: #4ECDC4; text-shadow: 0 0 8px rgba(78, 205, 196, 0.4);`;
+    
+    // minus sign (white)
+    const minusSpan = document.createElement('span');
+    minusSpan.textContent = '-';
+    minusSpan.style.cssText = `color: rgba(255, 255, 255, 0.8);`;
+    
+    // lost (red)
+    const lostSpan = document.createElement('span');
+    lostSpan.textContent = formatTime(timeLost);
+    lostSpan.style.cssText = `color: #FF6B6B; text-shadow: 0 0 8px rgba(255, 107, 107, 0.4);`;
+    
+    // equals sign (white)
+    const equalsSpan = document.createElement('span');
+    equalsSpan.textContent = '=';
+    equalsSpan.style.cssText = `color: rgba(255, 255, 255, 0.8);`;
+    
+    // carried over (green if positive, red if negative/zero)
+    const carriedOverSpan = document.createElement('span');
+    carriedOverSpan.textContent = formatTime(timeCarriedOver);
+    const carriedOverColor = timeCarriedOver > 0 ? '#4ECDC4' : '#FF6B6B';
+    carriedOverSpan.style.cssText = `color: ${carriedOverColor}; text-shadow: 0 0 8px ${timeCarriedOver > 0 ? 'rgba(78, 205, 196, 0.4)' : 'rgba(255, 107, 107, 0.4)'};`;
+    
+    valueEl.appendChild(unusedSpan);
+    valueEl.appendChild(plusSpan);
+    valueEl.appendChild(collectedSpan);
+    valueEl.appendChild(minusSpan);
+    valueEl.appendChild(lostSpan);
+    valueEl.appendChild(equalsSpan);
+    valueEl.appendChild(carriedOverSpan);
+    
     card.appendChild(labelEl);
     card.appendChild(valueEl);
     return card;
