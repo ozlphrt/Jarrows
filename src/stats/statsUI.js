@@ -1191,21 +1191,33 @@ function createCarriedOverGraph(history) {
     // This ensures collected (1:44) and spin (3:10) are visually proportional
     const maxIndividual = Math.max(maxUnused, maxCollected, maxSpin, 1);
     
-    // Find maximum carried over value to ensure bar heights are proportional
-    const maxCarriedOver = Math.max(...history.map(h => {
+    // Find maximum and minimum carried over values to determine baseline position
+    const carriedOverValues = history.map(h => {
         const unused = h.unused || 0;
         const collected = h.collected || 0;
         const spin = h.spin || 0;
         return unused + collected - spin;
-    }), 0);
+    });
+    const maxCarriedOver = Math.max(...carriedOverValues, 0);
+    const minCarriedOver = Math.min(...carriedOverValues, 0);
     
     // Clear canvas
     ctx.fillStyle = 'rgba(0, 0, 0, 0)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
-    // Calculate baseline position - use center for simplicity since we'll scale each bar individually
-    // The baseline will be used as a reference point, but each bar's height is based on carried over value
-    const baselineY = padding + graphHeight / 2;
+    // Calculate baseline position based on whether we have negative values
+    // If all values are positive, baseline at bottom. If mixed, baseline in middle. If all negative, baseline at top.
+    let baselineY;
+    if (minCarriedOver >= 0) {
+        // All positive - baseline at bottom
+        baselineY = padding + graphHeight;
+    } else if (maxCarriedOver <= 0) {
+        // All negative - baseline at top
+        baselineY = padding;
+    } else {
+        // Mixed positive and negative - baseline in middle
+        baselineY = padding + graphHeight / 2;
+    }
     
     // Draw grid lines (horizontal)
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
