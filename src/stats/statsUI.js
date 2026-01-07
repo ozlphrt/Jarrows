@@ -1177,14 +1177,18 @@ function createCarriedOverGraph(history) {
     const graphWidth = baseWidth - padding * 2;
     const graphHeight = baseHeight - padding; // Reduced bottom padding to leave space for labels
     
-    // Find max values for scaling (unused + collected for positive, spin for negative)
+    // Find max values for scaling - use unified scale for all components
+    const maxUnused = Math.max(...history.map(h => h.unused || 0), 0);
+    const maxCollected = Math.max(...history.map(h => h.collected || 0), 0);
+    const maxSpin = Math.max(...history.map(h => h.spin || 0), 0);
     const maxPositive = Math.max(...history.map(h => {
         const unused = h.unused || 0;
         const collected = h.collected || 0;
         return unused + collected;
     }), 1);
-    const maxNegative = Math.max(...history.map(h => h.spin || 0), 0);
-    const maxAbsValue = Math.max(maxPositive, maxNegative, 1);
+    const maxNegative = maxSpin;
+    // Use unified scale: maximum of any individual component or their sum
+    const maxAbsValue = Math.max(maxUnused, maxCollected, maxSpin, maxPositive, maxNegative, 1);
     
     // Clear canvas
     ctx.fillStyle = 'rgba(0, 0, 0, 0)';
@@ -1245,25 +1249,32 @@ function createCarriedOverGraph(history) {
             const spin = point.spin || 0;
             const carriedOver = point.carriedOver || 0;
             
-            // Normalize values to graph height based on dynamic baseline
+            // Normalize values to graph height using unified scale
+            // All components (unused, collected, spin) use the same maxAbsValue scale
+            // This ensures visual proportions are correct (e.g., 18:05 unused vs 6:25 spin)
             let unusedHeight, collectedHeight, spinHeight;
             if (maxNegative === 0) {
                 // No spin - use full graph height for positive values
-                unusedHeight = (unused / maxPositive) * graphHeight;
-                collectedHeight = (collected / maxPositive) * graphHeight;
+                unusedHeight = (unused / maxAbsValue) * graphHeight;
+                collectedHeight = (collected / maxAbsValue) * graphHeight;
                 spinHeight = 0;
             } else if (maxPositive === 0) {
                 // Only negative - use full graph height for negative values
                 unusedHeight = 0;
                 collectedHeight = 0;
-                spinHeight = (spin / maxNegative) * graphHeight;
+                spinHeight = (spin / maxAbsValue) * graphHeight;
             } else {
-                // Both positive and negative - scale relative to baseline position
+                // Both positive and negative - use unified scale
+                // Calculate available space for positive and negative
                 const positiveHeight = baselineY - padding;
                 const negativeHeight = (padding + graphHeight) - baselineY;
-                unusedHeight = (unused / maxPositive) * positiveHeight;
-                collectedHeight = (collected / maxPositive) * positiveHeight;
-                spinHeight = (spin / maxNegative) * negativeHeight;
+                // Scale all values using maxAbsValue, then map to their respective spaces
+                // This ensures 18:05 unused appears larger than 6:25 spin visually
+                const positiveScale = positiveHeight / maxAbsValue;
+                const negativeScale = negativeHeight / maxAbsValue;
+                unusedHeight = unused * positiveScale;
+                collectedHeight = collected * positiveScale;
+                spinHeight = spin * negativeScale;
             }
             
             // Draw positive components (stacked upward from baseline)
