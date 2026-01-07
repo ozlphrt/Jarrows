@@ -976,6 +976,14 @@ function updateComparisonDisplay(section, userStats, comparison) {
 
     // Time Challenge specific stats - show formula: unused + collected - lost = carried over (in mm:ss)
     if (userStats.timeUnusedLevel !== undefined && userStats.timeCollectedLevel !== undefined && userStats.timeCarriedOverLevel !== undefined) {
+        // Make grid full width (1 column) for time challenge stats
+        grid.style.cssText = `
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 12px;
+            width: 100%;
+        `;
+        
         const timeUnused = userStats.timeUnusedLevel || 0;
         const timeCollected = userStats.timeCollectedLevel || 0;
         const timeLost = userStats.timeLostLevel || 0;
@@ -1000,6 +1008,8 @@ function createTimeChallengeCard(label, value, icon) {
         flex-direction: column;
         align-items: center;
         gap: 6px;
+        width: 100%;
+        box-sizing: border-box;
     `;
     
     const iconEl = document.createElement('div');
