@@ -1224,8 +1224,8 @@ function createCarriedOverGraph(history) {
     
     // Draw stacked bars
     if (history.length > 0) {
-        const barWidth = (graphWidth / history.length) * 0.6; // 60% of available space for bars
-        const barSpacing = (graphWidth / history.length) * 0.4; // 40% for spacing
+        const barWidth = (graphWidth / history.length) * 0.85; // 85% of available space for bars
+        const barSpacing = (graphWidth / history.length) * 0.15; // 15% for spacing
         
         history.forEach((point, index) => {
             const x = padding + (graphWidth / history.length) * index + barSpacing / 2;
