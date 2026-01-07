@@ -974,20 +974,16 @@ function updateComparisonDisplay(section, userStats, comparison) {
 
     // No baseline message or personal median row - removed per request
 
-    // Time Challenge specific stats - show both level and all-time perspectives
-    if (userStats.timeCollectedLevel !== undefined) {
+    // Time Challenge specific stats - show combined formula: Time Collected - Time lost = Time Carried Over
+    if (userStats.timeCollectedLevel !== undefined && userStats.timeCarriedOverLevel !== undefined) {
+        const timeCollected = userStats.timeCollectedLevel || 0;
+        const timeLost = userStats.timeLostLevel || 0;
+        const timeCarriedOver = userStats.timeCarriedOverLevel || 0;
+        
         grid.appendChild(createTimeChallengeCard(
-            'Time Collected (Level)',
-            formatTime(userStats.timeCollectedLevel || 0),
+            `Time Collected - Time lost = Time Carried Over`,
+            `${formatTime(timeCollected)} - ${formatTime(timeLost)} = ${formatTime(timeCarriedOver)}`,
             '⏰'
-        ));
-    }
-    
-    if (userStats.timeCarriedOverLevel !== undefined) {
-        grid.appendChild(createTimeChallengeCard(
-            'Time Carried Over (Level)',
-            formatTime(userStats.timeCarriedOverLevel || 0),
-            '➡️'
         ));
     }
 }

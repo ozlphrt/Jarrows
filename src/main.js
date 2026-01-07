@@ -5383,6 +5383,9 @@ function animate() {
                         // All-time includes current level (already cumulative from block removals)
                         userStats.timeCollectedAllTime = timeChallengeTimeCollectedAllTime;
                         userStats.timeCarriedOverLevel = timeChallengeResidualSec;
+                        // Calculate time lost: Time Collected - Time Carried Over = Time Lost
+                        // This represents time lost from spins and natural drain
+                        userStats.timeLostLevel = Math.max(0, timeChallengeTimeCollected - timeChallengeResidualSec);
                     }
                     const comparison = await getLevelComparison(userStats);
                     updateLevelCompleteModal(userStats, comparison);
