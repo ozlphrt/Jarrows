@@ -1028,7 +1028,7 @@ function createTimeChallengeCard(label, timeUnused, timeCollected, timeLost, tim
         flex-wrap: nowrap;
         justify-content: center;
         width: 100%;
-        overflow-x: auto;
+        overflow-x: hidden;
     `;
     
     // Helper function to create label + value pair (vertical: label above number)
