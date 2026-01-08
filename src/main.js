@@ -8,7 +8,7 @@ import { updateLevelCompleteModal, showOfflineIndicator, hideOfflineIndicator, s
 import { isOnline, isLocalOnlyMode } from './stats/statsAPI.js';
 import { initAudio, playSound, toggleAudio, isAudioEnabled } from './audio.js';
 import { getInfernoDifficultyConfig } from './inferno_difficulty.js';
-import { showMilestoneModal, showFeatureModal } from './inferno_modals.js';
+import { showMilestoneModal, showFeatureModal, showLevelUpdateModal } from './inferno_modals.js';
 import appVersionRaw from '../VERSION?raw';
 
 // Build-time constant injected by Vite (see vite.config.js). Falls back to '' if not defined.
@@ -334,10 +334,10 @@ const SPAWN_ZOOM_MULTIPLIER = 1.3; // Additional multiplier for spawn zoom
 // Auto-zoom multiplier: platform-aware - larger on desktop (zoom out more), smaller on mobile (zoom in more)
 // Desktop needs more zoom-out to prevent blocks going out of frame
 // Mobile can zoom in more to reduce wasted space on sides
-const AUTO_ZOOM_MULTIPLIER_DESKTOP = 1.5; // Desktop: zoom out more to ensure all blocks stay in viewport
-const AUTO_ZOOM_MULTIPLIER_MOBILE = 0.95; // Mobile: zoom in more to reduce side space
+const AUTO_ZOOM_MULTIPLIER_DESKTOP = 1.8; // Desktop: zoom out more to ensure all blocks stay in viewport (increased from 1.5)
+const AUTO_ZOOM_MULTIPLIER_MOBILE = 0.80; // Mobile: zoom in more to bring blocks closer (reduced from 0.95)
 // Desktop-specific padding multiplier to ensure all blocks stay visible
-const DESKTOP_ZOOM_PADDING_MULTIPLIER = 1.2; // Extra padding for desktop to account for perspective and edge cases
+const DESKTOP_ZOOM_PADDING_MULTIPLIER = 1.4; // Extra padding for desktop to account for perspective and edge cases (increased from 1.2)
 // During generation, computing a world-space bounding box by expanding each block object
 // (updateMatrixWorld + expandByObject) is expensive. Throttle it to avoid long rAF frames.
 const SPAWN_ZOOM_UPDATE_INTERVAL_MS = 120;
@@ -1160,7 +1160,7 @@ function showTimeUpModal() {
     timeUpShown = true;
 
     const stage = Math.floor(timeChallengeRemovals / 25);
-    summary.innerHTML = `You reached <b>Stage ${stage}</b> and removed <b>${timeChallengeRemovals}</b> blocks.`;
+    summary.innerHTML = `Stage <b>${stage}</b> • <b>${timeChallengeRemovals}</b> blocks removed`;
     modal.style.display = 'flex';
 }
 
@@ -3151,6 +3151,9 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
         }
     }
     
+    // Show general level updates (all modes) - meaningful messages at key intervals
+    showLevelUpdateModal(level);
+    
     // Inferno mode: Show milestone and feature modals
     if (isInfernoMode() && difficultyConfig) {
         // Show milestone modal if applicable
@@ -4285,12 +4288,32 @@ function spinRandomBlocks() {
     });
     
     // Disallow spin while user-paused or in modal freezes (prevents weird UX and free actions)
+    // BUT: Allow spin during level_complete freeze in Inferno mode (same as Time Challenge behavior)
     if (isTimeBasedMode() && isTimeFrozen()) {
+        const freezeReasons = Array.from(timeFreezeReasons);
+        // In Time Challenge and Inferno, allow spin during level_complete freeze
+        // (the level complete modal doesn't prevent spinning)
+        if (freezeReasons.includes('level_complete')) {
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:spinRandomBlocks:allowedDuringLevelComplete',message:'Spin allowed during level_complete freeze (Time Challenge behavior)',data:{reasons:freezeReasons},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H2'})}).catch(()=>{});
+            // #endregion
+            console.log('[Spin] ✅ Allowing spin during level_complete freeze (Time Challenge behavior)');
+            // Continue execution - don't return
+        } else {
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:spinRandomBlocks:blockedFrozen',message:'Spin blocked: time frozen (non-level_complete reason)',data:{reasons:freezeReasons},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H2'})}).catch(()=>{});
+            // #endregion
+            console.log('[Spin] ❌ BLOCKED: Time is frozen, reasons:', freezeReasons);
+            return;
+        }
+    }
+    
+    // Check button state at function entry
+    const diceButtonCheck = document.getElementById('dice-button');
+    if (diceButtonCheck) {
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:spinRandomBlocks:blockedFrozen',message:'Spin blocked: time frozen',data:{reasons:Array.from(timeFreezeReasons)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:spinRandomBlocks:buttonCheck',message:'Button state at spinRandomBlocks entry',data:{disabled:diceButtonCheck.disabled,hasHandler:diceButtonCheck.dataset.handlerAttached==='true',handlerExists:!!diceButtonClickHandler},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H1'})}).catch(()=>{});
         // #endregion
-        console.log('[Spin] ❌ BLOCKED: Time is frozen, reasons:', Array.from(timeFreezeReasons));
-        return;
     }
 
     // Check if spins are available
@@ -4394,6 +4417,14 @@ function spinRandomBlocks() {
     });
     
     console.log('[Spin] ===== spinRandomBlocks FUNCTION COMPLETE =====');
+    
+    // Check button state after function completes
+    const diceButtonAfter = document.getElementById('dice-button');
+    if (diceButtonAfter) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:spinRandomBlocks:buttonAfter',message:'Button state after spinRandomBlocks completes',data:{disabled:diceButtonAfter.disabled,hasHandler:diceButtonAfter.dataset.handlerAttached==='true',handlerExists:!!diceButtonClickHandler},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H1'})}).catch(()=>{});
+        // #endregion
+    }
 }
 
 // Pause button + pause modal (applies to both modes; timer freezes in Time Challenge)
@@ -4462,7 +4493,6 @@ if (timeUpNewGameBtn) {
 
 // Store the click handler functions so we can reattach them if buttons are recreated
 let diceButtonClickHandler = null;
-let debugButtonClickHandler = null;
 
 // Setup dice button handler - ensure DOM is ready
 function setupDiceButton() {
@@ -4522,15 +4552,31 @@ function setupDiceButton() {
         }
         
         // Attach the handler
+        // Remove any existing listeners first to avoid duplicates
+        if (diceButtonClickHandler) {
+            diceButton.removeEventListener('click', diceButtonClickHandler);
+        }
         diceButton.addEventListener('click', diceButtonClickHandler);
         
         // Also add mousedown/touchstart listeners to catch if click isn't firing
         diceButton.addEventListener('mousedown', (e) => {
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:setupDiceButton:mousedown',message:'mousedown event on dice button',data:{timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H1'})}).catch(()=>{});
+            // #endregion
             console.log('[Spin] 🔍 mousedown event on dice button');
         });
         diceButton.addEventListener('touchstart', (e) => {
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:setupDiceButton:touchstart',message:'touchstart event on dice button',data:{timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H1'})}).catch(()=>{});
+            // #endregion
             console.log('[Spin] 🔍 touchstart event on dice button');
         }, { passive: true });
+        
+        // Verify handler is actually attached
+        // #region agent log
+        const hasClickListeners = diceButton.onclick !== null || diceButton.getEventListeners ? diceButton.getEventListeners('click') : 'unknown';
+        fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:setupDiceButton:handlerAttached',message:'Handler attachment verified',data:{hasHandler:diceButton.dataset.handlerAttached==='true',handlerExists:!!diceButtonClickHandler,buttonId:diceButton.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H1'})}).catch(()=>{});
+        // #endregion
         
         // #region agent log
         fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:setupDiceButton:success',message:'Dice button handler attached successfully',data:{handlerExists:!!diceButtonClickHandler},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
@@ -4546,206 +4592,7 @@ function setupDiceButton() {
     }
 }
 
-// Debug function to log current state
-function logDebugState() {
-    console.log('[Debug] ===== LOGGING DEBUG STATE =====');
-    console.log('[Debug] Timestamp:', new Date().toISOString());
-    
-    // Check if blocks exists
-    if (typeof blocks === 'undefined' || !blocks) {
-        console.error('[Debug] ❌ blocks is undefined or null!');
-        return;
-    }
-    
-    const eligibleBlocks = blocks.filter(block => 
-        (block.isVertical || block.length === 1 || (!block.isVertical && block.length > 1)) &&
-        !block.isFalling &&
-        !block.isRemoved &&
-        !block.removalStartTime &&
-        !block.isAnimating
-    );
-    
-    const debugInfo = {
-        // Mode info
-        gameMode: gameMode,
-        isTimeBasedMode: isTimeBasedMode(),
-        isTimeChallengeMode: isTimeChallengeMode(),
-        isInfernoMode: isInfernoMode(),
-        
-        // Time challenge state
-        timeChallengeActive: timeChallengeActive,
-        timeUpShown: timeUpShown,
-        timeLeftSec: timeLeftSec,
-        isTimeFrozen: isTimeFrozen(),
-        timeFreezeReasons: Array.from(timeFreezeReasons),
-        
-        // Spin state
-        remainingSpins: remainingSpins,
-        isTimeBasedMode_check: isTimeBasedMode(),
-        
-        // Block state
-        totalBlocks: blocks.length,
-        eligibleBlocks: eligibleBlocks.length,
-        blocksState: blocks.map(b => ({
-            isVertical: b.isVertical,
-            length: b.length,
-            isFalling: b.isFalling,
-            isRemoved: b.isRemoved,
-            removalStartTime: b.removalStartTime,
-            isAnimating: b.isAnimating
-        })),
-        
-        // Level info
-        currentLevel: currentLevel,
-        
-        // Other state
-        isPaused: isPaused,
-        isGeneratingLevel: isGeneratingLevel,
-        timeAnimationActive: timeAnimationActive
-    };
-    
-    console.log('[Debug] === DEBUG STATE (JSON) ===');
-    console.log(JSON.stringify(debugInfo, null, 2));
-    console.log('[Debug] === END DEBUG STATE (JSON) ===');
-    
-    // Also check what would prevent spin
-    console.log('[Debug] Spin prevention checks:');
-    if (isTimeBasedMode() && isTimeFrozen()) {
-        console.log('[Debug]   ❌ BLOCKED: Time is frozen, reasons:', Array.from(timeFreezeReasons));
-    }
-    if (!isTimeBasedMode() && remainingSpins <= 0) {
-        console.log('[Debug]   ❌ BLOCKED: No spins remaining');
-    }
-    if (eligibleBlocks.length === 0) {
-        console.log('[Debug]   ❌ BLOCKED: No eligible blocks');
-    }
-    if (isTimeBasedMode() && timeUpShown) {
-        console.log('[Debug]   ❌ BLOCKED: Time up shown');
-    }
-    
-    // Check button states
-    const diceButton = document.getElementById('dice-button');
-    if (diceButton) {
-        const diceRect = diceButton.getBoundingClientRect();
-        const diceComputed = window.getComputedStyle(diceButton);
-        console.log('[Debug] Dice button state:', {
-            disabled: diceButton.disabled,
-            opacity: diceButton.style.opacity,
-            computedOpacity: diceComputed.opacity,
-            pointerEvents: diceComputed.pointerEvents,
-            display: diceComputed.display,
-            visibility: diceComputed.visibility,
-            zIndex: diceComputed.zIndex,
-            position: diceComputed.position,
-            bounds: { x: diceRect.x, y: diceRect.y, width: diceRect.width, height: diceRect.height },
-            isVisible: diceRect.width > 0 && diceRect.height > 0 && diceComputed.visibility !== 'hidden' && diceComputed.display !== 'none'
-        });
-        
-        // Check if something is covering the button
-        const elementAtPoint = document.elementFromPoint(diceRect.x + diceRect.width / 2, diceRect.y + diceRect.height / 2);
-        console.log('[Debug] Element at dice button center:', elementAtPoint, elementAtPoint === diceButton ? '✅ Button is clickable' : '❌ Something else is on top');
-    } else {
-        console.log('[Debug]   ❌ Dice button not found in DOM!');
-    }
-    
-    const debugButton = document.getElementById('debug-button');
-    if (debugButton) {
-        const debugRect = debugButton.getBoundingClientRect();
-        const debugComputed = window.getComputedStyle(debugButton);
-        console.log('[Debug] Debug button state:', {
-            disabled: debugButton.disabled,
-            opacity: debugButton.style.opacity,
-            computedOpacity: debugComputed.opacity,
-            pointerEvents: debugComputed.pointerEvents,
-            display: debugComputed.display,
-            visibility: debugComputed.visibility,
-            bounds: { x: debugRect.x, y: debugRect.y, width: debugRect.width, height: debugRect.height },
-            isVisible: debugRect.width > 0 && debugRect.height > 0 && debugComputed.visibility !== 'hidden' && debugComputed.display !== 'none'
-        });
-        
-        // Check if something is covering the button
-        const elementAtPoint = document.elementFromPoint(debugRect.x + debugRect.width / 2, debugRect.y + debugRect.height / 2);
-        console.log('[Debug] Element at debug button center:', elementAtPoint, elementAtPoint === debugButton ? '✅ Button is clickable' : '❌ Something else is on top');
-    } else {
-        console.log('[Debug]   ❌ Debug button not found in DOM!');
-    }
-    
-    console.log('[Debug]   ✅ Spin should work if no blocks above');
-    console.log('[Debug] ===== END DEBUG STATE =====');
-}
-
-// Setup debug button
-function setupDebugButton() {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:setupDebugButton:entry',message:'setupDebugButton called',data:{timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
-    // #endregion
-    const debugButton = document.getElementById('debug-button');
-    if (debugButton) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:setupDebugButton:buttonFound',message:'Debug button found in DOM',data:{hasHandler:debugButton.dataset.handlerAttached==='true',disabled:debugButton.disabled},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
-        // #endregion
-        console.log('[Debug] Debug button found, attaching handler');
-        // Check if handler already attached
-        if (debugButton.dataset.handlerAttached === 'true') {
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:setupDebugButton:alreadyAttached',message:'Debug handler already attached, skipping',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
-            // #endregion
-            console.log('[Debug] Handler already attached, skipping');
-            return;
-        }
-        debugButton.dataset.handlerAttached = 'true';
-        
-        // Create handler function if it doesn't exist
-        if (!debugButtonClickHandler) {
-            debugButtonClickHandler = (e) => {
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:setupDebugButton:clickHandler',message:'Debug button click event fired',data:{disabled:debugButton.disabled},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
-            // #endregion
-            e.preventDefault();
-            e.stopPropagation();
-            console.log('[Debug] ===== DEBUG BUTTON CLICKED =====');
-            console.log('[Debug] Button state - disabled:', debugButton.disabled, 'opacity:', debugButton.style.opacity);
-            try {
-                logDebugState();
-            } catch (error) {
-                // #region agent log
-                fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:setupDebugButton:error',message:'Error in logDebugState',data:{error:error.message,stack:error.stack},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H4'})}).catch(()=>{});
-                // #endregion
-                console.error('[Debug] ❌ ERROR in logDebugState:', error);
-                console.error('[Debug] Error stack:', error.stack);
-            }
-            console.log('[Debug] ===== END DEBUG BUTTON CLICK =====');
-        };
-    }
-        
-        // Attach the handler
-        debugButton.addEventListener('click', debugButtonClickHandler);
-        
-        // Also add mousedown listener
-        debugButton.addEventListener('mousedown', (e) => {
-            console.log('[Debug] 🔍 mousedown event on debug button');
-        });
-        
-        // Store reference globally
-        window.debugButton = debugButton;
-        window.logDebugState = logDebugState; // Make it globally accessible
-        window.debugSpin = () => {
-            console.log('[Debug] Manual debug call from console');
-            logDebugState();
-        };
-        
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:setupDebugButton:success',message:'Debug button handler attached successfully',data:{handlerExists:!!debugButtonClickHandler},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
-        // #endregion
-        console.log('[Debug] ✅ Debug button handler attached successfully');
-        console.log('[Debug] 💡 You can also call logDebugState() or debugSpin() from console');
-    } else {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:setupDebugButton:notFound',message:'Debug button not found in DOM',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H5'})}).catch(()=>{});
-        // #endregion
-        console.error('[Debug] ❌ Debug button not found!');
-    }
-}
+// Debug button and functions removed - no longer needed
 
 // MutationObserver to detect when buttons are recreated and reattach handlers
 function setupButtonWatcher() {
@@ -4771,12 +4618,6 @@ function setupButtonWatcher() {
                             // #endregion
                             setTimeout(() => setupDiceButton(), 50);
                         }
-                        if (node.id === 'debug-button' || (node.id && node.id.includes('debug-button'))) {
-                            // #region agent log
-                            fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:setupButtonWatcher:debugButtonRecreated',message:'Debug button recreated, reattaching handler',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H5'})}).catch(()=>{});
-                            // #endregion
-                            setTimeout(() => setupDebugButton(), 50);
-                        }
                     }
                 });
             }
@@ -4799,25 +4640,14 @@ if (document.readyState === 'loading') {
         fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:buttonSetup:DOMContentLoaded',message:'DOMContentLoaded fired, setting up buttons',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
         // #endregion
         setupDiceButton();
-        setupDebugButton();
         setupButtonWatcher();
-        // Also add keyboard shortcut as backup (Ctrl+Shift+D)
-        document.addEventListener('keydown', (e) => {
-            if (e.ctrlKey && e.shiftKey && e.key === 'D') {
-                e.preventDefault();
-                console.log('[Debug] Keyboard shortcut triggered (Ctrl+Shift+D)');
-                logDebugState();
-            }
-        });
     });
 } else {
     // #region agent log
     fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:buttonSetup:immediate',message:'DOM already ready, setting up buttons immediately',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
     // #endregion
     setupDiceButton();
-    setupDebugButton();
     setupButtonWatcher();
-    // Also add keyboard shortcut as backup (Ctrl+Shift+D)
     document.addEventListener('keydown', (e) => {
         if (e.ctrlKey && e.shiftKey && e.key === 'D') {
             e.preventDefault();
@@ -6388,7 +6218,8 @@ function animate() {
                 const aspect = camera.aspect;
 
                 // Desktop-specific: Use larger padding to ensure all blocks stay in viewport
-                const effectivePadding = isMobileLike ? ZOOM_PADDING * 1.5 : ZOOM_PADDING * DESKTOP_ZOOM_PADDING_MULTIPLIER;
+                // Mobile: reduced padding to bring blocks closer (reduced from 1.5 to 1.1)
+                const effectivePadding = isMobileLike ? ZOOM_PADDING * 1.1 : ZOOM_PADDING * DESKTOP_ZOOM_PADDING_MULTIPLIER;
 
                 // Calculate distance needed for height (with platform-aware padding)
                 const heightDistance = (size.y + effectivePadding) / (2 * Math.tan(fov / 2));
@@ -6409,12 +6240,13 @@ function animate() {
                 if (!isMobileLike) {
                     // Account for elevation angle - when camera looks down, we need more distance
                     // to ensure corner blocks don't get cut off due to perspective
-                    const elevationFactor = 1.0 + (0.08 * Math.abs(Math.sin(currentElevation)));
+                    const elevationFactor = 1.0 + (0.12 * Math.abs(Math.sin(currentElevation))); // Increased from 0.08
                     baseDistance *= elevationFactor;
                     
                     // Additional safety margin for desktop to ensure all blocks stay in viewport
                     // This accounts for perspective distortion, edge cases, and bounding box approximation
-                    baseDistance *= 1.02;
+                    // Increased from 1.02 to 1.05 for better coverage at later stages
+                    baseDistance *= 1.05;
                 }
                 
                 const requiredDistance = baseDistance * platformMultiplier;
