@@ -901,6 +901,7 @@ function showModeSelectModal() {
     const freeBtn = document.getElementById('mode-pick-free');
     const timeBtn = document.getElementById('mode-pick-time');
     const infernoBtn = document.getElementById('mode-pick-inferno');
+    const cancelBtn = document.getElementById('mode-select-cancel');
     if (!modal || !freeBtn || !timeBtn || !infernoBtn) return Promise.resolve(MODE_FREE_FLOW);
 
     setTimeFrozen('mode_select', true);
@@ -912,15 +913,18 @@ function showModeSelectModal() {
             freeBtn.removeEventListener('click', onFree);
             timeBtn.removeEventListener('click', onTime);
             infernoBtn.removeEventListener('click', onInferno);
+            if (cancelBtn) cancelBtn.removeEventListener('click', onCancel);
             setTimeFrozen('mode_select', false);
             resolve(mode);
         };
         const onFree = () => cleanup(MODE_FREE_FLOW);
         const onTime = () => cleanup(MODE_TIME_CHALLENGE);
         const onInferno = () => cleanup(MODE_INFERNO);
+        const onCancel = () => cleanup(null); // Return null to indicate cancellation
         freeBtn.addEventListener('click', onFree);
         timeBtn.addEventListener('click', onTime);
         infernoBtn.addEventListener('click', onInferno);
+        if (cancelBtn) cancelBtn.addEventListener('click', onCancel);
     });
 }
 
@@ -993,7 +997,12 @@ async function ensureModeSelected({ forcePrompt = false } = {}) {
     }
 
     if (forcePrompt || !hasKey) {
-        mode = await showModeSelectModal();
+        const selectedMode = await showModeSelectModal();
+        // If user cancelled (selectedMode is null), keep current mode and return null to indicate cancellation
+        if (selectedMode === null) {
+            return null; // Indicate cancellation
+        }
+        mode = selectedMode;
         saveGameMode(mode);
     }
 
@@ -4174,7 +4183,11 @@ const newGameButton = document.getElementById('new-game-button');
 if (newGameButton) {
     newGameButton.addEventListener('click', async () => {
         // Per requirement: New Game should re-prompt mode selection (user can switch modes easily).
-        await ensureModeSelected({ forcePrompt: true });
+        const selectedMode = await ensureModeSelected({ forcePrompt: true });
+        // If user cancelled (selectedMode is null), don't start a new game
+        if (selectedMode === null) {
+            return;
+        }
         if (isTimeBasedMode()) {
             timeChallengeResetRun();
             remainingSpins = Number.POSITIVE_INFINITY;
@@ -4213,8 +4226,10 @@ function updateSpinCounterDisplay() {
         if (isTimeBasedMode()) {
             // Unlimited spins in time-based modes
             spinCounter.textContent = '∞';
+            spinCounter.setAttribute('data-infinity', 'true');
         } else {
             spinCounter.textContent = remainingSpins.toString();
+            spinCounter.removeAttribute('data-infinity');
         }
     }
 
@@ -4478,7 +4493,11 @@ if (modeToggleButton) {
         e.preventDefault();
         e.stopPropagation();
         const prevMode = gameMode;
-        await ensureModeSelected({ forcePrompt: true });
+        const selectedMode = await ensureModeSelected({ forcePrompt: true });
+        // If user cancelled (selectedMode is null), don't change mode or start new game
+        if (selectedMode === null) {
+            return;
+        }
         if (gameMode !== prevMode) {
             if (isTimeBasedMode()) {
                 timeChallengeResetRun();
