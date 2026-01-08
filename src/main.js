@@ -34,6 +34,23 @@ function sanitizeGitSha(raw) {
     return s ? s[0].slice(0, 12) : '';
 }
 
+// Silent debug telemetry helper (fails silently to avoid console noise)
+function debugTelemetry(data) {
+    // Only attempt if explicitly enabled via URL param or localStorage
+    const debugEnabled = typeof window !== 'undefined' && (
+        new URLSearchParams(window.location.search).has('debug') ||
+        localStorage.getItem('jarrows_debug_telemetry') === '1'
+    );
+    if (!debugEnabled) return;
+    
+    // Silently fail - don't show errors in console
+    fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+    }).catch(() => { /* Silently ignore */ });
+}
+
 // Platform/perf heuristics (battery-focused, especially for iPhone ProMotion)
 const isIOS = (() => {
     try {
@@ -334,10 +351,10 @@ const SPAWN_ZOOM_MULTIPLIER = 1.3; // Additional multiplier for spawn zoom
 // Auto-zoom multiplier: platform-aware - larger on desktop (zoom out more), smaller on mobile (zoom in more)
 // Desktop needs more zoom-out to prevent blocks going out of frame
 // Mobile can zoom in more to reduce wasted space on sides
-const AUTO_ZOOM_MULTIPLIER_DESKTOP = 1.8; // Desktop: zoom out more to ensure all blocks stay in viewport (increased from 1.5)
-const AUTO_ZOOM_MULTIPLIER_MOBILE = 0.80; // Mobile: zoom in more to bring blocks closer (reduced from 0.95)
+const AUTO_ZOOM_MULTIPLIER_DESKTOP = 1.4; // Desktop: minimal zoom to keep all blocks visible with minimal padding
+const AUTO_ZOOM_MULTIPLIER_MOBILE = 0.75; // Mobile: minimal zoom to keep all blocks visible with minimal padding
 // Desktop-specific padding multiplier to ensure all blocks stay visible
-const DESKTOP_ZOOM_PADDING_MULTIPLIER = 1.4; // Extra padding for desktop to account for perspective and edge cases (increased from 1.2)
+const DESKTOP_ZOOM_PADDING_MULTIPLIER = 1.15; // Minimal padding for desktop to keep all blocks visible
 // During generation, computing a world-space bounding box by expanding each block object
 // (updateMatrixWorld + expandByObject) is expensive. Throttle it to avoid long rAF frames.
 const SPAWN_ZOOM_UPDATE_INTERVAL_MS = 120;
@@ -1016,7 +1033,7 @@ function timeChallengeResetRun() {
 
 function timeChallengeStartNewLevel(blocksArray) {
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:timeChallengeStartNewLevel:entry',message:'timeChallengeStartNewLevel called',data:{isTimeBasedMode:isTimeBasedMode(),blocksCount:blocksArray?blocksArray.length:0,currentLevel:currentLevel},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
+    debugTelemetry({location:'main.js:timeChallengeStartNewLevel:entry',message:'timeChallengeStartNewLevel called',data:{isTimeBasedMode:isTimeBasedMode(),blocksCount:blocksArray?blocksArray.length:0,currentLevel:currentLevel},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'});
     // #endregion
     if (!isTimeBasedMode()) return;
     
@@ -1049,7 +1066,7 @@ function timeChallengeStartNewLevel(blocksArray) {
     setTimeFrozen('time_up', false);
     
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:timeChallengeStartNewLevel:exit',message:'timeChallengeStartNewLevel completed',data:{wasActive:wasActive,nowActive:timeChallengeActive,timeLeftSec:timeLeftSec},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
+    debugTelemetry({location:'main.js:timeChallengeStartNewLevel:exit',message:'timeChallengeStartNewLevel completed',data:{wasActive:wasActive,nowActive:timeChallengeActive,timeLeftSec:timeLeftSec},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'});
     // #endregion
     
     updateTimerDisplay();
@@ -1320,6 +1337,14 @@ function clearProgress() {
         // Clear progress for the current game mode
         const storageKey = getStorageKey();
         localStorage.removeItem(storageKey);
+        
+        // Clear level update modal keys so modals show again on new game
+        // Clear all level update keys (levels 1, 3, 5, 8, 12, 15, 20, 30, 40, 60, 75, 100)
+        const levelUpdateIntervals = [1, 3, 5, 8, 12, 15, 20, 30, 40, 60, 75, 100];
+        for (const level of levelUpdateIntervals) {
+            localStorage.removeItem(`jarrows_level_update_${level}`);
+        }
+        
         // Keep storage version and highest level for tracking
         console.log(`Progress cleared - user will start from level 0 on next load (${isTimeChallengeMode() ? 'Time Challenge' : 'Free Flow'})`);
         return true;
@@ -3051,7 +3076,7 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
     if (isTimeBasedMode()) {
         timeChallengeStartNewLevel(allBlocks);
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:generateSolvablePuzzle:timeChallengeStart',message:'Time challenge level started',data:{timeChallengeActive:timeChallengeActive,timeLeftSec:timeLeftSec,level:level},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
+        debugTelemetry({location:'main.js:generateSolvablePuzzle:timeChallengeStart',message:'Time challenge level started',data:{timeChallengeActive:timeChallengeActive,timeLeftSec:timeLeftSec,level:level},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'});
         // #endregion
         console.log('[Time Challenge] Level started, timeChallengeActive:', timeChallengeActive, 'timeLeftSec:', timeLeftSec);
         // Re-check button states after level start
@@ -4181,7 +4206,7 @@ if (undoButton) {
 // Update spin counter display
 function updateSpinCounterDisplay() {
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:updateSpinCounterDisplay:entry',message:'updateSpinCounterDisplay called',data:{isTimeBasedMode:isTimeBasedMode(),remainingSpins:remainingSpins},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
+    debugTelemetry({location:'main.js:updateSpinCounterDisplay:entry',message:'updateSpinCounterDisplay called',data:{isTimeBasedMode:isTimeBasedMode(),remainingSpins:remainingSpins},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'});
     // #endregion
     const spinCounter = document.getElementById('spin-counter');
     if (spinCounter) {
@@ -4201,14 +4226,14 @@ function updateSpinCounterDisplay() {
             diceButton.style.opacity = '0.5';
             diceButton.style.cursor = 'not-allowed';
             // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:updateSpinCounterDisplay:disabled',message:'Dice button disabled',data:{wasDisabled:wasDisabled,nowDisabled:true,remainingSpins:remainingSpins},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
+            debugTelemetry({location:'main.js:updateSpinCounterDisplay:disabled',message:'Dice button disabled',data:{wasDisabled:wasDisabled,nowDisabled:true,remainingSpins:remainingSpins},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'});
             // #endregion
         } else {
             diceButton.disabled = false;
             diceButton.style.opacity = '1';
             diceButton.style.cursor = 'pointer';
             // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:updateSpinCounterDisplay:enabled',message:'Dice button enabled',data:{wasDisabled:wasDisabled,nowDisabled:false,remainingSpins:remainingSpins},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
+            debugTelemetry({location:'main.js:updateSpinCounterDisplay:enabled',message:'Dice button enabled',data:{wasDisabled:wasDisabled,nowDisabled:false,remainingSpins:remainingSpins},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'});
             // #endregion
         }
     }
@@ -4259,7 +4284,7 @@ function autoSpinAfterSpawn() {
 // Spin random blocks (vertical and single-cell blocks) to break interlock situations
 function spinRandomBlocks() {
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:spinRandomBlocks:entry',message:'spinRandomBlocks function called',data:{timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+    debugTelemetry({location:'main.js:spinRandomBlocks:entry',message:'spinRandomBlocks function called',data:{timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'});
     // #endregion
     console.log('[Spin] ===== spinRandomBlocks FUNCTION CALLED =====');
     console.log('[Spin] Function entry - timestamp:', new Date().toISOString());
@@ -4295,13 +4320,13 @@ function spinRandomBlocks() {
         // (the level complete modal doesn't prevent spinning)
         if (freezeReasons.includes('level_complete')) {
             // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:spinRandomBlocks:allowedDuringLevelComplete',message:'Spin allowed during level_complete freeze (Time Challenge behavior)',data:{reasons:freezeReasons},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H2'})}).catch(()=>{});
+            debugTelemetry({location:'main.js:spinRandomBlocks:allowedDuringLevelComplete',message:'Spin allowed during level_complete freeze (Time Challenge behavior)',data:{reasons:freezeReasons},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H2'});
             // #endregion
             console.log('[Spin] ✅ Allowing spin during level_complete freeze (Time Challenge behavior)');
             // Continue execution - don't return
         } else {
             // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:spinRandomBlocks:blockedFrozen',message:'Spin blocked: time frozen (non-level_complete reason)',data:{reasons:freezeReasons},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H2'})}).catch(()=>{});
+            debugTelemetry({location:'main.js:spinRandomBlocks:blockedFrozen',message:'Spin blocked: time frozen (non-level_complete reason)',data:{reasons:freezeReasons},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H2'});
             // #endregion
             console.log('[Spin] ❌ BLOCKED: Time is frozen, reasons:', freezeReasons);
             return;
@@ -4312,14 +4337,14 @@ function spinRandomBlocks() {
     const diceButtonCheck = document.getElementById('dice-button');
     if (diceButtonCheck) {
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:spinRandomBlocks:buttonCheck',message:'Button state at spinRandomBlocks entry',data:{disabled:diceButtonCheck.disabled,hasHandler:diceButtonCheck.dataset.handlerAttached==='true',handlerExists:!!diceButtonClickHandler},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H1'})}).catch(()=>{});
+        debugTelemetry({location:'main.js:spinRandomBlocks:buttonCheck',message:'Button state at spinRandomBlocks entry',data:{disabled:diceButtonCheck.disabled,hasHandler:diceButtonCheck.dataset.handlerAttached==='true',handlerExists:!!diceButtonClickHandler},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H1'});
         // #endregion
     }
 
     // Check if spins are available
     if (!isTimeBasedMode() && remainingSpins <= 0) {
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:spinRandomBlocks:blockedNoSpins',message:'Spin blocked: no spins remaining',data:{remainingSpins:remainingSpins},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
+        debugTelemetry({location:'main.js:spinRandomBlocks:blockedNoSpins',message:'Spin blocked: no spins remaining',data:{remainingSpins:remainingSpins},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'});
         // #endregion
         console.log('[Spin] ❌ BLOCKED: No spins remaining (remainingSpins:', remainingSpins, ')');
         return;
@@ -4327,7 +4352,7 @@ function spinRandomBlocks() {
     
     if (!blocks || blocks.length === 0) {
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:spinRandomBlocks:blockedNoBlocks',message:'Spin blocked: no blocks',data:{blocksExists:!!blocks,blocksLength:blocks?blocks.length:0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
+        debugTelemetry({location:'main.js:spinRandomBlocks:blockedNoBlocks',message:'Spin blocked: no blocks',data:{blocksExists:!!blocks,blocksLength:blocks?blocks.length:0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'});
         // #endregion
         console.log('[Spin] ❌ BLOCKED: No blocks array or empty blocks');
         return;
@@ -4422,7 +4447,7 @@ function spinRandomBlocks() {
     const diceButtonAfter = document.getElementById('dice-button');
     if (diceButtonAfter) {
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:spinRandomBlocks:buttonAfter',message:'Button state after spinRandomBlocks completes',data:{disabled:diceButtonAfter.disabled,hasHandler:diceButtonAfter.dataset.handlerAttached==='true',handlerExists:!!diceButtonClickHandler},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H1'})}).catch(()=>{});
+        debugTelemetry({location:'main.js:spinRandomBlocks:buttonAfter',message:'Button state after spinRandomBlocks completes',data:{disabled:diceButtonAfter.disabled,hasHandler:diceButtonAfter.dataset.handlerAttached==='true',handlerExists:!!diceButtonClickHandler},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H1'});
         // #endregion
     }
 }
@@ -4497,18 +4522,18 @@ let diceButtonClickHandler = null;
 // Setup dice button handler - ensure DOM is ready
 function setupDiceButton() {
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:setupDiceButton:entry',message:'setupDiceButton called',data:{timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+    debugTelemetry({location:'main.js:setupDiceButton:entry',message:'setupDiceButton called',data:{timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'});
     // #endregion
     const diceButton = document.getElementById('dice-button');
     if (diceButton) {
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:setupDiceButton:buttonFound',message:'Dice button found in DOM',data:{hasHandler:diceButton.dataset.handlerAttached==='true',disabled:diceButton.disabled,hasListener:!!diceButtonClickHandler},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+        debugTelemetry({location:'main.js:setupDiceButton:buttonFound',message:'Dice button found in DOM',data:{hasHandler:diceButton.dataset.handlerAttached==='true',disabled:diceButton.disabled,hasListener:!!diceButtonClickHandler},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'});
         // #endregion
         console.log('[Spin] Dice button found, attaching handler');
         // Check if handler already attached (avoid duplicates)
         if (diceButton.dataset.handlerAttached === 'true') {
             // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:setupDiceButton:alreadyAttached',message:'Handler already attached, skipping',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+            debugTelemetry({location:'main.js:setupDiceButton:alreadyAttached',message:'Handler already attached, skipping',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'});
             // #endregion
             console.log('[Spin] Handler already attached, skipping');
             return;
@@ -4525,7 +4550,7 @@ function setupDiceButton() {
         if (!diceButtonClickHandler) {
             diceButtonClickHandler = (e) => {
             // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:setupDiceButton:clickHandler',message:'Dice button click event fired',data:{disabled:diceButton.disabled,timeChallengeActive:timeChallengeActive},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+            debugTelemetry({location:'main.js:setupDiceButton:clickHandler',message:'Dice button click event fired',data:{disabled:diceButton.disabled,timeChallengeActive:timeChallengeActive},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'});
             // #endregion
             e.preventDefault();
             e.stopPropagation();
@@ -4561,13 +4586,13 @@ function setupDiceButton() {
         // Also add mousedown/touchstart listeners to catch if click isn't firing
         diceButton.addEventListener('mousedown', (e) => {
             // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:setupDiceButton:mousedown',message:'mousedown event on dice button',data:{timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H1'})}).catch(()=>{});
+            debugTelemetry({location:'main.js:setupDiceButton:mousedown',message:'mousedown event on dice button',data:{timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H1'});
             // #endregion
             console.log('[Spin] 🔍 mousedown event on dice button');
         });
         diceButton.addEventListener('touchstart', (e) => {
             // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:setupDiceButton:touchstart',message:'touchstart event on dice button',data:{timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H1'})}).catch(()=>{});
+            debugTelemetry({location:'main.js:setupDiceButton:touchstart',message:'touchstart event on dice button',data:{timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H1'});
             // #endregion
             console.log('[Spin] 🔍 touchstart event on dice button');
         }, { passive: true });
@@ -4575,16 +4600,16 @@ function setupDiceButton() {
         // Verify handler is actually attached
         // #region agent log
         const hasClickListeners = diceButton.onclick !== null || diceButton.getEventListeners ? diceButton.getEventListeners('click') : 'unknown';
-        fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:setupDiceButton:handlerAttached',message:'Handler attachment verified',data:{hasHandler:diceButton.dataset.handlerAttached==='true',handlerExists:!!diceButtonClickHandler,buttonId:diceButton.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H1'})}).catch(()=>{});
+        debugTelemetry({location:'main.js:setupDiceButton:handlerAttached',message:'Handler attachment verified',data:{hasHandler:diceButton.dataset.handlerAttached==='true',handlerExists:!!diceButtonClickHandler,buttonId:diceButton.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H1'});
         // #endregion
         
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:setupDiceButton:success',message:'Dice button handler attached successfully',data:{handlerExists:!!diceButtonClickHandler},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+        debugTelemetry({location:'main.js:setupDiceButton:success',message:'Dice button handler attached successfully',data:{handlerExists:!!diceButtonClickHandler},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'});
         // #endregion
         console.log('[Spin] ✅ Dice button handler attached successfully');
     } else {
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:setupDiceButton:notFound',message:'Dice button not found in DOM',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H5'})}).catch(()=>{});
+        debugTelemetry({location:'main.js:setupDiceButton:notFound',message:'Dice button not found in DOM',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H5'});
         // #endregion
         console.error('[Spin] ❌ Dice button not found! Retrying...');
         // Retry after a short delay if button not found
@@ -4599,7 +4624,7 @@ function setupButtonWatcher() {
     const gameControls = document.getElementById('game-controls');
     if (!gameControls) {
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:setupButtonWatcher:noContainer',message:'game-controls container not found',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H5'})}).catch(()=>{});
+        debugTelemetry({location:'main.js:setupButtonWatcher:noContainer',message:'game-controls container not found',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H5'});
         // #endregion
         return;
     }
@@ -4610,11 +4635,11 @@ function setupButtonWatcher() {
                 mutation.addedNodes.forEach((node) => {
                     if (node.nodeType === 1) { // Element node
                         // #region agent log
-                        fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:setupButtonWatcher:nodeAdded',message:'Node added to game-controls',data:{nodeId:node.id,nodeTag:node.tagName,isDiceButton:node.id==='dice-button',isDebugButton:node.id==='debug-button'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H5'})}).catch(()=>{});
+                        debugTelemetry({location:'main.js:setupButtonWatcher:nodeAdded',message:'Node added to game-controls',data:{nodeId:node.id,nodeTag:node.tagName,isDiceButton:node.id==='dice-button',isDebugButton:node.id==='debug-button'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H5'});
                         // #endregion
                         if (node.id === 'dice-button' || (node.id && node.id.includes('dice-button'))) {
                             // #region agent log
-                            fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:setupButtonWatcher:diceButtonRecreated',message:'Dice button recreated, reattaching handler',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H5'})}).catch(()=>{});
+                            debugTelemetry({location:'main.js:setupButtonWatcher:diceButtonRecreated',message:'Dice button recreated, reattaching handler',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H5'});
                             // #endregion
                             setTimeout(() => setupDiceButton(), 50);
                         }
@@ -4626,25 +4651,25 @@ function setupButtonWatcher() {
     
     observer.observe(gameControls, { childList: true, subtree: true });
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:setupButtonWatcher:started',message:'Button watcher started',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H5'})}).catch(()=>{});
+    debugTelemetry({location:'main.js:setupButtonWatcher:started',message:'Button watcher started',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H5'});
     // #endregion
 }
 
 // Setup dice button when DOM is ready
 // #region agent log
-fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:buttonSetup:entry',message:'Button setup code executing',data:{readyState:document.readyState},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+debugTelemetry({location:'main.js:buttonSetup:entry',message:'Button setup code executing',data:{readyState:document.readyState},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'});
 // #endregion
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:buttonSetup:DOMContentLoaded',message:'DOMContentLoaded fired, setting up buttons',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+        debugTelemetry({location:'main.js:buttonSetup:DOMContentLoaded',message:'DOMContentLoaded fired, setting up buttons',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'});
         // #endregion
         setupDiceButton();
         setupButtonWatcher();
     });
 } else {
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:buttonSetup:immediate',message:'DOM already ready, setting up buttons immediately',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+    debugTelemetry({location:'main.js:buttonSetup:immediate',message:'DOM already ready, setting up buttons immediately',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'});
     // #endregion
     setupDiceButton();
     setupButtonWatcher();
@@ -6217,16 +6242,24 @@ function animate() {
                 const fov = camera.fov * (Math.PI / 180);
                 const aspect = camera.aspect;
 
-                // Desktop-specific: Use larger padding to ensure all blocks stay in viewport
-                // Mobile: reduced padding to bring blocks closer (reduced from 1.5 to 1.1)
-                const effectivePadding = isMobileLike ? ZOOM_PADDING * 1.1 : ZOOM_PADDING * DESKTOP_ZOOM_PADDING_MULTIPLIER;
+                // Minimal padding to keep all blocks visible
+                const effectivePadding = isMobileLike ? ZOOM_PADDING * 1.0 : ZOOM_PADDING * DESKTOP_ZOOM_PADDING_MULTIPLIER;
 
-                // Calculate distance needed for height (with platform-aware padding)
+                // Calculate distance needed for height (vertical FOV)
                 const heightDistance = (size.y + effectivePadding) / (2 * Math.tan(fov / 2));
 
-                // Calculate distance needed for width/depth (with platform-aware padding)
-                const baseDiagonal = Math.sqrt(size.x * size.x + size.z * size.z);
-                const widthDistance = (baseDiagonal + effectivePadding) / (2 * Math.tan(fov / 2) * aspect);
+                // Calculate distance needed for width/depth (horizontal FOV)
+                // For perspective projection: horizontalFOV = 2 * atan(tan(verticalFOV/2) * aspect)
+                // Distance = size / (2 * tan(horizontalFOV/2))
+                // Simplified: distance = size / (2 * tan(verticalFOV/2) * aspect)
+                // Use the diagonal of X-Z plane to ensure worst-case corner blocks are visible
+                // When camera is at an angle, the diagonal projection is the limiting factor
+                const horizontalDiagonal = Math.sqrt(size.x * size.x + size.z * size.z);
+                // Account for camera elevation: when viewing at an angle, perspective distortion
+                // means corner blocks project further. Increase diagonal by elevation factor.
+                const elevationDistortionFactor = 1.0 + (0.2 * Math.abs(Math.sin(currentElevation)));
+                const adjustedDiagonal = horizontalDiagonal * elevationDistortionFactor;
+                const widthDistance = (adjustedDiagonal + effectivePadding) / (2 * Math.tan(fov / 2) * aspect);
 
                 // Use the larger distance and apply platform-aware multiplier
                 // Desktop: zoom out more to prevent blocks going out of frame
@@ -6240,16 +6273,19 @@ function animate() {
                 if (!isMobileLike) {
                     // Account for elevation angle - when camera looks down, we need more distance
                     // to ensure corner blocks don't get cut off due to perspective
-                    const elevationFactor = 1.0 + (0.12 * Math.abs(Math.sin(currentElevation))); // Increased from 0.08
+                    const elevationFactor = 1.0 + (0.08 * Math.abs(Math.sin(currentElevation)));
                     baseDistance *= elevationFactor;
                     
-                    // Additional safety margin for desktop to ensure all blocks stay in viewport
+                    // Minimal safety margin for desktop to ensure all blocks stay in viewport
                     // This accounts for perspective distortion, edge cases, and bounding box approximation
-                    // Increased from 1.02 to 1.05 for better coverage at later stages
-                    baseDistance *= 1.05;
+                    baseDistance *= 1.02;
                 }
                 
-                const requiredDistance = baseDistance * platformMultiplier;
+                // Add safety margin to ensure all blocks stay visible
+                // This accounts for perspective distortion, edge cases, bounding box approximation,
+                // and the fact that corner blocks project further in screen space when camera is at an angle
+                const safetyMargin = isMobileLike ? 1.12 : 1.15; // 12% mobile, 15% desktop safety margin
+                const requiredDistance = baseDistance * platformMultiplier * safetyMargin;
                 targetRadius = Math.max(MIN_RADIUS, Math.min(MAX_RADIUS, requiredDistance));
                 
                 // Debug: log auto-zoom calculation (can be removed later)

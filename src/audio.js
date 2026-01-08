@@ -7,39 +7,35 @@ const AUDIO_ENABLED_KEY = 'jarrows_audio_enabled';
 let audioEnabled = true;
 let audioContext = null;
 let sounds = {};
+let soundBuffers = {}; // Store raw ArrayBuffers until AudioContext is ready
 
 // Initialize audio context (required for playing sounds in modern browsers)
+// Deferred until first user interaction to avoid autoplay policy warnings
 function initAudioContext() {
     if (!audioContext) {
         try {
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            // Resume audio context if it's suspended (required for autoplay policy)
-            if (audioContext.state === 'suspended') {
-                audioContext.resume().catch(e => {
-                    console.warn('Failed to resume audio context:', e);
-                });
-            }
         } catch (e) {
-            console.warn('AudioContext not supported:', e);
-            return false;
+            return false; // Audio not supported
         }
-    }
-    // Resume if suspended (user interaction may be required)
-    if (audioContext.state === 'suspended') {
-        audioContext.resume().catch(e => {
-            console.warn('Failed to resume audio context:', e);
-        });
     }
     return true;
 }
 
-// Load a sound file
+// Load a sound file (stores raw buffer, decodes when AudioContext is ready)
 async function loadSound(name, path) {
     try {
         const response = await fetch(path);
         const arrayBuffer = await response.arrayBuffer();
-        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-        sounds[name] = audioBuffer;
+        soundBuffers[name] = arrayBuffer;
+        // Decode if AudioContext is already available
+        if (audioContext && audioContext.state !== 'closed') {
+            try {
+                sounds[name] = await audioContext.decodeAudioData(arrayBuffer);
+            } catch (e) {
+                // Will decode on first play
+            }
+        }
         return true;
     } catch (e) {
         console.warn(`Failed to load sound ${name}:`, e);
@@ -48,27 +44,55 @@ async function loadSound(name, path) {
 }
 
 // Play a sound effect
-function playSound(name, volume = 0.5) {
-    if (!audioEnabled || !audioContext) return;
+async function playSound(name, volume = 0.5) {
+    if (!audioEnabled) return;
+    
+    // Initialize AudioContext on first user interaction
+    if (!audioContext) {
+        if (!initAudioContext()) {
+            return; // Audio not supported
+        }
+        // Decode all pending sound buffers
+        for (const [soundName, arrayBuffer] of Object.entries(soundBuffers)) {
+            if (!sounds[soundName]) {
+                try {
+                    sounds[soundName] = await audioContext.decodeAudioData(arrayBuffer);
+                } catch (e) {
+                    // Skip if decode fails
+                }
+            }
+        }
+    }
+    
+    // Resume audio context if suspended (required for autoplay policy)
+    if (audioContext.state === 'suspended') {
+        try {
+            await audioContext.resume();
+        } catch (e) {
+            // Silently fail - will retry next time
+            return;
+        }
+    }
     
     const audioBuffer = sounds[name];
     if (!audioBuffer) {
-        console.warn(`Sound ${name} not loaded`);
-        return;
+        // Try to decode if we have the raw buffer
+        if (soundBuffers[name]) {
+            try {
+                sounds[name] = await audioContext.decodeAudioData(soundBuffers[name]);
+            } catch (e) {
+                return; // Can't decode
+            }
+        } else {
+            return; // Sound not loaded
+        }
     }
     
     try {
-        // Resume audio context if suspended (required for autoplay policy)
-        if (audioContext.state === 'suspended') {
-            audioContext.resume().catch(e => {
-                console.warn('Failed to resume audio context:', e);
-            });
-        }
-        
         const source = audioContext.createBufferSource();
         const gainNode = audioContext.createGain();
         
-        source.buffer = audioBuffer;
+        source.buffer = sounds[name];
         gainNode.gain.value = volume;
         
         source.connect(gainNode);
@@ -76,11 +100,12 @@ function playSound(name, volume = 0.5) {
         
         source.start(0);
     } catch (e) {
-        console.warn(`Failed to play sound ${name}:`, e);
+        // Silently fail
     }
 }
 
 // Initialize audio system and load all sounds
+// Audio context creation is deferred until first user interaction
 async function initAudio() {
     // Load audio preference
     try {
@@ -90,13 +115,10 @@ async function initAudio() {
         audioEnabled = true;
     }
     
-    // Initialize audio context
-    if (!initAudioContext()) {
-        console.warn('Audio initialization failed');
-        return;
-    }
+    // Don't create AudioContext immediately - wait for user interaction
+    // This avoids autoplay policy warnings
     
-    // Load sound files
+    // Load sound files (will be decoded when AudioContext is ready)
     // Use relative paths that work with Vite's base path configuration
     const basePath = import.meta.env.BASE_URL || '/';
     await Promise.all([
