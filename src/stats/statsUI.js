@@ -934,8 +934,8 @@ function createComparisonSection() {
     title.className = 'comparison-title';
     title.textContent = 'Community Comparison';
     title.style.cssText = `
-        font-size: 14px;
-        font-weight: 700;
+        font-size: 18px; /* Increased from 14px */
+        font-weight: 900; /* Increased from 700 */
         color: rgba(255, 255, 255, 0.9);
         margin-bottom: 12px;
         text-transform: uppercase;
@@ -974,8 +974,14 @@ function updateComparisonDisplay(section, userStats, comparison) {
 
     // No baseline message or personal median row - removed per request
 
+    // Check if in Inferno mode or Free play mode
+    const isInferno = checkInfernoMode();
+    const isFreePlay = checkFreePlayMode();
+    const isTimeChallenge = checkTimeChallengeMode();
+    
     // Time Challenge specific stats - show formula: unused + collected - lost = carried over (in mm:ss)
-    if (userStats.timeUnusedLevel !== undefined && userStats.timeCollectedLevel !== undefined && userStats.timeCarriedOverLevel !== undefined) {
+    // Only show for Time Challenge mode, not Inferno (Inferno has its own section below)
+    if (isTimeChallenge && userStats.timeUnusedLevel !== undefined && userStats.timeCollectedLevel !== undefined && userStats.timeCarriedOverLevel !== undefined) {
         // Make grid full width (1 column) for time challenge stats
         grid.style.cssText = `
             display: grid;
@@ -991,7 +997,9 @@ function updateComparisonDisplay(section, userStats, comparison) {
         const timeUnused = userStats.timeUnusedLevel || 0;
         const timeCollected = userStats.timeCollectedLevel || 0;
         const timeLost = userStats.timeLostLevel || 0;
-        const timeCarriedOver = userStats.timeCarriedOverLevel || 0;
+        // Calculate carried over from the formula to ensure math is correct
+        // Carried over = unused + collected - spin
+        const timeCarriedOver = timeUnused + timeCollected - timeLost;
         
         grid.appendChild(createTimeChallengeCard(
             `unused + collected - spin = carried over`,
@@ -1004,6 +1012,67 @@ function updateComparisonDisplay(section, userStats, comparison) {
         // Add graph showing carried over progress over time
         if (userStats.carriedOverHistory && userStats.carriedOverHistory.length > 0) {
             grid.appendChild(createCarriedOverGraph(userStats.carriedOverHistory));
+        }
+    }
+    
+    // Inferno mode: show bar chart of recent level carried over times
+    // Use the same code and calculation as Time Challenge mode
+    if (isInferno) {
+        // Ensure grid is set up for full width (check if already set by time challenge section)
+        const currentGridStyle = grid.style.cssText || '';
+        if (!currentGridStyle.includes('grid-template-columns: 1fr')) {
+            grid.style.cssText = `
+                display: grid;
+                grid-template-columns: 1fr;
+                gap: 12px;
+                width: 100%;
+                overflow-x: hidden;
+                overflow-y: hidden;
+                box-sizing: border-box;
+                max-width: 100%;
+            `;
+        }
+        
+        // Use carried over history if available - same as Time Challenge mode
+        if (userStats.carriedOverHistory && userStats.carriedOverHistory.length > 0) {
+            // Use the same createCarriedOverGraph function as Time Challenge mode
+            grid.appendChild(createCarriedOverGraph(userStats.carriedOverHistory));
+        }
+    }
+    
+    // Free play mode: show bar chart of recent level completion times
+    // Use the same chart as Time Challenge and Inferno modes
+    if (isFreePlay) {
+        // Ensure grid is set up for full width (check if already set by time challenge section)
+        const currentGridStyle = grid.style.cssText || '';
+        if (!currentGridStyle.includes('grid-template-columns: 1fr')) {
+            grid.style.cssText = `
+                display: grid;
+                grid-template-columns: 1fr;
+                gap: 12px;
+                width: 100%;
+                overflow-x: hidden;
+                overflow-y: hidden;
+                box-sizing: border-box;
+                max-width: 100%;
+            `;
+        }
+        
+        // Get recent level stats and convert to chart format
+        const recentStats = getRecentFreePlayLevelStats(userStats.level, userStats);
+        if (recentStats && recentStats.length > 0) {
+            // Convert to format expected by createCarriedOverGraph
+            // Use completion time as carriedOver value
+            const chartHistory = recentStats.map(stat => ({
+                level: stat.level,
+                carriedOver: stat.time || 0,
+                unused: 0,
+                collected: 0,
+                spin: 0
+            }));
+            
+            // Use the same createCarriedOverGraph function as Time Challenge and Inferno modes
+            grid.appendChild(createCarriedOverGraph(chartHistory));
         }
     }
 }
@@ -1078,8 +1147,8 @@ function createTimeChallengeCard(label, timeUnused, timeCollected, timeLost, tim
             const labelEl = document.createElement('div');
             labelEl.textContent = labelText;
             labelEl.style.cssText = `
-                font-size: 8px;
-                font-weight: 700;
+                font-size: 11px; /* Increased from 8px */
+                font-weight: 900; /* Increased from 700 */
                 color: rgba(255, 255, 255, 0.6);
                 text-transform: uppercase;
                 letter-spacing: 0.3px;
@@ -1096,7 +1165,7 @@ function createTimeChallengeCard(label, timeUnused, timeCollected, timeLost, tim
         const valueEl = document.createElement('div');
         valueEl.textContent = isOperator ? value : formatTime(value);
         valueEl.style.cssText = `
-            font-size: 14px;
+            font-size: 18px; /* Increased from 14px */
             font-weight: 900;
             color: ${color};
             text-shadow: 0 0 8px ${color === '#FBBF24' ? 'rgba(251, 191, 36, 0.4)' : 
@@ -1270,7 +1339,17 @@ function createCarriedOverGraph(history) {
             // Positive values go above baseline, negative values go below
             if (carriedOver >= 0) {
                 // Positive: draw bar upward from baseline
-                ctx.fillStyle = '#4ADE80'; // Green - same as "carried over" color in formula
+                // Use Inferno orange/red gradient if in Inferno mode, otherwise green
+                const isInferno = checkInfernoMode();
+                if (isInferno) {
+                    // Inferno-themed color - orange/red gradient
+                    const gradient = ctx.createLinearGradient(x, baselineY - barHeight, x, baselineY);
+                    gradient.addColorStop(0, '#FF6B35'); // Orange-red at top
+                    gradient.addColorStop(1, '#F7931E'); // Orange at bottom
+                    ctx.fillStyle = gradient;
+                } else {
+                    ctx.fillStyle = '#4ADE80'; // Green - same as "carried over" color in formula
+                }
                 const barY = baselineY - barHeight;
                 ctx.fillRect(x, barY, barWidth, barHeight);
             } else {
@@ -1355,13 +1434,13 @@ function createComparisonCard(label, userValue, medianValue, comparison, icon) {
 
     const iconEl = document.createElement('div');
     iconEl.textContent = icon;
-    iconEl.style.cssText = `font-size: 18px; margin-bottom: 4px;`;
+    iconEl.style.cssText = `font-size: 22px; margin-bottom: 4px;`; /* Increased from 18px */
 
     const labelEl = document.createElement('div');
     labelEl.textContent = label;
     labelEl.style.cssText = `
-        font-size: 10px;
-        font-weight: 600;
+        font-size: 13px; /* Increased from 10px */
+        font-weight: 900; /* Increased from 600 */
         color: rgba(255, 255, 255, 0.6);
         text-transform: uppercase;
         letter-spacing: 0.5px;
@@ -1373,8 +1452,8 @@ function createComparisonCard(label, userValue, medianValue, comparison, icon) {
     const deltaEl = document.createElement('div');
     deltaEl.textContent = comparison?.text || '—';
     deltaEl.style.cssText = `
-        font-size: 16px;
-        font-weight: 700;
+        font-size: 20px; /* Increased from 16px */
+        font-weight: 900; /* Increased from 700 */
         color: ${comparison.better ? 'rgba(74, 222, 128, 0.95)' : comparison.badge === 'equal' ? 'rgba(255, 255, 255, 0.9)' : 'rgba(255, 107, 107, 0.95)'};
         margin-bottom: 2px;
     `;
@@ -1382,7 +1461,7 @@ function createComparisonCard(label, userValue, medianValue, comparison, icon) {
     const vsEl = document.createElement('div');
     vsEl.textContent = 'median';
     vsEl.style.cssText = `
-        font-size: 9px;
+        font-size: 11px; /* Increased from 9px */
         color: rgba(255, 255, 255, 0.4);
         margin: 2px 0;
     `;
@@ -1390,8 +1469,8 @@ function createComparisonCard(label, userValue, medianValue, comparison, icon) {
     const medianValueEl = document.createElement('div');
     medianValueEl.textContent = medianValue;
     medianValueEl.style.cssText = `
-        font-size: 14px;
-        font-weight: 600;
+        font-size: 17px; /* Increased from 14px */
+        font-weight: 800; /* Increased from 600 */
         color: rgba(255, 255, 255, 0.7);
         margin-bottom: 4px;
     `;
@@ -1400,8 +1479,8 @@ function createComparisonCard(label, userValue, medianValue, comparison, icon) {
     if (comparison.percentile !== null && comparison.percentile !== undefined) {
         percentileEl.textContent = formatPercentile(comparison.percentile);
         percentileEl.style.cssText = `
-            font-size: 9px;
-            font-weight: 600;
+            font-size: 11px; /* Increased from 9px */
+            font-weight: 800; /* Increased from 600 */
             color: rgba(255, 255, 255, 0.5);
             margin-top: 4px;
         `;
@@ -1504,6 +1583,390 @@ function formatTime(seconds) {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
+
+/**
+ * Check if currently in Time Challenge mode (not Inferno)
+ */
+function checkTimeChallengeMode() {
+    try {
+        const gameMode = localStorage.getItem('jarrows_game_mode');
+        return gameMode === 'time_challenge';
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Check if currently in Inferno mode
+ */
+function checkInfernoMode() {
+    try {
+        const gameMode = localStorage.getItem('jarrows_game_mode');
+        return gameMode === 'inferno';
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Check if currently in Free play mode
+ */
+function checkFreePlayMode() {
+    try {
+        const gameMode = localStorage.getItem('jarrows_game_mode');
+        return !gameMode || gameMode === 'free_flow';
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Get recent free play level stats for bar chart
+ * Returns array of { level, time, moves, blocksRemoved } for last 10 levels
+ * If currentStats is provided, include it even if not yet saved to localStorage
+ */
+function getRecentFreePlayLevelStats(currentLevel, currentStats = null) {
+    try {
+        const stats = [];
+        const maxLevels = 10;
+        const startLevel = Math.max(1, currentLevel - maxLevels + 1);
+        
+        // Build a map to ensure we use currentStats for the current level if provided
+        const levelStatsMap = new Map();
+        
+        // First, get all stats from localStorage
+        for (let level = startLevel; level <= currentLevel; level++) {
+            const key = `jarrows_level_${level}_stats`;
+            const raw = localStorage.getItem(key);
+            if (!raw) continue;
+            
+            const runs = JSON.parse(raw);
+            if (!Array.isArray(runs) || runs.length === 0) continue;
+            
+            // Get the most recent run for this level
+            const mostRecent = runs[runs.length - 1];
+            if (mostRecent) {
+                levelStatsMap.set(level, {
+                    level: level,
+                    time: Number(mostRecent.time || 0),
+                    moves: Number(mostRecent.moves || 0),
+                    blocksRemoved: Number(mostRecent.blocksRemoved || 0)
+                });
+            }
+        }
+        
+        // Override with currentStats if provided (for the current level)
+        if (currentStats && currentStats.level) {
+            levelStatsMap.set(currentStats.level, {
+                level: currentStats.level,
+                time: Number(currentStats.time || 0),
+                moves: Number(currentStats.moves || 0),
+                blocksRemoved: Number(currentStats.blocksRemoved || 0)
+            });
+        }
+        
+        // Convert map to array and sort by level
+        const result = Array.from(levelStatsMap.values());
+        result.sort((a, b) => a.level - b.level);
+        return result;
+    } catch (error) {
+        console.error('[Free Play] Error getting recent stats:', error);
+        return [];
+    }
+}
+
+/**
+ * Get recent inferno level stats for bar chart
+ * Returns array of { level, time, moves, blocksRemoved } for last 10 levels
+ * If currentStats is provided, include it even if not yet saved to localStorage
+ */
+function getRecentInfernoLevelStats(currentLevel, currentStats = null) {
+    try {
+        const stats = [];
+        const maxLevels = 10;
+        const startLevel = Math.max(1, currentLevel - maxLevels + 1);
+        
+        // Build a map to ensure we use currentStats for the current level if provided
+        const levelStatsMap = new Map();
+        
+        // First, get all stats from localStorage
+        for (let level = startLevel; level <= currentLevel; level++) {
+            const key = `jarrows_level_${level}_stats`;
+            const raw = localStorage.getItem(key);
+            if (!raw) continue;
+            
+            const runs = JSON.parse(raw);
+            if (!Array.isArray(runs) || runs.length === 0) continue;
+            
+            // Get the most recent run for this level
+            const mostRecent = runs[runs.length - 1];
+            if (mostRecent) {
+                levelStatsMap.set(level, {
+                    level: level,
+                    time: Number(mostRecent.time || 0),
+                    moves: Number(mostRecent.moves || 0),
+                    blocksRemoved: Number(mostRecent.blocksRemoved || 0)
+                });
+            }
+        }
+        
+        // Override with currentStats if provided (for the current level)
+        if (currentStats && currentStats.level) {
+            levelStatsMap.set(currentStats.level, {
+                level: currentStats.level,
+                time: Number(currentStats.time || 0),
+                moves: Number(currentStats.moves || 0),
+                blocksRemoved: Number(currentStats.blocksRemoved || 0)
+            });
+        }
+        
+        // Convert map to array and sort by level
+        const result = Array.from(levelStatsMap.values());
+        result.sort((a, b) => a.level - b.level);
+        return result;
+    } catch (error) {
+        console.error('[Inferno] Error getting recent stats:', error);
+        return [];
+    }
+}
+
+/**
+ * Determine which labels to show to avoid overlap
+ * Returns a Set of indices that should have labels displayed
+ * Strategy: Always show min/max, first/last, then show every Nth level based on available space
+ */
+function determineLabelsToShow(levelStats, barWidth, graphWidth) {
+    const labelsToShow = new Set();
+    const numBars = levelStats.length;
+    
+    if (numBars === 0) return labelsToShow;
+    
+    // Estimate minimum spacing needed for labels (in pixels)
+    // Level numbers are typically 1-3 digits, estimate ~25-30px per label to avoid overlap
+    const minLabelSpacing = 30;
+    const availableWidth = graphWidth;
+    const maxLabels = Math.max(2, Math.floor(availableWidth / minLabelSpacing));
+    
+    // Find min and max time indices
+    let minIndex = 0;
+    let maxIndex = 0;
+    let minTime = levelStats[0].time || Infinity;
+    let maxTime = levelStats[0].time || 0;
+    
+    levelStats.forEach((stat, index) => {
+        const time = stat.time || 0;
+        if (time < minTime) {
+            minTime = time;
+            minIndex = index;
+        }
+        if (time > maxTime) {
+            maxTime = time;
+            maxIndex = index;
+        }
+    });
+    
+    // Always show first, last, min, and max
+    labelsToShow.add(0);
+    labelsToShow.add(numBars - 1);
+    labelsToShow.add(minIndex);
+    if (maxIndex !== minIndex) {
+        labelsToShow.add(maxIndex);
+    }
+    
+    // If we have more room, add labels at regular intervals
+    if (numBars <= maxLabels) {
+        // Plenty of space - show all labels
+        for (let i = 0; i < numBars; i++) {
+            labelsToShow.add(i);
+        }
+    } else {
+        // Need to skip some - determine interval
+        // Try to show approximately maxLabels labels total
+        const remainingSlots = maxLabels - labelsToShow.size;
+        if (remainingSlots > 0) {
+            // Calculate interval to show approximately remainingSlots labels
+            const interval = Math.max(1, Math.floor(numBars / remainingSlots));
+            
+            // Add labels at regular intervals (but don't re-add ones we already have)
+            for (let i = 0; i < numBars; i += interval) {
+                labelsToShow.add(i);
+            }
+            
+            // Also add some labels around min/max if they're not already included
+            for (let offset = 1; offset <= 2 && labelsToShow.size < maxLabels; offset++) {
+                if (minIndex + offset < numBars && !labelsToShow.has(minIndex + offset)) {
+                    labelsToShow.add(minIndex + offset);
+                }
+                if (minIndex - offset >= 0 && !labelsToShow.has(minIndex - offset)) {
+                    labelsToShow.add(minIndex - offset);
+                }
+                if (maxIndex + offset < numBars && !labelsToShow.has(maxIndex + offset)) {
+                    labelsToShow.add(maxIndex + offset);
+                }
+                if (maxIndex - offset >= 0 && !labelsToShow.has(maxIndex - offset)) {
+                    labelsToShow.add(maxIndex - offset);
+                }
+            }
+        }
+    }
+    
+    return labelsToShow;
+}
+
+/**
+ * Create bar chart for Inferno mode showing recent level completion times
+ */
+function createInfernoBarChart(levelStats) {
+    const graphContainer = document.createElement('div');
+    graphContainer.style.cssText = `
+        padding: 14px;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        width: 100%;
+        box-sizing: border-box;
+    `;
+    
+    const canvas = document.createElement('canvas');
+    // Use high DPI resolution for crisp rendering on all displays
+    const dpr = window.devicePixelRatio || 1;
+    const baseHeight = 150;
+    const labelAreaHeight = 30; // Space for level numbers below bars
+    canvas.style.cssText = `
+        width: 100%;
+        height: ${baseHeight + labelAreaHeight}px;
+        max-width: 100%;
+        display: block;
+    `;
+    
+    graphContainer.appendChild(canvas);
+    
+    // Use requestAnimationFrame to ensure container is in DOM and laid out
+    // This ensures we can get the correct width for high-DPI rendering
+    requestAnimationFrame(() => {
+        // Get actual rendered width after appending to DOM
+        const actualWidth = canvas.offsetWidth || 400;
+        const baseWidth = actualWidth;
+        
+        // Set canvas internal dimensions (high DPI)
+        canvas.width = baseWidth * dpr;
+        canvas.height = (baseHeight + labelAreaHeight) * dpr;
+        
+        // Draw bar chart
+        const ctx = canvas.getContext('2d');
+        // Scale context for high DPI
+        ctx.scale(dpr, dpr);
+        const padding = 15;
+        const graphWidth = baseWidth - padding * 2;
+        const graphHeight = baseHeight - padding;
+        
+        // Find max time for scaling
+        const maxTime = Math.max(...levelStats.map(s => s.time || 0), 1);
+        
+        // Clear canvas with transparent background
+        ctx.clearRect(0, 0, baseWidth, baseHeight + labelAreaHeight);
+        
+        // Baseline at bottom (all values are positive)
+        const baselineY = padding + graphHeight;
+        
+        // Draw grid lines (horizontal)
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+        ctx.lineWidth = 1;
+        for (let i = 0; i <= 4; i++) {
+            const y = padding + (graphHeight / 4) * i;
+            ctx.beginPath();
+            ctx.moveTo(padding, y);
+            ctx.lineTo(padding + graphWidth, y);
+            ctx.stroke();
+        }
+        
+        // Draw vertical axis
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(padding, padding);
+        ctx.lineTo(padding, padding + graphHeight);
+        ctx.stroke();
+        
+        // Draw horizontal baseline
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(padding, baselineY);
+        ctx.lineTo(padding + graphWidth, baselineY);
+        ctx.stroke();
+        
+        // Draw bars
+        if (levelStats.length > 0) {
+            const barWidth = (graphWidth / levelStats.length) * 0.75; // 75% of available space for bars
+            const barSpacing = (graphWidth / levelStats.length) * 0.25; // 25% for spacing
+            
+            // Determine which labels to show (smart skipping to avoid overlap)
+            const labelsToShow = determineLabelsToShow(levelStats, barWidth, graphWidth);
+            
+            // Find min and max indices for time label prioritization
+            let minTimeIndex = 0;
+            let maxTimeIndex = 0;
+            let minTimeValue = levelStats[0].time || Infinity;
+            let maxTimeValue = levelStats[0].time || 0;
+            
+            levelStats.forEach((stat, idx) => {
+                const t = stat.time || 0;
+                if (t < minTimeValue) {
+                    minTimeValue = t;
+                    minTimeIndex = idx;
+                }
+                if (t > maxTimeValue) {
+                    maxTimeValue = t;
+                    maxTimeIndex = idx;
+                }
+            });
+            
+            levelStats.forEach((stat, index) => {
+                const x = padding + (graphWidth / levelStats.length) * index + barSpacing / 2;
+                const time = stat.time || 0;
+                
+                // Calculate bar height
+                const barHeight = maxTime > 0 
+                    ? (time / maxTime) * graphHeight 
+                    : 0;
+                
+                // Draw bar (using inferno-themed color - orange/red gradient)
+                const gradient = ctx.createLinearGradient(x, baselineY - barHeight, x, baselineY);
+                gradient.addColorStop(0, '#FF6B35'); // Orange-red at top
+                gradient.addColorStop(1, '#F7931E'); // Orange at bottom
+                ctx.fillStyle = gradient;
+                ctx.fillRect(x, baselineY - barHeight, barWidth, barHeight);
+                
+                // Draw level label below bar (only if in labelsToShow)
+                if (labelsToShow.has(index)) {
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+                    ctx.font = '10px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(stat.level.toString(), x + barWidth / 2, padding + graphHeight + 18);
+                }
+                
+                // Draw time label at the top of the bar
+                // Show for: labels that are selected AND (bar is tall enough OR it's min/max)
+                if (time > 0 && labelsToShow.has(index)) {
+                    const isMinOrMax = index === minTimeIndex || index === maxTimeIndex;
+                    const hasEnoughSpace = barHeight > 20;
+                    
+                    if (hasEnoughSpace || isMinOrMax) {
+                        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+                        ctx.font = '9px sans-serif';
+                        const labelY = baselineY - barHeight - 6;
+                        // For very short bars (min), place label above with a bit more space
+                        const adjustedY = barHeight < 15 ? baselineY - barHeight - 12 : labelY;
+                        ctx.fillText(formatTime(time), x + barWidth / 2, adjustedY);
+                    }
+                }
+            });
+        }
+    });
+    
+    return graphContainer;
 }
 
 function formatSeconds(seconds) {

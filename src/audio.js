@@ -102,7 +102,7 @@ async function initAudio() {
     await Promise.all([
         loadSound('timeAdded', `${basePath}sound/time added.wav`),
         loadSound('timeRemoved', `${basePath}sound/time removed.wav`),
-        loadSound('levelComplete', `${basePath}sound/level complete.wav`)
+        loadSound('levelComplete', `${basePath}sound/level.wav`)
     ]);
     
     console.log('Audio system initialized', { audioEnabled, soundsLoaded: Object.keys(sounds).length });

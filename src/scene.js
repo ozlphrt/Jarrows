@@ -223,4 +223,3 @@ export function createCameraPivotHelpers(scene, pivotX, pivotY, pivotZ, gridSize
         }
     };
 }
-

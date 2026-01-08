@@ -7,6 +7,8 @@ import { initStats, startLevelStats, trackMove, trackSpin, trackBlockRemoved, co
 import { updateLevelCompleteModal, showOfflineIndicator, hideOfflineIndicator, showPersonalHistoryModal, showProfileModal } from './stats/statsUI.js';
 import { isOnline, isLocalOnlyMode } from './stats/statsAPI.js';
 import { initAudio, playSound, toggleAudio, isAudioEnabled } from './audio.js';
+import { getInfernoDifficultyConfig } from './inferno_difficulty.js';
+import { showMilestoneModal, showFeatureModal } from './inferno_modals.js';
 import appVersionRaw from '../VERSION?raw';
 
 // Build-time constant injected by Vite (see vite.config.js). Falls back to '' if not defined.
@@ -332,8 +334,10 @@ const SPAWN_ZOOM_MULTIPLIER = 1.3; // Additional multiplier for spawn zoom
 // Auto-zoom multiplier: platform-aware - larger on desktop (zoom out more), smaller on mobile (zoom in more)
 // Desktop needs more zoom-out to prevent blocks going out of frame
 // Mobile can zoom in more to reduce wasted space on sides
-const AUTO_ZOOM_MULTIPLIER_DESKTOP = 2.0; // Desktop: zoom out significantly more to fit all blocks
+const AUTO_ZOOM_MULTIPLIER_DESKTOP = 1.5; // Desktop: zoom out more to ensure all blocks stay in viewport
 const AUTO_ZOOM_MULTIPLIER_MOBILE = 0.95; // Mobile: zoom in more to reduce side space
+// Desktop-specific padding multiplier to ensure all blocks stay visible
+const DESKTOP_ZOOM_PADDING_MULTIPLIER = 1.2; // Extra padding for desktop to account for perspective and edge cases
 // During generation, computing a world-space bounding box by expanding each block object
 // (updateMatrixWorld + expandByObject) is expensive. Throttle it to avoid long rAF frames.
 const SPAWN_ZOOM_UPDATE_INTERVAL_MS = 120;
@@ -587,6 +591,12 @@ let currentLevel = 0;
 let _isStartingNewGame = false; // Flag to allow setting currentLevel to 0 only when starting new game
 
 // Safeguard function to set currentLevel - prevents accidental reset to 0
+function getStorageKey() {
+    if (isTimeChallengeMode()) return STORAGE_KEY_TIME_CHALLENGE;
+    if (isInfernoMode()) return STORAGE_KEY_INFERNO;
+    return STORAGE_KEY;
+}
+
 function setCurrentLevel(newLevel, allowZero = false) {
     if (newLevel === 0 && !allowZero && !_isStartingNewGame) {
         const stack = new Error().stack;
@@ -595,7 +605,7 @@ function setCurrentLevel(newLevel, allowZero = false) {
         console.error(`  New level: ${newLevel}`);
         console.error(`  Stack trace:`, stack);
         // Try to recover from localStorage
-        const storageKey = isTimeChallengeMode() ? STORAGE_KEY_TIME_CHALLENGE : STORAGE_KEY;
+        const storageKey = getStorageKey();
         const savedLevel = parseInt(localStorage.getItem(storageKey) || '0', 10);
         if (savedLevel > 0) {
             console.warn(`🚨 Recovery: Using saved level ${savedLevel} instead of 0`);
@@ -617,10 +627,12 @@ let removeModeActive = false;
 let remainingSpins = 3;
 
 // Game mode (persisted)
-const GAME_MODE_KEY = 'jarrows_game_mode'; // 'free_flow' | 'time_challenge'
+const GAME_MODE_KEY = 'jarrows_game_mode'; // 'free_flow' | 'time_challenge' | 'inferno'
 const TIME_RULES_SEEN_KEY = 'jarrows_time_rules_seen';
+const INFERNO_RULES_SEEN_KEY = 'jarrows_inferno_rules_seen';
 const MODE_FREE_FLOW = 'free_flow';
 const MODE_TIME_CHALLENGE = 'time_challenge';
+const MODE_INFERNO = 'inferno';
 
 let gameMode = MODE_FREE_FLOW;
 
@@ -642,6 +654,7 @@ let timeUpShown = false;
 // Progress persistence using localStorage
 const STORAGE_KEY = 'jarrows_progress';
 const STORAGE_KEY_TIME_CHALLENGE = 'jarrows_progress_time_challenge'; // Separate key for Time Challenge
+const STORAGE_KEY_INFERNO = 'jarrows_progress_inferno'; // Separate key for Inferno
 const STORAGE_HIGHEST_LEVEL_KEY = 'jarrows_highest_level';
 const STORAGE_VERSION_KEY = 'jarrows_storage_version';
 const RESET_FLAG_KEY = 'jarrows_reset_completed';
@@ -657,6 +670,7 @@ function resetAllProgress() {
         const resetFlag = localStorage.getItem(RESET_FLAG_KEY);
         const hasExistingProgress = localStorage.getItem(STORAGE_KEY) !== null || 
                                     localStorage.getItem(STORAGE_KEY_TIME_CHALLENGE) !== null ||
+                                    localStorage.getItem(STORAGE_KEY_INFERNO) !== null ||
                                     localStorage.getItem(STORAGE_HIGHEST_LEVEL_KEY) !== null;
         
         // Only reset if user has no existing progress (new user)
@@ -686,9 +700,48 @@ function isTimeChallengeMode() {
     return gameMode === MODE_TIME_CHALLENGE;
 }
 
+function isInfernoMode() {
+    return gameMode === MODE_INFERNO;
+}
+
+function isTimeBasedMode() {
+    return isTimeChallengeMode() || isInfernoMode();
+}
+
 function setBodyModeClass() {
     try {
-        document.body.classList.toggle('mode-time-challenge', isTimeChallengeMode());
+        // Remove all mode classes first
+        document.body.classList.remove('mode-time-challenge', 'mode-inferno', 'mode-free-flow');
+        
+        // Add appropriate mode class
+        if (isTimeChallengeMode()) {
+            document.body.classList.add('mode-time-challenge');
+        } else if (isInfernoMode()) {
+            document.body.classList.add('mode-inferno');
+        } else {
+            document.body.classList.add('mode-free-flow');
+        }
+        
+        // Update game mode display
+        updateGameModeDisplay();
+    } catch {
+        // ignore
+    }
+}
+
+function updateGameModeDisplay() {
+    try {
+        const modeValueEl = document.getElementById('game-mode-value');
+        if (!modeValueEl) return;
+        
+        let displayText = 'FREE FLOW';
+        if (isTimeChallengeMode()) {
+            displayText = 'TIME CHALLENGE';
+        } else if (isInfernoMode()) {
+            displayText = 'INFERNO';
+        }
+        
+        modeValueEl.textContent = displayText;
     } catch {
         // ignore
     }
@@ -697,7 +750,9 @@ function setBodyModeClass() {
 function loadGameMode() {
     try {
         const saved = localStorage.getItem(GAME_MODE_KEY);
-        return saved === MODE_TIME_CHALLENGE ? MODE_TIME_CHALLENGE : MODE_FREE_FLOW;
+        if (saved === MODE_TIME_CHALLENGE) return MODE_TIME_CHALLENGE;
+        if (saved === MODE_INFERNO) return MODE_INFERNO;
+        return MODE_FREE_FLOW;
     } catch {
         return MODE_FREE_FLOW;
     }
@@ -728,8 +783,8 @@ let timeAnimationTarget = 0;
 let timeAnimationDuration = 600; // 600ms animation
 
 function animateTimeAddition(deltaSeconds) {
-    if (!isTimeChallengeMode() || !timeChallengeActive) {
-        console.log('[Time Challenge] Animation skipped - mode check failed:', { isTimeChallengeMode: isTimeChallengeMode(), timeChallengeActive });
+    if (!isTimeBasedMode() || !timeChallengeActive) {
+        console.log('[Time Challenge] Animation skipped - mode check failed:', { isTimeChallengeMode: isTimeChallengeMode(), isInfernoMode: isInfernoMode(), timeChallengeActive });
         return;
     }
     
@@ -828,7 +883,8 @@ function showModeSelectModal() {
     const modal = document.getElementById('mode-select-modal');
     const freeBtn = document.getElementById('mode-pick-free');
     const timeBtn = document.getElementById('mode-pick-time');
-    if (!modal || !freeBtn || !timeBtn) return Promise.resolve(MODE_FREE_FLOW);
+    const infernoBtn = document.getElementById('mode-pick-inferno');
+    if (!modal || !freeBtn || !timeBtn || !infernoBtn) return Promise.resolve(MODE_FREE_FLOW);
 
     setTimeFrozen('mode_select', true);
     modal.style.display = 'flex';
@@ -838,13 +894,16 @@ function showModeSelectModal() {
             modal.style.display = 'none';
             freeBtn.removeEventListener('click', onFree);
             timeBtn.removeEventListener('click', onTime);
+            infernoBtn.removeEventListener('click', onInferno);
             setTimeFrozen('mode_select', false);
             resolve(mode);
         };
         const onFree = () => cleanup(MODE_FREE_FLOW);
         const onTime = () => cleanup(MODE_TIME_CHALLENGE);
+        const onInferno = () => cleanup(MODE_INFERNO);
         freeBtn.addEventListener('click', onFree);
         timeBtn.addEventListener('click', onTime);
+        infernoBtn.addEventListener('click', onInferno);
     });
 }
 
@@ -877,6 +936,35 @@ function showTimeRulesModalIfNeeded() {
     okBtn.addEventListener('click', onOk);
 }
 
+function showInfernoRulesModalIfNeeded() {
+    const modal = document.getElementById('inferno-rules-modal');
+    const okBtn = document.getElementById('inferno-rules-ok');
+    if (!modal || !okBtn) return;
+
+    let alreadySeen = false;
+    try {
+        alreadySeen = localStorage.getItem(INFERNO_RULES_SEEN_KEY) === '1';
+    } catch {
+        alreadySeen = false;
+    }
+    if (alreadySeen) return;
+
+    setTimeFrozen('inferno_rules', true);
+    modal.style.display = 'flex';
+
+    const onOk = () => {
+        modal.style.display = 'none';
+        okBtn.removeEventListener('click', onOk);
+        setTimeFrozen('inferno_rules', false);
+        try {
+            localStorage.setItem(INFERNO_RULES_SEEN_KEY, '1');
+        } catch {
+            // ignore
+        }
+    };
+    okBtn.addEventListener('click', onOk);
+}
+
 async function ensureModeSelected({ forcePrompt = false } = {}) {
     let mode = loadGameMode();
 
@@ -897,6 +985,8 @@ async function ensureModeSelected({ forcePrompt = false } = {}) {
 
     if (isTimeChallengeMode()) {
         showTimeRulesModalIfNeeded();
+    } else if (isInfernoMode()) {
+        showInfernoRulesModalIfNeeded();
     }
 
     // Expose a simple hook for any UI callers
@@ -925,7 +1015,10 @@ function timeChallengeResetRun() {
 }
 
 function timeChallengeStartNewLevel(blocksArray) {
-    if (!isTimeChallengeMode()) return;
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:timeChallengeStartNewLevel:entry',message:'timeChallengeStartNewLevel called',data:{isTimeBasedMode:isTimeBasedMode(),blocksCount:blocksArray?blocksArray.length:0,currentLevel:currentLevel},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
+    // #endregion
+    if (!isTimeBasedMode()) return;
     
     // Calculate base time by summing actual block lengths
     // Length 1 (Red) = 1 second, Length 2 (Teal) = 2 seconds, Length 3+ (Yellow) = 3 seconds
@@ -950,9 +1043,14 @@ function timeChallengeStartNewLevel(blocksArray) {
     // Keep removal counter cumulative across levels (for per-removal bonuses)
     // Don't reset timeChallengeRemovals here
     
+    const wasActive = timeChallengeActive;
     timeChallengeActive = true;
     timeUpShown = false;
     setTimeFrozen('time_up', false);
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:timeChallengeStartNewLevel:exit',message:'timeChallengeStartNewLevel completed',data:{wasActive:wasActive,nowActive:timeChallengeActive,timeLeftSec:timeLeftSec},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
+    // #endregion
     
     updateTimerDisplay();
 }
@@ -976,7 +1074,7 @@ function timeChallengeGetColorBonusSeconds(blockLength) {
 }
 
 function timeChallengeAwardForBlockRemoved(blockLength) {
-    if (!isTimeChallengeMode() || !timeChallengeActive || timeUpShown) return;
+    if (!isTimeBasedMode() || !timeChallengeActive || timeUpShown) return;
     
     timeChallengeRemovals += 1;
     // Simplified: only use color bonus based on block length
@@ -997,13 +1095,23 @@ function timeChallengeAwardForBlockRemoved(blockLength) {
 }
 
 function timeChallengeApplySpinCost() {
-    if (!isTimeChallengeMode() || !timeChallengeActive || timeUpShown) return;
-    // Cost: 1/3 of remaining time.
+    if (!isTimeBasedMode() || timeUpShown) return;
+    // Note: timeChallengeActive check removed - allow spin cost even if not yet active
+    // (timeChallengeActive might not be set during initialization)
+    
+    // Get spin cost multiplier based on mode and level
+    let multiplier = 1/3; // Default for Time Challenge
+    if (isInfernoMode()) {
+        const config = getInfernoDifficultyConfig(currentLevel);
+        multiplier = config.spinCostMultiplier;
+    }
+    
+    // Cost: multiplier of remaining time
     const before = timeLeftSec;
-    timeLeftSec = timeLeftSec * (2 / 3);
+    timeLeftSec = timeLeftSec * (1 - multiplier);
     const delta = Math.trunc(timeLeftSec) - Math.trunc(before);
     // Prefer to show a clear negative number of seconds.
-    const spent = Math.max(1, Math.ceil(before / 3));
+    const spent = Math.max(1, Math.ceil(before * multiplier));
     
     // Track total spin cost for this level
     timeChallengeSpinCost += spent;
@@ -1113,7 +1221,7 @@ function saveProgress() {
         }
         
         // Save current level (use correct storage key for current mode)
-        const storageKey = isTimeChallengeMode() ? STORAGE_KEY_TIME_CHALLENGE : STORAGE_KEY;
+        const storageKey = getStorageKey();
         
         // Safety check: Don't save level 0 unless there's a good reason (like starting new game)
         // Check if we're overwriting a higher level with 0
@@ -1157,12 +1265,13 @@ function saveProgress() {
 function loadProgress() {
     try {
         // Use different storage keys for different game modes
-        const storageKey = isTimeChallengeMode() ? STORAGE_KEY_TIME_CHALLENGE : STORAGE_KEY;
+        const storageKey = getStorageKey();
         
         // Check if we need to update version (but preserve existing progress)
         const storedVersion = localStorage.getItem(STORAGE_VERSION_KEY);
         const hasExistingProgress = localStorage.getItem(STORAGE_KEY) !== null || 
                                     localStorage.getItem(STORAGE_KEY_TIME_CHALLENGE) !== null ||
+                                    localStorage.getItem(STORAGE_KEY_INFERNO) !== null ||
                                     localStorage.getItem(STORAGE_HIGHEST_LEVEL_KEY) !== null;
         
         // Only update version - don't reset if user has existing progress
@@ -1209,7 +1318,7 @@ function loadProgress() {
 function clearProgress() {
     try {
         // Clear progress for the current game mode
-        const storageKey = isTimeChallengeMode() ? STORAGE_KEY_TIME_CHALLENGE : STORAGE_KEY;
+        const storageKey = getStorageKey();
         localStorage.removeItem(storageKey);
         // Keep storage version and highest level for tracking
         console.log(`Progress cleared - user will start from level 0 on next load (${isTimeChallengeMode() ? 'Time Challenge' : 'Free Flow'})`);
@@ -1244,10 +1353,11 @@ function getBlocksForLevel(level) {
  * @param {number} level - Current level number
  * @returns {Array} Array of blocks to be placed (not yet added to scene)
  */
-function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCount = 10, level = 1, preferLongBlocks = false) {
+function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCount = 10, level = 1, preferLongBlocks = false, difficultyConfig = null) {
     // Note: We don't clear blocks here - that's done in generateSolvablePuzzle
     // This allows us to add multiple layers
     // preferLongBlocks: If true, prefer longer blocks (2-3 cells) over single blocks
+    // difficultyConfig: Optional Inferno mode difficulty configuration
     
     const totalCells = gridSize * gridSize;
     const occupiedCells = new Set();
@@ -1513,11 +1623,22 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                 
                 // Adjust length distribution based on remaining blocks needed and preferLongBlocks flag
                 // If preferLongBlocks is true (layer 1 in multi-layer), prefer longer blocks (2-3 cells)
+                // If difficultyConfig is provided (Inferno mode), use config-driven distribution
                 const remaining = targetBlockCount - blocksToPlace.length;
                 const rand = Math.random();
                 let length;
                 
-                if (preferLongBlocks) {
+                if (difficultyConfig && difficultyConfig.lengthDistribution) {
+                    // Use Inferno mode difficulty configuration
+                    const dist = difficultyConfig.lengthDistribution;
+                    if (rand < dist.length1) {
+                        length = 1;
+                    } else if (rand < dist.length1 + dist.length2) {
+                        length = 2;
+                    } else {
+                        length = 3;
+                    }
+                } else if (preferLongBlocks) {
                     // Prefer longer blocks: 20% length 1, 50% length 2, 30% length 3
                     if (rand < 0.2) {
                         length = 1;
@@ -1547,9 +1668,10 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                 }
                 
                 // Prioritize blocks that face outward (toward edges) for easier gameplay
-                // 70% chance to prefer outward-facing directions
+                // Use difficulty config if available (Inferno mode), otherwise default to 70%
                 let randomDir;
-                const preferOutward = Math.random() < 0.7; // 70% chance to prefer outward-facing
+                const outwardPercentage = difficultyConfig ? difficultyConfig.outwardPercentage : 0.7;
+                const preferOutward = Math.random() < outwardPercentage;
                 if (preferOutward) {
                     // Try to get a direction pointing toward the nearest edge
                     const bestDir = getBestOutwardDirection(cell.x, cell.z, gridSize);
@@ -1559,8 +1681,9 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                     randomDir = directions[Math.floor(Math.random() * directions.length)];
                 }
                 
-                // 50% vertical, 50% horizontal
-                const isVertical = Math.random() < 0.5;
+                // Use difficulty config for vertical percentage if available (Inferno mode), otherwise 50%
+                const verticalPercentage = difficultyConfig ? difficultyConfig.verticalPercentage : 0.5;
+                const isVertical = Math.random() < verticalPercentage;
                 
                 // ATOMIC OPERATION: Try to reserve cells BEFORE creating the block
                 // This prevents race conditions where multiple blocks compete for the same cells
@@ -2438,7 +2561,7 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
     // This is the last line of defense - should never be reached if restartCurrentLevel works correctly
     if (isRestart && level <= 0) {
         // Try emergency recovery
-        const emergencyStorageKey = isTimeChallengeMode() ? STORAGE_KEY_TIME_CHALLENGE : STORAGE_KEY;
+        const emergencyStorageKey = getStorageKey();
         const emergencyLevel = parseInt(localStorage.getItem(emergencyStorageKey) || '0', 10);
         if (emergencyLevel > 0) {
             level = emergencyLevel;
@@ -2454,7 +2577,7 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
     // This prevents any possibility of restarting from level 0
     if (isRestart && (level <= 0 || isNaN(level))) {
         // Try to recover from localStorage
-        const storageKey = isTimeChallengeMode() ? STORAGE_KEY_TIME_CHALLENGE : STORAGE_KEY;
+        const storageKey = getStorageKey();
         const savedLevel = parseInt(localStorage.getItem(storageKey) || '0', 10);
         
         if (savedLevel > 0) {
@@ -2472,7 +2595,7 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
     // CRITICAL: Validate level parameter - never generate level 0 unless explicitly starting new game
     if (level <= 0 || isNaN(level)) {
         // Try to recover from localStorage (for both restart and initial load)
-        const storageKey = isTimeChallengeMode() ? STORAGE_KEY_TIME_CHALLENGE : STORAGE_KEY;
+        const storageKey = getStorageKey();
         const savedLevel = parseInt(localStorage.getItem(storageKey) || '0', 10);
         
         // If savedLevel > 0, we have progress - recover it (this shouldn't happen for new games)
@@ -2510,7 +2633,7 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
     // This prevents corruption if level parameter is somehow 0
     if (isRestart && currentLevel <= 0) {
         // Try to recover from localStorage one more time
-        const storageKey = isTimeChallengeMode() ? STORAGE_KEY_TIME_CHALLENGE : STORAGE_KEY;
+        const storageKey = getStorageKey();
         const lastSavedLevel = parseInt(localStorage.getItem(storageKey) || '0', 10);
         if (lastSavedLevel > 0) {
             currentLevel = lastSavedLevel;
@@ -2528,7 +2651,7 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
     // Only reset spin counter for NEW level, not when restarting the same level
     // When restarting, preserve remainingSpins (game-level state)
     if (!isRestart) {
-        if (!isTimeChallengeMode()) {
+        if (!isTimeBasedMode()) {
             remainingSpins = 3;
         } else {
             remainingSpins = Number.POSITIVE_INFINITY;
@@ -2577,6 +2700,12 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
     // Get target block count for this level
     const targetBlockCount = getBlocksForLevel(level);
     
+    // Get Inferno mode difficulty configuration if applicable
+    let difficultyConfig = null;
+    if (isInfernoMode()) {
+        difficultyConfig = getInfernoDifficultyConfig(level);
+    }
+    
     // Special case: Level 1 with head-on collisions for testing
     if (level === 1) {
         const headOnBlocks = createHeadOnCollisionBlocks(targetBlockCount);
@@ -2584,8 +2713,8 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
         // Use the same animation system as normal generation
         await placeBlocksBatch(headOnBlocks);
         
-        // Time Challenge: calculate initial time for this level based on actual block lengths
-        if (isTimeChallengeMode()) {
+        // Time-based modes: calculate initial time for this level based on actual block lengths
+        if (isTimeBasedMode()) {
             timeChallengeStartNewLevel(headOnBlocks);
             console.log('[Time Challenge] Level started, timeChallengeActive:', timeChallengeActive, 'timeLeftSec:', timeLeftSec);
         }
@@ -2649,7 +2778,7 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
             
             // Generate blocks for this layer with preference for longer blocks in layer 1
             console.log(`  Layer ${currentLayer}: Requesting ${blocksForThisLayer} blocks (remaining: ${remainingBlocks}, total so far: ${allBlocks.length})`);
-            const layerBlocks = createSolvableBlocks(yOffset, lowerLayerCells, blocksForThisLayer, level, preferLongBlocks);
+            const layerBlocks = createSolvableBlocks(yOffset, lowerLayerCells, blocksForThisLayer, level, preferLongBlocks, difficultyConfig);
             console.log(`  Layer ${currentLayer}: Generated ${layerBlocks.length} blocks (requested ${blocksForThisLayer}, difference: ${blocksForThisLayer - layerBlocks.length})`);
             
             // Track cells occupied by this layer for next layer
@@ -2736,9 +2865,179 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
                 console.warn(`   Current layer occupied: ${currentLayerCells.size} cells`);
             }
         }
+        
+        // Inferno mode: Create multi-layer dependencies (upper blocks block lower exits)
+        if (isInfernoMode() && difficultyConfig && difficultyConfig.multilayerBlockingPercentage > 0 && allBlocks.length > 0) {
+            // Group blocks by layer (yOffset)
+            const blocksByLayer = new Map();
+            for (const block of allBlocks) {
+                const layerKey = block.yOffset || 0;
+                if (!blocksByLayer.has(layerKey)) {
+                    blocksByLayer.set(layerKey, []);
+                }
+                blocksByLayer.get(layerKey).push(block);
+            }
+            
+            // Sort layers by Y (lower to upper)
+            const sortedLayers = Array.from(blocksByLayer.keys()).sort((a, b) => a - b);
+            
+            // For each upper layer, try to create dependencies with lower layers
+            for (let i = 1; i < sortedLayers.length; i++) {
+                const upperLayerY = sortedLayers[i];
+                const upperBlocks = blocksByLayer.get(upperLayerY);
+                const lowerBlocks = [];
+                
+                // Collect all blocks from lower layers
+                for (let j = 0; j < i; j++) {
+                    lowerBlocks.push(...blocksByLayer.get(sortedLayers[j]));
+                }
+                
+                // Calculate how many upper blocks should block lower exits
+                const targetBlockingCount = Math.floor(upperBlocks.length * difficultyConfig.multilayerBlockingPercentage);
+                let blockingCount = 0;
+                
+                // Check each upper block to see if it blocks any lower block's exit
+                for (const upperBlock of upperBlocks) {
+                    if (blockingCount >= targetBlockingCount) break;
+                    
+                    // Check if this upper block is in the path of any lower block's exit
+                    let blocksLowerExit = false;
+                    for (const lowerBlock of lowerBlocks) {
+                        if (lowerBlock.isFalling || lowerBlock.isRemoved) continue;
+                        
+                        // Get lower block's exit path
+                        const lowerCells = getBlockCells(lowerBlock);
+                        const lowerDir = lowerBlock.direction;
+                        
+                        // Check if upper block is in the path
+                        for (const lowerCell of lowerCells) {
+                            let checkX = lowerCell.x;
+                            let checkZ = lowerCell.z;
+                            const maxSteps = gridSize * 2;
+                            
+                            for (let step = 0; step < maxSteps; step++) {
+                                checkX += lowerDir.x;
+                                checkZ += lowerDir.z;
+                                
+                                // Check if we've reached the upper block's position
+                                const upperCells = getBlockCells(upperBlock);
+                                for (const upperCell of upperCells) {
+                                    if (upperCell.x === checkX && upperCell.z === checkZ) {
+                                        blocksLowerExit = true;
+                                        break;
+                                    }
+                                }
+                                
+                                if (blocksLowerExit) break;
+                                if (checkX < 0 || checkX >= gridSize || checkZ < 0 || checkZ >= gridSize) break;
+                            }
+                            
+                            if (blocksLowerExit) break;
+                        }
+                        
+                        if (blocksLowerExit) break;
+                    }
+                    
+                    if (blocksLowerExit) {
+                        blockingCount++;
+                    } else {
+                        // Try to move upper block to create a dependency
+                        // Move block backward (opposite to direction) to get in the path
+                        const backwardDir = {
+                            x: -upperBlock.direction.x,
+                            z: -upperBlock.direction.z
+                        };
+                        
+                        // Try moving backward a few steps
+                        let moved = false;
+                        for (let steps = 1; steps <= 3 && !moved; steps++) {
+                            const newX = upperBlock.gridX + backwardDir.x * steps;
+                            const newZ = upperBlock.gridZ + backwardDir.z * steps;
+                            
+                            // Check bounds
+                            if (newX >= 0 && newX < gridSize && newZ >= 0 && newZ < gridSize) {
+                                // Check if this position would block a lower exit
+                                let wouldBlock = false;
+                                for (const lowerBlock of lowerBlocks) {
+                                    if (lowerBlock.isFalling || lowerBlock.isRemoved) continue;
+                                    
+                                    const lowerCells = getBlockCells(lowerBlock);
+                                    const lowerDir = lowerBlock.direction;
+                                    
+                                    for (const lowerCell of lowerCells) {
+                                        let checkX = lowerCell.x;
+                                        let checkZ = lowerCell.z;
+                                        const maxSteps = gridSize * 2;
+                                        
+                                        for (let step = 0; step < maxSteps; step++) {
+                                            checkX += lowerDir.x;
+                                            checkZ += lowerDir.z;
+                                            
+                                            // Check if upper block at new position would be in path
+                                            const upperCells = getBlockCells(upperBlock);
+                                            for (const upperCell of upperCells) {
+                                                const actualX = newX + (upperCell.x - upperBlock.gridX);
+                                                const actualZ = newZ + (upperCell.z - upperBlock.gridZ);
+                                                if (actualX === checkX && actualZ === checkZ) {
+                                                    wouldBlock = true;
+                                                    break;
+                                                }
+                                            }
+                                            
+                                            if (wouldBlock) break;
+                                            if (checkX < 0 || checkX >= gridSize || checkZ < 0 || checkZ >= gridSize) break;
+                                        }
+                                        
+                                        if (wouldBlock) break;
+                                    }
+                                    
+                                    if (wouldBlock) break;
+                                }
+                                
+                                if (wouldBlock) {
+                                    // Check if new position doesn't overlap with other blocks
+                                    let canMove = true;
+                                    const upperCells = getBlockCells(upperBlock);
+                                    for (const otherBlock of allBlocks) {
+                                        if (otherBlock === upperBlock || otherBlock.yOffset !== upperBlock.yOffset) continue;
+                                        const otherCells = getBlockCells(otherBlock);
+                                        for (const upperCell of upperCells) {
+                                            const actualX = newX + (upperCell.x - upperBlock.gridX);
+                                            const actualZ = newZ + (upperCell.z - upperBlock.gridZ);
+                                            for (const otherCell of otherCells) {
+                                                if (actualX === otherCell.x && actualZ === otherCell.z) {
+                                                    canMove = false;
+                                                    break;
+                                                }
+                                            }
+                                            if (!canMove) break;
+                                        }
+                                        if (!canMove) break;
+                                    }
+                                    
+                                    if (canMove) {
+                                        // Move the block
+                                        upperBlock.gridX = newX;
+                                        upperBlock.gridZ = newZ;
+                                        if (typeof upperBlock.updateWorldPosition === 'function') {
+                                            upperBlock.updateWorldPosition();
+                                        }
+                                        blockingCount++;
+                                        moved = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                console.log(`  Inferno: Created ${blockingCount}/${upperBlocks.length} multi-layer dependencies in layer ${i}`);
+            }
+        }
     } else {
         // Single layer generation (base layer at Y=0)
-        allBlocks = createSolvableBlocks(0, null, targetBlockCount, level);
+        allBlocks = createSolvableBlocks(0, null, targetBlockCount, level, false, difficultyConfig);
     }
     
     // Place all blocks in batches
@@ -2746,12 +3045,17 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
     await placeBlocksBatch(allBlocks, 10, 10); // 10 blocks per batch, 10ms between batches
     console.log(`  Placement complete. Blocks array now has ${blocks.length} blocks`);
     
-    // Time Challenge: calculate initial time for this level based on actual block lengths
+    // Time-based modes: calculate initial time for this level based on actual block lengths
     // NOTE: This must happen AFTER blocks are created and placed
     // to ensure we can sum the actual block lengths
-    if (isTimeChallengeMode()) {
+    if (isTimeBasedMode()) {
         timeChallengeStartNewLevel(allBlocks);
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:generateSolvablePuzzle:timeChallengeStart',message:'Time challenge level started',data:{timeChallengeActive:timeChallengeActive,timeLeftSec:timeLeftSec,level:level},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
+        // #endregion
         console.log('[Time Challenge] Level started, timeChallengeActive:', timeChallengeActive, 'timeLeftSec:', timeLeftSec);
+        // Re-check button states after level start
+        updateSpinCounterDisplay();
     }
     
     // CRITICAL: Support checking is already disabled by isGeneratingLevel flag
@@ -2766,6 +3070,114 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
         isGeneratingLevel = false;
         await generateSolvablePuzzle(level, isRestart);
         return;
+    }
+    
+    // Inferno mode: Validate difficulty threshold (difficulty-based generation)
+    if (isInfernoMode() && difficultyConfig) {
+        let attempts = 0;
+        const maxAttempts = 5;
+        let difficulty = calculateDifficulty(blocks, gridSize);
+        
+        while (attempts < maxAttempts && difficulty.score < difficultyConfig.difficultyThreshold) {
+            console.log(`⚠️ Inferno mode: Puzzle difficulty ${difficulty.score.toFixed(1)} below threshold ${difficultyConfig.difficultyThreshold.toFixed(1)}, regenerating... (attempt ${attempts + 1}/${maxAttempts})`);
+            
+            // Clear current blocks
+            for (const block of blocks) {
+                towerGroup.remove(block.group);
+                if (block.cubes) {
+                    block.cubes.forEach(cube => {
+                        if (cube.geometry) cube.geometry.dispose();
+                        if (cube.material) cube.material.dispose();
+                    });
+                }
+                if (block.arrow) {
+                    block.arrow.traverse((child) => {
+                        if (child.geometry) child.geometry.dispose();
+                        if (child.material) child.material.dispose();
+                    });
+                }
+                if (block.directionIndicators) {
+                    block.directionIndicators.traverse((child) => {
+                        if (child.geometry) child.geometry.dispose();
+                        if (child.material) child.material.dispose();
+                    });
+                }
+            }
+            blocks.length = 0;
+            
+            // Regenerate with slightly adjusted parameters
+            // Increase outward percentage reduction and length preference
+            const adjustedConfig = { ...difficultyConfig };
+            adjustedConfig.outwardPercentage = Math.max(0.05, difficultyConfig.outwardPercentage - 0.05);
+            const lengthDist = adjustedConfig.lengthDistribution;
+            adjustedConfig.lengthDistribution = {
+                length1: Math.max(0.02, lengthDist.length1 - 0.05),
+                length2: lengthDist.length2,
+                length3: Math.min(0.78, lengthDist.length3 + 0.05)
+            };
+            // Normalize
+            const sum = adjustedConfig.lengthDistribution.length1 + adjustedConfig.lengthDistribution.length2 + adjustedConfig.lengthDistribution.length3;
+            adjustedConfig.lengthDistribution.length1 /= sum;
+            adjustedConfig.lengthDistribution.length2 /= sum;
+            adjustedConfig.lengthDistribution.length3 /= sum;
+            
+            // Regenerate
+            if (needsMultipleLayers) {
+                // Regenerate multi-layer (simplified - just regenerate single layer for now)
+                allBlocks = createSolvableBlocks(0, null, targetBlockCount, level, false, adjustedConfig);
+            } else {
+                allBlocks = createSolvableBlocks(0, null, targetBlockCount, level, false, adjustedConfig);
+            }
+            
+            // Place blocks
+            await placeBlocksBatch(allBlocks, 10, 10);
+            
+            // Re-validate structure
+            const newStructureCheck = validateStructure(blocks, gridSize);
+            if (!newStructureCheck.valid) {
+                console.error(`✗ Structure validation failed after difficulty adjustment: ${newStructureCheck.reason}`);
+                break;
+            }
+            
+            // Recalculate difficulty
+            difficulty = calculateDifficulty(blocks, gridSize);
+            attempts++;
+        }
+        
+        if (difficulty.score < difficultyConfig.difficultyThreshold) {
+            console.warn(`⚠️ Inferno mode: Could not reach difficulty threshold after ${maxAttempts} attempts. Using best attempt (${difficulty.score.toFixed(1)})`);
+        } else {
+            console.log(`✓ Inferno mode: Puzzle difficulty ${difficulty.score.toFixed(1)} meets threshold ${difficultyConfig.difficultyThreshold.toFixed(1)}`);
+        }
+    }
+    
+    // Inferno mode: Show milestone and feature modals
+    if (isInfernoMode() && difficultyConfig) {
+        // Show milestone modal if applicable
+        if (difficultyConfig.isMilestone) {
+            showMilestoneModal(level);
+        }
+        
+        // Show feature modals on first encounter
+        // Check which features are active at this level
+        if (difficultyConfig.outwardPercentage < 0.7 && level >= 6) {
+            showFeatureModal('directional', level);
+        }
+        if (difficultyConfig.lengthDistribution.length3 > 0.2 && level >= 6) {
+            showFeatureModal('length', level);
+        }
+        if (difficultyConfig.verticalPercentage < 0.3 && level >= 6) {
+            showFeatureModal('vertical', level);
+        }
+        if (difficultyConfig.multilayerBlockingPercentage > 0 && level >= 11) {
+            showFeatureModal('multilayer', level);
+        }
+        if (difficultyConfig.spinCostMultiplier > 1/3 && level >= 6) {
+            showFeatureModal('spincost', level);
+        }
+        if (difficultyConfig.difficultyThreshold > 50 && level >= 10) {
+            showFeatureModal('difficulty', level);
+        }
     }
     
     // Update level counter display
@@ -2886,7 +3298,7 @@ function updateTimerDisplay() {
         timerLevelElement.textContent = String(currentLevel);
     }
 
-    if (isTimeChallengeMode() && timeChallengeActive) {
+    if (isTimeBasedMode() && timeChallengeActive) {
         // During animation, show precise value for smooth visual feedback
         // Otherwise, show ceil so players don't feel robbed at 0.1s remaining
         const displaySeconds = timeAnimationActive 
@@ -3430,7 +3842,7 @@ async function startNewGame() {
     totalMoves = 0;
     
     // Reset spin counter
-    remainingSpins = isTimeChallengeMode() ? Number.POSITIVE_INFINITY : 3;
+    remainingSpins = isTimeBasedMode() ? Number.POSITIVE_INFINITY : 3;
     updateSpinCounterDisplay();
     
     // Hide level complete modal if visible
@@ -3478,13 +3890,13 @@ function showLevelCompleteModal(completedLevel) {
         }
         
         // Pause Time Challenge while modal is open
-        if (isTimeChallengeMode() && timeChallengeActive) {
+        if (isTimeBasedMode() && timeChallengeActive) {
             setTimeFrozen('level_complete', true);
         }
 
-        // Get elapsed time (Free Flow) or remaining time (Time Challenge)
+        // Get elapsed time (Free Flow) or remaining time (Time-based modes)
         let timeString = '00:00';
-        if (isTimeChallengeMode() && timeChallengeActive) {
+        if (isTimeBasedMode() && timeChallengeActive) {
             timeString = formatTime(Math.max(0, Math.ceil(timeLeftSec)));
         } else {
             let elapsedSeconds = timerPausedTime;
@@ -3508,8 +3920,8 @@ function showLevelCompleteModal(completedLevel) {
             blocksElement.textContent = String(initialBlockCount);
         }
         
-        // Time Challenge: save residual time for next level
-        if (isTimeChallengeMode() && timeChallengeActive) {
+        // Time Challenge/Inferno: save residual time for next level
+        if (isTimeBasedMode() && timeChallengeActive) {
             timeChallengeResidualSec = Math.max(0, timeLeftSec);
             // Track carried over time for graph with all components
             timeChallengeCarriedOverHistory.push({
@@ -3522,7 +3934,7 @@ function showLevelCompleteModal(completedLevel) {
         }
         
         // Play level complete sound effect
-        playSound('levelComplete', 0.7);
+        playSound('levelComplete', 0.15);
         
         modal.style.display = 'flex';
     }
@@ -3552,7 +3964,7 @@ if (nextLevelButton) {
         // This ensures localStorage always has the correct level
         saveProgress();
         // Verify save was successful
-        const storageKey = isTimeChallengeMode() ? STORAGE_KEY_TIME_CHALLENGE : STORAGE_KEY;
+        const storageKey = getStorageKey();
         const savedLevel = parseInt(localStorage.getItem(storageKey) || '0', 10);
         if (savedLevel !== currentLevel) {
             console.error(`[Next Level] Save verification failed! Saved ${savedLevel}, expected ${currentLevel}. Retrying...`);
@@ -3735,7 +4147,7 @@ if (newGameButton) {
     newGameButton.addEventListener('click', async () => {
         // Per requirement: New Game should re-prompt mode selection (user can switch modes easily).
         await ensureModeSelected({ forcePrompt: true });
-        if (isTimeChallengeMode()) {
+        if (isTimeBasedMode()) {
             timeChallengeResetRun();
             remainingSpins = Number.POSITIVE_INFINITY;
         } else {
@@ -3765,10 +4177,13 @@ if (undoButton) {
 
 // Update spin counter display
 function updateSpinCounterDisplay() {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:updateSpinCounterDisplay:entry',message:'updateSpinCounterDisplay called',data:{isTimeBasedMode:isTimeBasedMode(),remainingSpins:remainingSpins},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
+    // #endregion
     const spinCounter = document.getElementById('spin-counter');
     if (spinCounter) {
-        if (isTimeChallengeMode()) {
-            // Unlimited spins in Time Challenge
+        if (isTimeBasedMode()) {
+            // Unlimited spins in time-based modes
             spinCounter.textContent = '∞';
         } else {
             spinCounter.textContent = remainingSpins.toString();
@@ -3777,14 +4192,21 @@ function updateSpinCounterDisplay() {
 
     const diceButton = document.getElementById('dice-button');
     if (diceButton) {
-        if (!isTimeChallengeMode() && remainingSpins === 0) {
+        const wasDisabled = diceButton.disabled;
+        if (!isTimeBasedMode() && remainingSpins === 0) {
             diceButton.disabled = true;
             diceButton.style.opacity = '0.5';
             diceButton.style.cursor = 'not-allowed';
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:updateSpinCounterDisplay:disabled',message:'Dice button disabled',data:{wasDisabled:wasDisabled,nowDisabled:true,remainingSpins:remainingSpins},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
+            // #endregion
         } else {
             diceButton.disabled = false;
             diceButton.style.opacity = '1';
             diceButton.style.cursor = 'pointer';
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:updateSpinCounterDisplay:enabled',message:'Dice button enabled',data:{wasDisabled:wasDisabled,nowDisabled:false,remainingSpins:remainingSpins},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
+            // #endregion
         }
     }
 }
@@ -3833,18 +4255,62 @@ function autoSpinAfterSpawn() {
 
 // Spin random blocks (vertical and single-cell blocks) to break interlock situations
 function spinRandomBlocks() {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:spinRandomBlocks:entry',message:'spinRandomBlocks function called',data:{timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+    // #endregion
+    console.log('[Spin] ===== spinRandomBlocks FUNCTION CALLED =====');
+    console.log('[Spin] Function entry - timestamp:', new Date().toISOString());
+    
+    // Log all state immediately
+    console.log('[Spin] Mode checks:', {
+        isTimeBasedMode: isTimeBasedMode(),
+        isTimeChallengeMode: isTimeChallengeMode(),
+        isInfernoMode: isInfernoMode(),
+        gameMode: gameMode
+    });
+    console.log('[Spin] Time state:', {
+        isTimeFrozen: isTimeFrozen(),
+        timeFreezeReasons: Array.from(timeFreezeReasons),
+        timeChallengeActive: timeChallengeActive,
+        timeUpShown: timeUpShown,
+        timeLeftSec: timeLeftSec
+    });
+    console.log('[Spin] Spin state:', {
+        remainingSpins: remainingSpins,
+        isTimeBasedMode: isTimeBasedMode()
+    });
+    console.log('[Spin] Block state:', {
+        totalBlocks: blocks ? blocks.length : 'blocks is null/undefined',
+        blocksDefined: typeof blocks !== 'undefined'
+    });
+    
     // Disallow spin while user-paused or in modal freezes (prevents weird UX and free actions)
-    if (isTimeChallengeMode() && isTimeFrozen()) {
+    if (isTimeBasedMode() && isTimeFrozen()) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:spinRandomBlocks:blockedFrozen',message:'Spin blocked: time frozen',data:{reasons:Array.from(timeFreezeReasons)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
+        // #endregion
+        console.log('[Spin] ❌ BLOCKED: Time is frozen, reasons:', Array.from(timeFreezeReasons));
         return;
     }
 
     // Check if spins are available
-    if (!isTimeChallengeMode() && remainingSpins <= 0) {
-        console.log('No spins remaining');
+    if (!isTimeBasedMode() && remainingSpins <= 0) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:spinRandomBlocks:blockedNoSpins',message:'Spin blocked: no spins remaining',data:{remainingSpins:remainingSpins},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
+        // #endregion
+        console.log('[Spin] ❌ BLOCKED: No spins remaining (remainingSpins:', remainingSpins, ')');
         return;
     }
     
-    console.log('spinRandomBlocks called, total blocks:', blocks.length);
+    if (!blocks || blocks.length === 0) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:spinRandomBlocks:blockedNoBlocks',message:'Spin blocked: no blocks',data:{blocksExists:!!blocks,blocksLength:blocks?blocks.length:0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
+        // #endregion
+        console.log('[Spin] ❌ BLOCKED: No blocks array or empty blocks');
+        return;
+    }
+    
+    console.log('[Spin] ✅ Passed initial checks, total blocks:', blocks.length);
     
     // Filter for eligible blocks: vertical OR single-cell blocks OR horizontal multi-cell blocks
     // Horizontal multi-cell blocks can only rotate 180 degrees (flip direction)
@@ -3856,26 +4322,52 @@ function spinRandomBlocks() {
         !block.isAnimating
     );
     
-    console.log('Eligible blocks found:', eligibleBlocks.length);
+    console.log('[Spin] Eligible blocks found:', eligibleBlocks.length);
     
     if (eligibleBlocks.length === 0) {
-        console.log('No eligible blocks to spin');
+        console.log('[Spin] BLOCKED: No eligible blocks to spin');
+        // Log why blocks are not eligible
+        const reasons = {
+            total: blocks.length,
+            falling: blocks.filter(b => b.isFalling).length,
+            removed: blocks.filter(b => b.isRemoved).length,
+            hasRemovalStartTime: blocks.filter(b => b.removalStartTime).length,
+            isAnimating: blocks.filter(b => b.isAnimating).length,
+            notEligibleType: blocks.filter(b => !b.isVertical && b.length !== 1 && (b.isVertical || b.length <= 1)).length
+        };
+        console.log('[Spin] Block state breakdown:', reasons);
         return; // No eligible blocks to spin
     }
     
-    // Time Challenge: spin is a "purchase" that costs 1/3 of remaining time (unlimited spins).
-    if (isTimeChallengeMode() && timeChallengeActive && !timeUpShown) {
-        timeChallengeApplySpinCost();
+    // Time-based modes: spin is a "purchase" that costs time (unlimited spins).
+    console.log('[Spin] Applying spin cost...');
+    if (isTimeBasedMode() && !timeUpShown) {
+        if (timeChallengeActive) {
+            console.log('[Spin] Applying time cost (timeChallengeActive is true)');
+            timeChallengeApplySpinCost();
+        } else {
+            // If timeChallengeActive is false but we're in time-based mode, 
+            // still allow the spin (timeChallengeActive might not be set yet)
+            // This can happen during level generation or initialization
+            console.log('[Spin] ⚠️ Time-based mode but timeChallengeActive is false, allowing spin anyway');
+        }
     } else {
         // Free Flow: Decrement spin counter
+        console.log('[Spin] Decrementing spin counter (Free Flow mode)');
         remainingSpins--;
         updateSpinCounterDisplay();
     }
     
     // Track spin for stats
-    trackSpin();
+    console.log('[Spin] Tracking spin for stats...');
+    try {
+        trackSpin();
+    } catch (error) {
+        console.error('[Spin] Error tracking spin:', error);
+    }
     
     // Spin each block with slight duration randomization for visual variety
+    console.log('[Spin] Starting to spin', eligibleBlocks.length, 'blocks...');
     eligibleBlocks.forEach((block, index) => {
         // Add slight delay and duration variation for staggered effect
         const baseDuration = 1800; // 1.8 seconds base
@@ -3887,17 +4379,21 @@ function spinRandomBlocks() {
         
         setTimeout(() => {
             try {
-                console.log('Spinning block:', { isVertical: block.isVertical, length: block.length });
+                console.log('[Spin] Spinning block', index + 1, 'of', eligibleBlocks.length, ':', { isVertical: block.isVertical, length: block.length });
                 if (typeof block.animateRandomSpin === 'function') {
                     block.animateRandomSpin(duration);
+                    console.log('[Spin] ✅ Block', index + 1, 'spin animation started');
                 } else {
-                    console.error('Block does not have animateRandomSpin method!', block);
+                    console.error('[Spin] ❌ Block does not have animateRandomSpin method!', block);
                 }
             } catch (error) {
-                console.error('Error spinning block:', error);
+                console.error('[Spin] ❌ Error spinning block', index + 1, ':', error);
+                console.error('[Spin] Error stack:', error.stack);
             }
         }, delay);
     });
+    
+    console.log('[Spin] ===== spinRandomBlocks FUNCTION COMPLETE =====');
 }
 
 // Pause button + pause modal (applies to both modes; timer freezes in Time Challenge)
@@ -3928,7 +4424,7 @@ if (modeToggleButton) {
         const prevMode = gameMode;
         await ensureModeSelected({ forcePrompt: true });
         if (gameMode !== prevMode) {
-            if (isTimeChallengeMode()) {
+            if (isTimeBasedMode()) {
                 timeChallengeResetRun();
                 remainingSpins = Number.POSITIVE_INFINITY;
             } else {
@@ -3964,31 +4460,371 @@ if (timeUpNewGameBtn) {
     });
 }
 
+// Store the click handler functions so we can reattach them if buttons are recreated
+let diceButtonClickHandler = null;
+let debugButtonClickHandler = null;
+
 // Setup dice button handler - ensure DOM is ready
 function setupDiceButton() {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:setupDiceButton:entry',message:'setupDiceButton called',data:{timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+    // #endregion
     const diceButton = document.getElementById('dice-button');
     if (diceButton) {
-        console.log('Dice button found, attaching handler');
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:setupDiceButton:buttonFound',message:'Dice button found in DOM',data:{hasHandler:diceButton.dataset.handlerAttached==='true',disabled:diceButton.disabled,hasListener:!!diceButtonClickHandler},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+        // #endregion
+        console.log('[Spin] Dice button found, attaching handler');
+        // Check if handler already attached (avoid duplicates)
+        if (diceButton.dataset.handlerAttached === 'true') {
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:setupDiceButton:alreadyAttached',message:'Handler already attached, skipping',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+            // #endregion
+            console.log('[Spin] Handler already attached, skipping');
+            return;
+        }
+        diceButton.dataset.handlerAttached = 'true';
+        
         // Initialize spin counter display
         updateSpinCounterDisplay();
-        diceButton.addEventListener('click', (e) => {
+        
+        // Store reference for debug
+        window.debugDiceButton = diceButton;
+        
+        // Create handler function if it doesn't exist
+        if (!diceButtonClickHandler) {
+            diceButtonClickHandler = (e) => {
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:setupDiceButton:clickHandler',message:'Dice button click event fired',data:{disabled:diceButton.disabled,timeChallengeActive:timeChallengeActive},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+            // #endregion
             e.preventDefault();
             e.stopPropagation();
-            console.log('Dice button clicked!');
-            spinRandomBlocks();
+            console.log('[Spin] ===== DICE BUTTON CLICKED =====');
+            console.log('[Spin] Button state - disabled:', diceButton.disabled, 'opacity:', diceButton.style.opacity, 'pointer-events:', window.getComputedStyle(diceButton).pointerEvents);
+            console.log('[Spin] Event details:', { type: e.type, target: e.target, currentTarget: e.currentTarget });
+            
+            // Check if button is actually enabled
+            if (diceButton.disabled) {
+                console.log('[Spin] ❌ BUTTON IS DISABLED - click ignored');
+                return;
+            }
+            
+            try {
+                spinRandomBlocks();
+            } catch (error) {
+                console.error('[Spin] ❌ ERROR in spinRandomBlocks:', error);
+                console.error('[Spin] Error name:', error.name);
+                console.error('[Spin] Error message:', error.message);
+                console.error('[Spin] Error stack:', error.stack);
+            }
+                console.log('[Spin] ===== END DICE BUTTON CLICK =====');
+            };
+        }
+        
+        // Attach the handler
+        diceButton.addEventListener('click', diceButtonClickHandler);
+        
+        // Also add mousedown/touchstart listeners to catch if click isn't firing
+        diceButton.addEventListener('mousedown', (e) => {
+            console.log('[Spin] 🔍 mousedown event on dice button');
         });
+        diceButton.addEventListener('touchstart', (e) => {
+            console.log('[Spin] 🔍 touchstart event on dice button');
+        }, { passive: true });
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:setupDiceButton:success',message:'Dice button handler attached successfully',data:{handlerExists:!!diceButtonClickHandler},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+        // #endregion
+        console.log('[Spin] ✅ Dice button handler attached successfully');
     } else {
-        console.error('Dice button not found! Retrying...');
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:setupDiceButton:notFound',message:'Dice button not found in DOM',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H5'})}).catch(()=>{});
+        // #endregion
+        console.error('[Spin] ❌ Dice button not found! Retrying...');
         // Retry after a short delay if button not found
         setTimeout(setupDiceButton, 100);
     }
 }
 
+// Debug function to log current state
+function logDebugState() {
+    console.log('[Debug] ===== LOGGING DEBUG STATE =====');
+    console.log('[Debug] Timestamp:', new Date().toISOString());
+    
+    // Check if blocks exists
+    if (typeof blocks === 'undefined' || !blocks) {
+        console.error('[Debug] ❌ blocks is undefined or null!');
+        return;
+    }
+    
+    const eligibleBlocks = blocks.filter(block => 
+        (block.isVertical || block.length === 1 || (!block.isVertical && block.length > 1)) &&
+        !block.isFalling &&
+        !block.isRemoved &&
+        !block.removalStartTime &&
+        !block.isAnimating
+    );
+    
+    const debugInfo = {
+        // Mode info
+        gameMode: gameMode,
+        isTimeBasedMode: isTimeBasedMode(),
+        isTimeChallengeMode: isTimeChallengeMode(),
+        isInfernoMode: isInfernoMode(),
+        
+        // Time challenge state
+        timeChallengeActive: timeChallengeActive,
+        timeUpShown: timeUpShown,
+        timeLeftSec: timeLeftSec,
+        isTimeFrozen: isTimeFrozen(),
+        timeFreezeReasons: Array.from(timeFreezeReasons),
+        
+        // Spin state
+        remainingSpins: remainingSpins,
+        isTimeBasedMode_check: isTimeBasedMode(),
+        
+        // Block state
+        totalBlocks: blocks.length,
+        eligibleBlocks: eligibleBlocks.length,
+        blocksState: blocks.map(b => ({
+            isVertical: b.isVertical,
+            length: b.length,
+            isFalling: b.isFalling,
+            isRemoved: b.isRemoved,
+            removalStartTime: b.removalStartTime,
+            isAnimating: b.isAnimating
+        })),
+        
+        // Level info
+        currentLevel: currentLevel,
+        
+        // Other state
+        isPaused: isPaused,
+        isGeneratingLevel: isGeneratingLevel,
+        timeAnimationActive: timeAnimationActive
+    };
+    
+    console.log('[Debug] === DEBUG STATE (JSON) ===');
+    console.log(JSON.stringify(debugInfo, null, 2));
+    console.log('[Debug] === END DEBUG STATE (JSON) ===');
+    
+    // Also check what would prevent spin
+    console.log('[Debug] Spin prevention checks:');
+    if (isTimeBasedMode() && isTimeFrozen()) {
+        console.log('[Debug]   ❌ BLOCKED: Time is frozen, reasons:', Array.from(timeFreezeReasons));
+    }
+    if (!isTimeBasedMode() && remainingSpins <= 0) {
+        console.log('[Debug]   ❌ BLOCKED: No spins remaining');
+    }
+    if (eligibleBlocks.length === 0) {
+        console.log('[Debug]   ❌ BLOCKED: No eligible blocks');
+    }
+    if (isTimeBasedMode() && timeUpShown) {
+        console.log('[Debug]   ❌ BLOCKED: Time up shown');
+    }
+    
+    // Check button states
+    const diceButton = document.getElementById('dice-button');
+    if (diceButton) {
+        const diceRect = diceButton.getBoundingClientRect();
+        const diceComputed = window.getComputedStyle(diceButton);
+        console.log('[Debug] Dice button state:', {
+            disabled: diceButton.disabled,
+            opacity: diceButton.style.opacity,
+            computedOpacity: diceComputed.opacity,
+            pointerEvents: diceComputed.pointerEvents,
+            display: diceComputed.display,
+            visibility: diceComputed.visibility,
+            zIndex: diceComputed.zIndex,
+            position: diceComputed.position,
+            bounds: { x: diceRect.x, y: diceRect.y, width: diceRect.width, height: diceRect.height },
+            isVisible: diceRect.width > 0 && diceRect.height > 0 && diceComputed.visibility !== 'hidden' && diceComputed.display !== 'none'
+        });
+        
+        // Check if something is covering the button
+        const elementAtPoint = document.elementFromPoint(diceRect.x + diceRect.width / 2, diceRect.y + diceRect.height / 2);
+        console.log('[Debug] Element at dice button center:', elementAtPoint, elementAtPoint === diceButton ? '✅ Button is clickable' : '❌ Something else is on top');
+    } else {
+        console.log('[Debug]   ❌ Dice button not found in DOM!');
+    }
+    
+    const debugButton = document.getElementById('debug-button');
+    if (debugButton) {
+        const debugRect = debugButton.getBoundingClientRect();
+        const debugComputed = window.getComputedStyle(debugButton);
+        console.log('[Debug] Debug button state:', {
+            disabled: debugButton.disabled,
+            opacity: debugButton.style.opacity,
+            computedOpacity: debugComputed.opacity,
+            pointerEvents: debugComputed.pointerEvents,
+            display: debugComputed.display,
+            visibility: debugComputed.visibility,
+            bounds: { x: debugRect.x, y: debugRect.y, width: debugRect.width, height: debugRect.height },
+            isVisible: debugRect.width > 0 && debugRect.height > 0 && debugComputed.visibility !== 'hidden' && debugComputed.display !== 'none'
+        });
+        
+        // Check if something is covering the button
+        const elementAtPoint = document.elementFromPoint(debugRect.x + debugRect.width / 2, debugRect.y + debugRect.height / 2);
+        console.log('[Debug] Element at debug button center:', elementAtPoint, elementAtPoint === debugButton ? '✅ Button is clickable' : '❌ Something else is on top');
+    } else {
+        console.log('[Debug]   ❌ Debug button not found in DOM!');
+    }
+    
+    console.log('[Debug]   ✅ Spin should work if no blocks above');
+    console.log('[Debug] ===== END DEBUG STATE =====');
+}
+
+// Setup debug button
+function setupDebugButton() {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:setupDebugButton:entry',message:'setupDebugButton called',data:{timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+    // #endregion
+    const debugButton = document.getElementById('debug-button');
+    if (debugButton) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:setupDebugButton:buttonFound',message:'Debug button found in DOM',data:{hasHandler:debugButton.dataset.handlerAttached==='true',disabled:debugButton.disabled},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+        // #endregion
+        console.log('[Debug] Debug button found, attaching handler');
+        // Check if handler already attached
+        if (debugButton.dataset.handlerAttached === 'true') {
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:setupDebugButton:alreadyAttached',message:'Debug handler already attached, skipping',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+            // #endregion
+            console.log('[Debug] Handler already attached, skipping');
+            return;
+        }
+        debugButton.dataset.handlerAttached = 'true';
+        
+        // Create handler function if it doesn't exist
+        if (!debugButtonClickHandler) {
+            debugButtonClickHandler = (e) => {
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:setupDebugButton:clickHandler',message:'Debug button click event fired',data:{disabled:debugButton.disabled},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+            // #endregion
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('[Debug] ===== DEBUG BUTTON CLICKED =====');
+            console.log('[Debug] Button state - disabled:', debugButton.disabled, 'opacity:', debugButton.style.opacity);
+            try {
+                logDebugState();
+            } catch (error) {
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:setupDebugButton:error',message:'Error in logDebugState',data:{error:error.message,stack:error.stack},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H4'})}).catch(()=>{});
+                // #endregion
+                console.error('[Debug] ❌ ERROR in logDebugState:', error);
+                console.error('[Debug] Error stack:', error.stack);
+            }
+            console.log('[Debug] ===== END DEBUG BUTTON CLICK =====');
+        };
+    }
+        
+        // Attach the handler
+        debugButton.addEventListener('click', debugButtonClickHandler);
+        
+        // Also add mousedown listener
+        debugButton.addEventListener('mousedown', (e) => {
+            console.log('[Debug] 🔍 mousedown event on debug button');
+        });
+        
+        // Store reference globally
+        window.debugButton = debugButton;
+        window.logDebugState = logDebugState; // Make it globally accessible
+        window.debugSpin = () => {
+            console.log('[Debug] Manual debug call from console');
+            logDebugState();
+        };
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:setupDebugButton:success',message:'Debug button handler attached successfully',data:{handlerExists:!!debugButtonClickHandler},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+        // #endregion
+        console.log('[Debug] ✅ Debug button handler attached successfully');
+        console.log('[Debug] 💡 You can also call logDebugState() or debugSpin() from console');
+    } else {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:setupDebugButton:notFound',message:'Debug button not found in DOM',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H5'})}).catch(()=>{});
+        // #endregion
+        console.error('[Debug] ❌ Debug button not found!');
+    }
+}
+
+// MutationObserver to detect when buttons are recreated and reattach handlers
+function setupButtonWatcher() {
+    const gameControls = document.getElementById('game-controls');
+    if (!gameControls) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:setupButtonWatcher:noContainer',message:'game-controls container not found',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H5'})}).catch(()=>{});
+        // #endregion
+        return;
+    }
+    
+    const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+            if (mutation.type === 'childList') {
+                mutation.addedNodes.forEach((node) => {
+                    if (node.nodeType === 1) { // Element node
+                        // #region agent log
+                        fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:setupButtonWatcher:nodeAdded',message:'Node added to game-controls',data:{nodeId:node.id,nodeTag:node.tagName,isDiceButton:node.id==='dice-button',isDebugButton:node.id==='debug-button'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H5'})}).catch(()=>{});
+                        // #endregion
+                        if (node.id === 'dice-button' || (node.id && node.id.includes('dice-button'))) {
+                            // #region agent log
+                            fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:setupButtonWatcher:diceButtonRecreated',message:'Dice button recreated, reattaching handler',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H5'})}).catch(()=>{});
+                            // #endregion
+                            setTimeout(() => setupDiceButton(), 50);
+                        }
+                        if (node.id === 'debug-button' || (node.id && node.id.includes('debug-button'))) {
+                            // #region agent log
+                            fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:setupButtonWatcher:debugButtonRecreated',message:'Debug button recreated, reattaching handler',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H5'})}).catch(()=>{});
+                            // #endregion
+                            setTimeout(() => setupDebugButton(), 50);
+                        }
+                    }
+                });
+            }
+        });
+    });
+    
+    observer.observe(gameControls, { childList: true, subtree: true });
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:setupButtonWatcher:started',message:'Button watcher started',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H5'})}).catch(()=>{});
+    // #endregion
+}
+
 // Setup dice button when DOM is ready
+// #region agent log
+fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:buttonSetup:entry',message:'Button setup code executing',data:{readyState:document.readyState},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+// #endregion
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', setupDiceButton);
+    document.addEventListener('DOMContentLoaded', () => {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:buttonSetup:DOMContentLoaded',message:'DOMContentLoaded fired, setting up buttons',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+        // #endregion
+        setupDiceButton();
+        setupDebugButton();
+        setupButtonWatcher();
+        // Also add keyboard shortcut as backup (Ctrl+Shift+D)
+        document.addEventListener('keydown', (e) => {
+            if (e.ctrlKey && e.shiftKey && e.key === 'D') {
+                e.preventDefault();
+                console.log('[Debug] Keyboard shortcut triggered (Ctrl+Shift+D)');
+                logDebugState();
+            }
+        });
+    });
 } else {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:buttonSetup:immediate',message:'DOM already ready, setting up buttons immediately',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+    // #endregion
     setupDiceButton();
+    setupDebugButton();
+    setupButtonWatcher();
+    // Also add keyboard shortcut as backup (Ctrl+Shift+D)
+    document.addEventListener('keydown', (e) => {
+        if (e.ctrlKey && e.shiftKey && e.key === 'D') {
+            e.preventDefault();
+            console.log('[Debug] Keyboard shortcut triggered (Ctrl+Shift+D)');
+            logDebugState();
+        }
+    });
 }
 
 // Framing control removed (was previously adjustable in Settings and via gestures).
@@ -4314,8 +5150,8 @@ updateCameraPosition(); // Position camera immediately to avoid default (0,0,0) 
 (async function boot() {
     await ensureModeSelected({ forcePrompt: false });
 
-    if (isTimeChallengeMode()) {
-        // Time Challenge: load saved progress (or start at level 0 if no progress)
+    if (isTimeBasedMode()) {
+        // Time-based modes: load saved progress (or start at level 0 if no progress)
         currentLevel = loadProgress();
         timeChallengeResetRun(); // This sets residual to 0 and initializes state
         // Initial time for the level will be calculated in generateSolvablePuzzle()
@@ -4381,6 +5217,12 @@ function onMouseClick(event) {
     // Only process left-clicks (button 0) for block interaction
     if (event.button !== 0) {
         return;
+    }
+    
+    // Don't process block clicks if any modal is visible
+    const visibleModals = document.querySelectorAll('.extended-stats-modal-overlay[style*="flex"]');
+    if (visibleModals.length > 0) {
+        return; // Modal is open, don't process block clicks
     }
     
     // Prevent block selection if camera was dragged
@@ -5153,6 +5995,12 @@ let touchStartTime = null;
 const TOUCH_DRAG_THRESHOLD = 5; // pixels - minimum movement to consider it a drag
 
 function onTouchEnd(event) {
+    // Don't process block taps if any modal is visible
+    const visibleModals = document.querySelectorAll('.extended-stats-modal-overlay[style*="flex"]');
+    if (visibleModals.length > 0) {
+        return; // Modal is open, don't process block taps
+    }
+    
     // Prevent block selection if we had a double touch gesture (pinch or framing control)
     // This ensures no blocks are selected after completing double touch gestures
     if (touchState.hadDoubleTouch) {
@@ -5452,7 +6300,7 @@ function animate() {
     // - drains in real time (1.0x)
     // - pauses during user pause, rules/modal overlays, level-complete modal, background tab, and time animation
     // - does NOT drain during level generation (fairness)
-    if (isTimeChallengeMode() && timeChallengeActive && !timeUpShown) {
+    if (isTimeBasedMode() && timeChallengeActive && !timeUpShown) {
         const canDrain = !isTimeFrozen() && !isGeneratingLevel && !isPaused && !timeAnimationActive;
         if (canDrain) {
             timeLeftSec -= deltaTime;
@@ -5539,18 +6387,36 @@ function animate() {
                 const fov = camera.fov * (Math.PI / 180);
                 const aspect = camera.aspect;
 
-                // Calculate distance needed for height (with extra padding for safety)
-                const heightDistance = (size.y + ZOOM_PADDING * 1.5) / (2 * Math.tan(fov / 2));
+                // Desktop-specific: Use larger padding to ensure all blocks stay in viewport
+                const effectivePadding = isMobileLike ? ZOOM_PADDING * 1.5 : ZOOM_PADDING * DESKTOP_ZOOM_PADDING_MULTIPLIER;
 
-                // Calculate distance needed for width/depth (with extra padding for safety)
+                // Calculate distance needed for height (with platform-aware padding)
+                const heightDistance = (size.y + effectivePadding) / (2 * Math.tan(fov / 2));
+
+                // Calculate distance needed for width/depth (with platform-aware padding)
                 const baseDiagonal = Math.sqrt(size.x * size.x + size.z * size.z);
-                const widthDistance = (baseDiagonal + ZOOM_PADDING * 1.5) / (2 * Math.tan(fov / 2) * aspect);
+                const widthDistance = (baseDiagonal + effectivePadding) / (2 * Math.tan(fov / 2) * aspect);
 
                 // Use the larger distance and apply platform-aware multiplier
                 // Desktop: zoom out more to prevent blocks going out of frame
                 // Mobile: zoom in more to reduce wasted space on sides
                 const platformMultiplier = isMobileLike ? AUTO_ZOOM_MULTIPLIER_MOBILE : AUTO_ZOOM_MULTIPLIER_DESKTOP;
-                const baseDistance = Math.max(heightDistance, widthDistance);
+                let baseDistance = Math.max(heightDistance, widthDistance);
+                
+                // Desktop-specific: Account for camera elevation angle and perspective distortion
+                // When camera is at an angle, the bounding box appears larger in screen space
+                // We need to ensure all blocks stay visible even at the edges
+                if (!isMobileLike) {
+                    // Account for elevation angle - when camera looks down, we need more distance
+                    // to ensure corner blocks don't get cut off due to perspective
+                    const elevationFactor = 1.0 + (0.08 * Math.abs(Math.sin(currentElevation)));
+                    baseDistance *= elevationFactor;
+                    
+                    // Additional safety margin for desktop to ensure all blocks stay in viewport
+                    // This accounts for perspective distortion, edge cases, and bounding box approximation
+                    baseDistance *= 1.02;
+                }
+                
                 const requiredDistance = baseDistance * platformMultiplier;
                 targetRadius = Math.max(MIN_RADIUS, Math.min(MAX_RADIUS, requiredDistance));
                 
@@ -5765,7 +6631,7 @@ function animate() {
             try {
                 const nextLevel = currentLevel + 1;
                 // FIX: Use correct storage key based on game mode
-                const storageKey = isTimeChallengeMode() ? STORAGE_KEY_TIME_CHALLENGE : STORAGE_KEY;
+                const storageKey = getStorageKey();
                 localStorage.setItem(storageKey, nextLevel.toString());
                 // Also update highest level if needed
                 const highestLevel = parseInt(localStorage.getItem(STORAGE_HIGHEST_LEVEL_KEY) || '0', 10);
@@ -5790,12 +6656,15 @@ function animate() {
                 try {
                     const userStats = await completeLevel(elapsedSeconds);
                     // Add Time Challenge specific stats
-                    if (isTimeChallengeMode() && timeChallengeActive) {
+                    if (isTimeBasedMode() && timeChallengeActive) {
                         userStats.timeUnusedLevel = timeChallengeInitialTime; // Initial time at start of level
                         userStats.timeCollectedLevel = timeChallengeTimeCollected;
                         // All-time includes current level (already cumulative from block removals)
                         userStats.timeCollectedAllTime = timeChallengeTimeCollectedAllTime;
-                        userStats.timeCarriedOverLevel = timeChallengeResidualSec;
+                        // Calculate carried over from formula: unused + collected - spin
+                        // Use current timeLeftSec if available, otherwise use timeChallengeResidualSec
+                        const calculatedCarriedOver = timeChallengeInitialTime + timeChallengeTimeCollected - timeChallengeSpinCost;
+                        userStats.timeCarriedOverLevel = Math.max(0, calculatedCarriedOver);
                         // Use actual spin cost (time spent on spins) instead of calculated lost time
                         userStats.timeLostLevel = timeChallengeSpinCost;
                         // Include carried over history for graph
