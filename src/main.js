@@ -102,6 +102,9 @@ function getQualityCaps(preset) {
 let qualityPreset = loadQualityPreset();
 let qualityCaps = getQualityCaps(qualityPreset);
 
+// Check quality preset from localStorage for renderer initialization (before renderer is created)
+const initialQualityPreset = qualityPreset;
+
 // Scene setup
 const scene = new THREE.Scene();
 // Dark theme: much darker grey gradient (default)
@@ -124,9 +127,9 @@ let currentArrowStyle = 2;
 const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
 
 const renderer = new THREE.WebGLRenderer({
-    // AA is expensive on mobile; rely on lower DPR + post AA from browser compositor
-    antialias: !isMobileLike,
-    powerPreference: (isIOS || isMobileLike) ? 'low-power' : 'high-performance',
+    // AA is expensive on mobile and in battery mode; rely on lower DPR + post AA from browser compositor
+    antialias: !isMobileLike && initialQualityPreset !== 'battery',
+    powerPreference: (initialQualityPreset === 'battery' || isIOS || isMobileLike) ? 'low-power' : 'high-performance',
 });
 renderer.setSize(window.innerWidth, window.innerHeight);
 // Limit pixel ratio via quality preset (keeps UI size the same; changes internal render resolution)
@@ -515,21 +518,13 @@ function updateLightsForCamera(lights, azimuth, elevation, center) {
         keyLightPos.y = minKeyY;
     }
     
-    lights.keyLight.position.copy(center.clone().add(keyLightPos));
-    
-    // Update shadow camera to ensure it covers the scene (important for directional lights)
-    // The shadow camera needs to look at the scene center to cover both tower and table
-    if (lights.keyLight.shadow && lights.keyLight.shadow.camera) {
-        lights.keyLight.shadow.camera.position.copy(lights.keyLight.position);
-        lights.keyLight.shadow.camera.lookAt(center);
-        lights.keyLight.shadow.camera.updateMatrixWorld();
-    }
+    // Store target position for smooth interpolation (prevents jitter in battery mode)
+    targetKeyLightPosition = center.clone().add(keyLightPos);
     
     // Fill light: minimal fill light for dramatic shadows (positioned opposite to key light)
     const fillLightDistance = 25;
     let fillLightPos = cameraDirection.clone().multiplyScalar(-fillLightDistance);
     fillLightPos.y += 6; // Keep it elevated but lower for more shadow contrast
-    // Reduced fill light intensity is handled in createLights for dramatic shadows
     
     // Ensure minimum 30° angle above base plate
     const fillHorizontalDist = Math.sqrt(fillLightPos.x * fillLightPos.x + fillLightPos.z * fillLightPos.z);
@@ -538,9 +533,7 @@ function updateLightsForCamera(lights, azimuth, elevation, center) {
         fillLightPos.y = minFillY;
     }
     
-    if (lights.fillLight) {
-        lights.fillLight.position.copy(center.clone().add(fillLightPos));
-    }
+    targetFillLightPosition = center.clone().add(fillLightPos);
 }
 
 // Initialize Rapier physics
@@ -594,6 +587,22 @@ window.fixOverlaps = () => {
     const result = checkAndFixAllOverlaps(blocks, gridSize);
     console.log(result.message);
     return result;
+};
+
+// Expose debug function to jump to a specific level
+window.debugJumpToLevel = async (level) => {
+    if (isGeneratingLevel) {
+        console.warn('Cannot jump to level while generating');
+        return;
+    }
+    if (isNaN(level) || level < 0) {
+        console.error('Invalid level:', level);
+        return;
+    }
+    console.log(`[Debug] Jumping to level ${level}`);
+    setCurrentLevel(level);
+    saveProgress();
+    await generateSolvablePuzzle(level, false);
 };
 
 const directions = [
@@ -1289,6 +1298,18 @@ function saveProgress() {
 
 // Load saved progress
 function loadProgress() {
+    // Check for debug level parameter in URL (e.g., ?level=40) - takes precedence over saved progress
+    const urlParams = new URLSearchParams(window.location.search);
+    const debugLevel = urlParams.get('level');
+    if (debugLevel) {
+        const level = parseInt(debugLevel, 10);
+        if (!isNaN(level) && level >= 0) {
+            console.log(`[Debug] Starting at level ${level} from URL parameter`);
+            setCurrentLevel(level);
+            return level;
+        }
+    }
+    
     try {
         // Use different storage keys for different game modes
         const storageKey = getStorageKey();
@@ -3866,12 +3887,17 @@ async function startNewGame() {
     
     console.log(`[startNewGame] Starting new game. Current level before reset: ${currentLevel}`);
     
+    // Check for debug level parameter in URL (e.g., ?level=40)
+    const urlParams = new URLSearchParams(window.location.search);
+    const debugLevel = urlParams.get('level');
+    const targetLevel = debugLevel ? parseInt(debugLevel, 10) : 0;
+    
     // Clear saved progress FIRST (before resetting currentLevel)
     // This ensures localStorage is cleared before any validation checks
     clearProgress();
     
-    // Reset to level 0
-    currentLevel = 0;
+    // Reset to level 0 (or debug level if specified)
+    currentLevel = targetLevel;
     levelCompleteShown = false;
     
     // Clear move history
@@ -6044,7 +6070,13 @@ window.addEventListener('resize', () => {
 let lastTime = performance.now();
 let physicsUpdatedThisFrame = false; // Track if physics was updated this frame
 let lastSupportCheckTime = 0;
-const SUPPORT_CHECK_INTERVAL = 200; // Check support every 200ms
+// Support check interval is now calculated dynamically based on quality preset
+
+// Cache block state flags to avoid full iteration every frame
+let cachedHasFallingBlocks = false;
+let cachedHasActiveAnimations = false;
+let cachedHasPhysicsBlocks = false;
+let lastBlockStateCheckTime = 0;
 
 // Battery/perf: cap frame rate on iOS (avoids 120Hz ProMotion drain) and downclock further when idle.
 let ACTIVE_FRAME_MS = 1000 / qualityCaps.activeFps;
@@ -6064,7 +6096,12 @@ let LIGHT_UPDATE_INTERVAL_MS = isIOS ? 80 : 33; // iOS: conservative by default;
 let lastShadowMapUpdateMs = 0;
 let SHADOW_MAP_UPDATE_INTERVAL_MS = isIOS ? 80 : 33;
 let shadowUpdateCooldownUntilMs = 0;
-const SHADOW_UPDATE_COOLDOWN_MS = isIOS ? 600 : 350; // keep shadows stable briefly after interaction ends
+// Shadow cooldown is now calculated dynamically based on battery mode and camera state
+
+// Smooth light interpolation to prevent jitter in battery mode
+// Store target positions that are updated at intervals, then interpolate smoothly every frame
+let targetKeyLightPosition = null;
+let targetFillLightPosition = null;
 
 // FPS tracking
 let fpsFrameCount = 0;
@@ -6122,7 +6159,9 @@ function applyQualityPreset(nextPreset) {
             }
         }
         // Warm shadows briefly so the new settings take effect immediately.
-        shadowUpdateCooldownUntilMs = performance.now() + SHADOW_UPDATE_COOLDOWN_MS;
+        // Use normal cooldown for warm-up (not extended idle cooldown)
+        const warmupCooldownMs = isIOS ? 600 : 350;
+        shadowUpdateCooldownUntilMs = performance.now() + warmupCooldownMs;
         lastLightUpdateMs = 0;
         lastShadowMapUpdateMs = 0;
     }
@@ -6338,28 +6377,52 @@ function animate() {
     if (da < SNAP_EPS) currentAzimuth = targetAzimuth;
     if (de < SNAP_EPS) currentElevation = targetElevation;
     
-    // Update camera position
-    updateCameraPosition();
+    // Only update camera if it's actually moving
+    // This saves CPU when camera is stationary
+    const cameraStillMoving = (dr >= SNAP_EPS) || (da >= SNAP_EPS) || (de >= SNAP_EPS);
+    if (cameraStillMoving || 
+        dr > SNAP_EPS ||
+        da > SNAP_EPS ||
+        de > SNAP_EPS) {
+        updateCameraPosition();
+    }
     
     // Determine if we need expensive shadow updates this frame
     const isBatteryQuality = qualityPreset === 'battery';
     const interacting = isDraggingCamera || (touchState && touchState.isActive);
-    // Avoid multiple full-array scans per frame; compute flags in one pass.
-    let hasFallingBlocks = false;
-    let hasActiveAnimations = false;
-    let hasPhysicsBlocks = false;
-    for (const block of blocks) {
-        if (!block) continue;
-        if (block.isFalling) {
-            hasFallingBlocks = true;
-            if (block.physicsBody) hasPhysicsBlocks = true;
+    
+    // Cache block state flags to avoid full iteration every frame
+    // In battery mode when idle, only check block state periodically (every 100ms)
+    // First check if we need to iterate based on simple conditions
+    const BLOCK_STATE_CHECK_INTERVAL = isBatteryQuality ? 100 : 16;
+    const needsFullIteration = interacting || 
+                              cameraStillMoving ||
+                              isGeneratingLevel ||
+                              !isBatteryQuality ||
+                              (isBatteryQuality && (currentTime - lastBlockStateCheckTime > BLOCK_STATE_CHECK_INTERVAL));
+    
+    if (needsFullIteration) {
+        cachedHasFallingBlocks = false;
+        cachedHasActiveAnimations = false;
+        cachedHasPhysicsBlocks = false;
+        for (const block of blocks) {
+            if (!block) continue;
+            if (block.isFalling) {
+                cachedHasFallingBlocks = true;
+                if (block.physicsBody) cachedHasPhysicsBlocks = true;
+            }
+            if (block.isAnimating || (block.removalStartTime && !block.isRemoved)) {
+                cachedHasActiveAnimations = true;
+            }
+            if (cachedHasFallingBlocks && cachedHasActiveAnimations && cachedHasPhysicsBlocks) break;
         }
-        if (block.isAnimating || (block.removalStartTime && !block.isRemoved)) {
-            hasActiveAnimations = true;
-        }
-        if (hasFallingBlocks && hasActiveAnimations && hasPhysicsBlocks) break;
+        lastBlockStateCheckTime = currentTime;
     }
-    const cameraStillMoving = (dr >= SNAP_EPS) || (da >= SNAP_EPS) || (de >= SNAP_EPS);
+    
+    // Use cached values
+    const hasFallingBlocks = cachedHasFallingBlocks;
+    const hasActiveAnimations = cachedHasActiveAnimations;
+    const hasPhysicsBlocks = cachedHasPhysicsBlocks;
     const isActiveFrame = interacting || hasFallingBlocks || cameraStillMoving || hasActiveAnimations || isGeneratingLevel;
     nextFrameDelayMs = isActiveFrame ? ACTIVE_FRAME_MS : IDLE_FRAME_MS;
     
@@ -6373,17 +6436,53 @@ function animate() {
         cameraStillMoving ||
         (!isBatteryQuality && (hasFallingBlocks || hasActiveAnimations));
 
+    // Calculate shadow cooldown based on battery mode and camera state
+    // Extended cooldown when idle in battery mode to save battery
+    const isCameraIdle = !cameraStillMoving && !interacting;
+    const shadowCooldownMs = (isBatteryQuality && isCameraIdle) 
+        ? 1200  // Extended cooldown when idle in battery mode
+        : (isIOS ? 600 : 350);  // Normal cooldown
+
     if (shouldWarmShadows) {
-        shadowUpdateCooldownUntilMs = currentTime + SHADOW_UPDATE_COOLDOWN_MS;
+        shadowUpdateCooldownUntilMs = currentTime + shadowCooldownMs;
     }
     const needShadowsThisFrame = currentTime < shadowUpdateCooldownUntilMs;
 
-    // Update lights only while interacting (or during falling, if you want shadows to react to camera during motion).
-    // Moving the shadow-casting light forces a shadow-map re-render, so rate-limit this.
+    // Update light target positions at intervals (rate-limited for battery savings)
+    // Then smoothly interpolate actual light positions every frame to prevent jitter
     if (needShadowsThisFrame && (currentTime - lastLightUpdateMs) > LIGHT_UPDATE_INTERVAL_MS) {
         lastLightUpdateMs = currentTime;
         updateLightsForCamera(lights, currentAzimuth, currentElevation, _towerGroupWorldCenter);
         if (renderer.shadowMap) renderer.shadowMap.needsUpdate = true;
+    }
+    
+    // Smoothly interpolate light positions every frame to prevent jitter (especially in battery mode)
+    // This allows lights to follow the smoothly moving camera without discrete jumps
+    // Only interpolate when position difference is significant to save battery
+    if (lights && targetKeyLightPosition) {
+        const keyLightDistanceSq = lights.keyLight.position.distanceToSquared(targetKeyLightPosition);
+        const fillLightDistanceSq = lights.fillLight && targetFillLightPosition 
+            ? lights.fillLight.position.distanceToSquared(targetFillLightPosition) 
+            : 0;
+        
+        // Only interpolate if position difference is significant (> 0.001 units)
+        if (keyLightDistanceSq > 0.001) {
+            // Use faster interpolation in battery mode to reduce visible lag, but still smooth
+            const lightSmoothing = isBatteryQuality ? 0.15 : 0.3;
+            lights.keyLight.position.lerp(targetKeyLightPosition, lightSmoothing);
+            
+            // Update shadow camera to match interpolated light position
+            if (lights.keyLight.shadow && lights.keyLight.shadow.camera) {
+                lights.keyLight.shadow.camera.position.copy(lights.keyLight.position);
+                lights.keyLight.shadow.camera.lookAt(_towerGroupWorldCenter);
+                lights.keyLight.shadow.camera.updateMatrixWorld();
+            }
+        }
+        
+        if (lights.fillLight && targetFillLightPosition && fillLightDistanceSq > 0.001) {
+            const lightSmoothing = isBatteryQuality ? 0.15 : 0.3;
+            lights.fillLight.position.lerp(targetFillLightPosition, lightSmoothing);
+        }
     }
 
     // Keep shadow maps in manual-update mode, but refresh periodically while motion/interaction is happening.
@@ -6419,7 +6518,12 @@ function animate() {
     
     // CRITICAL: Only call updatePhysics ONCE per frame, before any reads
     // Process operations and step physics
-    if (!physicsUpdatedThisFrame && (hasPhysicsBlocks || hasPendingOperations() || hasFallingBlocks)) {
+    // In battery mode, skip physics when truly idle to save CPU
+    const shouldUpdatePhysics = !physicsUpdatedThisFrame && 
+                               (hasPhysicsBlocks || hasPendingOperations() || hasFallingBlocks) &&
+                               !(isBatteryQuality && !isActiveFrame && !hasFallingBlocks);
+    
+    if (shouldUpdatePhysics) {
         updatePhysics(physics, deltaTime);
         physicsUpdatedThisFrame = true;
     }
@@ -6456,7 +6560,9 @@ function animate() {
         }
         
         // Periodically check for blocks that lost support (continuous monitoring)
-        if (currentTime - lastSupportCheckTime > SUPPORT_CHECK_INTERVAL) {
+        // In battery mode, check less frequently to save battery (400ms vs 200ms)
+        const supportCheckInterval = isBatteryQuality ? 400 : 200;
+        if (currentTime - lastSupportCheckTime > supportCheckInterval) {
             lastSupportCheckTime = currentTime;
             checkAndTriggerFalling(blocks);
         }
@@ -6568,7 +6674,17 @@ function animate() {
         
     }
     
-    renderer.render(scene, camera);
+    // Only render when something is actually changing
+    // In battery mode, skip rendering when truly idle to save GPU power
+    const shouldRender = isActiveFrame || 
+                       cameraStillMoving || 
+                       hasFallingBlocks || 
+                       hasActiveAnimations ||
+                       !isBatteryQuality; // Always render in balanced/performance modes
+    
+    if (shouldRender) {
+        renderer.render(scene, camera);
+    }
 }
 
 // Test function to verify block counts across levels
