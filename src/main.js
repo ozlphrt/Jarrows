@@ -1,9 +1,9 @@
 ﻿import * as THREE from 'three';
-import { initPhysics, createPhysicsBlock, updatePhysics, isPhysicsStepping, hasPendingOperations, isPhysicsProcessing } from './physics.js';
+import { initPhysics, createPhysicsBlock, updatePhysics, isPhysicsStepping, hasPendingOperations, isPhysicsProcessing, removePhysicsBody } from './physics.js';
 import { Block } from './Block.js';
 import { createLights, createGrid, setGradientBackground, setupFog } from './scene.js';
 import { validateStructure, validateSolvability, calculateDifficulty, getBlockCells, fixOverlappingBlocks, checkAndFixAllOverlaps, canBlockExit } from './puzzle_validation.js';
-import { initStats, startLevelStats, trackMove, trackSpin, trackBlockRemoved, completeLevel, getLevelComparison } from './stats/stats.js';
+import { initStats, startLevelStats, trackMove, trackSpin, trackBlockRemoved, completeLevel, getLevelComparison, getElapsedTime } from './stats/stats.js';
 import { updateLevelCompleteModal, showOfflineIndicator, hideOfflineIndicator, showPersonalHistoryModal, showProfileModal } from './stats/statsUI.js';
 import { isOnline, isLocalOnlyMode } from './stats/statsAPI.js';
 import { initAudio, playSound, toggleAudio, isAudioEnabled } from './audio.js';
@@ -160,6 +160,12 @@ let isRightDraggingFraming = false;
 renderer.domElement.addEventListener('mousedown', (event) => {
     // Left-click: orbit (azimuth/elevation)
     if (event.button === 0) {
+        // CRITICAL: Sync current values to target values when user starts dragging
+        // This prevents camera jump when rotation starts (current and target may be out of sync)
+        currentAzimuth = targetAzimuth;
+        currentElevation = targetElevation;
+        currentRadius = targetRadius;
+        
         isDraggingCamera = true;
         lastMouseX = event.clientX;
         lastMouseY = event.clientY;
@@ -268,10 +274,16 @@ renderer.domElement.addEventListener('contextmenu', (event) => {
 renderer.domElement.addEventListener('wheel', (event) => {
     event.preventDefault();
     
+    // CRITICAL: Sync current radius to target radius when user starts zooming
+    // This prevents camera jump when zoom starts (current and target may be out of sync)
+    currentRadius = targetRadius;
+    
     const zoomSpeed = 0.1; // 10% per scroll step
     const zoomFactor = 1 + (event.deltaY > 0 ? zoomSpeed : -zoomSpeed);
     targetRadius *= zoomFactor;
     targetRadius = Math.max(MIN_RADIUS, Math.min(MAX_RADIUS, targetRadius));
+    // Sync smoothed auto-zoom radius to manual zoom so auto-zoom doesn't fight when it re-enables
+    smoothedAutoZoomRadius = targetRadius;
     
     // Disable auto-zoom when user manually zooms
     autoZoomDisabledUntilMs = performance.now() + AUTO_ZOOM_DISABLE_DURATION_MS;
@@ -306,14 +318,20 @@ towerGroup.add(gridHelper);
 
 // Tower position offset (for panning/reframing)
 let towerPositionOffset = new THREE.Vector3(0, 0, 0);
+// Target tower position offset for smooth interpolation (prevents camera jumps)
+let targetTowerPositionOffset = new THREE.Vector3(0, 0, 0);
 
 // Function to center the tower (reset pan offset)
 function centerTower() {
     towerPositionOffset.set(0, 0, 0);
+    targetTowerPositionOffset.set(0, 0, 0);
 }
 
 // Function to vertically center the tower based on block positions
 function centerTowerVertically() {
+    // #region agent log
+    debugTelemetry({location:'main.js:centerTowerVertically:entry',message:'centerTowerVertically called',data:{blocksCount:blocks.length,isGeneratingLevel:isGeneratingLevel},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'});
+    // #endregion
     if (blocks.length === 0) return;
     
     let minY = Infinity;
@@ -336,10 +354,22 @@ function centerTowerVertically() {
     // Calculate center Y position
     const centerY = (minY + maxY) / 2;
     
-    // Adjust tower position offset to center vertically (negative because we want to move the tower down)
-    towerPositionOffset.y = -centerY;
+    // #region agent log
+    const oldOffsetY = towerPositionOffset.y;
+    // #endregion
     
-    console.log(`Tower vertically centered: minY=${minY.toFixed(2)}, maxY=${maxY.toFixed(2)}, centerY=${centerY.toFixed(2)}, offsetY=${towerPositionOffset.y.toFixed(2)}`);
+    // Adjust target tower position offset to center vertically (negative because we want to move the tower down)
+    // Use target value for smooth interpolation instead of immediate change
+    targetTowerPositionOffset.y = -centerY;
+    
+    // Note: Actual towerPositionOffset.y will be interpolated smoothly in the animation loop
+    // This prevents camera jumps when recentering
+    
+    // #region agent log
+    debugTelemetry({location:'main.js:centerTowerVertically:exit',message:'Tower offset target changed',data:{minY:minY.toFixed(2),maxY:maxY.toFixed(2),centerY:centerY.toFixed(2),oldOffsetY:oldOffsetY.toFixed(2),newTargetOffsetY:targetTowerPositionOffset.y.toFixed(2),currentOffsetY:towerPositionOffset.y.toFixed(2),deltaY:(targetTowerPositionOffset.y-oldOffsetY).toFixed(2)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'});
+    // #endregion
+    
+    console.log(`Tower vertically centered: minY=${minY.toFixed(2)}, maxY=${maxY.toFixed(2)}, centerY=${centerY.toFixed(2)}, targetOffsetY=${targetTowerPositionOffset.y.toFixed(2)}, currentOffsetY=${towerPositionOffset.y.toFixed(2)}`);
 }
 
 // Camera system constants
@@ -383,19 +413,40 @@ let currentElevation = cameraElevation;
 
 // Calculate initial camera position to show entire base plate
 function calculateInitialCameraPosition() {
+    // #region agent log
+    debugTelemetry({location:'main.js:calculateInitialCameraPosition:entry',message:'Initial camera position calculation',data:{isGeneratingLevel:isGeneratingLevel},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'});
+    // #endregion
+    // Ensure camera aspect is up to date
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    
     // Base plate dimensions
     const basePlateSize = gridSize * cubeSize; // 7 units
     const basePlateDiagonal = Math.sqrt(basePlateSize * basePlateSize * 2);
     
     // Calculate required distance to fit base plate in view
+    // Account for both horizontal and vertical FOV
     const fov = camera.fov * (Math.PI / 180); // Convert to radians
     const aspect = camera.aspect;
-    const requiredDistance = (basePlateDiagonal + ZOOM_PADDING) / (2 * Math.tan(fov / 2) * aspect);
+    
+    // Calculate for horizontal (width/depth) - use diagonal and aspect ratio
+    const horizontalDistance = (basePlateDiagonal + ZOOM_PADDING) / (2 * Math.tan(fov / 2) * aspect);
+    
+    // Calculate for vertical (height) - assume initial tower height estimate
+    const estimatedTowerHeight = 10; // Conservative estimate for initial positioning
+    const verticalDistance = (estimatedTowerHeight + ZOOM_PADDING) / (2 * Math.tan(fov / 2));
+    
+    // Use the larger distance with safety margin to ensure everything fits
+    const requiredDistance = Math.max(horizontalDistance, verticalDistance) * 1.3; // 30% safety margin
     
     // Set initial values
-    cameraRadius = Math.max(MIN_RADIUS, requiredDistance);
+    cameraRadius = Math.max(MIN_RADIUS, Math.min(MAX_RADIUS, requiredDistance));
     cameraElevation = Math.PI / 4; // 45°
     cameraAzimuth = Math.PI / 4; // 45° (diagonal view)
+    
+    // #region agent log
+    const oldTargetRadius = targetRadius;
+    // #endregion
     
     // Set target and current values
     targetRadius = cameraRadius;
@@ -404,6 +455,12 @@ function calculateInitialCameraPosition() {
     currentRadius = cameraRadius;
     currentAzimuth = cameraAzimuth;
     currentElevation = cameraElevation;
+    // Initialize smoothed auto-zoom radius
+    smoothedAutoZoomRadius = cameraRadius;
+    
+    // #region agent log
+    debugTelemetry({location:'main.js:calculateInitialCameraPosition:exit',message:'Initial camera position set',data:{basePlateDiagonal:basePlateDiagonal.toFixed(2),horizontalDistance:horizontalDistance.toFixed(2),verticalDistance:verticalDistance.toFixed(2),requiredDistance:requiredDistance.toFixed(2),oldTargetRadius:oldTargetRadius.toFixed(2),newTargetRadius:targetRadius.toFixed(2),currentRadius:currentRadius.toFixed(2),elevation:(cameraElevation*180/Math.PI).toFixed(2)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'});
+    // #endregion
 }
 
 // Update camera position from spherical coordinates
@@ -423,6 +480,8 @@ let lastAutoZoomUpdateMs = 0;
 // User override: disable auto-zoom after manual zoom for this duration
 const AUTO_ZOOM_DISABLE_DURATION_MS = 5000; // 5 seconds
 let autoZoomDisabledUntilMs = 0; // Timestamp when auto-zoom should re-enable
+// Smoothed auto-zoom target: auto-zoom calculates desired radius, we smooth it before setting targetRadius
+let smoothedAutoZoomRadius = cameraRadius;
 
 // Camera framing (tilt) via look-at offset in WORLD space.
 // Spaces:
@@ -482,6 +541,17 @@ function updateCameraPosition() {
     // Update tower group position
     towerGroup.position.copy(towerCenter.clone().add(towerPositionOffset));
     towerGroup.rotation.set(0, 0, 0); // Always locked to zero
+    
+    // #region agent log
+    // REMOVED: Per-frame telemetry call was causing ERR_INSUFFICIENT_RESOURCES
+    // This was making fetch requests every frame, overwhelming the browser
+    // If telemetry is needed, use debugTelemetry() with proper throttling instead
+    // const cameraPosDelta = camera.position.distanceTo(oldCameraPos);
+    // const lookAtDelta = _lookAtTarget.distanceTo(oldLookAtTarget);
+    // if (cameraPosDelta > 0.1 || lookAtDelta > 0.1) {
+    //     fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:updateCameraPosition',message:'Camera position updated',data:{oldPosX:oldCameraPos.x.toFixed(2),oldPosY:oldCameraPos.y.toFixed(2),oldPosZ:oldCameraPos.z.toFixed(2),newPosX:camera.position.x.toFixed(2),newPosY:camera.position.y.toFixed(2),newPosZ:camera.position.z.toFixed(2),posDelta:cameraPosDelta.toFixed(2),oldLookAtX:oldLookAtTarget.x.toFixed(2),oldLookAtY:oldLookAtTarget.y.toFixed(2),oldLookAtZ:oldLookAtTarget.z.toFixed(2),newLookAtX:_lookAtTarget.x.toFixed(2),newLookAtY:_lookAtTarget.y.toFixed(2),newLookAtZ:_lookAtTarget.z.toFixed(2),lookAtDelta:lookAtDelta.toFixed(2),towerOffsetY:towerPositionOffset.y.toFixed(2),currentRadius:currentRadius.toFixed(2)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+    // }
+    // #endregion
 }
 
 // Update lights to follow camera angle
@@ -687,7 +757,7 @@ const RESET_FLAG_KEY = 'jarrows_reset_completed';
 const CURRENT_STORAGE_VERSION = '2.0'; // Increment to reset all users
 
 // One-time reset: Clear all existing progress for all users
-// This ensures everyone starts from level 0
+// This ensures everyone starts from level 1
 // Uses a flag to ensure reset only happens once per version
 // NOTE: This function is now deprecated - we preserve user progress by default
 function resetAllProgress() {
@@ -1033,7 +1103,7 @@ async function ensureModeSelected({ forcePrompt = false } = {}) {
 }
 
 function timeChallengeResetRun() {
-    // This is called when starting a NEW RUN (level 0, fresh start)
+    // This is called when starting a NEW RUN (level 1, fresh start)
     // For new levels within a run, use timeChallengeStartNewLevel() instead
     timeLeftSec = TIME_CHALLENGE_START_SECONDS;
     timeChallengeInitialTime = TIME_CHALLENGE_START_SECONDS;
@@ -1217,6 +1287,7 @@ async function restartTimeChallengeLevelFromTimeUp() {
     // Clear move history
     moveHistory = [];
     totalMoves = 0;
+    debugMoveHistory = []; // Clear debug move history
     
     // Reset stats tracking for current level
     startLevelStats(currentLevel);
@@ -1239,7 +1310,7 @@ async function resetTimeChallengeRunFromTimeUp() {
     if (modal) modal.style.display = 'none';
     setTimeFrozen('time_up', false);
     timeChallengeResetRun();
-    await startNewGame(); // starts from level 0
+    await startNewGame(); // starts from level 1
 }
 
 // Save current progress
@@ -1258,12 +1329,12 @@ function saveProgress() {
         // Save current level (use correct storage key for current mode)
         const storageKey = getStorageKey();
         
-        // Safety check: Don't save level 0 unless there's a good reason (like starting new game)
-        // Check if we're overwriting a higher level with 0
+        // Safety check: Don't save level 0 or 1 unless there's a good reason (like starting new game)
+        // Check if we're overwriting a higher level with 0 or 1
         const existingLevel = parseInt(localStorage.getItem(storageKey) || '0', 10);
-        if (currentLevel === 0 && existingLevel > 0) {
-            console.warn(`[saveProgress] WARNING: Attempted to save level 0 over existing level ${existingLevel}. This might be a bug. Stack trace:`, new Error().stack);
-            // Don't save 0 over a higher level - this prevents accidental progress loss
+        if ((currentLevel === 0 || currentLevel === 1) && existingLevel > 1) {
+            console.warn(`[saveProgress] WARNING: Attempted to save level ${currentLevel} over existing level ${existingLevel}. This might be a bug. Stack trace:`, new Error().stack);
+            // Don't save 0 or 1 over a higher level - this prevents accidental progress loss
             return;
         }
         
@@ -1357,8 +1428,8 @@ function loadProgress() {
     } catch (e) {
         console.warn('Failed to load progress:', e);
     }
-    console.log(`Starting from level 0 (no saved progress for ${isTimeChallengeMode() ? 'Time Challenge' : 'Free Flow'})`);
-    return 0; // Default to level 0 if no saved progress
+    console.log(`Starting from level 1 (no saved progress for ${isTimeChallengeMode() ? 'Time Challenge' : 'Free Flow'})`);
+    return 1; // Default to level 1 if no saved progress
 }
 
 // Clear saved progress
@@ -1376,7 +1447,7 @@ function clearProgress() {
         }
         
         // Keep storage version and highest level for tracking
-        console.log(`Progress cleared - user will start from level 0 on next load (${isTimeChallengeMode() ? 'Time Challenge' : 'Free Flow'})`);
+        console.log(`Progress cleared - user will start from level 1 on next load (${isTimeChallengeMode() ? 'Time Challenge' : 'Free Flow'})`);
         return true;
     } catch (e) {
         console.warn('Failed to clear progress:', e);
@@ -2680,6 +2751,11 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
     isGeneratingLevel = true;
     levelCompleteShown = false; // Reset level complete flag for new level
     
+    // CRITICAL: Reset tower position offset at start of level to prevent camera jumps
+    // This ensures smooth transition from previous level's offset
+    towerPositionOffset.set(0, 0, 0);
+    targetTowerPositionOffset.set(0, 0, 0);
+    
     // CRITICAL: Set currentLevel to the level parameter
     // This ensures the level is preserved, especially when restarting
     currentLevel = level;
@@ -3254,8 +3330,20 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
     // Keep isGeneratingLevel true for a bit longer to prevent support checking from running
     // Blocks need time to fully initialize before support checking resumes
     setTimeout(() => {
+        // #region agent log
+        const oldIsGeneratingLevel = isGeneratingLevel;
+        const oldTargetRadius = targetRadius;
+        const oldCurrentRadius = currentRadius;
+        // #endregion
         isGeneratingLevel = false;
+        // #region agent log
+        debugTelemetry({location:'main.js:generateSolvablePuzzle:isGeneratingLevelFalse',message:'isGeneratingLevel set to false',data:{oldIsGeneratingLevel:oldIsGeneratingLevel,newIsGeneratingLevel:isGeneratingLevel,oldTargetRadius:oldTargetRadius.toFixed(2),oldCurrentRadius:oldCurrentRadius.toFixed(2),currentTargetRadius:targetRadius.toFixed(2),currentCurrentRadius:currentRadius.toFixed(2),blocksCount:blocks.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'});
+        // #endregion
         console.log('  Level generation complete, support checking enabled');
+        
+        // Force immediate auto-zoom update after spawn ends to ensure smooth transition
+        // This bypasses the throttle to prevent camera jump
+        lastAutoZoomUpdateMs = 0; // Reset throttle to force immediate auto-zoom on next frame
         
         // Vertically center the tower after all blocks are spawned
         // Shadows are manual/gated; keep them updating briefly so the post-spawn recenter doesn't "pop" a new shadow band.
@@ -3304,6 +3392,53 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
 // Move history for undo functionality
 let moveHistory = [];
 let totalMoves = 0; // Track total moves for the current level
+
+// Debug investigation system: console log buffer and enhanced move history
+const DEBUG_MOVE_HISTORY_SIZE = 5; // Store last 5 moves for investigation
+let debugMoveHistory = []; // Enhanced move history with full block state
+let consoleLogBuffer = []; // Buffer to store recent console logs
+const CONSOLE_LOG_BUFFER_SIZE = 100; // Store last 100 console log entries
+
+// Intercept console methods to capture logs
+(function() {
+    const originalLog = console.log;
+    const originalWarn = console.warn;
+    const originalError = console.error;
+    
+    function captureLog(level, args) {
+        const timestamp = Date.now();
+        const message = Array.from(args).map(arg => 
+            typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
+        ).join(' ');
+        
+        consoleLogBuffer.push({
+            level,
+            message,
+            timestamp,
+            stack: new Error().stack
+        });
+        
+        // Keep buffer size limited
+        if (consoleLogBuffer.length > CONSOLE_LOG_BUFFER_SIZE) {
+            consoleLogBuffer.shift();
+        }
+    }
+    
+    console.log = function(...args) {
+        captureLog('log', args);
+        originalLog.apply(console, args);
+    };
+    
+    console.warn = function(...args) {
+        captureLog('warn', args);
+        originalWarn.apply(console, args);
+    };
+    
+    console.error = function(...args) {
+        captureLog('error', args);
+        originalError.apply(console, args);
+    };
+})();
 
 // Timer functionality
 let timerStartTime = null;
@@ -3400,7 +3535,7 @@ function saveMoveState(block) {
 
 // Single source of truth for move history recording (called from `Block.move()`).
 function recordMoveState(block, preMoveState) {
-    moveHistory.push({
+    const moveEntry = {
         block,
         gridX: preMoveState.gridX,
         gridZ: preMoveState.gridZ,
@@ -3408,7 +3543,44 @@ function recordMoveState(block, preMoveState) {
         direction: { ...preMoveState.direction },
         isVertical: preMoveState.isVertical,
         timestamp: performance.now(),
-    });
+    };
+    
+    moveHistory.push(moveEntry);
+
+    // Enhanced debug move history with full block state
+    const blockIndex = blocks.indexOf(block);
+    const debugMoveEntry = {
+        timestamp: performance.now(),
+        moveNumber: totalMoves + 1,
+        block: {
+            id: `block_${blockIndex}_${preMoveState.gridX}_${preMoveState.gridZ}_${block.length}`,
+            index: blockIndex,
+            length: block.length,
+            gridX: preMoveState.gridX,
+            gridZ: preMoveState.gridZ,
+            yOffset: preMoveState.yOffset,
+            direction: { ...preMoveState.direction },
+            isVertical: preMoveState.isVertical,
+            isAnimating: block.isAnimating,
+            isFalling: block.isFalling,
+            isRemoved: block.isRemoved || false,
+        },
+        gameState: {
+            level: currentLevel,
+            totalMoves: totalMoves + 1,
+            blocksRemaining: blocks.filter(b => !b.isRemoved && !b.isFalling).length,
+            blocksTotal: blocks.length,
+            isGeneratingLevel: isGeneratingLevel,
+            gameMode: gameMode || 'unknown',
+        }
+    };
+    
+    debugMoveHistory.push(debugMoveEntry);
+    
+    // Keep only last N moves for investigation
+    if (debugMoveHistory.length > DEBUG_MOVE_HISTORY_SIZE) {
+        debugMoveHistory.shift();
+    }
 
     totalMoves++;
 
@@ -3789,6 +3961,7 @@ async function restartCurrentLevel() {
     // Clear move history for this level
     moveHistory = [];
     totalMoves = 0;
+    debugMoveHistory = []; // Clear debug move history
     
     // Reset stats tracking for current level
     startLevelStats(levelToRestart);
@@ -3881,7 +4054,7 @@ async function restartCurrentLevel() {
     }
 }
 
-// Start new game (reset to level 0)
+// Start new game (reset to level 1)
 async function startNewGame() {
     if (isGeneratingLevel) return;
     
@@ -3890,19 +4063,20 @@ async function startNewGame() {
     // Check for debug level parameter in URL (e.g., ?level=40)
     const urlParams = new URLSearchParams(window.location.search);
     const debugLevel = urlParams.get('level');
-    const targetLevel = debugLevel ? parseInt(debugLevel, 10) : 0;
+    const targetLevel = debugLevel ? parseInt(debugLevel, 10) : 1;
     
     // Clear saved progress FIRST (before resetting currentLevel)
     // This ensures localStorage is cleared before any validation checks
     clearProgress();
     
-    // Reset to level 0 (or debug level if specified)
+    // Reset to level 1 (or debug level if specified)
     currentLevel = targetLevel;
     levelCompleteShown = false;
     
     // Clear move history
     moveHistory = [];
     totalMoves = 0;
+    debugMoveHistory = []; // Clear debug move history
     
     // Reset spin counter
     remainingSpins = isTimeBasedMode() ? Number.POSITIVE_INFINITY : 3;
@@ -3922,10 +4096,10 @@ async function startNewGame() {
         localStorage.removeItem(storageKey);
     }
     
-    console.log(`[startNewGame] Generating level 0 (currentLevel=${currentLevel}, savedLevel=${parseInt(localStorage.getItem(storageKey) || '0', 10)})`);
+    console.log(`[startNewGame] Generating level 1 (currentLevel=${currentLevel}, savedLevel=${parseInt(localStorage.getItem(storageKey) || '0', 10)})`);
     
-    // Generate level 0 - pass isRestart=false explicitly to indicate this is a new game
-    await generateSolvablePuzzle(0, false);
+    // Generate level 1 - pass isRestart=false explicitly to indicate this is a new game
+    await generateSolvablePuzzle(1, false);
 }
 
 // Level completion modal functions
@@ -3957,17 +4131,10 @@ function showLevelCompleteModal(completedLevel) {
             setTimeFrozen('level_complete', true);
         }
 
-        // Get elapsed time (Free Flow) or remaining time (Time-based modes)
+        // Get elapsed time in the level (for all modes)
         let timeString = '00:00';
-        if (isTimeBasedMode() && timeChallengeActive) {
-            timeString = formatTime(Math.max(0, Math.ceil(timeLeftSec)));
-        } else {
-            let elapsedSeconds = timerPausedTime;
-            if (isTimerRunning && timerStartTime !== null) {
-                elapsedSeconds += (performance.now() / 1000) - timerStartTime;
-            }
-            timeString = formatTime(elapsedSeconds);
-        }
+        const elapsedSeconds = getElapsedTime();
+        timeString = formatTime(elapsedSeconds);
         if (timeElement) {
             timeElement.textContent = timeString;
         }
@@ -3997,7 +4164,7 @@ function showLevelCompleteModal(completedLevel) {
         }
         
         // Play level complete sound effect
-        playSound('levelComplete', 0.15);
+        playSound('levelComplete', 0.03);
         
         modal.style.display = 'flex';
     }
@@ -4008,8 +4175,37 @@ function hideLevelCompleteModal() {
     if (modal) {
         modal.style.display = 'none';
     }
-    if (isTimeChallengeMode() && timeChallengeActive) {
+    if (isTimeBasedMode() && timeChallengeActive) {
         setTimeFrozen('level_complete', false);
+    }
+}
+
+// Debug panel functions
+function showDebugPanel() {
+    const modal = document.getElementById('debug-panel-modal');
+    const levelInput = document.getElementById('debug-level-input');
+    if (modal) {
+        modal.style.display = 'flex';
+        // Set current level as default value
+        if (levelInput) {
+            levelInput.value = currentLevel;
+        }
+    }
+}
+
+function hideDebugPanel() {
+    const modal = document.getElementById('debug-panel-modal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+function toggleDebugPanel() {
+    const modal = document.getElementById('debug-panel-modal');
+    if (modal && modal.style.display === 'flex') {
+        hideDebugPanel();
+    } else {
+        showDebugPanel();
     }
 }
 
@@ -4023,6 +4219,7 @@ if (nextLevelButton) {
         console.log(`[Next Level] Incremented from ${previousLevel} to ${currentLevel}`);
         moveHistory = []; // Clear move history for new level
         totalMoves = 0; // Reset move counter
+        debugMoveHistory = []; // Clear debug move history for new level
         // CRITICAL: Save progress IMMEDIATELY after incrementing
         // This ensures localStorage always has the correct level
         saveProgress();
@@ -4036,6 +4233,153 @@ if (nextLevelButton) {
         }
         console.log(`[Next Level] Starting level ${currentLevel} (saved: ${savedLevel})`);
         await generateSolvablePuzzle(currentLevel);
+    });
+}
+
+// Debug panel button handlers
+const debugJumpButton = document.getElementById('debug-jump-button');
+if (debugJumpButton) {
+    debugJumpButton.addEventListener('click', async () => {
+        const levelInput = document.getElementById('debug-level-input');
+        if (levelInput) {
+            const targetLevel = parseInt(levelInput.value, 10);
+            if (!isNaN(targetLevel) && targetLevel >= 0) {
+                hideDebugPanel();
+                await window.debugJumpToLevel(targetLevel);
+            } else {
+                alert('Please enter a valid level number (0 or greater)');
+            }
+        }
+    });
+}
+
+const debugCloseButton = document.getElementById('debug-close-button');
+if (debugCloseButton) {
+    debugCloseButton.addEventListener('click', () => {
+        hideDebugPanel();
+    });
+}
+
+// Investigation function to capture bug report
+async function investigateBug() {
+    // Capture current game state
+    const currentGameState = {
+        level: currentLevel,
+        totalMoves: totalMoves,
+        gameMode: gameMode || 'unknown',
+        blocks: blocks.map((block, index) => ({
+            id: `block_${index}_${block.gridX}_${block.gridZ}_${block.length}`,
+            index: index,
+            length: block.length,
+            gridX: block.gridX,
+            gridZ: block.gridZ,
+            yOffset: block.yOffset,
+            direction: { ...block.direction },
+            isVertical: block.isVertical,
+            isAnimating: block.isAnimating,
+            isFalling: block.isFalling,
+            isRemoved: block.isRemoved || false,
+        })),
+        blocksRemaining: blocks.filter(b => !b.isRemoved && !b.isFalling).length,
+        blocksTotal: blocks.length,
+        isGeneratingLevel: isGeneratingLevel,
+        timestamp: Date.now(),
+    };
+    
+    // Get last N moves from debug history
+    const recentMoves = debugMoveHistory.slice(-DEBUG_MOVE_HISTORY_SIZE);
+    
+    // Get recent console logs
+    const recentLogs = consoleLogBuffer.slice(-50); // Last 50 log entries
+    
+    // Prompt user for description
+    const userDescription = prompt(
+        '🔍 Bug Investigation\n\n' +
+        'Please describe what happened:\n' +
+        '- What did you expect to happen?\n' +
+        '- What actually happened?\n' +
+        '- When did it occur? (e.g., "after moving block X")\n\n' +
+        'Your description:'
+    );
+    
+    if (userDescription === null) {
+        // User cancelled
+        return;
+    }
+    
+    // Compile investigation report
+    const investigationReport = {
+        timestamp: new Date().toISOString(),
+        userDescription: userDescription || 'No description provided',
+        recentMoves: recentMoves,
+        currentGameState: currentGameState,
+        recentConsoleLogs: recentLogs,
+        systemInfo: {
+            userAgent: navigator.userAgent,
+            platform: navigator.platform,
+            screenSize: `${window.innerWidth}x${window.innerHeight}`,
+            gameVersion: 'current',
+        }
+    };
+    
+    // Display in console
+    console.group('🔍 BUG INVESTIGATION REPORT');
+    console.log('Timestamp:', investigationReport.timestamp);
+    console.log('User Description:', investigationReport.userDescription);
+    console.log('Recent Moves:', investigationReport.recentMoves);
+    console.log('Current Game State:', investigationReport.currentGameState);
+    console.log('Recent Console Logs:', investigationReport.recentConsoleLogs);
+    console.log('System Info:', investigationReport.systemInfo);
+    console.log('\n--- Full Report (JSON) ---');
+    console.log(JSON.stringify(investigationReport, null, 2));
+    console.groupEnd();
+    
+    // Copy to clipboard
+    try {
+        await navigator.clipboard.writeText(JSON.stringify(investigationReport, null, 2));
+        alert('✅ Investigation report copied to clipboard!\n\n' +
+              'The full report has also been logged to the console.\n' +
+              'You can now paste it wherever you need to report the bug.');
+    } catch (err) {
+        console.warn('Could not copy to clipboard:', err);
+        alert('✅ Investigation report logged to console!\n\n' +
+              'Please copy the JSON from the console manually.');
+    }
+    
+    hideDebugPanel();
+}
+
+const debugInvestigateButton = document.getElementById('debug-investigate-button');
+if (debugInvestigateButton) {
+    debugInvestigateButton.addEventListener('click', () => {
+        investigateBug();
+    });
+}
+
+// Allow Enter key to trigger jump in debug panel
+const debugLevelInput = document.getElementById('debug-level-input');
+if (debugLevelInput) {
+    debugLevelInput.addEventListener('keydown', async (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const targetLevel = parseInt(debugLevelInput.value, 10);
+            if (!isNaN(targetLevel) && targetLevel >= 0) {
+                hideDebugPanel();
+                await window.debugJumpToLevel(targetLevel);
+            } else {
+                alert('Please enter a valid level number (0 or greater)');
+            }
+        }
+    });
+}
+
+// Close debug panel when clicking outside
+const debugPanelModal = document.getElementById('debug-panel-modal');
+if (debugPanelModal) {
+    debugPanelModal.addEventListener('click', (e) => {
+        if (e.target === debugPanelModal) {
+            hideDebugPanel();
+        }
     });
 }
 
@@ -4719,10 +5063,10 @@ if (document.readyState === 'loading') {
     setupDiceButton();
     setupButtonWatcher();
     document.addEventListener('keydown', (e) => {
-        if (e.ctrlKey && e.shiftKey && e.key === 'D') {
+        if (e.ctrlKey && e.shiftKey && e.altKey && e.key === 'D') {
             e.preventDefault();
-            console.log('[Debug] Keyboard shortcut triggered (Ctrl+Shift+D)');
-            logDebugState();
+            console.log('[Debug] Keyboard shortcut triggered (Ctrl+Shift+Alt+D)');
+            toggleDebugPanel();
         }
     });
 }
@@ -5753,6 +6097,12 @@ renderer.domElement.addEventListener('touchstart', (event) => {
     
     if (touchState.touches.length === 1) {
         // Single touch - orbit mode
+        // CRITICAL: Sync current values to target values when user starts dragging
+        // This prevents camera jump when rotation starts (current and target may be out of sync)
+        currentAzimuth = targetAzimuth;
+        currentElevation = targetElevation;
+        currentRadius = targetRadius;
+        
         const touch = touchState.touches[0];
         touchState.lastCenter = { x: touch.clientX, y: touch.clientY };
         
@@ -5833,11 +6183,16 @@ renderer.domElement.addEventListener('touchmove', (event) => {
         if (distanceChange > PINCH_THRESHOLD) {
             if (!touchState.isPinching) {
                 touchState.isPinching = true;
+                // CRITICAL: Sync current radius to target radius when pinch starts
+                // This prevents camera jump when zoom starts (current and target may be out of sync)
+                currentRadius = targetRadius;
             }
 
             const zoomFactor = currentDistance / touchState.startDistance;
             targetRadius /= zoomFactor;
             targetRadius = Math.max(MIN_RADIUS, Math.min(MAX_RADIUS, targetRadius));
+            // Sync smoothed auto-zoom radius to manual zoom so auto-zoom doesn't fight when it re-enables
+            smoothedAutoZoomRadius = targetRadius;
             touchState.startDistance = currentDistance;
             
             // Disable auto-zoom when user manually zooms
@@ -6230,13 +6585,17 @@ function animate() {
     towerGroup.position.copy(_towerGroupWorldCenter);
     towerGroup.rotation.set(0, 0, 0); // Always locked to zero
     
-    // Dynamic zoom during spawn
+    // Dynamic zoom during spawn - uses unified calculation with auto-zoom
     if (isGeneratingLevel && blocks.length > 0) {
-        // Throttle expensive bounding-box calculation to avoid long rAF frames.
-        if ((currentTime - lastSpawnZoomUpdateMs) > SPAWN_ZOOM_UPDATE_INTERVAL_MS) {
+        // For first blocks or when enough time has passed, update zoom immediately
+        const timeSinceLastUpdate = currentTime - lastSpawnZoomUpdateMs;
+        const shouldUpdateNow = lastSpawnZoomUpdateMs === 0 || timeSinceLastUpdate > SPAWN_ZOOM_UPDATE_INTERVAL_MS;
+        
+        if (shouldUpdateNow) {
             lastSpawnZoomUpdateMs = currentTime;
 
             _spawnZoomBox.makeEmpty();
+            // Ensure all blocks have updated world matrices before calculating bounding box
             for (const block of blocks) {
                 if (!block || !block.group) continue;
                 block.group.updateMatrixWorld(true);
@@ -6244,21 +6603,44 @@ function animate() {
             }
 
             const size = _spawnZoomBox.getSize(_spawnZoomSize);
+            
+            // If bounding box is empty or invalid, skip this update
+            if (_spawnZoomBox.isEmpty() || size.x === 0 || size.y === 0 || size.z === 0) {
+                // Skip invalid bounding box
+            } else {
+                // Ensure minimum bounding box size to prevent zooming in too much
+                if (size.x < AUTO_ZOOM_MIN_BOUNDING_SIZE) size.x = AUTO_ZOOM_MIN_BOUNDING_SIZE;
+                if (size.y < AUTO_ZOOM_MIN_BOUNDING_SIZE) size.y = AUTO_ZOOM_MIN_BOUNDING_SIZE;
+                if (size.z < AUTO_ZOOM_MIN_BOUNDING_SIZE) size.z = AUTO_ZOOM_MIN_BOUNDING_SIZE;
 
-            // Calculate required distance to fit all blocks
-            const fov = camera.fov * (Math.PI / 180);
-            const aspect = camera.aspect;
+                // Use unified zoom calculation (same as auto-zoom)
+                const fov = camera.fov * (Math.PI / 180);
+                const aspect = camera.aspect;
+                const effectivePadding = ZOOM_PADDING; // Use standard padding, not spawn-specific
 
-            // Calculate distance needed for height (with extra padding for spawn)
-            const heightDistance = (size.y + SPAWN_ZOOM_PADDING) / (2 * Math.tan(fov / 2));
+                // Calculate distance needed for height (vertical FOV)
+                const heightDistance = (size.y + effectivePadding) / (2 * Math.tan(fov / 2));
 
-            // Calculate distance needed for width/depth (with extra padding for spawn)
-            const baseDiagonal = Math.sqrt(size.x * size.x + size.z * size.z);
-            const widthDistance = (baseDiagonal + SPAWN_ZOOM_PADDING) / (2 * Math.tan(fov / 2) * aspect);
+                // Calculate distance needed for width/depth (horizontal FOV)
+                const horizontalDiagonal = Math.sqrt(size.x * size.x + size.z * size.z);
+                const widthDistance = (horizontalDiagonal + effectivePadding) / (2 * Math.tan(fov / 2) * aspect);
 
-            // Use the larger distance and apply multiplier for extra zoom out
-            const requiredDistance = Math.max(heightDistance, widthDistance) * SPAWN_ZOOM_MULTIPLIER;
-            targetRadius = Math.max(MIN_RADIUS, Math.min(MAX_RADIUS, requiredDistance));
+                // Use the larger distance with a safety margin to ensure all blocks stay visible
+                // This matches auto-zoom calculation for smooth transition
+                const safetyMargin = 1.3; // 30% safety margin during spawn - ensure all blocks visible
+                const requiredDistance = Math.max(heightDistance, widthDistance) * safetyMargin;
+                const clampedRequiredDistance = Math.max(MIN_RADIUS, Math.min(MAX_RADIUS, requiredDistance));
+                // During spawn, update smoothed auto-zoom immediately for responsive feel
+                smoothedAutoZoomRadius = clampedRequiredDistance;
+                // #region agent log
+                const oldTargetRadius = targetRadius;
+                // #endregion
+                targetRadius = smoothedAutoZoomRadius;
+                // #region agent log
+                // Replaced with debugTelemetry to prevent ERR_INSUFFICIENT_RESOURCES
+                // debugTelemetry({location:'main.js:animate:spawnZoom',message:'Spawn zoom update',data:{blocksCount:blocks.length,sizeX:size.x.toFixed(2),sizeY:size.y.toFixed(2),sizeZ:size.z.toFixed(2),heightDistance:heightDistance.toFixed(2),widthDistance:widthDistance.toFixed(2),requiredDistance:requiredDistance.toFixed(2),oldTargetRadius:oldTargetRadius.toFixed(2),newTargetRadius:targetRadius.toFixed(2),currentRadius:currentRadius.toFixed(2)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'});
+                // #endregion
+            }
         }
     }
     
@@ -6268,6 +6650,15 @@ function animate() {
     const isAutoZoomEnabled = (typeof window !== 'undefined' && window.autoZoomEnabled !== undefined) 
         ? window.autoZoomEnabled 
         : true; // Default to enabled if not set
+    
+    // #region agent log
+    // Removed per-frame telemetry call to prevent ERR_INSUFFICIENT_RESOURCES
+    // Use debugTelemetry() instead if debug telemetry is needed (it has proper throttling/guards)
+    // if (!isGeneratingLevel && blocks.length > 0) {
+    //     debugTelemetry({location:'main.js:animate:autoZoom:beforeThrottle',message:'Auto-zoom before throttle check',data:{isAutoZoomDisabled:isAutoZoomDisabled,isAutoZoomEnabled:isAutoZoomEnabled,timeSinceLastUpdate:currentTime-lastAutoZoomUpdateMs,willRun:(currentTime-lastAutoZoomUpdateMs)>AUTO_ZOOM_UPDATE_INTERVAL_MS,targetRadius:targetRadius.toFixed(2),currentRadius:currentRadius.toFixed(2)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'});
+    // }
+    // #endregion
+    
     if (!isGeneratingLevel && blocks.length > 0 && !isAutoZoomDisabled && isAutoZoomEnabled) {
         // Throttle expensive bounding-box calculation to avoid long rAF frames
         if ((currentTime - lastAutoZoomUpdateMs) > AUTO_ZOOM_UPDATE_INTERVAL_MS) {
@@ -6275,6 +6666,9 @@ function animate() {
 
             _autoZoomBox.makeEmpty();
             let hasNonCatapultedBlocks = false;
+            
+            // Calculate effective tower center (with offset) for bounding box calculation
+            _effectiveTowerCenter.copy(towerCenter).add(towerPositionOffset);
             
             for (const block of blocks) {
                 if (!block || !block.group || block.isRemoved) continue;
@@ -6286,9 +6680,23 @@ function animate() {
                 hasNonCatapultedBlocks = true;
             }
 
+            // #region agent log
+            // Replaced with debugTelemetry to prevent ERR_INSUFFICIENT_RESOURCES
+            // debugTelemetry({location:'main.js:animate:autoZoom:beforeCheck',message:'Auto-zoom before condition check',data:{hasNonCatapultedBlocks:hasNonCatapultedBlocks,isEmpty:_autoZoomBox.isEmpty(),blocksCount:blocks.length,towerOffsetY:towerPositionOffset.y.toFixed(2)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'});
+            // #endregion
+
             // Only update zoom if we have non-catapulted blocks to frame
             if (hasNonCatapultedBlocks && !_autoZoomBox.isEmpty()) {
+                // Get bounding box size - this is in world space, which is correct
+                // because the camera position is also in world space relative to effective tower center
                 let size = _autoZoomBox.getSize(_autoZoomSize);
+                
+                // #region agent log
+                // Replaced with debugTelemetry to prevent ERR_INSUFFICIENT_RESOURCES
+                // const boxMin = _autoZoomBox.min;
+                // const boxMax = _autoZoomBox.max;
+                // debugTelemetry({location:'main.js:animate:autoZoom:boundingBox',message:'Auto-zoom bounding box',data:{sizeX:size.x.toFixed(2),sizeY:size.y.toFixed(2),sizeZ:size.z.toFixed(2),minX:boxMin.x.toFixed(2),minY:boxMin.y.toFixed(2),minZ:boxMin.z.toFixed(2),maxX:boxMax.x.toFixed(2),maxY:boxMax.y.toFixed(2),maxZ:boxMax.z.toFixed(2),towerOffsetY:towerPositionOffset.y.toFixed(2)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'});
+                // #endregion
 
                 // Ensure minimum bounding box size to prevent zooming in too much with few blocks
                 // This ensures all blocks stay in frame even when there are very few blocks
@@ -6297,61 +6705,41 @@ function animate() {
                 if (size.z < AUTO_ZOOM_MIN_BOUNDING_SIZE) size.z = AUTO_ZOOM_MIN_BOUNDING_SIZE;
 
                 // Calculate required distance to fit all non-catapulted blocks
+                // Use unified calculation (same as spawn zoom) for smooth transition
                 const fov = camera.fov * (Math.PI / 180);
                 const aspect = camera.aspect;
-
-                // Minimal padding to keep all blocks visible
-                const effectivePadding = isMobileLike ? ZOOM_PADDING * 1.0 : ZOOM_PADDING * DESKTOP_ZOOM_PADDING_MULTIPLIER;
+                const effectivePadding = ZOOM_PADDING; // Standard padding
 
                 // Calculate distance needed for height (vertical FOV)
                 const heightDistance = (size.y + effectivePadding) / (2 * Math.tan(fov / 2));
 
                 // Calculate distance needed for width/depth (horizontal FOV)
-                // For perspective projection: horizontalFOV = 2 * atan(tan(verticalFOV/2) * aspect)
-                // Distance = size / (2 * tan(horizontalFOV/2))
-                // Simplified: distance = size / (2 * tan(verticalFOV/2) * aspect)
-                // Use the diagonal of X-Z plane to ensure worst-case corner blocks are visible
-                // When camera is at an angle, the diagonal projection is the limiting factor
                 const horizontalDiagonal = Math.sqrt(size.x * size.x + size.z * size.z);
-                // Account for camera elevation: when viewing at an angle, perspective distortion
-                // means corner blocks project further. Increase diagonal by elevation factor.
-                const elevationDistortionFactor = 1.0 + (0.2 * Math.abs(Math.sin(currentElevation)));
-                const adjustedDiagonal = horizontalDiagonal * elevationDistortionFactor;
-                const widthDistance = (adjustedDiagonal + effectivePadding) / (2 * Math.tan(fov / 2) * aspect);
+                const widthDistance = (horizontalDiagonal + effectivePadding) / (2 * Math.tan(fov / 2) * aspect);
 
-                // Use the larger distance and apply platform-aware multiplier
-                // Desktop: zoom out more to prevent blocks going out of frame
-                // Mobile: zoom in more to reduce wasted space on sides
-                const platformMultiplier = isMobileLike ? AUTO_ZOOM_MULTIPLIER_MOBILE : AUTO_ZOOM_MULTIPLIER_DESKTOP;
-                let baseDistance = Math.max(heightDistance, widthDistance);
-                
-                // Desktop-specific: Account for camera elevation angle and perspective distortion
-                // When camera is at an angle, the bounding box appears larger in screen space
-                // We need to ensure all blocks stay visible even at the edges
-                if (!isMobileLike) {
-                    // Account for elevation angle - when camera looks down, we need more distance
-                    // to ensure corner blocks don't get cut off due to perspective
-                    const elevationFactor = 1.0 + (0.08 * Math.abs(Math.sin(currentElevation)));
-                    baseDistance *= elevationFactor;
-                    
-                    // Minimal safety margin for desktop to ensure all blocks stay in viewport
-                    // This accounts for perspective distortion, edge cases, and bounding box approximation
-                    baseDistance *= 1.02;
-                }
-                
-                // Add safety margin to ensure all blocks stay visible
-                // This accounts for perspective distortion, edge cases, bounding box approximation,
-                // and the fact that corner blocks project further in screen space when camera is at an angle
-                const safetyMargin = isMobileLike ? 1.12 : 1.15; // 12% mobile, 15% desktop safety margin
-                const requiredDistance = baseDistance * platformMultiplier * safetyMargin;
-                targetRadius = Math.max(MIN_RADIUS, Math.min(MAX_RADIUS, requiredDistance));
+                // Use the larger distance with a safety margin to ensure all blocks stay visible
+                // This accounts for perspective distortion, camera lookAt offset, and edge cases
+                // The camera looks at tower center + framingOffsetY, which may be offset from bounding box center
+                // Use a larger margin (1.2 = 20% safety margin) to ensure all blocks visible
+                const safetyMargin = 1.2; // 20% safety margin - accounts for lookAt offset and perspective
+                const requiredDistance = Math.max(heightDistance, widthDistance) * safetyMargin;
+                const clampedRequiredDistance = Math.max(MIN_RADIUS, Math.min(MAX_RADIUS, requiredDistance));
+                // Smooth the auto-zoom target to prevent jerky movement when bounding box changes
+                // This creates a stable target that gradually approaches the desired distance
+                const AUTO_ZOOM_SMOOTHING = 0.3; // Smooth auto-zoom target updates
+                smoothedAutoZoomRadius += (clampedRequiredDistance - smoothedAutoZoomRadius) * AUTO_ZOOM_SMOOTHING;
+                // #region agent log
+                const oldTargetRadius = targetRadius;
+                // #endregion
+                targetRadius = smoothedAutoZoomRadius;
+                // #region agent log
+                // Replaced with debugTelemetry to prevent ERR_INSUFFICIENT_RESOURCES
+                // debugTelemetry({location:'main.js:animate:autoZoom',message:'Auto-zoom update',data:{blocksCount:blocks.length,sizeX:size.x.toFixed(2),sizeY:size.y.toFixed(2),sizeZ:size.z.toFixed(2),heightDistance:heightDistance.toFixed(2),widthDistance:widthDistance.toFixed(2),requiredDistance:requiredDistance.toFixed(2),oldTargetRadius:oldTargetRadius.toFixed(2),newTargetRadius:targetRadius.toFixed(2),currentRadius:currentRadius.toFixed(2),currentElevation:(currentElevation*180/Math.PI).toFixed(2)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'});
+                // #endregion
                 
                 // Debug: log auto-zoom calculation (can be removed later)
                 if (typeof window !== 'undefined' && window.jarrows_debug === '1') {
                     console.log('[Auto-zoom]', {
-                        platform: isMobileLike ? 'mobile' : 'desktop',
-                        multiplier: platformMultiplier,
-                        baseDistance: baseDistance.toFixed(2),
                         requiredDistance: requiredDistance.toFixed(2),
                         targetRadius: targetRadius.toFixed(2),
                         size: { x: size.x.toFixed(2), y: size.y.toFixed(2), z: size.z.toFixed(2) }
@@ -6361,12 +6749,29 @@ function animate() {
         }
     }
     
-    // Smooth interpolation with heavier feel (momentum/inertia)
-    // Lower smoothing = slower acceleration/deceleration = heavier feel
-    const smoothing = isGeneratingLevel ? 0.25 : 0.04; // Much slower during gameplay for heavy feel
+    // Smooth interpolation - balanced for responsive yet smooth movement
+    // Higher smoothing = faster response = smoother feel
+    const smoothing = isGeneratingLevel ? 0.25 : 0.15; // Increased from 0.04 to 0.15 for smoother, more responsive camera
+    // #region agent log
+    const oldCurrentRadius = currentRadius;
+    const oldTargetRadius = targetRadius;
+    // #endregion
     currentRadius += (targetRadius - currentRadius) * smoothing;
     currentAzimuth += (targetAzimuth - currentAzimuth) * smoothing;
     currentElevation += (targetElevation - currentElevation) * smoothing;
+    
+    // Smooth interpolation of tower position offset to prevent camera jumps
+    // Use faster smoothing during level generation for responsive feel
+    const towerOffsetSmoothing = isGeneratingLevel ? 0.3 : 0.2;
+    towerPositionOffset.x += (targetTowerPositionOffset.x - towerPositionOffset.x) * towerOffsetSmoothing;
+    towerPositionOffset.y += (targetTowerPositionOffset.y - towerPositionOffset.y) * towerOffsetSmoothing;
+    towerPositionOffset.z += (targetTowerPositionOffset.z - towerPositionOffset.z) * towerOffsetSmoothing;
+    // #region agent log
+    // Replaced with debugTelemetry to prevent ERR_INSUFFICIENT_RESOURCES
+    // if (Math.abs(oldCurrentRadius - currentRadius) > 0.1 || Math.abs(oldTargetRadius - targetRadius) > 0.1) {
+    //     debugTelemetry({location:'main.js:animate:interpolation',message:'Camera radius interpolation',data:{isGeneratingLevel:isGeneratingLevel,smoothing:smoothing.toFixed(3),oldCurrentRadius:oldCurrentRadius.toFixed(2),newCurrentRadius:currentRadius.toFixed(2),oldTargetRadius:oldTargetRadius.toFixed(2),newTargetRadius:targetRadius.toFixed(2),delta:Math.abs(currentRadius-oldCurrentRadius).toFixed(2)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'});
+    // }
+    // #endregion
 
     // Snap to target when close to avoid endless micro-updates (saves battery, stabilizes idle frames)
     const SNAP_EPS = 1e-4;
