@@ -1918,6 +1918,9 @@ export class Block {
             // Check for 3D overlaps: blocks cannot move to a position where they would overlap with another block
             // This includes checking blocks at different Y levels that might overlap in 3D space
             let blocked = false;
+            let collisionCellX = null; // Track the specific cell that collided (for horizontal blocks)
+            let collisionCellZ = null; // Track the specific cell that collided (for horizontal blocks)
+            
             for (const other of blocks) {
                 // Skip blocks that are falling, removed, or being removed
                 if (other === this || other.isFalling || other.isRemoved || other.removalStartTime) continue;
@@ -1944,6 +1947,8 @@ export class Block {
                         if (nextGridX === other.gridX && nextGridZ === other.gridZ) {
                             blocked = true;
                             collidedBlock = other;
+                            collisionCellX = nextGridX;
+                            collisionCellZ = nextGridZ;
                         }
                     } else {
                         const otherIsXAligned = Math.abs(other.direction.x) > 0;
@@ -1953,6 +1958,8 @@ export class Block {
                             if (nextGridX === otherX && nextGridZ === otherZ) {
                                 blocked = true;
                                 collidedBlock = other;
+                                collisionCellX = nextGridX;
+                                collisionCellZ = nextGridZ;
                                 break;
                             }
                         }
@@ -1967,6 +1974,8 @@ export class Block {
                             if (checkX === other.gridX && checkZ === other.gridZ) {
                                 blocked = true;
                                 collidedBlock = other;
+                                collisionCellX = checkX; // Track the specific cell that collided
+                                collisionCellZ = checkZ; // Track the specific cell that collided
                                 break;
                             }
                         } else {
@@ -1977,6 +1986,8 @@ export class Block {
                                 if (checkX === otherX && checkZ === otherZ) {
                                     blocked = true;
                                     collidedBlock = other;
+                                    collisionCellX = checkX; // Track the specific cell that collided
+                                    collisionCellZ = checkZ; // Track the specific cell that collided
                                     break;
                                 }
                             }
@@ -1989,10 +2000,9 @@ export class Block {
             
             if (blocked) {
                 // Check if this is a head-on collision
-                // The collision occurs at nextGridX, nextGridZ
-                // Pass the current position (tempGridX, tempGridZ) so the helper can determine if collision is at head
-                const collisionX = nextGridX;
-                const collisionZ = nextGridZ;
+                // Use the actual collision cell coordinates (for horizontal blocks, this is the specific cell that collided)
+                const collisionX = collisionCellX !== null ? collisionCellX : nextGridX;
+                const collisionZ = collisionCellZ !== null ? collisionCellZ : nextGridZ;
                 
                 const isHeadOn = collidedBlock && isHeadOnCollision(this, collidedBlock, collisionX, collisionZ, tempGridX, tempGridZ);
                 
