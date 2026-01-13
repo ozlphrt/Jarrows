@@ -3658,6 +3658,7 @@ function undoLastMove() {
         block.physicsBody = null;
         block.physicsCollider = null;
         block.needsPhysicsBody = false;
+        block.needsTransitionToFalling = false; // CRITICAL: Reset to prevent interference with replay
         block.pendingAngularVel = null;
         block.pendingLinearVel = null;
 
