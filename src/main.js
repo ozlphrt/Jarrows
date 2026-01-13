@@ -1288,6 +1288,8 @@ async function restartTimeChallengeLevelFromTimeUp() {
     moveHistory = [];
     totalMoves = 0;
     debugMoveHistory = []; // Clear debug move history
+    debugCollisionEvents = []; // Clear collision events
+    debugMovementCalculations = []; // Clear movement calculations
     
     // Reset stats tracking for current level
     startLevelStats(currentLevel);
@@ -3399,6 +3401,12 @@ let debugMoveHistory = []; // Enhanced move history with full block state
 let consoleLogBuffer = []; // Buffer to store recent console logs
 const CONSOLE_LOG_BUFFER_SIZE = 100; // Store last 100 console log entries
 
+// Debug buffers for detailed collision and movement tracking
+let debugCollisionEvents = []; // Track collision events with detailed info
+let debugMovementCalculations = []; // Track movement calculations
+const DEBUG_COLLISION_BUFFER_SIZE = 50; // Store last 50 collision events
+const DEBUG_MOVEMENT_BUFFER_SIZE = 50; // Store last 50 movement calculations
+
 // Intercept console methods to capture logs
 (function() {
     const originalLog = console.log;
@@ -3439,6 +3447,33 @@ const CONSOLE_LOG_BUFFER_SIZE = 100; // Store last 100 console log entries
         originalError.apply(console, args);
     };
 })();
+
+// Debug logging functions for collision and movement tracking
+function logCollisionEvent(event) {
+    debugCollisionEvents.push({
+        ...event,
+        timestamp: performance.now(),
+        moveNumber: totalMoves
+    });
+    if (debugCollisionEvents.length > DEBUG_COLLISION_BUFFER_SIZE) {
+        debugCollisionEvents.shift();
+    }
+}
+
+function logMovementCalculation(calculation) {
+    debugMovementCalculations.push({
+        ...calculation,
+        timestamp: performance.now(),
+        moveNumber: totalMoves
+    });
+    if (debugMovementCalculations.length > DEBUG_MOVEMENT_BUFFER_SIZE) {
+        debugMovementCalculations.shift();
+    }
+}
+
+// Make these functions available globally for Block.js to use
+window.debugCollisionLog = logCollisionEvent;
+window.debugMovementLog = logMovementCalculation;
 
 // Timer functionality
 let timerStartTime = null;
@@ -3547,12 +3582,12 @@ function recordMoveState(block, preMoveState) {
     
     moveHistory.push(moveEntry);
 
-    // Enhanced debug move history with full block state
+    // Enhanced debug move history with full block state (before and after)
     const blockIndex = blocks.indexOf(block);
     const debugMoveEntry = {
         timestamp: performance.now(),
         moveNumber: totalMoves + 1,
-        block: {
+        blockBefore: {
             id: `block_${blockIndex}_${preMoveState.gridX}_${preMoveState.gridZ}_${block.length}`,
             index: blockIndex,
             length: block.length,
@@ -3561,6 +3596,16 @@ function recordMoveState(block, preMoveState) {
             yOffset: preMoveState.yOffset,
             direction: { ...preMoveState.direction },
             isVertical: preMoveState.isVertical,
+        },
+        blockAfter: {
+            id: `block_${blockIndex}_${block.gridX}_${block.gridZ}_${block.length}`,
+            index: blockIndex,
+            length: block.length,
+            gridX: block.gridX,
+            gridZ: block.gridZ,
+            yOffset: block.yOffset,
+            direction: { ...block.direction },
+            isVertical: block.isVertical,
             isAnimating: block.isAnimating,
             isFalling: block.isFalling,
             isRemoved: block.isRemoved || false,
@@ -3962,6 +4007,8 @@ async function restartCurrentLevel() {
     moveHistory = [];
     totalMoves = 0;
     debugMoveHistory = []; // Clear debug move history
+    debugCollisionEvents = []; // Clear collision events
+    debugMovementCalculations = []; // Clear movement calculations
     
     // Reset stats tracking for current level
     startLevelStats(levelToRestart);
@@ -4077,6 +4124,8 @@ async function startNewGame() {
     moveHistory = [];
     totalMoves = 0;
     debugMoveHistory = []; // Clear debug move history
+    debugCollisionEvents = []; // Clear collision events
+    debugMovementCalculations = []; // Clear movement calculations
     
     // Reset spin counter
     remainingSpins = isTimeBasedMode() ? Number.POSITIVE_INFINITY : 3;
@@ -4219,7 +4268,11 @@ if (nextLevelButton) {
         console.log(`[Next Level] Incremented from ${previousLevel} to ${currentLevel}`);
         moveHistory = []; // Clear move history for new level
         totalMoves = 0; // Reset move counter
-        debugMoveHistory = []; // Clear debug move history for new level
+        debugMoveHistory = []; // Clear debug move history
+    debugCollisionEvents = []; // Clear collision events
+    debugMovementCalculations = []; // Clear movement calculations for new level
+        debugCollisionEvents = []; // Clear collision events for new level
+        debugMovementCalculations = []; // Clear movement calculations for new level
         // CRITICAL: Save progress IMMEDIATELY after incrementing
         // This ensures localStorage always has the correct level
         saveProgress();
@@ -4292,6 +4345,12 @@ async function investigateBug() {
     // Get recent console logs
     const recentLogs = consoleLogBuffer.slice(-50); // Last 50 log entries
     
+    // Get recent collision events
+    const recentCollisions = debugCollisionEvents.slice(-20); // Last 20 collision events
+    
+    // Get recent movement calculations
+    const recentMovements = debugMovementCalculations.slice(-20); // Last 20 movement calculations
+    
     // Prompt user for description
     const userDescription = prompt(
         '🔍 Bug Investigation\n\n' +
@@ -4314,6 +4373,8 @@ async function investigateBug() {
         recentMoves: recentMoves,
         currentGameState: currentGameState,
         recentConsoleLogs: recentLogs,
+        recentCollisionEvents: recentCollisions,
+        recentMovementCalculations: recentMovements,
         systemInfo: {
             userAgent: navigator.userAgent,
             platform: navigator.platform,
@@ -4329,6 +4390,8 @@ async function investigateBug() {
     console.log('Recent Moves:', investigationReport.recentMoves);
     console.log('Current Game State:', investigationReport.currentGameState);
     console.log('Recent Console Logs:', investigationReport.recentConsoleLogs);
+    console.log('Recent Collision Events:', investigationReport.recentCollisionEvents);
+    console.log('Recent Movement Calculations:', investigationReport.recentMovementCalculations);
     console.log('System Info:', investigationReport.systemInfo);
     console.log('\n--- Full Report (JSON) ---');
     console.log(JSON.stringify(investigationReport, null, 2));

@@ -1866,6 +1866,18 @@ export class Block {
             isVertical: this.isVertical,
         };
         
+        // Log movement start
+        if (window.debugMovementLog) {
+            window.debugMovementLog({
+                type: 'move-start',
+                blockIndex: blocks.indexOf(this),
+                initialPosition: { x: this.gridX, z: this.gridZ, y: this.yOffset },
+                direction: { ...this.direction },
+                isVertical: this.isVertical,
+                length: this.length,
+            });
+        }
+        
         // Calculate how many steps the block can move before hitting something
         let stepsToObstacle = 0;
         let tempGridX = this.gridX;
@@ -2006,6 +2018,38 @@ export class Block {
                 
                 const isHeadOn = collidedBlock && isHeadOnCollision(this, collidedBlock, collisionX, collisionZ, tempGridX, tempGridZ);
                 
+                // Log collision event for debugging
+                if (window.debugCollisionLog && collidedBlock) {
+                    const collidedBlockIndex = blocks.indexOf(collidedBlock);
+                    window.debugCollisionLog({
+                        type: isHeadOn ? 'head-on' : 'side',
+                        movingBlock: {
+                            id: `block_${blocks.indexOf(this)}_${this.gridX}_${this.gridZ}_${this.length}`,
+                            index: blocks.indexOf(this),
+                            gridX: this.gridX,
+                            gridZ: this.gridZ,
+                            yOffset: this.yOffset,
+                            direction: { ...this.direction },
+                            isVertical: this.isVertical,
+                            length: this.length,
+                        },
+                        collidedBlock: {
+                            id: `block_${collidedBlockIndex}_${collidedBlock.gridX}_${collidedBlock.gridZ}_${collidedBlock.length}`,
+                            index: collidedBlockIndex,
+                            gridX: collidedBlock.gridX,
+                            gridZ: collidedBlock.gridZ,
+                            yOffset: collidedBlock.yOffset,
+                            direction: { ...collidedBlock.direction },
+                            isVertical: collidedBlock.isVertical,
+                            length: collidedBlock.length,
+                        },
+                        collisionCell: { x: collisionX, z: collisionZ },
+                        positionBefore: { x: tempGridX, z: tempGridZ },
+                        positionAfter: { x: nextGridX, z: nextGridZ },
+                        stepsToObstacle: stepsToObstacle,
+                    });
+                }
+                
                 if (isHeadOn) {
                     // Safety check: prevent infinite head-on collision loops
                     headOnCollisionCount++;
@@ -2054,14 +2098,29 @@ export class Block {
                     
                     // Drop down one level after head-on collision
                     // But first check if dropping would cause an overlap
+                    const originalYOffset = this.yOffset;
                     const newYOffset = Math.max(0, this.yOffset - this.cubeSize);
                     const thisHeight = this.isVertical ? this.length * this.cubeSize : this.cubeSize;
                     const newYBottom = newYOffset;
                     const newYTop = newYOffset + thisHeight;
                     
+                    // Log movement calculation for head-on collision
+                    if (window.debugMovementLog) {
+                        window.debugMovementLog({
+                            type: 'head-on-collision',
+                            blockIndex: blocks.indexOf(this),
+                            positionBefore: { x: tempGridX, z: tempGridZ, y: originalYOffset },
+                            positionAfter: { x: finalGridX, z: finalGridZ, y: newYOffset },
+                            directionBefore: { ...headOnCollision.originalDirection },
+                            directionAfter: { ...this.direction },
+                            rotationType: isHorizontalMultiCell ? '180-degree-flip' : 'clockwise',
+                        });
+                    }
+                    
                     // Check if dropping would cause overlap with any block at the block's position
                     // For horizontal blocks, check all cells; for vertical blocks, check the single cell
                     let wouldOverlap = false;
+                    const overlappingBlocks = [];
                     for (const other of blocks) {
                         if (other === this || other === collidedBlock || other.isFalling || other.isRemoved || other.removalStartTime) continue;
                         
@@ -2117,9 +2176,27 @@ export class Block {
                             // Check if Y ranges would overlap
                             if (newYTop > otherYBottom && newYBottom < otherYTop) {
                                 wouldOverlap = true;
+                                overlappingBlocks.push({
+                                    index: blocks.indexOf(other),
+                                    gridX: other.gridX,
+                                    gridZ: other.gridZ,
+                                    yOffset: other.yOffset,
+                                    height: otherHeight,
+                                });
                                 break;
                             }
                         }
+                    }
+                    
+                    // Log overlap check result
+                    if (window.debugCollisionLog) {
+                        window.debugCollisionLog({
+                            type: 'overlap-check',
+                            blockIndex: blocks.indexOf(this),
+                            position: { x: finalGridX, z: finalGridZ, y: newYOffset },
+                            wouldOverlap: wouldOverlap,
+                            overlappingBlocks: overlappingBlocks,
+                        });
                     }
                     
                     if (!wouldOverlap) {
@@ -2374,6 +2451,25 @@ export class Block {
         // For head-on collisions, direction was already rotated during movement calculation
         this.gridX = finalGridX;
         this.gridZ = finalGridZ;
+        
+        // Log movement completion
+        if (window.debugMovementLog) {
+            window.debugMovementLog({
+                type: 'move-complete',
+                blockIndex: blocks.indexOf(this),
+                initialPosition: { x: preMoveState.gridX, z: preMoveState.gridZ, y: preMoveState.yOffset },
+                finalPosition: { x: this.gridX, z: this.gridZ, y: this.yOffset },
+                directionBefore: { ...preMoveState.direction },
+                directionAfter: { ...this.direction },
+                stepsToObstacle: stepsToObstacle,
+                hitObstacle: hitObstacle,
+                hitEdge: hitEdge,
+                headOnCollision: headOnCollision ? {
+                    collidedBlockIndex: blocks.indexOf(headOnCollision.block),
+                    stepsToCollision: headOnCollision.stepsToCollision,
+                } : null,
+            });
+        }
         
         // For head-on collisions, ensure final position uses rotated direction
         if (hasHeadOnCollision) {
