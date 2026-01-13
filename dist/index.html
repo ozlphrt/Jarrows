@@ -59,18 +59,19 @@
             z-index: 1000;
             pointer-events: none;
             color: white;
-            background: rgba(0, 0, 0, 0.3);
+            background: rgba(0, 0, 0, 0.4);
             backdrop-filter: blur(10px);
             -webkit-backdrop-filter: blur(10px);
-            padding: 6px 10px;
-            border-radius: 6px;
-            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 8px 14px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.25);
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             display: inline-flex;
             align-items: center;
             gap: 6px;
             line-height: 1.2;
+            box-sizing: border-box;
         }
         
         .stats-item {
@@ -94,29 +95,45 @@
             text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
         }
 
-        /* Time Challenge: make timer the primary HUD element */
-        body.mode-time-challenge #stats-bar {
+        /* Time Challenge, Inferno & Free Flow: make timer the primary HUD element */
+        body.mode-time-challenge #stats-bar,
+        body.mode-inferno #stats-bar,
+        body.mode-free-flow #stats-bar {
             left: 50%;
             transform: translateX(-50%);
             top: 10px;
             padding: 10px 18px;
-            gap: 10px;
-            overflow: visible;
+            gap: 4px;
+            overflow: hidden;
+            min-width: 0;
+            max-width: min(85vw, 600px);
+            box-sizing: border-box;
+            white-space: nowrap;
+            flex-direction: column;
+            align-items: center;
         }
 
-        body.mode-time-challenge #stats-bar .stats-item:not(#timer-item) {
+        body.mode-time-challenge #stats-bar .stats-item:not(#timer-item):not(#game-mode-display),
+        body.mode-inferno #stats-bar .stats-item:not(#timer-item):not(#game-mode-display),
+        body.mode-free-flow #stats-bar .stats-item:not(#timer-item):not(#game-mode-display) {
             display: none !important;
         }
 
-        body.mode-time-challenge #stats-bar > .stats-separator {
+        body.mode-time-challenge #stats-bar > .stats-separator,
+        body.mode-inferno #stats-bar > .stats-separator,
+        body.mode-free-flow #stats-bar > .stats-separator {
             display: none !important;
         }
 
-        body.mode-time-challenge #timer-label {
+        body.mode-time-challenge #timer-label,
+        body.mode-inferno #timer-label,
+        body.mode-free-flow #timer-label {
             display: none;
         }
 
-        body.mode-time-challenge #timer-level-label {
+        body.mode-time-challenge #timer-level-label,
+        body.mode-inferno #timer-level-label,
+        body.mode-free-flow #timer-level-label {
             display: none;
         }
 
@@ -125,24 +142,117 @@
             letter-spacing: 0.6px;
         }
 
-        body.mode-time-challenge #timer-value {
+        body.mode-time-challenge #timer-value,
+        body.mode-inferno #timer-value,
+        body.mode-free-flow #timer-value {
             font-size: 34px;
             font-weight: 900;
             letter-spacing: 1px;
         }
 
-        body.mode-time-challenge #timer-level {
+        body.mode-time-challenge #timer-level,
+        body.mode-inferno #timer-level,
+        body.mode-free-flow #timer-level {
             font-size: 34px;
             font-weight: 900;
             letter-spacing: 1px;
             font-variant-numeric: tabular-nums;
         }
-
-        body.mode-time-challenge #timer-item {
+        
+        body.mode-time-challenge #game-mode-display .mode-value,
+        body.mode-inferno #game-mode-display .mode-value,
+        body.mode-free-flow #game-mode-display .mode-value {
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            opacity: 1;
+            text-transform: uppercase;
+        }
+        
+        body.mode-time-challenge #game-mode-display,
+        body.mode-inferno #game-mode-display,
+        body.mode-free-flow #game-mode-display {
+            order: 2;
+            margin-top: 2px;
+        }
+        
+        body.mode-time-challenge #timer-item,
+        body.mode-inferno #timer-item,
+        body.mode-free-flow #timer-item {
+            order: 1;
             gap: 8px;
             min-width: 0;
-            flex-shrink: 0;
+            flex-shrink: 1;
+            overflow: hidden;
+            max-width: 100%;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: row;
         }
+        
+
+        body.mode-time-challenge #timer-level,
+        body.mode-inferno #timer-level,
+        body.mode-free-flow #timer-level {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            max-width: 100%;
+            min-width: 0;
+            display: inline-block;
+            vertical-align: baseline;
+        }
+
+        body.mode-time-challenge #timer-value,
+        body.mode-inferno #timer-value,
+        body.mode-free-flow #timer-value {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            min-width: 0;
+            display: inline-block;
+            vertical-align: baseline;
+        }
+
+        /* Game Mode Display - Now part of stats bar */
+        #game-mode-display {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+        }
+
+        #game-mode-display .mode-label {
+            font-size: 12px;
+            font-weight: 600;
+            opacity: 0.9;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+            white-space: nowrap;
+        }
+
+        #game-mode-display .mode-value {
+            font-size: 18px;
+            font-weight: 700;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* Mode-specific colors */
+        body.mode-free-flow #game-mode-display .mode-value {
+            color: rgba(96, 165, 250, 0.95);
+        }
+
+        body.mode-time-challenge #game-mode-display .mode-value {
+            color: rgba(251, 191, 36, 0.95);
+        }
+
+        body.mode-inferno #game-mode-display .mode-value {
+            color: rgba(239, 68, 68, 0.95);
+        }
+        
 
         #timer-delta {
             margin-left: 10px;
@@ -231,19 +341,27 @@
         .extended-stats-modal-panel h2,
         .extended-stats-modal-panel h3,
         .extended-stats-modal-panel .modal-title {
-            font-size: 16px;
+            font-size: 20px;
             font-weight: 900;
             letter-spacing: 0.4px;
-            margin: 0 0 8px 0;
+            margin: 0 0 10px 0;
             color: rgba(255,255,255,0.95);
+            font-family: 'Fredoka', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
         }
         
         .extended-stats-modal-panel p,
         .extended-stats-modal-panel div:not(.modal-actions):not(.extended-stats-modal-panel) {
-            font-size: 13px;
-            line-height: 1.4;
+            font-size: 15px;
+            line-height: 1.5;
             opacity: 0.95;
             color: rgba(255,255,255,0.92);
+            font-weight: 600;
+            font-family: 'Fredoka', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        }
+        
+        .extended-stats-modal-panel b,
+        .extended-stats-modal-panel strong {
+            font-weight: 900;
         }
         
         .extended-stats-modal-panel ul {
@@ -268,12 +386,10 @@
             #stats-bar {
                 top: 8px;
                 left: 8px;
-                right: 8px;
-                width: auto;
-                padding: 5px 8px;
+                padding: 6px 12px;
                 gap: 5px;
-                justify-content: space-around;
             }
+            
             .stats-label {
                 font-size: 11px;
             }
@@ -284,27 +400,53 @@
                 font-size: 11px;
             }
             
-            /* Time Challenge: maintain large timer on mobile */
-            body.mode-time-challenge #stats-bar {
+            #game-mode-display .mode-label {
+                font-size: 11px;
+            }
+            
+            #game-mode-display .mode-value {
+                font-size: 16px;
+            }
+            
+            /* Time Challenge & Inferno: maintain large timer on mobile */
+            body.mode-time-challenge #stats-bar,
+            body.mode-inferno #stats-bar {
                 left: 50%;
                 transform: translateX(-50%);
                 right: auto;
                 width: auto;
                 padding: 10px 16px;
-                gap: 8px;
+                gap: 4px;
                 justify-content: center;
-                overflow: visible;
+                overflow: hidden;
+                max-width: min(85vw, 600px);
+                flex-direction: column;
+                align-items: center;
             }
             
-            body.mode-time-challenge #timer-value {
+            body.mode-time-challenge #timer-value,
+            body.mode-inferno #timer-value,
+            body.mode-free-flow #timer-value {
                 font-size: 28px;
             }
             
-            body.mode-time-challenge #timer-level {
+            body.mode-time-challenge #timer-level,
+            body.mode-inferno #timer-level,
+            body.mode-free-flow #timer-level {
                 font-size: 28px;
             }
             
-            body.mode-time-challenge #timer-item {
+            body.mode-time-challenge #game-mode-display .mode-value,
+            body.mode-inferno #game-mode-display .mode-value,
+            body.mode-free-flow #game-mode-display .mode-value {
+                font-size: 12px;
+                font-weight: 600;
+                letter-spacing: 0.5px;
+            }
+            
+            body.mode-time-challenge #timer-item,
+            body.mode-inferno #timer-item,
+            body.mode-free-flow #timer-item {
                 gap: 6px;
             }
         }
@@ -313,12 +455,10 @@
             #stats-bar {
                 top: 6px;
                 left: 6px;
-                right: 6px;
-                width: auto;
-                padding: 4px 6px;
+                padding: 5px 10px;
                 gap: 4px;
-                justify-content: space-around;
             }
+            
             .stats-label {
                 font-size: 10px;
             }
@@ -329,30 +469,69 @@
                 font-size: 10px;
             }
             
-            /* Time Challenge: maintain large timer on small mobile */
-            body.mode-time-challenge #stats-bar {
+            #game-mode-display .mode-label {
+                font-size: 10px;
+            }
+            
+            #game-mode-display .mode-value {
+                font-size: 14px;
+            }
+            
+            /* Time Challenge, Inferno & Free Flow: maintain large timer on small mobile */
+            body.mode-time-challenge #stats-bar,
+            body.mode-inferno #stats-bar,
+            body.mode-free-flow #stats-bar {
                 left: 50%;
                 transform: translateX(-50%);
                 right: auto;
                 width: auto;
                 padding: 8px 14px;
-                gap: 6px;
+                gap: 4px;
+                overflow: hidden;
+                max-width: min(85vw, 500px);
                 justify-content: center;
-                overflow: visible;
+                flex-direction: column;
+                align-items: center;
             }
             
-            body.mode-time-challenge #timer-value {
+            body.mode-time-challenge #timer-value,
+            body.mode-inferno #timer-value,
+            body.mode-free-flow #timer-value {
                 font-size: 24px;
             }
             
-            body.mode-time-challenge #timer-level {
+            body.mode-time-challenge #timer-level,
+            body.mode-inferno #timer-level,
+            body.mode-free-flow #timer-level {
                 font-size: 24px;
             }
             
-            body.mode-time-challenge #timer-item {
+            body.mode-time-challenge #game-mode-display .mode-value,
+            body.mode-inferno #game-mode-display .mode-value,
+            body.mode-free-flow #game-mode-display .mode-value {
+                font-size: 11px;
+                font-weight: 600;
+                letter-spacing: 0.5px;
+            }
+            
+            body.mode-time-challenge #timer-item,
+            body.mode-inferno #timer-item,
+            body.mode-free-flow #timer-item {
                 gap: 5px;
             }
         }
+        
+        /* Very small screens: ensure mode display is visible */
+        @media (max-width: 360px) {
+            #game-mode-display .mode-label {
+                font-size: 10px;
+            }
+            
+            #game-mode-display .mode-value {
+                font-size: 14px;
+            }
+        }
+        
         /* Level Complete Modal */
         #level-complete-modal {
             display: none;
@@ -385,11 +564,12 @@
             max-width: none;
             max-height: none;
             box-sizing: border-box;
+            /* Use mobile padding for consistent aspect ratio across all devices */
             padding:
-              calc(28px + env(safe-area-inset-top))
-              calc(22px + env(safe-area-inset-right))
-              calc(24px + env(safe-area-inset-bottom))
-              calc(22px + env(safe-area-inset-left));
+              calc(22px + env(safe-area-inset-top))
+              calc(16px + env(safe-area-inset-right))
+              calc(18px + env(safe-area-inset-bottom))
+              calc(16px + env(safe-area-inset-left));
             border-radius: 0;
             border: 1px solid rgba(255, 255, 255, 0.22);
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3),
@@ -398,10 +578,12 @@
             text-align: center;
             animation: modalFadeIn 0.3s ease-out;
             position: relative;
-            /* Allow content to scroll within the full-screen panel */
-            overflow-x: hidden;
+            /* Allow scrolling but hide scrollbar for clean appearance */
             overflow-y: auto;
-            -webkit-overflow-scrolling: touch;
+            overflow-x: hidden;
+            /* Hide scrollbar for Chrome, Safari and Opera */
+            scrollbar-width: none; /* Firefox */
+            -ms-overflow-style: none; /* IE and Edge */
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             /* Ensure content fits within viewport */
             display: flex;
@@ -409,6 +591,10 @@
             min-height: 0;
         }
         
+        /* Hide scrollbar for modal content */
+        .modal-content::-webkit-scrollbar {
+            display: none; /* Chrome, Safari and Opera */
+        }
         
         .modal-top-accent {
             position: absolute;
@@ -472,19 +658,35 @@
         
         .modal-title {
             color: white;
-            font-size: 42px;
-            font-weight: 700;
+            font-size: 42px; /* Increased from 34px */
+            font-weight: 900; /* Increased from 700 */
             font-family: 'Fredoka', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            margin: 0 0 16px 0;
+            margin: 0 0 10px 0; /* Match mobile margin */
             text-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
             letter-spacing: 1px;
         }
         
+        .modal-level-number-inline {
+            display: inline-block;
+            font-size: 72px;
+            font-weight: 800;
+            line-height: 1;
+            letter-spacing: -1px;
+            color: rgba(251, 191, 36, 0.95); /* Fallback color for browsers that don't support background-clip */
+            background: linear-gradient(180deg, rgba(251, 191, 36, 0.95), rgba(245, 158, 11, 0.95));
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent; /* Use this instead of color: transparent for better mobile support */
+            text-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+            vertical-align: baseline;
+            margin: 0 4px;
+        }
+        
         .modal-message {
             color: rgba(255, 255, 255, 0.82);
-            font-size: 14px;
+            font-size: 13px; /* Match mobile sizing */
             font-weight: 600;
-            margin: 0 0 32px 0;
+            margin: 0 0 18px 0; /* Match mobile margin */
             text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
             letter-spacing: 0.2px;
             display: none; /* per request: remove "Outstanding performance" line entirely */
@@ -528,10 +730,11 @@
             font-weight: 800;
             line-height: 1;
             letter-spacing: -1px;
-            color: transparent;
+            color: rgba(251, 191, 36, 0.95); /* Fallback color for browsers that don't support background-clip */
             background: linear-gradient(180deg, rgba(251, 191, 36, 0.95), rgba(245, 158, 11, 0.95));
             -webkit-background-clip: text;
             background-clip: text;
+            -webkit-text-fill-color: transparent; /* Use this instead of color: transparent for better mobile support */
             text-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
             font-family: 'Fredoka', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
         }
@@ -539,7 +742,7 @@
         .modal-stats-grid {
             display: grid;
             grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: 8px;
+            gap: 6px; /* Match mobile gap for consistent aspect ratio */
             margin: 10px 0 26px;
             width: 100%;
         }
@@ -570,16 +773,16 @@
         .modal-stat-icon.moves { color: rgba(168, 85, 247, 0.95); }
         
         .modal-stat-label {
-            font-size: 9px;
-            font-weight: 800;
+            font-size: 12px; /* Increased from 9px */
+            font-weight: 900; /* Increased from 800 */
             letter-spacing: 1.4px;
             text-transform: uppercase;
             color: rgba(255, 255, 255, 0.55);
         }
         
         .modal-stat-value {
-            font-size: 18px;
-            font-weight: 800;
+            font-size: 24px; /* Increased from 18px */
+            font-weight: 900; /* Increased from 800 */
             color: rgba(255, 255, 255, 0.95);
             text-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
         }
@@ -590,10 +793,10 @@
             -webkit-backdrop-filter: blur(14px);
             border: 1px solid rgba(255, 255, 255, 0.22);
             color: white;
-            padding: 16px 48px;
+            padding: 14px 18px; /* Match mobile padding for consistent aspect ratio */
             border-radius: 12px;
-            font-size: 18px;
-            font-weight: 600;
+            font-size: 22px; /* Increased from 18px */
+            font-weight: 800; /* Increased from 600 */
             cursor: pointer;
             transition: all 0.3s ease;
             text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
@@ -604,6 +807,7 @@
             justify-content: center;
             gap: 10px;
             border-bottom: 4px solid rgba(0, 0, 0, 0.35);
+            width: 100%; /* Match mobile full width */
         }
 
         .modal-actions {
@@ -611,6 +815,7 @@
             gap: 10px;
             width: 100%;
             margin-top: 10px;
+            flex-direction: column; /* Match mobile column layout for consistent aspect ratio */
         }
 
         .modal-actions .modal-button {
@@ -657,8 +862,13 @@
                 max-width: none;
             }
             .modal-title {
-                font-size: 34px;
+                font-size: 42px; /* Increased from 34px */
                 margin-bottom: 10px;
+            }
+            .modal-level-number-inline {
+                font-size: 56px;
+                color: rgba(251, 191, 36, 0.95); /* Ensure fallback color on mobile */
+                -webkit-text-fill-color: transparent; /* Ensure gradient works on mobile */
             }
             .modal-message {
                 font-size: 13px;
@@ -666,6 +876,8 @@
             }
             .modal-level-number {
                 font-size: 80px;
+                color: rgba(251, 191, 36, 0.95); /* Ensure fallback color on mobile */
+                -webkit-text-fill-color: transparent; /* Ensure gradient works on mobile */
             }
             .modal-stats-grid {
                 gap: 6px;
@@ -691,12 +903,29 @@
                 min-height: 62px;
             }
             .modal-stat-label {
-                font-size: 8px;
+                font-size: 11px; /* Increased from 8px */
                 letter-spacing: 1.2px;
                 text-align: center;
             }
             .modal-stat-value {
-                font-size: 16px;
+                font-size: 22px; /* Increased from 16px */
+            }
+        }
+        
+        /* Desktop: constrain modal width to maintain mobile aspect ratio */
+        @media (min-width: 769px) {
+            #level-complete-modal {
+                justify-content: center;
+                align-items: center;
+            }
+            
+            .modal-content {
+                width: 480px; /* Constrain width to mobile-like size */
+                max-width: 90vw; /* Don't exceed 90% of viewport width */
+                height: 100%;
+                max-height: 100vh;
+                border-radius: 16px; /* Add rounded corners for desktop */
+                margin: auto;
             }
         }
         
@@ -778,6 +1007,55 @@
             opacity: 0.5;
             cursor: not-allowed;
             transform: none;
+        }
+        
+        /* Pause and Spin buttons - large circular translucent light grey */
+        .pause-button-circular,
+        .spin-button-circular {
+            border-radius: 50% !important;
+            width: 64px !important;
+            height: 64px !important;
+            min-width: 64px !important;
+            min-height: 64px !important;
+            padding: 0 !important;
+            flex: 0 0 auto !important;
+            background: rgba(255, 255, 255, 0.15) !important;
+            backdrop-filter: blur(20px) saturate(180%) !important;
+            -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+            border: 2px solid rgba(255, 255, 255, 0.4) !important;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3),
+                        inset 0 2px 0 rgba(255, 255, 255, 0.2) !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            position: relative !important;
+        }
+        
+        .pause-button-circular:active,
+        .spin-button-circular:active {
+            transform: translateY(0) scale(0.95) !important;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25),
+                        inset 0 1px 0 rgba(255, 255, 255, 0.15) !important;
+        }
+        
+        .spin-button-circular {
+            background: rgba(255, 255, 255, 0.15) !important;
+        }
+        
+        /* Spin button counter (number or infinity symbol) */
+        .spin-button-circular #spin-counter {
+            font-size: 18px;
+            font-weight: 900;
+            line-height: 1;
+            color: white;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5), 0 0 8px rgba(255, 255, 255, 0.3);
+            pointer-events: none;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+        
+        /* Infinity symbol slightly larger */
+        .spin-button-circular #spin-counter[data-infinity="true"] {
+            font-size: 20px;
         }
 
         /* Toggle Icons Container */
@@ -983,11 +1261,15 @@
         /* Framing control removed from settings */
         
     </style>
-  <script type="module" crossorigin src="/Jarrows/assets/index-ti5ojIbZ.js"></script>
+  <script type="module" crossorigin src="/Jarrows/assets/index-Dx7PQPAr.js"></script>
   <link rel="modulepreload" crossorigin href="/Jarrows/assets/preload-helper-Si1OKCYg.js">
 <link rel="manifest" href="/Jarrows/manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="/Jarrows/registerSW.js"></script></head>
 <body>
     <div id="stats-bar" class="stats-bar">
+        <span class="stats-item" id="game-mode-display">
+            <span class="mode-value" id="game-mode-value">FREE FLOW</span>
+        </span>
+        <span class="stats-separator">|</span>
         <span class="stats-item">
             <span class="stats-label">Level:</span>
             <span class="stats-value" id="level-value">0</span>
@@ -1029,8 +1311,8 @@
                 <p class="modal-message" id="level-complete-message"></p>
             </div>
             
-            <div class="modal-level-card" aria-label="Completed level">
-                <div class="modal-level-label">Level Cleared</div>
+            <!-- Level number card removed - level number is now in the title -->
+            <div class="modal-level-card" aria-label="Completed level" style="display: none;">
                 <div class="modal-level-number" id="level-complete-level">1</div>
             </div>
             
@@ -1077,33 +1359,33 @@
     
     <!-- Game Control Buttons -->
     <div id="game-controls">
-        <button class="game-button two-line" id="restart-level-button">
-            <div>RESTART</div>
-            <div>LEVEL</div>
-        </button>
-        <button class="game-button two-line" id="new-game-button">
-            <div>NEW</div>
-            <div>GAME</div>
-        </button>
-            <button class="game-button" id="pause-button" title="Pause" style="display:flex; align-items:center; justify-content:center;">
-                <span style="font-size: 16px; font-weight: 900; line-height: 1;">⏸</span>
-            </button>
-            <button class="game-button" id="dice-button" title="Random" style="position: relative; display: flex; align-items: center; gap: 6px;">
-                <svg id="dice-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 20px; height: 20px; flex-shrink: 0;">
-                    <!-- Refresh/Reload Icon -->
-                    <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path>
-                    <path d="M21 3v5h-5"></path>
-                    <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path>
-                    <path d="M3 21v-5h5"></path>
-                </svg>
-                <span id="spin-counter">3</span>
-            </button>
         <button class="game-button" id="undo-button" title="Undo" style="display: flex; align-items: center; justify-content: center;">
-            <svg id="undo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg id="undo-icon" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 20px; height: 20px;">
                 <!-- Undo (clean curved return, lucide-style) -->
                 <path d="M9 14 4 9l5-5"></path>
                 <path d="M4 9h10a6 6 0 0 1 0 12h-1"></path>
             </svg>
+        </button>
+        <button class="game-button two-line" id="restart-level-button">
+            <div>RESTART</div>
+            <div>LEVEL</div>
+        </button>
+        <button class="game-button pause-button-circular" id="pause-button" title="Pause">
+            <span style="font-size: 24px; font-weight: 900; line-height: 1; color: white;">⏸</span>
+        </button>
+        <button class="game-button spin-button-circular" id="dice-button" title="Random" style="position: relative;">
+            <svg id="spin-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 28px; height: 28px; opacity: 0.9;">
+                <!-- Refresh/Reload Icon -->
+                <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path>
+                <path d="M21 3v5h-5"></path>
+                <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path>
+                <path d="M3 21v-5h5"></path>
+            </svg>
+            <span id="spin-counter" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 18px; font-weight: 900; color: white; line-height: 1; text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5), 0 0 8px rgba(255, 255, 255, 0.3); pointer-events: none; z-index: 1;">3</span>
+        </button>
+        <button class="game-button two-line" id="new-game-button">
+            <div>NEW</div>
+            <div>GAME</div>
         </button>
         <div id="settings-container" style="position: relative;">
             <button class="game-button" id="settings-toggle" title="Settings" style="display: flex; align-items: center; justify-content: center;">
@@ -1171,13 +1453,13 @@
                 <div class="modal-title">New: Performance Presets</div>
             </div>
             <div>
-                You can now choose how the game trades off <b>smoothness</b> and <b>sharpness</b> vs <b>battery</b>.
-                <ul>
-                    <li><b>Performance</b>: smoother + sharper (uses more battery)</li>
-                    <li><b>Balanced</b>: recommended default</li>
-                    <li><b>Battery</b>: longest battery (lower FPS / lower internal resolution)</li>
+                <p style="margin-bottom: 10px;">Choose <b>smoothness/sharpness</b> vs <b>battery</b>:</p>
+                <ul style="margin: 0 0 10px 20px; padding: 0;">
+                    <li><b>Performance</b>: smoother + sharper</li>
+                    <li><b>Balanced</b>: recommended</li>
+                    <li><b>Battery</b>: longest battery</li>
                 </ul>
-                Change it anytime via <b>Settings (gear)</b> → <b>Quality</b>.
+                <p style="margin: 0;">Change via <b>Settings</b> → <b>Quality</b></p>
             </div>
             <div class="modal-actions">
                 <button id="quality-modal-ok" class="game-button" style="padding: 10px 14px;">Got it</button>
@@ -1216,11 +1498,15 @@
                 <div class="modal-title">Choose Mode</div>
             </div>
             <div style="margin-bottom: 14px;">
-                You can change this later via <b>Settings → MODE</b> or by starting a <b>New Game</b>.
+                Can't decide? Don't worry—you can switch it up anytime! 😉
             </div>
-            <div style="display:flex; gap:10px; flex-wrap: wrap;">
-                <button id="mode-pick-free" class="game-button" style="padding: 12px 14px; flex:1;">Free Flow</button>
-                <button id="mode-pick-time" class="game-button" style="padding: 12px 14px; flex:1;">Time Challenge</button>
+            <div style="display:flex; gap:10px; flex-wrap: wrap; margin-bottom: 14px;">
+                <button id="mode-pick-free" class="game-button" style="padding: 12px 14px; flex:1; background: linear-gradient(135deg, rgba(59, 130, 246, 0.3), rgba(37, 99, 235, 0.4)); border-color: rgba(96, 165, 250, 0.5);">Free Flow</button>
+                <button id="mode-pick-time" class="game-button" style="padding: 12px 14px; flex:1; background: linear-gradient(135deg, rgba(251, 191, 36, 0.3), rgba(245, 158, 11, 0.4)); border-color: rgba(251, 191, 36, 0.5);">Time Challenge</button>
+                <button id="mode-pick-inferno" class="game-button" style="padding: 12px 14px; flex:1; background: linear-gradient(135deg, rgba(239, 68, 68, 0.3), rgba(220, 38, 38, 0.4)); border-color: rgba(248, 113, 113, 0.5);">Inferno</button>
+            </div>
+            <div class="modal-actions" style="display:flex; gap:10px;">
+                <button id="mode-select-cancel" class="game-button" style="padding: 10px 14px; flex:1;">Cancel</button>
             </div>
         </div>
     </div>
@@ -1233,15 +1519,66 @@
                 <div class="modal-title">Time Challenge</div>
             </div>
             <div>
-                <ul>
-                    <li>Start with <b>30s</b>. Timer drains in real time.</li>
-                    <li>Remove blocks to gain time: <b>Yellow +3s</b>, <b>Teal +2s</b>, <b>Red +1s</b> (plus base time).</li>
-                    <li><b>Spin costs 1/3</b> of your remaining time.</li>
-                    <li>Win by removing <b>all blocks</b>. Don't let the timer hit zero.</li>
+                <ul style="margin: 0; padding-left: 20px;">
+                    <li>Start with <b>30s</b></li>
+                    <li>Remove blocks: <b>Yellow +3s</b>, <b>Teal +2s</b>, <b>Red +1s</b></li>
+                    <li><b>Spin costs 1/3</b> of remaining time</li>
+                    <li>Remove <b>all blocks</b> to win</li>
                 </ul>
             </div>
             <div class="modal-actions">
-                <button id="time-rules-ok" class="game-button" style="padding: 10px 14px;">Start</button>
+                <button id="time-rules-ok" class="game-button" style="padding: 10px 14px;">Got it!</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Inferno Rules Modal -->
+    <div id="inferno-rules-modal" class="extended-stats-modal-overlay" style="display:none; z-index: 3400;">
+        <div class="extended-stats-modal-panel">
+            <div style="display:flex; align-items:center; gap: 10px; margin-bottom: 12px;">
+                <span style="font-size: 24px;">🔥</span>
+                <div class="modal-title">Inferno Mode</div>
+            </div>
+            <div>
+                <p style="margin-bottom: 10px;">Time Challenge + progressive difficulty!</p>
+                <ul style="margin: 0; padding-left: 20px;">
+                    <li>Start with <b>30s</b></li>
+                    <li>Remove blocks: <b>Yellow +3s</b>, <b>Teal +2s</b>, <b>Red +1s</b></li>
+                    <li><b>Spin costs</b> increase with level</li>
+                    <li>Difficulty spikes at levels <b>10, 25, 50</b></li>
+                    <li>More inward blocks, longer blocks, fewer options</li>
+                </ul>
+            </div>
+            <div class="modal-actions">
+                <button id="inferno-rules-ok" class="game-button" style="padding: 10px 14px;">Into the Inferno!</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Inferno Milestone Modal -->
+    <div id="inferno-milestone-modal" class="extended-stats-modal-overlay" style="display:none; z-index: 3500;">
+        <div class="extended-stats-modal-panel">
+            <div style="display:flex; align-items:center; gap: 10px; margin-bottom: 12px;">
+                <span style="font-size: 24px;">🔥</span>
+                <div id="inferno-milestone-title" class="modal-title"></div>
+            </div>
+            <div id="inferno-milestone-content"></div>
+            <div class="modal-actions">
+                <button id="inferno-milestone-ok" class="game-button" style="padding: 10px 14px;">Continue</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Inferno Feature Modal -->
+    <div id="inferno-feature-modal" class="extended-stats-modal-overlay" style="display:none; z-index: 3500;">
+        <div class="extended-stats-modal-panel">
+            <div style="display:flex; align-items:center; gap: 10px; margin-bottom: 12px;">
+                <span style="font-size: 24px;">💡</span>
+                <div id="inferno-feature-title" class="modal-title"></div>
+            </div>
+            <div id="inferno-feature-content"></div>
+            <div class="modal-actions">
+                <button id="inferno-feature-ok" class="game-button" style="padding: 10px 14px;">Got it!</button>
             </div>
         </div>
     </div>
@@ -1274,8 +1611,34 @@
             </div>
         </div>
     </div>
-    
 
+    <!-- Debug Panel Modal -->
+    <div id="debug-panel-modal" class="extended-stats-modal-overlay" style="display:none; z-index: 3700;">
+        <div class="extended-stats-modal-panel">
+            <div style="display:flex; align-items:center; justify-content: space-between; gap: 12px; margin-bottom: 12px;">
+                <div style="display:flex; align-items:center; gap: 10px;">
+                    <span style="font-size: 24px;">🐛</span>
+                    <div class="modal-title">Debug Panel</div>
+                </div>
+                <button id="debug-close-button" class="game-button" style="padding: 8px 10px; min-width: 40px;">✕</button>
+            </div>
+            <div style="margin-bottom: 16px;">
+                <label for="debug-level-input" style="display: block; margin-bottom: 8px; font-size: 14px; opacity: 0.9;">Jump to Level:</label>
+                <input 
+                    type="number" 
+                    id="debug-level-input" 
+                    min="0" 
+                    style="width: 100%; padding: 10px 12px; border-radius: 8px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.16); color: rgba(255,255,255,0.92); font-size: 14px; box-sizing: border-box;"
+                    placeholder="Enter level number"
+                />
+            </div>
+            <div class="modal-actions" style="flex-direction: column; gap: 10px;">
+                <button id="debug-jump-button" class="game-button" style="padding: 10px 14px; width: 100%;">Jump to Level</button>
+                <button id="debug-investigate-button" class="game-button" style="padding: 10px 14px; width: 100%;">🔍 Investigate Bug</button>
+            </div>
+        </div>
+    </div>
+    
 </body>
 </html>
 
