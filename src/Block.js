@@ -2278,6 +2278,78 @@ export class Block {
                         this.yOffset = safeYOffset;
                     }
                     
+                    // Check if the block's current position (after head-on collision) overlaps with any other blocks
+                    // If it does, stop movement instead of continuing
+                    let positionOverlaps = false;
+                    const currentYBottom = this.yOffset;
+                    const currentYTop = this.yOffset + thisHeight;
+                    
+                    for (const other of blocks) {
+                        if (other === this || other === collidedBlock || other.isFalling || other.isRemoved || other.removalStartTime) continue;
+                        
+                        // Check if other block overlaps with this block's cells at the current position
+                        let cellsOverlap = false;
+                        if (this.isVertical) {
+                            // Vertical block: check if other block is at the same cell
+                            if (other.isVertical) {
+                                cellsOverlap = (other.gridX === finalGridX && other.gridZ === finalGridZ);
+                            } else {
+                                const otherIsXAligned = Math.abs(other.direction.x) > 0;
+                                for (let j = 0; j < other.length; j++) {
+                                    const otherX = other.gridX + (otherIsXAligned ? j : 0);
+                                    const otherZ = other.gridZ + (otherIsXAligned ? 0 : j);
+                                    if (otherX === finalGridX && otherZ === finalGridZ) {
+                                        cellsOverlap = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        } else {
+                            // Horizontal block: check if any cell of other block overlaps with any cell of this block
+                            const thisIsXAligned = Math.abs(this.direction.x) > 0;
+                            const otherIsXAligned = Math.abs(other.direction.x) > 0;
+                            for (let i = 0; i < this.length; i++) {
+                                const thisX = finalGridX + (thisIsXAligned ? i : 0);
+                                const thisZ = finalGridZ + (thisIsXAligned ? 0 : i);
+                                
+                                if (other.isVertical) {
+                                    if (other.gridX === thisX && other.gridZ === thisZ) {
+                                        cellsOverlap = true;
+                                        break;
+                                    }
+                                } else {
+                                    for (let j = 0; j < other.length; j++) {
+                                        const otherX = other.gridX + (otherIsXAligned ? j : 0);
+                                        const otherZ = other.gridZ + (otherIsXAligned ? 0 : j);
+                                        if (otherX === thisX && otherZ === thisZ) {
+                                            cellsOverlap = true;
+                                            break;
+                                        }
+                                    }
+                                    if (cellsOverlap) break;
+                                }
+                            }
+                        }
+                        
+                        if (cellsOverlap) {
+                            const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
+                            const otherYBottom = other.yOffset;
+                            const otherYTop = other.yOffset + otherHeight;
+                            
+                            // Check if Y ranges overlap
+                            if (currentYTop > otherYBottom && currentYBottom < otherYTop) {
+                                positionOverlaps = true;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // If the current position overlaps with another block, stop movement
+                    if (positionOverlaps) {
+                        hitObstacle = true;
+                        break;
+                    }
+                    
                     // Continue moving with the new rotated direction from current position
                     // Don't update tempGridX/tempGridZ - stay at current position
                     // The next iteration will calculate nextGridX/nextGridZ using the rotated direction
