@@ -67,11 +67,16 @@
             border: 1px solid rgba(255, 255, 255, 0.25);
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            display: inline-flex;
+            display: none; /* Hidden initially, shown after game initialization */
             align-items: center;
             gap: 6px;
             line-height: 1.2;
             box-sizing: border-box;
+        }
+        
+        /* Show stats bar after game initialization */
+        body.game-initialized #stats-bar {
+            display: inline-flex;
         }
         
         .stats-item {
@@ -373,6 +378,223 @@
             gap: 10px;
             justify-content: flex-end;
             margin-top: 12px;
+        }
+        
+        /* Debug Panel: dat.gui style - smaller and on the right */
+        #debug-panel-modal {
+            align-items: flex-start;
+            justify-content: flex-end;
+            padding: 20px;
+            background: transparent; /* No background overlay - doesn't obstruct view */
+            backdrop-filter: none !important; /* Remove blur effect */
+            -webkit-backdrop-filter: none !important; /* Remove blur effect for Safari */
+            pointer-events: none; /* Allow clicks to pass through overlay */
+        }
+        
+        #debug-panel-modal > * {
+            pointer-events: auto; /* Re-enable pointer events on the panel itself */
+        }
+        
+        #debug-panel-content {
+            max-width: 280px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+            margin: 0;
+            position: relative;
+            top: auto;
+            left: auto;
+            transform: none;
+            padding: 8px !important;
+            /* dat.gui style */
+            background: #1e1e1e !important;
+            border: 1px solid #3a3a3a !important;
+            border-radius: 4px !important;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.4) !important;
+            font-family: 'Lucida Grande', 'Lucida Sans Unicode', 'Arial', sans-serif !important;
+            font-size: 11px !important;
+            color: #fff !important;
+        }
+        
+        /* dat.gui header style */
+        #debug-panel-content > div:first-child {
+            background: #2d2d2d !important;
+            border-bottom: 1px solid #3a3a3a !important;
+            padding: 6px 8px !important;
+            margin: -8px -8px 8px -8px !important;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        #debug-panel-content .modal-title {
+            font-size: 12px !important;
+            font-weight: bold !important;
+            color: #fff !important;
+            margin: 0 !important;
+            font-family: 'Lucida Grande', 'Lucida Sans Unicode', 'Arial', sans-serif !important;
+        }
+        
+        #debug-panel-content #debug-close-button {
+            background: transparent !important;
+            border: none !important;
+            color: #fff !important;
+            padding: 0 !important;
+            font-size: 16px !important;
+            cursor: pointer;
+            border-radius: 2px;
+            min-width: auto !important;
+            width: 20px !important;
+            height: 20px !important;
+            line-height: 1 !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+        }
+        
+        #debug-panel-content #debug-close-button:hover {
+            background: #3a3a3a !important;
+        }
+        
+        /* dat.gui folder/group style */
+        #debug-panel-content > div[style*="margin-bottom: 16px"] {
+            margin-bottom: 8px !important;
+            padding: 0 !important;
+            background: transparent !important;
+            border: none !important;
+        }
+        
+        #debug-panel-content > div[style*="margin-bottom: 16px"] > div:first-child {
+            background: #2d2d2d !important;
+            padding: 4px 6px !important;
+            margin-bottom: 4px !important;
+            border-radius: 2px;
+            font-size: 11px !important;
+            font-weight: bold !important;
+            color: #fff !important;
+            cursor: pointer;
+        }
+        
+        /* dat.gui controller style */
+        #debug-panel-content > div[style*="margin-bottom: 16px"] > div[style*="margin-bottom: 12px"] {
+            margin-bottom: 6px !important;
+            padding: 4px 6px !important;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: #252525 !important;
+            border-radius: 2px;
+        }
+        
+        #debug-panel-content label {
+            font-size: 11px !important;
+            margin-bottom: 0 !important;
+            color: #fff !important;
+            font-family: 'Lucida Grande', 'Lucida Sans Unicode', 'Arial', sans-serif !important;
+        }
+        
+        /* dat.gui slider style */
+        #debug-panel-content input[type="range"] {
+            width: 100% !important;
+            height: 14px !important;
+            background: #252525 !important;
+            border-radius: 0 !important;
+            outline: none !important;
+            margin: 0 8px !important;
+            -webkit-appearance: none;
+            appearance: none;
+            position: relative;
+            cursor: pointer;
+        }
+        
+        #debug-panel-content input[type="range"]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 14px;
+            background: #252525;
+            border: 1px solid #3a3a3a;
+            border-radius: 0;
+        }
+        
+        #debug-panel-content input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 14px;
+            height: 14px;
+            background: #4a9eff;
+            border-radius: 0;
+            cursor: pointer;
+            border: 1px solid #2d5a8a;
+            margin-top: -1px;
+            box-shadow: 0 0 0 1px rgba(0,0,0,0.3);
+        }
+        
+        #debug-panel-content input[type="range"]::-webkit-slider-thumb:hover {
+            background: #5bb0ff;
+        }
+        
+        #debug-panel-content input[type="range"]::-moz-range-track {
+            width: 100%;
+            height: 14px;
+            background: #252525;
+            border: 1px solid #3a3a3a;
+            border-radius: 0;
+        }
+        
+        #debug-panel-content input[type="range"]::-moz-range-thumb {
+            width: 14px;
+            height: 14px;
+            background: #4a9eff;
+            border-radius: 0;
+            cursor: pointer;
+            border: 1px solid #2d5a8a;
+            box-shadow: 0 0 0 1px rgba(0,0,0,0.3);
+        }
+        
+        #debug-panel-content input[type="range"]::-moz-range-thumb:hover {
+            background: #5bb0ff;
+        }
+        
+        #debug-panel-content input[type="number"] {
+            font-size: 11px !important;
+            padding: 3px 6px !important;
+            background: #2d2d2d !important;
+            border: 1px solid #3a3a3a !important;
+            color: #fff !important;
+            border-radius: 2px !important;
+            width: 50px !important;
+            font-family: 'Lucida Grande', 'Lucida Sans Unicode', 'Arial', sans-serif !important;
+        }
+        
+        /* dat.gui value display */
+        #debug-panel-content span[style*="font-size: 13px"],
+        #debug-panel-content span[style*="font-size: 12px"] {
+            font-size: 10px !important;
+            color: #888 !important;
+            font-family: 'Lucida Grande', 'Lucida Sans Unicode', 'Arial', sans-serif !important;
+            min-width: 45px;
+            text-align: right;
+        }
+        
+        /* dat.gui button style */
+        #debug-panel-content .game-button {
+            padding: 6px 10px !important;
+            font-size: 11px !important;
+            background: #2d2d2d !important;
+            border: 1px solid #3a3a3a !important;
+            color: #fff !important;
+            border-radius: 2px !important;
+            font-family: 'Lucida Grande', 'Lucida Sans Unicode', 'Arial', sans-serif !important;
+            cursor: pointer;
+            transition: background 0.1s;
+        }
+        
+        #debug-panel-content .game-button:hover {
+            background: #3a3a3a !important;
+        }
+        
+        #debug-panel-content .modal-actions {
+            margin-top: 8px !important;
+            gap: 6px !important;
         }
         
         .stats-separator {
@@ -1612,27 +1834,164 @@
 
     <!-- Debug Panel Modal -->
     <div id="debug-panel-modal" class="extended-stats-modal-overlay" style="display:none; z-index: 3700;">
-        <div class="extended-stats-modal-panel">
+        <div class="extended-stats-modal-panel" id="debug-panel-content">
             <div style="display:flex; align-items:center; justify-content: space-between; gap: 12px; margin-bottom: 12px;">
                 <div style="display:flex; align-items:center; gap: 10px;">
                     <span style="font-size: 24px;">🐛</span>
                     <div class="modal-title">Debug Panel</div>
                 </div>
-                <button id="debug-close-button" class="game-button" style="padding: 8px 10px; min-width: 40px;">✕</button>
+                <button id="debug-close-button" class="game-button">✕</button>
             </div>
+            <!-- Jump to Level -->
             <div style="margin-bottom: 16px;">
-                <label for="debug-level-input" style="display: block; margin-bottom: 8px; font-size: 14px; opacity: 0.9;">Jump to Level:</label>
-                <input 
-                    type="number" 
-                    id="debug-level-input" 
-                    min="0" 
-                    style="width: 100%; padding: 10px 12px; border-radius: 8px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.16); color: rgba(255,255,255,0.92); font-size: 14px; box-sizing: border-box;"
-                    placeholder="Enter level number"
-                />
+                <div style="font-size: 11px; font-weight: bold; margin-bottom: 8px; padding: 4px 6px; background: #2d2d2d; border-radius: 2px; color: #fff; font-family: 'Lucida Grande', 'Lucida Sans Unicode', 'Arial', sans-serif;">
+                    🎯 Jump to Level
+                </div>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <input 
+                        type="number" 
+                        id="debug-level-input" 
+                        min="0" 
+                        style="flex: 1; padding: 8px 10px; border-radius: 6px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.16); color: rgba(255,255,255,0.92); font-size: 12px; box-sizing: border-box;"
+                        placeholder="Level #"
+                    />
+                    <button id="debug-jump-button" class="game-button" style="padding: 2px 8px; font-size: 10px; white-space: nowrap; min-width: auto;">Jump</button>
+                </div>
             </div>
+            
+            <!-- Light Controls (Collapsible) -->
+            <div style="margin-bottom: 16px;">
+                <div id="light-controls-header" style="font-size: 11px; font-weight: bold; margin-bottom: 4px; cursor: pointer; user-select: none; padding: 4px 6px; background: #2d2d2d; border-radius: 2px; color: #fff; font-family: 'Lucida Grande', 'Lucida Sans Unicode', 'Arial', sans-serif;">
+                    <span id="light-controls-arrow" style="display: inline-block; margin-right: 6px; transition: transform 0.2s; font-size: 10px;">▶</span>💡 Light Controls
+                </div>
+                <div id="light-controls-content" style="display: none;">
+                
+                <!-- Ambient Light -->
+                <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                    <label style="font-size: 11px; opacity: 0.85; min-width: 100px; flex-shrink: 0;">Ambient Intensity</label>
+                    <input type="range" id="ambient-intensity-slider" min="0" max="1" step="0.01" value="0.10" 
+                        style="flex: 1; height: 4px; border-radius: 0px; background: #252525; border: 1px solid #3a3a3a; outline: none; cursor: pointer; -webkit-appearance: none; appearance: none;" />
+                    <span id="ambient-intensity-value" style="font-size: 11px; opacity: 0.7; min-width: 35px; text-align: right; flex-shrink: 0;">0.10</span>
+                </div>
+                
+                <!-- Key Light Intensity -->
+                <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                    <label style="font-size: 11px; opacity: 0.85; min-width: 100px; flex-shrink: 0;">Key Intensity</label>
+                    <input type="range" id="key-intensity-slider" min="0" max="5" step="0.1" value="1.8" 
+                        style="flex: 1; height: 4px; border-radius: 0px; background: #252525; border: 1px solid #3a3a3a; outline: none; cursor: pointer; -webkit-appearance: none; appearance: none;" />
+                    <span id="key-intensity-value" style="font-size: 11px; opacity: 0.7; min-width: 35px; text-align: right; flex-shrink: 0;">1.80</span>
+                </div>
+                
+                <!-- Key Light Position X -->
+                <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                    <label style="font-size: 11px; opacity: 0.85; min-width: 100px; flex-shrink: 0;">Key Pos X</label>
+                    <input type="range" id="key-x-slider" min="-30" max="30" step="0.5" value="10" 
+                        style="flex: 1; height: 4px; border-radius: 0px; background: #252525; border: 1px solid #3a3a3a; outline: none; cursor: pointer; -webkit-appearance: none; appearance: none;" />
+                    <span id="key-x-value" style="font-size: 11px; opacity: 0.7; min-width: 35px; text-align: right; flex-shrink: 0;">10.0</span>
+                </div>
+                
+                <!-- Key Light Position Y -->
+                <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                    <label style="font-size: 11px; opacity: 0.85; min-width: 100px; flex-shrink: 0;">Key Pos Y</label>
+                    <input type="range" id="key-y-slider" min="0" max="50" step="0.5" value="20" 
+                        style="flex: 1; height: 4px; border-radius: 0px; background: #252525; border: 1px solid #3a3a3a; outline: none; cursor: pointer; -webkit-appearance: none; appearance: none;" />
+                    <span id="key-y-value" style="font-size: 11px; opacity: 0.7; min-width: 35px; text-align: right; flex-shrink: 0;">20.0</span>
+                </div>
+                
+                <!-- Key Light Position Z -->
+                <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                    <label style="font-size: 11px; opacity: 0.85; min-width: 100px; flex-shrink: 0;">Key Pos Z</label>
+                    <input type="range" id="key-z-slider" min="-30" max="30" step="0.5" value="10" 
+                        style="flex: 1; height: 4px; border-radius: 0px; background: #252525; border: 1px solid #3a3a3a; outline: none; cursor: pointer; -webkit-appearance: none; appearance: none;" />
+                    <span id="key-z-value" style="font-size: 11px; opacity: 0.7; min-width: 35px; text-align: right; flex-shrink: 0;">10.0</span>
+                </div>
+                
+                <!-- Fill Light Intensity -->
+                <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                    <label style="font-size: 11px; opacity: 0.85; min-width: 100px; flex-shrink: 0;">Fill Intensity</label>
+                    <input type="range" id="fill-intensity-slider" min="0" max="2" step="0.01" value="0.12" 
+                        style="flex: 1; height: 4px; border-radius: 0px; background: #252525; border: 1px solid #3a3a3a; outline: none; cursor: pointer; -webkit-appearance: none; appearance: none;" />
+                    <span id="fill-intensity-value" style="font-size: 11px; opacity: 0.7; min-width: 35px; text-align: right; flex-shrink: 0;">0.12</span>
+                </div>
+                
+                <!-- Fill Light Position X -->
+                <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                    <label style="font-size: 11px; opacity: 0.85; min-width: 100px; flex-shrink: 0;">Fill Pos X</label>
+                    <input type="range" id="fill-x-slider" min="-30" max="30" step="0.5" value="-8" 
+                        style="flex: 1; height: 4px; border-radius: 0px; background: #252525; border: 1px solid #3a3a3a; outline: none; cursor: pointer; -webkit-appearance: none; appearance: none;" />
+                    <span id="fill-x-value" style="font-size: 11px; opacity: 0.7; min-width: 35px; text-align: right; flex-shrink: 0;">-8.0</span>
+                </div>
+                
+                <!-- Fill Light Position Y -->
+                <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                    <label style="font-size: 11px; opacity: 0.85; min-width: 100px; flex-shrink: 0;">Fill Pos Y</label>
+                    <input type="range" id="fill-y-slider" min="0" max="50" step="0.5" value="12" 
+                        style="flex: 1; height: 4px; border-radius: 0px; background: #252525; border: 1px solid #3a3a3a; outline: none; cursor: pointer; -webkit-appearance: none; appearance: none;" />
+                    <span id="fill-y-value" style="font-size: 11px; opacity: 0.7; min-width: 35px; text-align: right; flex-shrink: 0;">12.0</span>
+                </div>
+                
+                <!-- Fill Light Position Z -->
+                <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                    <label style="font-size: 11px; opacity: 0.85; min-width: 100px; flex-shrink: 0;">Fill Pos Z</label>
+                    <input type="range" id="fill-z-slider" min="-30" max="30" step="0.5" value="-8" 
+                        style="flex: 1; height: 4px; border-radius: 0px; background: #252525; border: 1px solid #3a3a3a; outline: none; cursor: pointer; -webkit-appearance: none; appearance: none;" />
+                    <span id="fill-z-value" style="font-size: 11px; opacity: 0.7; min-width: 35px; text-align: right; flex-shrink: 0;">-8.0</span>
+                </div>
+                
+                <!-- Load Light Values (JSON) -->
+                <div style="margin-top: 16px; margin-bottom: 12px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.1);">
+                    <label for="debug-light-values-input" style="display: block; margin-bottom: 8px; font-size: 13px; opacity: 0.9;">Load Light Values (JSON):</label>
+                    <textarea 
+                        id="debug-light-values-input" 
+                        rows="6"
+                        style="width: 100%; padding: 8px 10px; border-radius: 6px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.16); color: rgba(255,255,255,0.92); font-size: 11px; box-sizing: border-box; font-family: monospace; resize: vertical;"
+                        placeholder='Paste JSON light values here...'
+                    ></textarea>
+                </div>
+                
+                <!-- Light Control Buttons -->
+                <div style="display: flex; gap: 8px; margin-top: 8px;">
+                    <button id="debug-load-lights-button" class="game-button" style="padding: 8px 12px; flex: 1; font-size: 12px;">⚡ Load</button>
+                    <button id="debug-capture-lights-button" class="game-button" style="padding: 8px 12px; flex: 1; font-size: 12px;">📋 Capture</button>
+                </div>
+                </div>
+            </div>
+            
             <div class="modal-actions" style="flex-direction: column; gap: 10px;">
-                <button id="debug-jump-button" class="game-button" style="padding: 10px 14px; width: 100%;">Jump to Level</button>
                 <button id="debug-investigate-button" class="game-button" style="padding: 10px 14px; width: 100%;">🔍 Investigate Bug</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Update Notification Modal -->
+    <div id="update-notification-modal" class="extended-stats-modal-overlay" style="display:none; z-index: 3800;">
+        <div class="extended-stats-modal-panel">
+            <div style="display:flex; align-items:center; gap: 10px; margin-bottom: 12px;">
+                <span style="font-size: 24px;">🔄</span>
+                <div class="modal-title">Update Available</div>
+            </div>
+            <div style="margin-bottom: 16px; line-height: 1.6; opacity: 0.9;">
+                A new version of Jarrows is available! Please reload to get the latest features and improvements.
+            </div>
+            <div class="modal-actions" style="flex-direction: row; gap: 10px;">
+                <button id="update-later-button" class="game-button" style="padding: 10px 14px; flex: 1;">Later</button>
+                <button id="update-reload-button" class="game-button" style="padding: 10px 14px; flex: 1; background: rgba(135, 206, 235, 0.2); border-color: rgba(135, 206, 235, 0.4);">Reload Now</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Changelog Modal -->
+    <div id="changelog-modal" class="extended-stats-modal-overlay" style="display:none; z-index: 3900;">
+        <div class="extended-stats-modal-panel" style="max-width: 500px; max-height: 80vh; overflow-y: auto;">
+            <div style="display:flex; align-items:center; gap: 10px; margin-bottom: 12px;">
+                <span style="font-size: 24px;">✨</span>
+                <div class="modal-title">What's New</div>
+            </div>
+            <div id="changelog-content" style="margin-bottom: 16px;">
+                <!-- Changelog content will be populated by JavaScript -->
+            </div>
+            <div class="modal-actions">
+                <button id="changelog-close-button" class="game-button" style="padding: 10px 14px; width: 100%;">Got it</button>
             </div>
         </div>
     </div>
@@ -1698,6 +2057,7 @@
                 localStorage.setItem('jarrows_colors', useColoredBlocks ? 'colored' : 'white');
                 localStorage.setItem('jarrows_quality', qualityPreset);
                 localStorage.setItem('jarrows_auto_zoom', autoZoomEnabled.toString());
+                // Mystical view is saved in toggleMysticalView function in main.js
             } catch (e) {
                 console.warn('Failed to save preferences:', e);
             }

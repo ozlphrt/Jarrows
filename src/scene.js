@@ -39,10 +39,21 @@ export function setGradientBackground(scene, topColor, bottomColor) {
  * Set up fog for the scene
  * @param {THREE.Scene} scene - The Three.js scene
  * @param {boolean} isDarkTheme - Whether dark theme is active
+ * @param {boolean} isMysticalView - Whether mystical view is active
  */
-export function setupFog(scene, isDarkTheme) {
-    // Fog removed - set to null to disable
+export function setupFog(scene, isDarkTheme, isMysticalView = false) {
+    // Fog removed entirely - set to null for all views
     scene.fog = null;
+}
+
+/**
+ * Set mystical background gradient (light blue/white)
+ * @param {THREE.Scene} scene - The Three.js scene
+ */
+export function setMysticalBackground(scene) {
+    // Light blue to light gray gradient for mystical view
+    // Top: light blue (0xd0e8ff), Bottom: light gray (0xe8e8e8) - more visible gradient
+    setGradientBackground(scene, 0xd0e8ff, 0xe8e8e8);
 }
 
 export function createLights(scene) {
@@ -111,21 +122,33 @@ export function createGrid(scene) {
     const gridSize = 7;
     const cubeSize = 1;
     
-    // Grid base
-    const baseGeometry = new THREE.BoxGeometry(gridSize * cubeSize, 0.2, gridSize * cubeSize);
+    // Base plate - single 21x21 plate (simple extension from original 7x7)
+    const visualBaseSize = 21;
+    const baseGeometry = new THREE.BoxGeometry(visualBaseSize * cubeSize, 0.2, visualBaseSize * cubeSize);
     const baseMaterial = new THREE.MeshStandardMaterial({ 
         color: 0x444444,
-        roughness: 0.3, // Lower roughness for subtle reflections
-        metalness: 0.1 // Slight metalness for depth
+        roughness: 0.8, // Higher roughness for matte/non-reflective surface
+        metalness: 0.0 // No metalness for non-metallic appearance
     });
     const base = new THREE.Mesh(baseGeometry, baseMaterial);
+    // Position centered at the 7x7 grid center (will be reset to 0,0,0 when added to towerGroup)
     base.position.set(gridSize * cubeSize / 2, -0.1, gridSize * cubeSize / 2);
     base.receiveShadow = true;
+    base.castShadow = true;
     scene.add(base);
     
-    // Grid lines with improved anti-aliasing
-    const gridHelper = new THREE.GridHelper(gridSize * cubeSize, gridSize, 0x888888, 0x666666);
-    gridHelper.position.set(gridSize * cubeSize / 2, 0.01, gridSize * cubeSize / 2); // Slightly above base to prevent z-fighting
+    // Single grid helper for the entire 21x21 base plate with 1x1 unit spacing
+    // GridHelper(size, divisions) creates a grid centered at the helper's position
+    // With size=21 and divisions=21, it creates lines at: -10.5, -9.5, ..., -0.5, 0.5, ..., 9.5, 10.5 (relative to grid center)
+    // Blocks are positioned at: (gridX * cubeSize + cubeSize/2) - (gridSize * cubeSize / 2)
+    // For gridX=0: block center at 0.5 - 3.5 = -3.0 (relative to towerGroup)
+    // For gridX=1: block center at 1.5 - 3.5 = -2.0 (relative to towerGroup)
+    // Cell boundaries should be at: -3.5, -2.5, -1.5, -0.5, 0.5, 1.5, 2.5, 3.5 (relative to towerGroup)
+    // GridHelper lines are already at half-integers, which match cell boundaries!
+    // Position grid at (3.5, 0.01, 3.5) initially (will be reset to (0, 0.01, 0) when added to towerGroup)
+    const gridHelper = new THREE.GridHelper(visualBaseSize * cubeSize, visualBaseSize, 0x888888, 0x666666);
+    // Position at grid center - will be reset to (0, 0.01, 0) when added to towerGroup
+    gridHelper.position.set(gridSize * cubeSize / 2, 0.01, gridSize * cubeSize / 2);
     // Improve grid line rendering
     if (gridHelper.material) {
         gridHelper.material.transparent = true;
@@ -135,6 +158,7 @@ export function createGrid(scene) {
     
     return { base, gridHelper, gridSize, cubeSize };
 }
+
 
 /**
  * Create visual helpers for camera pivot point

@@ -31,7 +31,7 @@ export default ({ command }) => {
   if (!isDev) {
     plugins.push(
       VitePWA({
-        registerType: 'autoUpdate',
+        registerType: 'promptUpdate',
         includeAssets: ['192.png', '512.png'],
         workbox: {
           skipWaiting: true,

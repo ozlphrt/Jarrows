@@ -1,7 +1,7 @@
 ﻿import * as THREE from 'three';
 import { initPhysics, createPhysicsBlock, updatePhysics, isPhysicsStepping, hasPendingOperations, isPhysicsProcessing, removePhysicsBody } from './physics.js';
 import { Block } from './Block.js';
-import { createLights, createGrid, setGradientBackground, setupFog } from './scene.js';
+import { createLights, createGrid, setGradientBackground, setupFog, setMysticalBackground } from './scene.js';
 import { validateStructure, validateSolvability, calculateDifficulty, getBlockCells, fixOverlappingBlocks, checkAndFixAllOverlaps, canBlockExit } from './puzzle_validation.js';
 import { initStats, startLevelStats, trackMove, trackSpin, trackBlockRemoved, completeLevel, getLevelComparison, getElapsedTime } from './stats/stats.js';
 import { updateLevelCompleteModal, showOfflineIndicator, hideOfflineIndicator, showPersonalHistoryModal, showProfileModal } from './stats/statsUI.js';
@@ -9,6 +9,7 @@ import { isOnline, isLocalOnlyMode } from './stats/statsAPI.js';
 import { initAudio, playSound, toggleAudio, isAudioEnabled } from './audio.js';
 import { getInfernoDifficultyConfig } from './inferno_difficulty.js';
 import { showMilestoneModal, showFeatureModal, showLevelUpdateModal } from './inferno_modals.js';
+import { getChangelogForVersion } from './changelog.js';
 import appVersionRaw from '../VERSION?raw';
 
 // Build-time constant injected by Vite (see vite.config.js). Falls back to '' if not defined.
@@ -32,6 +33,187 @@ function sanitizeGitSha(raw) {
     if (!raw) return '';
     const s = String(raw).trim().match(/[0-9a-f]+/i);
     return s ? s[0].slice(0, 12) : '';
+}
+
+// Version comparison helper (semantic versioning)
+function compareVersions(v1, v2) {
+    const parts1 = v1.split('.').map(Number);
+    const parts2 = v2.split('.').map(Number);
+    const maxLength = Math.max(parts1.length, parts2.length);
+    
+    for (let i = 0; i < maxLength; i++) {
+        const part1 = parts1[i] || 0;
+        const part2 = parts2[i] || 0;
+        if (part1 > part2) return 1;
+        if (part1 < part2) return -1;
+    }
+    return 0;
+}
+
+// Service Worker Update Detection
+let swRegistration = null;
+let updateCheckInterval = null;
+
+// Show update notification modal
+function showUpdateNotification() {
+    const modal = document.getElementById('update-notification-modal');
+    if (!modal) return;
+    modal.style.display = 'flex';
+}
+
+// Hide update notification modal
+function hideUpdateNotification() {
+    const modal = document.getElementById('update-notification-modal');
+    if (!modal) return;
+    modal.style.display = 'none';
+}
+
+// Handle update reload
+async function handleUpdateReload() {
+    if (!swRegistration || !swRegistration.waiting) {
+        // No waiting service worker, just reload
+        window.location.reload();
+        return;
+    }
+    
+    // Send skip waiting message to service worker
+    swRegistration.waiting.postMessage({ type: 'SKIP_WAITING' });
+    
+    // Wait for controller change (service worker took control)
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+        window.location.reload();
+    }, { once: true });
+}
+
+// Check for service worker updates
+async function checkForUpdates() {
+    if (!swRegistration) return;
+    
+    try {
+        await swRegistration.update();
+        
+        // Check if there's a waiting service worker
+        if (swRegistration.waiting) {
+            showUpdateNotification();
+        }
+    } catch (error) {
+        console.warn('Failed to check for updates:', error);
+    }
+}
+
+// Initialize service worker update detection
+async function initServiceWorkerUpdates() {
+    if (!('serviceWorker' in navigator)) return;
+    
+    try {
+        // Get service worker registration
+        const registration = await navigator.serviceWorker.getRegistration();
+        if (!registration) return;
+        
+        swRegistration = registration;
+        
+        // Listen for update found event
+        registration.addEventListener('updatefound', () => {
+            const newWorker = registration.installing;
+            if (!newWorker) return;
+            
+            newWorker.addEventListener('statechange', () => {
+                if (newWorker.state === 'installed') {
+                    // New service worker is installed
+                    // Check if there's an active service worker (meaning this is an update, not first install)
+                    // Also check registration.waiting to be sure
+                    if (registration.active && registration.active !== newWorker) {
+                        // There's a waiting service worker (update available)
+                        showUpdateNotification();
+                    } else if (registration.waiting) {
+                        // Double-check: if there's a waiting service worker, show notification
+                        showUpdateNotification();
+                    }
+                }
+            });
+        });
+        
+        // Check if there's already a waiting service worker
+        if (registration.waiting) {
+            showUpdateNotification();
+        }
+        
+        // Periodically check for updates (every 60 seconds)
+        updateCheckInterval = setInterval(checkForUpdates, 60000);
+        
+        // Also check on visibility change (when user returns to tab)
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) {
+                checkForUpdates();
+            }
+        });
+    } catch (error) {
+        console.warn('Failed to initialize service worker updates:', error);
+    }
+}
+
+// Changelog Modal Functions
+function showChangelogModal(version) {
+    const modal = document.getElementById('changelog-modal');
+    const content = document.getElementById('changelog-content');
+    if (!modal || !content) return;
+    
+    const changelog = getChangelogForVersion(version);
+    if (!changelog) {
+        // No changelog for this version, don't show modal
+        return;
+    }
+    
+    // Build changelog HTML
+    let html = `<div style="margin-bottom: 16px;">`;
+    html += `<div style="font-size: 18px; font-weight: 600; margin-bottom: 8px; opacity: 0.95;">Version ${version}</div>`;
+    if (changelog.title) {
+        html += `<div style="font-size: 16px; font-weight: 500; margin-bottom: 12px; opacity: 0.85;">${changelog.title}</div>`;
+    }
+    if (changelog.date) {
+        html += `<div style="font-size: 12px; opacity: 0.6; margin-bottom: 16px;">${changelog.date}</div>`;
+    }
+    if (changelog.changes && changelog.changes.length > 0) {
+        html += `<div style="line-height: 1.8;">`;
+        changelog.changes.forEach(change => {
+            html += `<div style="margin-bottom: 8px; opacity: 0.9;">• ${change}</div>`;
+        });
+        html += `</div>`;
+    }
+    html += `</div>`;
+    
+    content.innerHTML = html;
+    modal.style.display = 'flex';
+}
+
+function hideChangelogModal() {
+    const modal = document.getElementById('changelog-modal');
+    if (!modal) return;
+    modal.style.display = 'none';
+}
+
+// Check version and show changelog if needed
+function checkAndShowChangelog() {
+    try {
+        const currentVersion = parseVersionString(appVersionRaw);
+        if (!currentVersion) return;
+        
+        const lastSeenVersion = localStorage.getItem('jarrows_last_seen_version') || '';
+        
+        // Compare versions
+        if (lastSeenVersion && compareVersions(currentVersion, lastSeenVersion) <= 0) {
+            // Current version is not newer than last seen, skip changelog
+            return;
+        }
+        
+        // New version detected, show changelog
+        showChangelogModal(currentVersion);
+        
+        // Update last seen version
+        localStorage.setItem('jarrows_last_seen_version', currentVersion);
+    } catch (error) {
+        console.warn('Failed to check changelog:', error);
+    }
 }
 
 // Silent debug telemetry helper (fails silently to avoid console noise)
@@ -116,6 +298,7 @@ window.gameScene = scene;
 window.THREE = THREE;
 window.setGradientBackground = setGradientBackground;
 window.setupFog = setupFog;
+window.setMysticalBackground = setMysticalBackground;
 // Expose app version (from root VERSION file) for Settings UI
 window.jarrowsVersion = parseVersionString(appVersionRaw);
 window.jarrowsGitSha = sanitizeGitSha(JARROWS_GIT_SHA);
@@ -291,9 +474,16 @@ renderer.domElement.addEventListener('wheel', (event) => {
 
 // Setup scene elements
 const lights = createLights(scene);
+// Make lights globally accessible for debug panel
+if (typeof window !== 'undefined') {
+    window.lights = lights;
+}
 const { base, gridHelper } = createGrid(scene);
 const gridSize = 7;
 const cubeSize = 1;
+
+// Mystical view state
+let isMysticalView = false;
 
 // Calculate tower center (center of the 7x7 grid)
 const towerCenter = new THREE.Vector3(3.5, 0, 3.5);
@@ -311,10 +501,68 @@ scene.remove(gridHelper);
 
 // Reset positions relative to towerGroup origin
 base.position.set(0, -0.1, 0); // Base at origin, slightly below ground
-gridHelper.position.set(0, 0.01, 0); // Grid at origin, slightly above base
+// GridHelper creates lines centered at its position
+// With size=21 and divisions=21, lines are at: -10.5, -9.5, ..., -0.5, 0.5, ..., 9.5, 10.5 (relative to grid center)
+// Blocks are at: -3.0, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0 (centers, relative to towerGroup)
+// Cell boundaries should be at: -3.5, -2.5, -1.5, -0.5, 0.5, 1.5, 2.5, 3.5 (relative to towerGroup)
+// GridHelper lines at half-integers already match cell boundaries when centered at (0, 0.01, 0)
+gridHelper.position.set(0, 0.01, 0);
 
 towerGroup.add(base);
 towerGroup.add(gridHelper);
+
+// Toggle mystical view function
+function toggleMysticalView(enabled) {
+    isMysticalView = enabled;
+    
+    if (enabled) {
+        // Enable mystical view - only change background and lighting
+        // Keep base visible (no ground replacement)
+        base.visible = true;
+        
+        // Set mystical background
+        setMysticalBackground(scene);
+        
+        // No fog
+        setupFog(scene, true, false);
+        
+        // Optionally adjust lighting for softer look
+        if (lights.ambientLight) {
+            lights.ambientLight.intensity = 0.18; // Slightly higher ambient
+        }
+        if (lights.keyLight) {
+            lights.keyLight.intensity = 1.6; // Slightly softer key light
+        }
+    } else {
+        // Disable mystical view - restore normal view
+        // Keep base visible
+        base.visible = true;
+        
+        // Restore dark background
+        setGradientBackground(scene, 0x0f0f0f, 0x050505);
+        
+        // No fog
+        setupFog(scene, true, false);
+        
+        // Restore original lighting
+        if (lights.ambientLight) {
+            lights.ambientLight.intensity = 0.10;
+        }
+        if (lights.keyLight) {
+            lights.keyLight.intensity = 1.8;
+        }
+    }
+    
+    // Save preference
+    try {
+        localStorage.setItem('jarrows_mystical_view', enabled ? '1' : '0');
+    } catch (e) {
+        console.warn('Failed to save mystical view preference:', e);
+    }
+}
+
+// Expose toggle function globally
+window.toggleMysticalView = toggleMysticalView;
 
 // Tower position offset (for panning/reframing)
 let towerPositionOffset = new THREE.Vector3(0, 0, 0);
@@ -609,11 +857,20 @@ function updateLightsForCamera(lights, azimuth, elevation, center) {
 // Initialize Rapier physics
 const physics = await initPhysics();
 
-// Initialize stats system
-await initStats();
+    // Initialize stats system
+    await initStats();
 
-// Initialize audio system
-await initAudio();
+    // Initialize audio system
+    await initAudio();
+    
+    // Mark game as initialized to show stats bar
+    document.body.classList.add('game-initialized');
+
+// Initialize service worker update detection
+await initServiceWorkerUpdates();
+
+// Check and show changelog if new version detected
+checkAndShowChangelog();
 
 // Set up offline indicator
 // In strict local-only mode, we don't show any connectivity banner.
@@ -4289,21 +4546,25 @@ if (nextLevelButton) {
     });
 }
 
+// Jump to Level handler - consolidated function
+async function handleJumpToLevel() {
+    const levelInput = document.getElementById('debug-level-input');
+    if (!levelInput) return;
+    
+    const targetLevel = parseInt(levelInput.value, 10);
+    if (isNaN(targetLevel) || targetLevel < 0) {
+        alert('Please enter a valid level number (0 or greater)');
+        return;
+    }
+    
+    hideDebugPanel();
+    await window.debugJumpToLevel(targetLevel);
+}
+
 // Debug panel button handlers
 const debugJumpButton = document.getElementById('debug-jump-button');
 if (debugJumpButton) {
-    debugJumpButton.addEventListener('click', async () => {
-        const levelInput = document.getElementById('debug-level-input');
-        if (levelInput) {
-            const targetLevel = parseInt(levelInput.value, 10);
-            if (!isNaN(targetLevel) && targetLevel >= 0) {
-                hideDebugPanel();
-                await window.debugJumpToLevel(targetLevel);
-            } else {
-                alert('Please enter a valid level number (0 or greater)');
-            }
-        }
-    });
+    debugJumpButton.addEventListener('click', handleJumpToLevel);
 }
 
 const debugCloseButton = document.getElementById('debug-close-button');
@@ -4422,16 +4683,10 @@ if (debugInvestigateButton) {
 // Allow Enter key to trigger jump in debug panel
 const debugLevelInput = document.getElementById('debug-level-input');
 if (debugLevelInput) {
-    debugLevelInput.addEventListener('keydown', async (e) => {
+    debugLevelInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
             e.preventDefault();
-            const targetLevel = parseInt(debugLevelInput.value, 10);
-            if (!isNaN(targetLevel) && targetLevel >= 0) {
-                hideDebugPanel();
-                await window.debugJumpToLevel(targetLevel);
-            } else {
-                alert('Please enter a valid level number (0 or greater)');
-            }
+            handleJumpToLevel();
         }
     });
 }
@@ -4442,6 +4697,368 @@ if (debugPanelModal) {
     debugPanelModal.addEventListener('click', (e) => {
         if (e.target === debugPanelModal) {
             hideDebugPanel();
+        }
+    });
+}
+
+// Flag to disable automatic light updates when user is manually controlling lights via debug panel
+// Declared early so it's available when setupLightControls is called
+let lightsManuallyControlled = false;
+
+// Light controls setup
+function setupLightControls() {
+    if (!window.lights) return;
+    
+    const { ambientLight, keyLight, fillLight } = window.lights;
+    
+    // Helper function to force immediate shadow map update and render
+    const forceShadowUpdate = () => {
+        if (renderer && renderer.shadowMap) {
+            // Update shadow camera when key light position changes
+            if (keyLight.shadow && keyLight.shadow.camera) {
+                keyLight.shadow.camera.position.copy(keyLight.position);
+                // Get tower center for shadow camera lookAt
+                const towerCenter = towerGroup ? towerGroup.position : new THREE.Vector3(3.5, 0, 3.5);
+                keyLight.shadow.camera.lookAt(towerCenter);
+                keyLight.shadow.camera.updateMatrixWorld();
+            }
+            renderer.shadowMap.needsUpdate = true;
+        }
+        // Force immediate render if renderer is available
+        if (renderer && scene && camera) {
+            renderer.render(scene, camera);
+        }
+    };
+    
+    // Set flag to disable automatic light updates when user manually controls lights
+    lightsManuallyControlled = true;
+    
+    // Ambient Light Intensity
+    const ambientIntensitySlider = document.getElementById('ambient-intensity-slider');
+    const ambientIntensityValue = document.getElementById('ambient-intensity-value');
+    if (ambientIntensitySlider && ambientIntensityValue) {
+        ambientIntensitySlider.addEventListener('input', (e) => {
+            const value = parseFloat(e.target.value);
+            ambientLight.intensity = value;
+            ambientIntensityValue.textContent = value.toFixed(2);
+            // Force immediate render
+            if (renderer && scene && camera) {
+                renderer.render(scene, camera);
+            }
+        });
+    }
+    
+    // Key Light Intensity
+    const keyIntensitySlider = document.getElementById('key-intensity-slider');
+    const keyIntensityValue = document.getElementById('key-intensity-value');
+    if (keyIntensitySlider && keyIntensityValue) {
+        keyIntensitySlider.addEventListener('input', (e) => {
+            const value = parseFloat(e.target.value);
+            keyLight.intensity = value;
+            keyIntensityValue.textContent = value.toFixed(2);
+            forceShadowUpdate();
+        });
+    }
+    
+    // Key Light Position X
+    const keyXSlider = document.getElementById('key-x-slider');
+    const keyXValue = document.getElementById('key-x-value');
+    if (keyXSlider && keyXValue) {
+        keyXSlider.addEventListener('input', (e) => {
+            const value = parseFloat(e.target.value);
+            keyLight.position.x = value;
+            keyXValue.textContent = value.toFixed(1);
+            forceShadowUpdate();
+        });
+    }
+    
+    // Key Light Position Y
+    const keyYSlider = document.getElementById('key-y-slider');
+    const keyYValue = document.getElementById('key-y-value');
+    if (keyYSlider && keyYValue) {
+        keyYSlider.addEventListener('input', (e) => {
+            const value = parseFloat(e.target.value);
+            keyLight.position.y = value;
+            keyYValue.textContent = value.toFixed(1);
+            forceShadowUpdate();
+        });
+    }
+    
+    // Key Light Position Z
+    const keyZSlider = document.getElementById('key-z-slider');
+    const keyZValue = document.getElementById('key-z-value');
+    if (keyZSlider && keyZValue) {
+        keyZSlider.addEventListener('input', (e) => {
+            const value = parseFloat(e.target.value);
+            keyLight.position.z = value;
+            keyZValue.textContent = value.toFixed(1);
+            forceShadowUpdate();
+        });
+    }
+    
+    // Fill Light Intensity
+    const fillIntensitySlider = document.getElementById('fill-intensity-slider');
+    const fillIntensityValue = document.getElementById('fill-intensity-value');
+    if (fillIntensitySlider && fillIntensityValue) {
+        fillIntensitySlider.addEventListener('input', (e) => {
+            const value = parseFloat(e.target.value);
+            fillLight.intensity = value;
+            fillIntensityValue.textContent = value.toFixed(2);
+            // Force immediate render
+            if (renderer && scene && camera) {
+                renderer.render(scene, camera);
+            }
+        });
+    }
+    
+    // Fill Light Position X
+    const fillXSlider = document.getElementById('fill-x-slider');
+    const fillXValue = document.getElementById('fill-x-value');
+    if (fillXSlider && fillXValue) {
+        fillXSlider.addEventListener('input', (e) => {
+            const value = parseFloat(e.target.value);
+            fillLight.position.x = value;
+            fillXValue.textContent = value.toFixed(1);
+            // Force immediate render
+            if (renderer && scene && camera) {
+                renderer.render(scene, camera);
+            }
+        });
+    }
+    
+    // Fill Light Position Y
+    const fillYSlider = document.getElementById('fill-y-slider');
+    const fillYValue = document.getElementById('fill-y-value');
+    if (fillYSlider && fillYValue) {
+        fillYSlider.addEventListener('input', (e) => {
+            const value = parseFloat(e.target.value);
+            fillLight.position.y = value;
+            fillYValue.textContent = value.toFixed(1);
+            // Force immediate render
+            if (renderer && scene && camera) {
+                renderer.render(scene, camera);
+            }
+        });
+    }
+    
+    // Fill Light Position Z
+    const fillZSlider = document.getElementById('fill-z-slider');
+    const fillZValue = document.getElementById('fill-z-value');
+    if (fillZSlider && fillZValue) {
+        fillZSlider.addEventListener('input', (e) => {
+            const value = parseFloat(e.target.value);
+            fillLight.position.z = value;
+            fillZValue.textContent = value.toFixed(1);
+            // Force immediate render
+            if (renderer && scene && camera) {
+                renderer.render(scene, camera);
+            }
+        });
+    }
+}
+
+// Initialize light controls when DOM is ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', setupLightControls);
+} else {
+    setupLightControls();
+}
+
+// Light controls collapsible section
+const lightControlsHeader = document.getElementById('light-controls-header');
+const lightControlsContent = document.getElementById('light-controls-content');
+const lightControlsArrow = document.getElementById('light-controls-arrow');
+
+if (lightControlsHeader && lightControlsContent && lightControlsArrow) {
+    lightControlsHeader.addEventListener('click', () => {
+        const isCollapsed = lightControlsContent.style.display === 'none';
+        lightControlsContent.style.display = isCollapsed ? 'block' : 'none';
+        lightControlsArrow.textContent = isCollapsed ? '▼' : '▶';
+        
+        // Re-initialize light controls when section is expanded (in case setupLightControls was called before DOM was ready)
+        if (isCollapsed && window.lights) {
+            setupLightControls();
+        }
+    });
+}
+
+// Load light values button
+const debugLoadLightsButton = document.getElementById('debug-load-lights-button');
+if (debugLoadLightsButton) {
+    debugLoadLightsButton.addEventListener('click', () => {
+        if (!window.lights) {
+            alert('Lights not available');
+            return;
+        }
+        
+        const input = document.getElementById('debug-light-values-input');
+        if (!input) {
+            alert('Input field not found');
+            return;
+        }
+        
+        const jsonText = input.value.trim();
+        if (!jsonText) {
+            alert('Please paste JSON light values first');
+            return;
+        }
+        
+        try {
+            const lightValues = JSON.parse(jsonText);
+            const { ambientLight, keyLight, fillLight } = window.lights;
+            
+            // Apply ambient light
+            if (lightValues.ambient && typeof lightValues.ambient.intensity === 'number') {
+                ambientLight.intensity = lightValues.ambient.intensity;
+                const slider = document.getElementById('ambient-intensity-slider');
+                const valueDisplay = document.getElementById('ambient-intensity-value');
+                if (slider) slider.value = lightValues.ambient.intensity;
+                if (valueDisplay) valueDisplay.textContent = lightValues.ambient.intensity.toFixed(2);
+            }
+            
+            // Apply key light
+            if (lightValues.key) {
+                if (typeof lightValues.key.intensity === 'number') {
+                    keyLight.intensity = lightValues.key.intensity;
+                    const slider = document.getElementById('key-intensity-slider');
+                    const valueDisplay = document.getElementById('key-intensity-value');
+                    if (slider) slider.value = lightValues.key.intensity;
+                    if (valueDisplay) valueDisplay.textContent = lightValues.key.intensity.toFixed(2);
+                }
+                if (lightValues.key.position) {
+                    if (typeof lightValues.key.position.x === 'number') {
+                        keyLight.position.x = lightValues.key.position.x;
+                        const slider = document.getElementById('key-x-slider');
+                        const valueDisplay = document.getElementById('key-x-value');
+                        if (slider) slider.value = lightValues.key.position.x;
+                        if (valueDisplay) valueDisplay.textContent = lightValues.key.position.x.toFixed(1);
+                    }
+                    if (typeof lightValues.key.position.y === 'number') {
+                        keyLight.position.y = lightValues.key.position.y;
+                        const slider = document.getElementById('key-y-slider');
+                        const valueDisplay = document.getElementById('key-y-value');
+                        if (slider) slider.value = lightValues.key.position.y;
+                        if (valueDisplay) valueDisplay.textContent = lightValues.key.position.y.toFixed(1);
+                    }
+                    if (typeof lightValues.key.position.z === 'number') {
+                        keyLight.position.z = lightValues.key.position.z;
+                        const slider = document.getElementById('key-z-slider');
+                        const valueDisplay = document.getElementById('key-z-value');
+                        if (slider) slider.value = lightValues.key.position.z;
+                        if (valueDisplay) valueDisplay.textContent = lightValues.key.position.z.toFixed(1);
+                    }
+                }
+            }
+            
+            // Apply fill light
+            if (lightValues.fill) {
+                if (typeof lightValues.fill.intensity === 'number') {
+                    fillLight.intensity = lightValues.fill.intensity;
+                    const slider = document.getElementById('fill-intensity-slider');
+                    const valueDisplay = document.getElementById('fill-intensity-value');
+                    if (slider) slider.value = lightValues.fill.intensity;
+                    if (valueDisplay) valueDisplay.textContent = lightValues.fill.intensity.toFixed(2);
+                }
+                if (lightValues.fill.position) {
+                    if (typeof lightValues.fill.position.x === 'number') {
+                        fillLight.position.x = lightValues.fill.position.x;
+                        const slider = document.getElementById('fill-x-slider');
+                        const valueDisplay = document.getElementById('fill-x-value');
+                        if (slider) slider.value = lightValues.fill.position.x;
+                        if (valueDisplay) valueDisplay.textContent = lightValues.fill.position.x.toFixed(1);
+                    }
+                    if (typeof lightValues.fill.position.y === 'number') {
+                        fillLight.position.y = lightValues.fill.position.y;
+                        const slider = document.getElementById('fill-y-slider');
+                        const valueDisplay = document.getElementById('fill-y-value');
+                        if (slider) slider.value = lightValues.fill.position.y;
+                        if (valueDisplay) valueDisplay.textContent = lightValues.fill.position.y.toFixed(1);
+                    }
+                    if (typeof lightValues.fill.position.z === 'number') {
+                        fillLight.position.z = lightValues.fill.position.z;
+                        const slider = document.getElementById('fill-z-slider');
+                        const valueDisplay = document.getElementById('fill-z-value');
+                        if (slider) slider.value = lightValues.fill.position.z;
+                        if (valueDisplay) valueDisplay.textContent = lightValues.fill.position.z.toFixed(1);
+                    }
+                }
+            }
+            
+            // Force shadow update after loading
+            if (renderer && renderer.shadowMap) {
+                if (keyLight.shadow && keyLight.shadow.camera) {
+                    keyLight.shadow.camera.position.copy(keyLight.position);
+                    const towerCenter = towerGroup ? towerGroup.position : new THREE.Vector3(3.5, 0, 3.5);
+                    keyLight.shadow.camera.lookAt(towerCenter);
+                    keyLight.shadow.camera.updateMatrixWorld();
+                }
+                renderer.shadowMap.needsUpdate = true;
+            }
+            
+            alert('✅ Light values loaded successfully!');
+        } catch (err) {
+            alert('❌ Error parsing JSON: ' + err.message);
+            console.error('Failed to parse light values:', err);
+        }
+    });
+}
+
+// Capture light values button
+const debugCaptureLightsButton = document.getElementById('debug-capture-lights-button');
+if (debugCaptureLightsButton) {
+    debugCaptureLightsButton.addEventListener('click', () => {
+        if (!window.lights) {
+            alert('Lights not available');
+            return;
+        }
+        
+        const { ambientLight, keyLight, fillLight } = window.lights;
+        
+        const lightValues = {
+            ambient: {
+                intensity: ambientLight.intensity
+            },
+            key: {
+                intensity: keyLight.intensity,
+                position: {
+                    x: keyLight.position.x,
+                    y: keyLight.position.y,
+                    z: keyLight.position.z
+                }
+            },
+            fill: {
+                intensity: fillLight.intensity,
+                position: {
+                    x: fillLight.position.x,
+                    y: fillLight.position.y,
+                    z: fillLight.position.z
+                }
+            }
+        };
+        
+        const jsonString = JSON.stringify(lightValues, null, 2);
+        
+        // Log to console
+        console.log('=== Light Values ===');
+        console.log(jsonString);
+        
+        // Copy to clipboard
+        try {
+            navigator.clipboard.writeText(jsonString);
+            // Also populate the input field
+            const input = document.getElementById('debug-light-values-input');
+            if (input) {
+                input.value = jsonString;
+            }
+            alert('✅ Light values copied to clipboard!\n\nAlso logged to console and populated in input field.');
+        } catch (err) {
+            console.warn('Could not copy to clipboard:', err);
+            // Still populate the input field
+            const input = document.getElementById('debug-light-values-input');
+            if (input) {
+                input.value = jsonString;
+            }
+            alert('✅ Light values logged to console and populated in input field!\n\nPlease copy from console manually.');
         }
     });
 }
@@ -5122,6 +5739,33 @@ function setupDebugPanelShortcut() {
     });
 }
 
+// Setup update notification and changelog modal event listeners
+function setupUpdateModals() {
+    // Update notification modal buttons
+    const updateLaterButton = document.getElementById('update-later-button');
+    const updateReloadButton = document.getElementById('update-reload-button');
+    
+    if (updateLaterButton) {
+        updateLaterButton.addEventListener('click', () => {
+            hideUpdateNotification();
+        });
+    }
+    
+    if (updateReloadButton) {
+        updateReloadButton.addEventListener('click', () => {
+            handleUpdateReload();
+        });
+    }
+    
+    // Changelog modal button
+    const changelogCloseButton = document.getElementById('changelog-close-button');
+    if (changelogCloseButton) {
+        changelogCloseButton.addEventListener('click', () => {
+            hideChangelogModal();
+        });
+    }
+}
+
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
         // #region agent log
@@ -5130,6 +5774,7 @@ if (document.readyState === 'loading') {
         setupDiceButton();
         setupButtonWatcher();
         setupDebugPanelShortcut();
+        setupUpdateModals();
     });
 } else {
     // #region agent log
@@ -5138,6 +5783,7 @@ if (document.readyState === 'loading') {
     setupDiceButton();
     setupButtonWatcher();
     setupDebugPanelShortcut();
+    setupUpdateModals();
 }
 
 // Framing control removed (was previously adjustable in Settings and via gestures).
@@ -6924,7 +7570,8 @@ function animate() {
 
     // Update light target positions at intervals (rate-limited for battery savings)
     // Then smoothly interpolate actual light positions every frame to prevent jitter
-    if (needShadowsThisFrame && (currentTime - lastLightUpdateMs) > LIGHT_UPDATE_INTERVAL_MS) {
+    // Skip automatic light updates if user is manually controlling lights via debug panel
+    if (!lightsManuallyControlled && needShadowsThisFrame && (currentTime - lastLightUpdateMs) > LIGHT_UPDATE_INTERVAL_MS) {
         lastLightUpdateMs = currentTime;
         updateLightsForCamera(lights, currentAzimuth, currentElevation, _towerGroupWorldCenter);
         if (renderer.shadowMap) renderer.shadowMap.needsUpdate = true;
@@ -6933,7 +7580,8 @@ function animate() {
     // Smoothly interpolate light positions every frame to prevent jitter (especially in battery mode)
     // This allows lights to follow the smoothly moving camera without discrete jumps
     // Only interpolate when position difference is significant to save battery
-    if (lights && targetKeyLightPosition) {
+    // Skip interpolation if user is manually controlling lights via debug panel
+    if (!lightsManuallyControlled && lights && targetKeyLightPosition) {
         const keyLightDistanceSq = lights.keyLight.position.distanceToSquared(targetKeyLightPosition);
         const fillLightDistanceSq = lights.fillLight && targetFillLightPosition 
             ? lights.fillLight.position.distanceToSquared(targetFillLightPosition) 
@@ -6949,6 +7597,15 @@ function animate() {
             if (lights.keyLight.shadow && lights.keyLight.shadow.camera) {
                 lights.keyLight.shadow.camera.position.copy(lights.keyLight.position);
                 lights.keyLight.shadow.camera.lookAt(_towerGroupWorldCenter);
+                
+                // Adjust shadow camera bounds to follow tower vertical position
+                // This prevents shadow jitter when tower moves up/down
+                const towerY = _towerGroupWorldCenter.y;
+                const shadowBounds = 14; // Base bounds
+                const verticalOffset = Math.max(0, towerY); // Only adjust for upward movement
+                lights.keyLight.shadow.camera.top = shadowBounds + verticalOffset;
+                lights.keyLight.shadow.camera.bottom = -shadowBounds + verticalOffset;
+                
                 lights.keyLight.shadow.camera.updateMatrixWorld();
             }
         }
@@ -6961,7 +7618,15 @@ function animate() {
 
     // Keep shadow maps in manual-update mode, but refresh periodically while motion/interaction is happening.
     // This avoids abrupt shadow pops from toggling autoUpdate on/off.
-    if (renderer.shadowMap && needShadowsThisFrame && (currentTime - lastShadowMapUpdateMs) > SHADOW_MAP_UPDATE_INTERVAL_MS) {
+    // In battery mode, increase update frequency when tower is moving to reduce jitter
+    const towerIsMoving = Math.abs(towerPositionOffset.y - targetTowerPositionOffset.y) > 0.01 || 
+                          Math.abs(towerPositionOffset.x - targetTowerPositionOffset.x) > 0.01 ||
+                          Math.abs(towerPositionOffset.z - targetTowerPositionOffset.z) > 0.01;
+    const effectiveShadowInterval = (isBatteryQuality && towerIsMoving) 
+        ? Math.min(SHADOW_MAP_UPDATE_INTERVAL_MS, 50) // Cap at 20Hz when moving in battery mode
+        : SHADOW_MAP_UPDATE_INTERVAL_MS;
+    
+    if (renderer.shadowMap && needShadowsThisFrame && (currentTime - lastShadowMapUpdateMs) > effectiveShadowInterval) {
         lastShadowMapUpdateMs = currentTime;
         renderer.shadowMap.needsUpdate = true;
     }
