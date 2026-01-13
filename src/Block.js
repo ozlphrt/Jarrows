@@ -2824,16 +2824,21 @@ export class Block {
             }
             // No rotation around the movement axis for single-cell blocks
         } else {
-            // Multi-cell horizontal blocks: tumble around axis perpendicular to movement
+            // Multi-cell horizontal blocks (2-3 cells): rotate around one primary axis
+            // This creates a "log rolling" effect rather than complex tumbling
+            // Single-cell blocks already handled above with coin-flip effect
             if (isXAligned) {
-                angularVelZ = moveDir * 4.5 * spinMultiplier;
-                angularVelY = (Math.random() - 0.5) * 2.0 * spinMultiplier;
-                angularVelX = (Math.random() - 0.5) * 1.5 * spinMultiplier;
+                // Moving in X direction: rotate around Z axis (like a log rolling)
+                angularVelZ = moveDir * 5.0 * spinMultiplier;
+                // Minimal wobble for natural look
+                angularVelY = (Math.random() - 0.5) * 0.8 * spinMultiplier;
             } else {
-                angularVelX = -moveDir * 4.5 * spinMultiplier;
-                angularVelY = (Math.random() - 0.5) * 2.0 * spinMultiplier;
-                angularVelZ = (Math.random() - 0.5) * 1.5 * spinMultiplier;
+                // Moving in Z direction: rotate around X axis (like a log rolling)
+                angularVelX = -moveDir * 5.0 * spinMultiplier;
+                // Minimal wobble for natural look
+                angularVelY = (Math.random() - 0.5) * 0.8 * spinMultiplier;
             }
+            // No rotation around the movement axis for cleaner appearance
         }
         
         // Store velocities to apply after body creation
