@@ -5743,12 +5743,14 @@ function onMouseClick(event) {
  * - At least one of its cells has a block below it at a lower yOffset
  */
 function blockHasSupport(block, allBlocks) {
-    // Blocks on the ground always have support
+    // PHYSICS RULE: Blocks are solid and stack when there's at least one supporting cell underneath
+    // Blocks on the ground (base plate) always have support
     if (block.yOffset === 0) {
         return true;
     }
     
-    // Get all cells this block occupies
+    // PHYSICS RULE: Check ALL cells the block occupies, not just center/base
+    // Any cell directly below any part of the block provides support
     const blockCells = getBlockCells(block);
     
     // For a block to have support, at least one of its cells must have support
@@ -5771,7 +5773,8 @@ function blockHasSupport(block, allBlocks) {
             // (with a small tolerance for floating point precision)
             if (otherTop < block.yOffset - 0.01) continue;
             
-            // Check if the supporting block occupies this cell
+            // PHYSICS RULE: Check if the supporting block occupies this specific cell
+            // This ensures support is checked for ALL cells, not just center
             const otherCells = getBlockCells(other);
             for (const otherCell of otherCells) {
                 if (otherCell.x === cell.x && otherCell.z === cell.z) {
@@ -5793,8 +5796,9 @@ function blockHasSupport(block, allBlocks) {
 }
 
 /**
- * Check all blocks and trigger falling for those that lost support
- * Blocks fall until they reach the base (yOffset = 0) or another supporting block
+ * PHYSICS RULE: Check all blocks and trigger falling for those that lost support
+ * Blocks fall until they reach the base plate (yOffset = 0) or another supporting block
+ * CRITICAL: Blocks must not overlap during or after falling
  */
 function checkAndTriggerFalling(blocks) {
     // Skip support checking during level generation to prevent false positives
@@ -5880,12 +5884,14 @@ function blockHasSupportExcluding(block, allBlocks, excluded) {
 }
 
 /**
- * Compute final landing yOffset for every block in `toFall` (a Set), using a bottom→top pass.
+ * PHYSICS RULE: Compute final landing yOffset for every block in `toFall` (a Set), using a bottom→top pass.
  * This makes chain-reaction drops animate simultaneously while still landing in correct stacked order.
+ * CRITICAL: Ensures blocks land at correct Y level without creating overlaps
  */
 function computeSupportFallTargets(allBlocks, toFall) {
     const fallBlocks = Array.from(toFall);
     // Process bottom→top: lower blocks' targets must be known before higher blocks can land on them.
+    // This ensures blocks can land on other falling blocks correctly
     fallBlocks.sort((a, b) => (a.yOffset - b.yOffset));
 
     const targets = new Map();
@@ -5898,11 +5904,13 @@ function computeSupportFallTargets(allBlocks, toFall) {
     };
 
     for (const block of fallBlocks) {
+        // PHYSICS RULE: Check ALL cells the block occupies to find highest support
+        // Block lands at the highest support level found across all its cells
         const blockCells = getBlockCells(block);
-        let targetYOffset = 0;
+        let targetYOffset = 0; // Start at base plate
 
         for (const cell of blockCells) {
-            let highestSupportY = 0;
+            let highestSupportY = 0; // Base plate level
             for (const other of allBlocks) {
                 if (other === block || other.isFalling || other.isRemoved) continue;
 
@@ -5913,6 +5921,7 @@ function computeSupportFallTargets(allBlocks, toFall) {
                 const otherBaseY = otherInFallSet ? targets.get(other) : other.yOffset;
                 if (otherBaseY >= block.yOffset) continue;
 
+                // Check if other block occupies this cell
                 const otherCells = getBlockCells(other);
                 let occupiesCell = false;
                 for (const otherCell of otherCells) {
@@ -5923,13 +5932,15 @@ function computeSupportFallTargets(allBlocks, toFall) {
                 }
                 if (!occupiesCell) continue;
 
+                // Calculate top of supporting block
                 const otherTop = getBlockTop(other);
                 if (otherTop > highestSupportY) highestSupportY = otherTop;
             }
+            // Use highest support found across all cells
             if (highestSupportY > targetYOffset) targetYOffset = highestSupportY;
         }
 
-        // Safety: never "fall up"
+        // Safety: never "fall up" (blocks can only fall down)
         targetYOffset = Math.min(targetYOffset, block.yOffset);
         targets.set(block, targetYOffset);
     }

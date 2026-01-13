@@ -26,13 +26,25 @@ function yRangesOverlapForMovement(_thisBlock, _otherBlock, thisYBottom, thisYTo
     const thisHeight = thisYTop - thisYBottom;
     const otherHeight = otherYTop - otherYBottom;
 
+    // CRITICAL: Snap Y values to prevent floating point drift from causing false overlaps
+    // or missed overlaps. This ensures blocks at essentially the same layer are treated correctly.
     const aBottom = snapLayerY(thisYBottom);
     const bBottom = snapLayerY(otherYBottom);
     const aTop = aBottom + thisHeight;
     const bTop = bBottom + otherHeight;
 
     // Strict overlap with epsilon: boundaries that merely touch are NOT overlapping.
-    return (aTop - bBottom > EPSILON) && (bTop - aBottom > EPSILON);
+    // Blocks overlap if their Y ranges intersect (not just touching at boundaries).
+    // This prevents any possibility of blocks occupying the same 3D space.
+    const overlaps = (aTop - bBottom > EPSILON) && (bTop - aBottom > EPSILON);
+    
+    // Additional safety check: if heights are very small or invalid, treat as overlap to be safe
+    if (thisHeight <= 0 || otherHeight <= 0) {
+        console.warn('Invalid block height detected in overlap check', { thisHeight, otherHeight });
+        return true; // Treat invalid heights as overlap to prevent issues
+    }
+    
+    return overlaps;
 }
 
 export class Block {
@@ -1469,7 +1481,9 @@ export class Block {
             
             // Apply state transitions that were detected during read phase
             // These are deferred to avoid modifying during read
-            if (this.needsTransitionToFalling && this.physicsBody) {
+            // CRITICAL FIX: Only apply if pendingAngularVel is NOT set (to avoid double application)
+            // When fall() is called explicitly (catapult), it sets pendingAngularVel, so we skip this
+            if (this.needsTransitionToFalling && this.physicsBody && !this.pendingAngularVel) {
                 this.needsTransitionToFalling = false;
                 deferBodyModification(() => {
                     if (this.physicsBody) {
@@ -1820,7 +1834,9 @@ export class Block {
         let collidedBlock = null; // Track which block we collided with
         let headOnCollision = null; // Track head-on collision: {block, gridX, gridZ, originalDirection, stepsToCollision}
         let headOnCollisionCount = 0; // Safety counter to prevent infinite head-on collision loops
-        const MAX_HEAD_ON_COLLISIONS = 10; // Maximum number of head-on collisions allowed in one move
+        // Increased limit to allow multiple consecutive head-on collisions as per physics rules
+        // Single-cell blocks can rotate multiple times, multi-cell blocks can flip multiple times
+        const MAX_HEAD_ON_COLLISIONS = 50; // Maximum number of head-on collisions allowed in one move
         
         // Count steps until blocked or edge
         // Continue moving until block entirely leaves the board (all cubes off) or hits an obstacle
@@ -1943,11 +1959,14 @@ export class Block {
                     this.direction.z === -collidedBlock.direction.z;
                 
                 if (isHeadOn) {
-                    // Safety check: prevent infinite head-on collision loops
+                    // Head-on collision: block rotates and continues
+                    // Single-cell blocks rotate CW, multi-cell blocks (2-3 cells) flip 180°
+                    // Multiple consecutive head-on collisions are allowed (per physics rules)
                     headOnCollisionCount++;
                     if (headOnCollisionCount > MAX_HEAD_ON_COLLISIONS) {
-                        // Too many head-on collisions - treat as regular collision to prevent infinite loop
-                        console.warn(`Block at (${this.gridX}, ${this.gridZ}) hit maximum head-on collisions (${MAX_HEAD_ON_COLLISIONS}), stopping movement`);
+                        // Safety check: prevent truly infinite loops (e.g., circular collision patterns)
+                        // This should rarely trigger with proper level design
+                        console.warn(`Block at (${this.gridX}, ${this.gridZ}) hit maximum head-on collisions (${MAX_HEAD_ON_COLLISIONS}), stopping movement to prevent infinite loop`);
                         hitObstacle = true;
                         break;
                     }
@@ -1967,92 +1986,113 @@ export class Block {
                     this.gridZ = tempGridZ;
                     
                     // Rotate direction immediately (for movement calculation)
-                    // Horizontal multi-cell blocks rotate 180 degrees (flip direction)
-                    // Single-cube and vertical blocks rotate clockwise
+                    // PHYSICS RULE: Single-cell blocks rotate CW (90°), multi-cell blocks (2-3 cells) flip 180°
+                    // This allows blocks to continue moving after head-on collision
                     if (isHorizontalMultiCell) {
-                        // Flip direction 180 degrees: negate both x and z
+                        // Multi-cell blocks (2-3 cells): flip direction 180 degrees
                         this.direction = { x: -this.direction.x, z: -this.direction.z };
                         this.updateArrowRotation();
                     } else {
-                        // Single-cube or vertical: rotate clockwise
+                        // Single-cell or vertical blocks: rotate clockwise (90°)
                         this.rotateDirectionClockwise();
                     }
                     
                     // Drop down one level after head-on collision
                     // But first check if dropping would cause an overlap
+                    // IMPORTANT: Check overlaps at ALL positions the block will occupy:
+                    // 1. Current collision position (tempGridX, tempGridZ)
+                    // 2. Next position after continuing to move (nextGridX, nextGridZ)
+                    // This prevents overlaps when the block continues moving after collision
                     const newYOffset = Math.max(0, this.yOffset - this.cubeSize);
                     const thisHeight = this.isVertical ? this.length * this.cubeSize : this.cubeSize;
                     const newYBottom = newYOffset;
                     const newYTop = newYOffset + thisHeight;
                     
-                    // Check if dropping would cause overlap with any block at the collision position
-                    let wouldOverlap = false;
-                    for (const other of blocks) {
-                        if (other === this || other === collidedBlock || other.isFalling || other.isRemoved || other.removalStartTime) continue;
+                    // Calculate next position after collision (where block will move to)
+                    const nextAfterCollisionX = tempGridX + this.direction.x;
+                    const nextAfterCollisionZ = tempGridZ + this.direction.z;
+                    
+                    // Helper function to check if a block occupies a specific position
+                    const blockOccupiesPosition = (block, checkX, checkZ) => {
+                        if (block.isVertical) {
+                            return block.gridX === checkX && block.gridZ === checkZ;
+                        } else {
+                            const blockIsXAligned = Math.abs(block.direction.x) > 0;
+                            for (let j = 0; j < block.length; j++) {
+                                const blockX = block.gridX + (blockIsXAligned ? j : 0);
+                                const blockZ = block.gridZ + (blockIsXAligned ? 0 : j);
+                                if (blockX === checkX && blockZ === checkZ) return true;
+                            }
+                            return false;
+                        }
+                    };
+                    
+                    // Helper function to check if dropping to a Y offset would cause overlap at a specific position
+                    const wouldOverlapAtPosition = (testYOffset, testX, testZ) => {
+                        const testYBottom = testYOffset;
+                        const testYTop = testYOffset + thisHeight;
                         
-                        // Check if other block is at the collision position
-                        const otherAtPosition = other.isVertical 
-                            ? (other.gridX === tempGridX && other.gridZ === tempGridZ)
-                            : (() => {
-                                const otherIsXAligned = Math.abs(other.direction.x) > 0;
-                                for (let j = 0; j < other.length; j++) {
-                                    const otherX = other.gridX + (otherIsXAligned ? j : 0);
-                                    const otherZ = other.gridZ + (otherIsXAligned ? 0 : j);
-                                    if (otherX === tempGridX && otherZ === tempGridZ) return true;
-                                }
-                                return false;
-                            })();
-                        
-                        if (otherAtPosition) {
-                            const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
-                            const otherYBottom = other.yOffset;
-                            const otherYTop = other.yOffset + otherHeight;
-                            
-                            // Check if Y ranges would overlap
-                            if (newYTop > otherYBottom && newYBottom < otherYTop) {
-                                wouldOverlap = true;
-                                break;
+                        // Get all cells this block would occupy at the test position
+                        const thisBlockCells = [];
+                        if (this.isVertical) {
+                            thisBlockCells.push({x: testX, z: testZ});
+                        } else {
+                            const thisIsXAligned = Math.abs(this.direction.x) > 0;
+                            for (let i = 0; i < this.length; i++) {
+                                const cellX = testX + (thisIsXAligned ? i : 0);
+                                const cellZ = testZ + (thisIsXAligned ? 0 : i);
+                                thisBlockCells.push({x: cellX, z: cellZ});
                             }
                         }
+                        
+                        // Check overlap with all other blocks
+                        for (const other of blocks) {
+                            if (other === this || other === collidedBlock || other.isFalling || other.isRemoved || other.removalStartTime) continue;
+                            
+                            // Check if other block occupies any of the cells this block would occupy
+                            let sharesCell = false;
+                            for (const cell of thisBlockCells) {
+                                if (blockOccupiesPosition(other, cell.x, cell.z)) {
+                                    sharesCell = true;
+                                    break;
+                                }
+                            }
+                            
+                            if (sharesCell) {
+                                const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
+                                const otherYBottom = other.yOffset;
+                                const otherYTop = other.yOffset + otherHeight;
+                                
+                                // Check if Y ranges would overlap
+                                if (testYTop > otherYBottom && testYBottom < otherYTop) {
+                                    return true;
+                                }
+                            }
+                        }
+                        return false;
+                    };
+                    
+                    // Check overlaps at collision position AND next position
+                    let wouldOverlap = wouldOverlapAtPosition(newYOffset, tempGridX, tempGridZ);
+                    if (!wouldOverlap && nextAfterCollisionX >= 0 && nextAfterCollisionX < gridSize && 
+                        nextAfterCollisionZ >= 0 && nextAfterCollisionZ < gridSize) {
+                        wouldOverlap = wouldOverlapAtPosition(newYOffset, nextAfterCollisionX, nextAfterCollisionZ);
                     }
                     
                     if (!wouldOverlap) {
                         this.yOffset = newYOffset;
                     } else {
                         // Can't drop - keep at current level (or find next available level)
-                        // Try dropping further if possible
+                        // Try dropping further if possible, checking both positions
                         let safeYOffset = this.yOffset;
                         for (let dropLevel = 1; dropLevel <= 5; dropLevel++) {
                             const testYOffset = Math.max(0, this.yOffset - dropLevel * this.cubeSize);
-                            const testYBottom = testYOffset;
-                            const testYTop = testYOffset + thisHeight;
                             
-                            let testOverlap = false;
-                            for (const other of blocks) {
-                                if (other === this || other === collidedBlock || other.isFalling || other.isRemoved || other.removalStartTime) continue;
-                                
-                                const otherAtPosition = other.isVertical 
-                                    ? (other.gridX === tempGridX && other.gridZ === tempGridZ)
-                                    : (() => {
-                                        const otherIsXAligned = Math.abs(other.direction.x) > 0;
-                                        for (let j = 0; j < other.length; j++) {
-                                            const otherX = other.gridX + (otherIsXAligned ? j : 0);
-                                            const otherZ = other.gridZ + (otherIsXAligned ? 0 : j);
-                                            if (otherX === tempGridX && otherZ === tempGridZ) return true;
-                                        }
-                                        return false;
-                                    })();
-                                
-                                if (otherAtPosition) {
-                                    const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
-                                    const otherYBottom = other.yOffset;
-                                    const otherYTop = other.yOffset + otherHeight;
-                                    
-                                    if (testYTop > otherYBottom && testYBottom < otherYTop) {
-                                        testOverlap = true;
-                                        break;
-                                    }
-                                }
+                            // Check both positions
+                            let testOverlap = wouldOverlapAtPosition(testYOffset, tempGridX, tempGridZ);
+                            if (!testOverlap && nextAfterCollisionX >= 0 && nextAfterCollisionX < gridSize && 
+                                nextAfterCollisionZ >= 0 && nextAfterCollisionZ < gridSize) {
+                                testOverlap = wouldOverlapAtPosition(testYOffset, nextAfterCollisionX, nextAfterCollisionZ);
                             }
                             
                             if (!testOverlap) {
@@ -2089,6 +2129,74 @@ export class Block {
         // If no movement possible, return (unless hitting edge - edge blocks should still fall)
         if (stepsToObstacle === 0 && !hitEdge) {
             return;
+        }
+        
+        // CRITICAL: Before finalizing position, verify no overlaps will be created
+        // This is a final safety check to prevent overlaps from edge cases (e.g., after head-on collisions)
+        const finalYBottom = this.yOffset;
+        const finalHeight = this.isVertical ? this.length * this.cubeSize : this.cubeSize;
+        const finalYTop = finalYBottom + finalHeight;
+        
+        // Check for overlaps at final position
+        for (const other of blocks) {
+            if (other === this || other.isFalling || other.isRemoved || other.removalStartTime) continue;
+            
+            const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
+            const otherYBottom = other.yOffset;
+            const otherYTop = otherYBottom + otherHeight;
+            
+            // Check Y range overlap
+            const yRangesOverlap = yRangesOverlapForMovement(this, other, finalYBottom, finalYTop, otherYBottom, otherYTop);
+            if (!yRangesOverlap) continue;
+            
+            // Check if blocks share any cells at final position
+            let sharesCell = false;
+            if (this.isVertical) {
+                if (other.isVertical) {
+                    sharesCell = (tempGridX === other.gridX && tempGridZ === other.gridZ);
+                } else {
+                    const otherIsXAligned = Math.abs(other.direction.x) > 0;
+                    for (let j = 0; j < other.length; j++) {
+                        const otherX = other.gridX + (otherIsXAligned ? j : 0);
+                        const otherZ = other.gridZ + (otherIsXAligned ? 0 : j);
+                        if (tempGridX === otherX && tempGridZ === otherZ) {
+                            sharesCell = true;
+                            break;
+                        }
+                    }
+                }
+            } else {
+                const isXAligned = Math.abs(this.direction.x) > 0;
+                for (let i = 0; i < this.length; i++) {
+                    const checkX = tempGridX + (isXAligned ? i : 0);
+                    const checkZ = tempGridZ + (isXAligned ? 0 : i);
+                    
+                    if (other.isVertical) {
+                        if (checkX === other.gridX && checkZ === other.gridZ) {
+                            sharesCell = true;
+                            break;
+                        }
+                    } else {
+                        const otherIsXAligned = Math.abs(other.direction.x) > 0;
+                        for (let j = 0; j < other.length; j++) {
+                            const otherX = other.gridX + (otherIsXAligned ? j : 0);
+                            const otherZ = other.gridZ + (otherIsXAligned ? 0 : j);
+                            if (checkX === otherX && checkZ === otherZ) {
+                                sharesCell = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (sharesCell) break;
+                }
+            }
+            
+            if (sharesCell) {
+                console.error(`CRITICAL: Overlap detected at final position! Block at (${this.gridX}, ${this.gridZ}) would overlap with block at (${other.gridX}, ${other.gridZ})`);
+                // Prevent the move to avoid creating an invalid state
+                this.addBounceEffect(blocks);
+                return;
+            }
         }
 
         // Record this move for Undo (single source of truth, independent of input handler)
@@ -2471,12 +2579,34 @@ export class Block {
     }
     
     addBounceEffect(blocks = []) {
-        // Quick bounce/shake effect when hitting an obstacle
-        const bounceDistance = 0.08; // Small bounce distance
+        // PHYSICS RULE: Visual bounce/shake effect when hitting an obstacle
+        // CRITICAL: This is VISUAL ONLY - only modifies group.position, NOT grid coordinates
+        // Blocks stop at collision point and do NOT move backward
+        const bounceDistance = 0.08; // Small bounce distance (visual only)
         const bounceDuration = 200; // Quick bounce
         const shakeCount = 3;
         const shakeAmplitude = 0.08; // Increased from 0.06 for slightly more visible shake
         const surroundingBlockAmplitude = 0.04; // Reduced amplitude for surrounding blocks
+        
+        // PHYSICS RULE: Find surrounding blocks within radius (not just adjacent)
+        // Radius is measured in grid cells - blocks within this distance will shake
+        const SHAKE_RADIUS = 2.0; // Radius in grid cells (2 cells = ~2 units)
+        
+        // Get center position of this block for radius calculation
+        let thisCenterX, thisCenterZ;
+        if (this.isVertical) {
+            thisCenterX = this.gridX + 0.5;
+            thisCenterZ = this.gridZ + 0.5;
+        } else {
+            const isXAligned = Math.abs(this.direction.x) > 0;
+            if (isXAligned) {
+                thisCenterX = this.gridX + (this.length - 1) / 2;
+                thisCenterZ = this.gridZ + 0.5;
+            } else {
+                thisCenterX = this.gridX + 0.5;
+                thisCenterZ = this.gridZ + (this.length - 1) / 2;
+            }
+        }
         
         // Get cells occupied by this block
         const thisBlockCells = new Set();
@@ -2491,51 +2621,36 @@ export class Block {
             }
         }
         
-        // Find surrounding blocks (adjacent to this block's cells)
+        // Find surrounding blocks within radius (PHYSICS RULE: radius-based, not just adjacent)
         const surroundingBlocks = new Set();
-        for (const cellKey of thisBlockCells) {
-            const [cellX, cellZ] = cellKey.split(',').map(Number);
+        for (const other of blocks) {
+            if (other === this || other.isFalling || other.isAnimating || other.isRemoved) continue;
+            if (surroundingBlocks.has(other)) continue;
             
-            // Check all 8 adjacent cells (including diagonals)
-            for (let dx = -1; dx <= 1; dx++) {
-                for (let dz = -1; dz <= 1; dz++) {
-                    if (dx === 0 && dz === 0) continue; // Skip self
-                    
-                    const adjX = cellX + dx;
-                    const adjZ = cellZ + dz;
-                    const adjKey = `${adjX},${adjZ}`;
-                    
-                    // Skip if this is part of the current block
-                    if (thisBlockCells.has(adjKey)) continue;
-                    
-                    // Find blocks that occupy this adjacent cell
-                    for (const other of blocks) {
-                        if (other === this || other.isFalling || other.isAnimating) continue;
-                        if (surroundingBlocks.has(other)) continue;
-                        
-                        // Check if other block occupies this cell
-                        let occupiesCell = false;
-                        if (other.isVertical) {
-                            if (other.gridX === adjX && other.gridZ === adjZ) {
-                                occupiesCell = true;
-                            }
-                        } else {
-                            const otherIsXAligned = Math.abs(other.direction.x) > 0;
-                            for (let j = 0; j < other.length; j++) {
-                                const otherX = other.gridX + (otherIsXAligned ? j : 0);
-                                const otherZ = other.gridZ + (otherIsXAligned ? 0 : j);
-                                if (otherX === adjX && otherZ === adjZ) {
-                                    occupiesCell = true;
-                                    break;
-                                }
-                            }
-                        }
-                        
-                        if (occupiesCell) {
-                            surroundingBlocks.add(other);
-                        }
-                    }
+            // Calculate center of other block
+            let otherCenterX, otherCenterZ;
+            if (other.isVertical) {
+                otherCenterX = other.gridX + 0.5;
+                otherCenterZ = other.gridZ + 0.5;
+            } else {
+                const otherIsXAligned = Math.abs(other.direction.x) > 0;
+                if (otherIsXAligned) {
+                    otherCenterX = other.gridX + (other.length - 1) / 2;
+                    otherCenterZ = other.gridZ + 0.5;
+                } else {
+                    otherCenterX = other.gridX + 0.5;
+                    otherCenterZ = other.gridZ + (other.length - 1) / 2;
                 }
+            }
+            
+            // Calculate distance between block centers
+            const dx = otherCenterX - thisCenterX;
+            const dz = otherCenterZ - thisCenterZ;
+            const distance = Math.sqrt(dx * dx + dz * dz);
+            
+            // If within radius, add to surrounding blocks
+            if (distance <= SHAKE_RADIUS) {
+                surroundingBlocks.add(other);
             }
         }
         
@@ -2612,14 +2727,17 @@ export class Block {
             if (progress < 1) {
                 requestAnimationFrame(bounce);
             } else {
-                // Snap back to exact grid position (main block)
+                // PHYSICS RULE: Snap back to exact grid position (visual effect complete)
+                // CRITICAL: updateWorldPosition() restores visual position to match grid coordinates
+                // This ensures blocks stay in their grid position (no actual movement)
                 this.updateWorldPosition();
                 this.isAnimating = false;
                 if (typeof window !== 'undefined' && typeof window.updateUndoButtonState === 'function') {
                     window.updateUndoButtonState();
                 }
                 
-                // Snap back surrounding blocks
+                // Snap back surrounding blocks to their exact grid positions
+                // PHYSICS RULE: Surrounding blocks shake but stay in position
                 for (const block of surroundingBlocks) {
                     block.updateWorldPosition();
                 }
@@ -2631,6 +2749,11 @@ export class Block {
     
     fall(horizontalVelX = null, horizontalVelZ = null, verticalVelY = null) {
         if (this.isFalling) return;
+        
+        // CRITICAL FIX: Clear needsTransitionToFalling to prevent double angular velocity calculation
+        // When fall() is called explicitly (e.g., catapult), we don't want updateFromPhysics() to also
+        // calculate and apply angular velocity, which would cause conflicting rotations
+        this.needsTransitionToFalling = false;
         
         this.isFalling = true;
         this.fallingStartTime = Date.now();
@@ -2697,16 +2820,49 @@ export class Block {
         // Store velocities to apply after body creation
         this.pendingAngularVel = { x: angularVelX, y: angularVelY, z: angularVelZ };
         
-        // Use provided velocities if available (from animation), otherwise use direction-based default
-        if (horizontalVelX !== null && horizontalVelZ !== null) {
-            const yVel = verticalVelY !== null ? verticalVelY : 0;
-            this.pendingLinearVel = { x: horizontalVelX, y: yVel, z: horizontalVelZ };
+        // CRITICAL FIX: If physics body already exists (e.g., from previous state), apply velocities immediately
+        // This prevents conflicts when a block transitions from one falling state to another (e.g., head-on collision → edge)
+        if (this.physicsBody) {
+            const RAPIER = this.physics.RAPIER;
+            // Reset any existing angular velocity first to prevent stacking
+            this.physicsBody.setAngvel(new RAPIER.Vector3(0, 0, 0), true);
+            // Then apply the new angular velocity
+            this.physicsBody.setAngvel(
+                new RAPIER.Vector3(angularVelX, angularVelY, angularVelZ),
+                true
+            );
+            this.physicsBody.setEnabledRotations(true, true, true, true);
+            
+            // Apply linear velocity if provided
+            if (horizontalVelX !== null && horizontalVelZ !== null) {
+                const yVel = verticalVelY !== null ? verticalVelY : 0;
+                this.physicsBody.setLinvel(
+                    new RAPIER.Vector3(horizontalVelX, yVel, horizontalVelZ),
+                    true
+                );
+            } else {
+                // Fallback: use direction with moderate speed
+                this.physicsBody.setLinvel(
+                    new RAPIER.Vector3(this.direction.x * 3.5, 0, this.direction.z * 3.5),
+                    true
+                );
+            }
+            
+            // Clear pending velocities since we applied them directly
+            this.pendingAngularVel = null;
+            this.pendingLinearVel = null;
         } else {
-            // Fallback: use direction with moderate speed for natural continuation
-            this.pendingLinearVel = { x: this.direction.x * 3.5, y: 0, z: this.direction.z * 3.5 };
+            // Use provided velocities if available (from animation), otherwise use direction-based default
+            if (horizontalVelX !== null && horizontalVelZ !== null) {
+                const yVel = verticalVelY !== null ? verticalVelY : 0;
+                this.pendingLinearVel = { x: horizontalVelX, y: yVel, z: horizontalVelZ };
+            } else {
+                // Fallback: use direction with moderate speed for natural continuation
+                this.pendingLinearVel = { x: this.direction.x * 3.5, y: 0, z: this.direction.z * 3.5 };
+            }
+            
+            // Mark that we need a physics body - will be created safely in updatePhysics
         }
-        
-        // Mark that we need a physics body - will be created safely in updatePhysics
         this.needsPhysicsBody = true;
     }
     
