@@ -179,11 +179,15 @@ export class Block {
         }
         
         // Get world position (accounting for towerGroup position)
+        // CRITICAL FIX: Use yOffset directly instead of group position to ensure correct Y position
+        // especially after head-on collisions where yOffset changes but visual position might not be updated yet
         const worldPos = new THREE.Vector3();
         this.group.getWorldPosition(worldPos);
+        // Use yOffset directly for Y position to ensure physics body is created at correct height
+        // yOffset is the source of truth for block height, especially after head-on collisions
         const physicsBody = createPhysicsBlock(
             this.physics,
-            { x: worldPos.x, y: worldPos.y + sizeY / 2, z: worldPos.z },
+            { x: worldPos.x, y: this.yOffset + sizeY / 2, z: worldPos.z },
             { x: sizeX, y: sizeY, z: sizeZ },
             true, // dynamic
             true  // use falling world
@@ -2536,7 +2540,10 @@ export class Block {
                     this.addBounceEffect(blocks);
                 } else if (hitEdge) {
                     // Hit edge - start falling immediately without snapping to grid
-                    // Position is already correct from animation, don't recalculate
+                    // CRITICAL FIX: After head-on collision, yOffset may have changed but visual position
+                    // might not be updated yet. Update world position to ensure physics body is created
+                    // at the correct Y position (using current yOffset)
+                    this.updateWorldPosition();
                     this.isAnimating = false;
                     if (typeof window !== 'undefined' && typeof window.updateUndoButtonState === 'function') {
                         window.updateUndoButtonState();
