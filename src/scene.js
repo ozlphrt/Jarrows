@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-// Lighting system v5.0.0
+// Lighting system v5.0.0 - Updated default values
 
 /**
  * Create a gradient background texture
