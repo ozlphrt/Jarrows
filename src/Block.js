@@ -1325,9 +1325,14 @@ export class Block {
         // CRITICAL FIX: Set needsPhysicsBody = false immediately to prevent multiple deferred creations
         // If updateFromPhysics() is called multiple times before the deferred function executes,
         // multiple creation functions could be queued, causing duplicate physics bodies
-        if (this.needsPhysicsBody && !this.physicsBody) {
+        // Also use a flag to track if creation is already queued
+        if (this.needsPhysicsBody && !this.physicsBody && !this._physicsBodyCreating) {
             this.needsPhysicsBody = false; // Set immediately to prevent duplicate queuing
+            this._physicsBodyCreating = true; // Mark that creation is in progress
             deferBodyCreation(() => {
+                // Clear the flag first to allow retry if creation fails
+                this._physicsBodyCreating = false;
+                
                 // Double-check physics body doesn't exist (guard in createPhysicsBody also checks this)
                 if (!this.physicsBody) {
                     this.createPhysicsBody();
@@ -2563,6 +2568,12 @@ export class Block {
                     this.addBounceEffect(blocks);
                 } else if (hitEdge) {
                     // Hit edge - start falling immediately without snapping to grid
+                    // CRITICAL FIX: Check if already falling BEFORE doing any work
+                    // This prevents duplicate fall() calls if animation callback runs multiple times
+                    if (this.isFalling) {
+                        return; // Already falling, don't call fall() again
+                    }
+                    
                     // CRITICAL FIX: After head-on collision, yOffset may have changed but visual position
                     // might not be updated yet. Update world position to ensure physics body is created
                     // at the correct Y position (using current yOffset)
@@ -2792,14 +2803,20 @@ export class Block {
     }
     
     fall(horizontalVelX = null, horizontalVelZ = null, verticalVelY = null) {
-        if (this.isFalling) return;
+        // CRITICAL FIX: Prevent duplicate fall() calls - check isFalling FIRST before any operations
+        // This prevents race conditions where multiple calls could queue multiple physics body creations
+        if (this.isFalling) {
+            return;
+        }
+        
+        // CRITICAL FIX: Set isFalling IMMEDIATELY to prevent any other code path from calling fall() again
+        // This must be set before any other operations to ensure atomicity
+        this.isFalling = true;
         
         // CRITICAL FIX: Clear needsTransitionToFalling to prevent double angular velocity calculation
         // When fall() is called explicitly (e.g., catapult), we don't want updateFromPhysics() to also
         // calculate and apply angular velocity, which would cause conflicting rotations
         this.needsTransitionToFalling = false;
-        
-        this.isFalling = true;
         this.fallingStartTime = Date.now();
         
         // Check if this is a catapult launch (has upward velocity)
