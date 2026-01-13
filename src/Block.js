@@ -2202,80 +2202,11 @@ export class Block {
                     if (!wouldOverlap) {
                         this.yOffset = newYOffset;
                     } else {
-                        // Can't drop - keep at current level (or find next available level)
-                        // Try dropping further if possible
-                        let safeYOffset = this.yOffset;
-                        for (let dropLevel = 1; dropLevel <= 5; dropLevel++) {
-                            const testYOffset = Math.max(0, this.yOffset - dropLevel * this.cubeSize);
-                            const testYBottom = testYOffset;
-                            const testYTop = testYOffset + thisHeight;
-                            
-                            let testOverlap = false;
-                            for (const other of blocks) {
-                                if (other === this || other === collidedBlock || other.isFalling || other.isRemoved || other.removalStartTime) continue;
-                                
-                                // Check if other block overlaps with this block's cells at the final position
-                                let cellsOverlap = false;
-                                if (this.isVertical) {
-                                    // Vertical block: check if other block is at the same cell
-                                    if (other.isVertical) {
-                                        cellsOverlap = (other.gridX === finalGridX && other.gridZ === finalGridZ);
-                                    } else {
-                                        const otherIsXAligned = Math.abs(other.direction.x) > 0;
-                                        for (let j = 0; j < other.length; j++) {
-                                            const otherX = other.gridX + (otherIsXAligned ? j : 0);
-                                            const otherZ = other.gridZ + (otherIsXAligned ? 0 : j);
-                                            if (otherX === finalGridX && otherZ === finalGridZ) {
-                                                cellsOverlap = true;
-                                                break;
-                                            }
-                                        }
-                                    }
-                                } else {
-                                    // Horizontal block: check if any cell of other block overlaps with any cell of this block
-                                    const thisIsXAligned = Math.abs(this.direction.x) > 0;
-                                    const otherIsXAligned = Math.abs(other.direction.x) > 0;
-                                    for (let i = 0; i < this.length; i++) {
-                                        const thisX = finalGridX + (thisIsXAligned ? i : 0);
-                                        const thisZ = finalGridZ + (thisIsXAligned ? 0 : i);
-                                        
-                                        if (other.isVertical) {
-                                            if (other.gridX === thisX && other.gridZ === thisZ) {
-                                                cellsOverlap = true;
-                                                break;
-                                            }
-                                        } else {
-                                            for (let j = 0; j < other.length; j++) {
-                                                const otherX = other.gridX + (otherIsXAligned ? j : 0);
-                                                const otherZ = other.gridZ + (otherIsXAligned ? 0 : j);
-                                                if (otherX === thisX && otherZ === thisZ) {
-                                                    cellsOverlap = true;
-                                                    break;
-                                                }
-                                            }
-                                            if (cellsOverlap) break;
-                                        }
-                                    }
-                                }
-                                
-                                if (cellsOverlap) {
-                                    const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
-                                    const otherYBottom = other.yOffset;
-                                    const otherYTop = other.yOffset + otherHeight;
-                                    
-                                    if (testYTop > otherYBottom && testYBottom < otherYTop) {
-                                        testOverlap = true;
-                                        break;
-                                    }
-                                }
-                            }
-                            
-                            if (!testOverlap) {
-                                safeYOffset = testYOffset;
-                                break;
-                            }
-                        }
-                        this.yOffset = safeYOffset;
+                        // Can't drop one level - stay at current level
+                        // After a head-on collision, blocks should only drop one level if supported
+                        // If that's not possible, they stay at the current level
+                        // Don't try to find a lower level - that would allow falling through blocks
+                        this.yOffset = this.yOffset;
                     }
                     
                     // Check if the block's current position (after head-on collision) overlaps with any other blocks
