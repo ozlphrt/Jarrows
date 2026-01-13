@@ -2794,6 +2794,10 @@ export class Block {
         // Catapult gets more dramatic spin
         const spinMultiplier = isCatapult ? 1.8 : 1.0;
         
+        // Single-cell blocks: simple rotation around one axis (like a coin flip)
+        // Multi-cell blocks: natural tumbling with multiple axes
+        const isSingleCell = !this.isVertical && this.length === 1;
+        
         if (this.isVertical) {
             // Vertical blocks: tumble around horizontal axis in direction of movement
             if (isXAligned) {
@@ -2804,8 +2808,23 @@ export class Block {
                 angularVelZ = (Math.random() - 0.5) * 2.5 * spinMultiplier;
             }
             angularVelY = (Math.random() - 0.5) * 1.5 * spinMultiplier;
+        } else if (isSingleCell) {
+            // Single-cell blocks: rotate around axis perpendicular to movement direction
+            // This creates a simple "coin flip" effect rather than complex tumbling
+            if (isXAligned) {
+                // Moving in X direction: rotate around Z axis (like a coin flipping)
+                angularVelZ = moveDir * 5.0 * spinMultiplier;
+                // Minimal wobble for natural look
+                angularVelY = (Math.random() - 0.5) * 0.5 * spinMultiplier;
+            } else {
+                // Moving in Z direction: rotate around X axis (like a coin flipping)
+                angularVelX = -moveDir * 5.0 * spinMultiplier;
+                // Minimal wobble for natural look
+                angularVelY = (Math.random() - 0.5) * 0.5 * spinMultiplier;
+            }
+            // No rotation around the movement axis for single-cell blocks
         } else {
-            // Horizontal blocks: tumble around axis perpendicular to movement
+            // Multi-cell horizontal blocks: tumble around axis perpendicular to movement
             if (isXAligned) {
                 angularVelZ = moveDir * 4.5 * spinMultiplier;
                 angularVelY = (Math.random() - 0.5) * 2.0 * spinMultiplier;
