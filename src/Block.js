@@ -1322,40 +1322,46 @@ export class Block {
         if (this.isRemoved) return; // Don't update if removed
         
         // Create physics body if needed - defer to safe time
+        // CRITICAL FIX: Set needsPhysicsBody = false immediately to prevent multiple deferred creations
+        // If updateFromPhysics() is called multiple times before the deferred function executes,
+        // multiple creation functions could be queued, causing duplicate physics bodies
         if (this.needsPhysicsBody && !this.physicsBody) {
+            this.needsPhysicsBody = false; // Set immediately to prevent duplicate queuing
             deferBodyCreation(() => {
-                this.createPhysicsBody();
-                this.needsPhysicsBody = false;
-                
-                // Apply stored velocities after creation
-                if (this.physicsBody && this.pendingAngularVel) {
-                    const RAPIER = this.physics.RAPIER;
+                // Double-check physics body doesn't exist (guard in createPhysicsBody also checks this)
+                if (!this.physicsBody) {
+                    this.createPhysicsBody();
                     
-                    this.physicsBody.setAngvel(
-                        new RAPIER.Vector3(
-                            this.pendingAngularVel.x,
-                            this.pendingAngularVel.y,
-                            this.pendingAngularVel.z
-                        ),
-                        true
-                    );
-                    
-                    this.physicsBody.setEnabledRotations(true, true, true, true);
-                    
-                    if (this.pendingLinearVel) {
-                        this.physicsBody.setLinvel(
+                    // Apply stored velocities after creation
+                    if (this.physicsBody && this.pendingAngularVel) {
+                        const RAPIER = this.physics.RAPIER;
+                        
+                        this.physicsBody.setAngvel(
                             new RAPIER.Vector3(
-                                this.pendingLinearVel.x,
-                                this.pendingLinearVel.y,
-                                this.pendingLinearVel.z
+                                this.pendingAngularVel.x,
+                                this.pendingAngularVel.y,
+                                this.pendingAngularVel.z
                             ),
                             true
                         );
+                        
+                        this.physicsBody.setEnabledRotations(true, true, true, true);
+                        
+                        if (this.pendingLinearVel) {
+                            this.physicsBody.setLinvel(
+                                new RAPIER.Vector3(
+                                    this.pendingLinearVel.x,
+                                    this.pendingLinearVel.y,
+                                    this.pendingLinearVel.z
+                                ),
+                                true
+                            );
+                        }
+                        
+                        // Clear pending velocities
+                        this.pendingAngularVel = null;
+                        this.pendingLinearVel = null;
                     }
-                    
-                    // Clear pending velocities
-                    this.pendingAngularVel = null;
-                    this.pendingLinearVel = null;
                 }
             });
             return; // Wait for next frame to read position
