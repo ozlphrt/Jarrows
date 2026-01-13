@@ -4,6 +4,20 @@
  */
 
 export const changelog = {
+    "5.0.0": {
+        title: "Major Update: Enhanced Lighting System & Debug Tools",
+        date: "2026-01-13",
+        changes: [
+            "Major lighting system overhaul with optimized default values",
+            "Added comprehensive light controls in debug panel with dat.gui styling",
+            "Implemented manual light control sliders (ambient, key, fill) with immediate visual feedback",
+            "Added JSON load/capture functionality for light values",
+            "Fixed grid alignment with block cell boundaries",
+            "Improved debug panel layout and compactness",
+            "Disabled automatic light updates when manually controlling lights via debug panel",
+            "Enhanced shadow quality and performance"
+        ]
+    },
     "4.7.4": {
         title: "Debug Panel Improvements & Light Controls",
         date: "2026-01-13",
