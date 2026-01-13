@@ -2017,21 +2017,27 @@ export class Block {
                     }
                     
                     // Head-on collision detected: record collision info for animation
+                    // For horizontal blocks, we stay at tempGridX/tempGridZ (position before collision, adjacent to other block)
+                    // For vertical blocks, we use nextGridX/nextGridZ (the collision cell position)
+                    const finalGridX = this.isVertical ? nextGridX : tempGridX;
+                    const finalGridZ = this.isVertical ? nextGridZ : tempGridZ;
+                    
                     headOnCollision = {
                         block: collidedBlock,
-                        gridX: nextGridX,  // Collision position, not position before collision
-                        gridZ: nextGridZ,  // Collision position, not position before collision
+                        gridX: finalGridX,
+                        gridZ: finalGridZ,
                         originalDirection: { x: this.direction.x, z: this.direction.z },
                         stepsToCollision: stepsToObstacle,
                         originalYOffset: this.yOffset // Store original Y level before drop
                     };
                     
-                    // Update grid position to collision position (where the collision actually occurred)
-                    this.gridX = nextGridX;
-                    this.gridZ = nextGridZ;
-                    // Also update tempGridX/tempGridZ so the continue loop starts from the collision position
-                    tempGridX = nextGridX;
-                    tempGridZ = nextGridZ;
+                    // Update grid position: for horizontal blocks, stay at pre-collision position (adjacent, no overlap)
+                    // For vertical blocks, use collision position (single cell)
+                    this.gridX = finalGridX;
+                    this.gridZ = finalGridZ;
+                    // Also update tempGridX/tempGridZ so the continue loop starts from the correct position
+                    tempGridX = finalGridX;
+                    tempGridZ = finalGridZ;
                     
                     // Rotate direction immediately (for movement calculation)
                     // Horizontal multi-cell blocks rotate 180 degrees (flip direction)
@@ -2053,25 +2059,57 @@ export class Block {
                     const newYBottom = newYOffset;
                     const newYTop = newYOffset + thisHeight;
                     
-                    // Check if dropping would cause overlap with any block at the collision position
+                    // Check if dropping would cause overlap with any block at the block's position
+                    // For horizontal blocks, check all cells; for vertical blocks, check the single cell
                     let wouldOverlap = false;
                     for (const other of blocks) {
                         if (other === this || other === collidedBlock || other.isFalling || other.isRemoved || other.removalStartTime) continue;
                         
-                        // Check if other block is at the collision position (nextGridX/nextGridZ, not tempGridX/tempGridZ)
-                        const otherAtPosition = other.isVertical 
-                            ? (other.gridX === nextGridX && other.gridZ === nextGridZ)
-                            : (() => {
+                        // Check if other block overlaps with this block's cells at the final position
+                        let cellsOverlap = false;
+                        if (this.isVertical) {
+                            // Vertical block: check if other block is at the same cell
+                            if (other.isVertical) {
+                                cellsOverlap = (other.gridX === finalGridX && other.gridZ === finalGridZ);
+                            } else {
                                 const otherIsXAligned = Math.abs(other.direction.x) > 0;
                                 for (let j = 0; j < other.length; j++) {
                                     const otherX = other.gridX + (otherIsXAligned ? j : 0);
                                     const otherZ = other.gridZ + (otherIsXAligned ? 0 : j);
-                                    if (otherX === nextGridX && otherZ === nextGridZ) return true;
+                                    if (otherX === finalGridX && otherZ === finalGridZ) {
+                                        cellsOverlap = true;
+                                        break;
+                                    }
                                 }
-                                return false;
-                            })();
+                            }
+                        } else {
+                            // Horizontal block: check if any cell of other block overlaps with any cell of this block
+                            const thisIsXAligned = Math.abs(this.direction.x) > 0;
+                            const otherIsXAligned = Math.abs(other.direction.x) > 0;
+                            for (let i = 0; i < this.length; i++) {
+                                const thisX = finalGridX + (thisIsXAligned ? i : 0);
+                                const thisZ = finalGridZ + (thisIsXAligned ? 0 : i);
+                                
+                                if (other.isVertical) {
+                                    if (other.gridX === thisX && other.gridZ === thisZ) {
+                                        cellsOverlap = true;
+                                        break;
+                                    }
+                                } else {
+                                    for (let j = 0; j < other.length; j++) {
+                                        const otherX = other.gridX + (otherIsXAligned ? j : 0);
+                                        const otherZ = other.gridZ + (otherIsXAligned ? 0 : j);
+                                        if (otherX === thisX && otherZ === thisZ) {
+                                            cellsOverlap = true;
+                                            break;
+                                        }
+                                    }
+                                    if (cellsOverlap) break;
+                                }
+                            }
+                        }
                         
-                        if (otherAtPosition) {
+                        if (cellsOverlap) {
                             const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
                             const otherYBottom = other.yOffset;
                             const otherYTop = other.yOffset + otherHeight;
@@ -2099,19 +2137,51 @@ export class Block {
                             for (const other of blocks) {
                                 if (other === this || other === collidedBlock || other.isFalling || other.isRemoved || other.removalStartTime) continue;
                                 
-                                const otherAtPosition = other.isVertical 
-                                    ? (other.gridX === nextGridX && other.gridZ === nextGridZ)
-                                    : (() => {
+                                // Check if other block overlaps with this block's cells at the final position
+                                let cellsOverlap = false;
+                                if (this.isVertical) {
+                                    // Vertical block: check if other block is at the same cell
+                                    if (other.isVertical) {
+                                        cellsOverlap = (other.gridX === finalGridX && other.gridZ === finalGridZ);
+                                    } else {
                                         const otherIsXAligned = Math.abs(other.direction.x) > 0;
                                         for (let j = 0; j < other.length; j++) {
                                             const otherX = other.gridX + (otherIsXAligned ? j : 0);
                                             const otherZ = other.gridZ + (otherIsXAligned ? 0 : j);
-                                            if (otherX === nextGridX && otherZ === nextGridZ) return true;
+                                            if (otherX === finalGridX && otherZ === finalGridZ) {
+                                                cellsOverlap = true;
+                                                break;
+                                            }
                                         }
-                                        return false;
-                                    })();
+                                    }
+                                } else {
+                                    // Horizontal block: check if any cell of other block overlaps with any cell of this block
+                                    const thisIsXAligned = Math.abs(this.direction.x) > 0;
+                                    const otherIsXAligned = Math.abs(other.direction.x) > 0;
+                                    for (let i = 0; i < this.length; i++) {
+                                        const thisX = finalGridX + (thisIsXAligned ? i : 0);
+                                        const thisZ = finalGridZ + (thisIsXAligned ? 0 : i);
+                                        
+                                        if (other.isVertical) {
+                                            if (other.gridX === thisX && other.gridZ === thisZ) {
+                                                cellsOverlap = true;
+                                                break;
+                                            }
+                                        } else {
+                                            for (let j = 0; j < other.length; j++) {
+                                                const otherX = other.gridX + (otherIsXAligned ? j : 0);
+                                                const otherZ = other.gridZ + (otherIsXAligned ? 0 : j);
+                                                if (otherX === thisX && otherZ === thisZ) {
+                                                    cellsOverlap = true;
+                                                    break;
+                                                }
+                                            }
+                                            if (cellsOverlap) break;
+                                        }
+                                    }
+                                }
                                 
-                                if (otherAtPosition) {
+                                if (cellsOverlap) {
                                     const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
                                     const otherYBottom = other.yOffset;
                                     const otherYTop = other.yOffset + otherHeight;
