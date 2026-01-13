@@ -2061,10 +2061,10 @@ export class Block {
                     }
                     
                     // Head-on collision detected: record collision info for animation
-                    // For horizontal blocks, we stay at tempGridX/tempGridZ (position before collision, adjacent to other block)
-                    // For vertical blocks, we use nextGridX/nextGridZ (the collision cell position)
-                    const finalGridX = this.isVertical ? nextGridX : tempGridX;
-                    const finalGridZ = this.isVertical ? nextGridZ : tempGridZ;
+                    // For both horizontal and vertical blocks, we stay at tempGridX/tempGridZ (position before collision, adjacent to other block)
+                    // This prevents overlap with the collided block
+                    const finalGridX = tempGridX;
+                    const finalGridZ = tempGridZ;
                     
                     headOnCollision = {
                         block: collidedBlock,
@@ -2075,8 +2075,8 @@ export class Block {
                         originalYOffset: this.yOffset // Store original Y level before drop
                     };
                     
-                    // Update grid position: for horizontal blocks, stay at pre-collision position (adjacent, no overlap)
-                    // For vertical blocks, use collision position (single cell)
+                    // Update grid position: stay at pre-collision position (adjacent, no overlap)
+                    // This prevents the block from being positioned at the same cell as the collided block
                     this.gridX = finalGridX;
                     this.gridZ = finalGridZ;
                     // Also update tempGridX/tempGridZ so the continue loop starts from the correct position
@@ -2219,17 +2219,18 @@ export class Block {
                         if (other === this || other === collidedBlock || other.isFalling || other.isRemoved || other.removalStartTime) continue;
                         
                         // Check if other block overlaps with this block's cells at the current position
+                        // Use this.gridX and this.gridZ since those are the actual position after the head-on collision
                         let cellsOverlap = false;
                         if (this.isVertical) {
                             // Vertical block: check if other block is at the same cell
                             if (other.isVertical) {
-                                cellsOverlap = (other.gridX === finalGridX && other.gridZ === finalGridZ);
+                                cellsOverlap = (other.gridX === this.gridX && other.gridZ === this.gridZ);
                             } else {
                                 const otherIsXAligned = Math.abs(other.direction.x) > 0;
                                 for (let j = 0; j < other.length; j++) {
                                     const otherX = other.gridX + (otherIsXAligned ? j : 0);
                                     const otherZ = other.gridZ + (otherIsXAligned ? 0 : j);
-                                    if (otherX === finalGridX && otherZ === finalGridZ) {
+                                    if (otherX === this.gridX && otherZ === this.gridZ) {
                                         cellsOverlap = true;
                                         break;
                                     }
@@ -2240,8 +2241,8 @@ export class Block {
                             const thisIsXAligned = Math.abs(this.direction.x) > 0;
                             const otherIsXAligned = Math.abs(other.direction.x) > 0;
                             for (let i = 0; i < this.length; i++) {
-                                const thisX = finalGridX + (thisIsXAligned ? i : 0);
-                                const thisZ = finalGridZ + (thisIsXAligned ? 0 : i);
+                                const thisX = this.gridX + (thisIsXAligned ? i : 0);
+                                const thisZ = this.gridZ + (thisIsXAligned ? 0 : i);
                                 
                                 if (other.isVertical) {
                                     if (other.gridX === thisX && other.gridZ === thisZ) {
