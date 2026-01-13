@@ -35,6 +35,78 @@ function yRangesOverlapForMovement(_thisBlock, _otherBlock, thisYBottom, thisYTo
     return (aTop - bBottom > EPSILON) && (bTop - aBottom > EPSILON);
 }
 
+/**
+ * Determine if a collision is head-on.
+ * Head-on collision occurs when:
+ * - Moving block's leading edge (head) hits the other block
+ * - AND either:
+ *   a) The other block is stationary (direction is {0,0}), OR
+ *   b) The other block is moving in the opposite direction
+ * 
+ * @param {Block} movingBlock - The block that is moving
+ * @param {Block} otherBlock - The block being hit
+ * @param {number} collisionX - The X grid coordinate where collision occurs
+ * @param {number} collisionZ - The Z grid coordinate where collision occurs
+ * @param {number} currentX - The current X position of the moving block (defaults to gridX)
+ * @param {number} currentZ - The current Z position of the moving block (defaults to gridZ)
+ * @returns {boolean} True if this is a head-on collision
+ */
+function isHeadOnCollision(movingBlock, otherBlock, collisionX, collisionZ, currentX = null, currentZ = null) {
+    // Only single-cell, vertical, or horizontal multi-cell blocks can have head-on collisions
+    const isSingleOrVertical = (movingBlock.length === 1) || movingBlock.isVertical;
+    const isHorizontalMultiCell = !movingBlock.isVertical && movingBlock.length > 1;
+    
+    if (!isSingleOrVertical && !isHorizontalMultiCell) {
+        return false;
+    }
+    
+    // Use provided current position or fall back to gridX/gridZ
+    const blockX = currentX !== null ? currentX : movingBlock.gridX;
+    const blockZ = currentZ !== null ? currentZ : movingBlock.gridZ;
+    
+    // Check if the collision point is at the "head" (leading edge) of the moving block
+    // For vertical blocks, the head is the block itself (blockX, blockZ)
+    // For horizontal blocks, the head is the cell in the direction of movement
+    
+    let isAtHead = false;
+    
+    if (movingBlock.isVertical) {
+        // Vertical block: head is at (blockX, blockZ), and collision is at (blockX + direction.x, blockZ + direction.z)
+        // So collision is at head if it's one step in the direction from the block position
+        isAtHead = (collisionX === blockX + movingBlock.direction.x && collisionZ === blockZ + movingBlock.direction.z);
+    } else {
+        // Horizontal block: head is the cell in the direction of movement
+        const isXAligned = Math.abs(movingBlock.direction.x) > 0;
+        if (isXAligned) {
+            // Moving in X direction: head is the rightmost (if +x) or leftmost (if -x) cell
+            const headX = movingBlock.direction.x > 0 
+                ? blockX + movingBlock.length - 1 
+                : blockX;
+            // Collision occurs when moving one step, so head would be at headX + direction.x
+            isAtHead = (collisionX === headX + movingBlock.direction.x && collisionZ === blockZ);
+        } else {
+            // Moving in Z direction: head is the frontmost (if +z) or backmost (if -z) cell
+            const headZ = movingBlock.direction.z > 0 
+                ? blockZ + movingBlock.length - 1 
+                : blockZ;
+            // Collision occurs when moving one step, so head would be at headZ + direction.z
+            isAtHead = (collisionX === blockX && collisionZ === headZ + movingBlock.direction.z);
+        }
+    }
+    
+    if (!isAtHead) {
+        return false; // Not hitting at the head, so not head-on
+    }
+    
+    // Now check if the other block is stationary or moving in opposite direction
+    const otherIsStationary = otherBlock.direction.x === 0 && otherBlock.direction.z === 0;
+    const otherIsOpposite = !otherIsStationary && 
+        movingBlock.direction.x === -otherBlock.direction.x && 
+        movingBlock.direction.z === -otherBlock.direction.z;
+    
+    return otherIsStationary || otherIsOpposite;
+}
+
 export class Block {
     constructor(length, gridX, gridZ, direction, isVertical, arrowStyle, scene, physics, gridSize, cubeSize, yOffset = 0, level = 1) {
         this.length = length;
@@ -1572,13 +1644,8 @@ export class Block {
                 if (other.isVertical) {
                     if (newGridX === other.gridX && newGridZ === other.gridZ) {
                         // Check if this is a head-on collision
-                        // For single-cube or vertical blocks: head-on collision
-                        // For horizontal multi-cell blocks: also allow head-on collision
-                        const isSingleOrVertical = (this.length === 1) || this.isVertical;
-                        const isHorizontalMultiCell = !this.isVertical && this.length > 1;
-                        const isHeadOn = (isSingleOrVertical || isHorizontalMultiCell) && 
-                            this.direction.x === -other.direction.x && 
-                            this.direction.z === -other.direction.z;
+                        // Block is currently at (this.gridX, this.gridZ), collision would be at (newGridX, newGridZ)
+                        const isHeadOn = isHeadOnCollision(this, other, newGridX, newGridZ, this.gridX, this.gridZ);
                         
                         if (isHeadOn) {
                             if (window.debugMoveMode) {
@@ -1615,11 +1682,9 @@ export class Block {
                         }
                         
                         if (newGridX === otherX && newGridZ === otherZ) {
-                            // Check if this is a head-on collision (only for single cube or vertical blocks)
-                            const isSingleOrVertical = (this.length === 1) || this.isVertical;
-                            const isHeadOn = isSingleOrVertical && 
-                                this.direction.x === -other.direction.x && 
-                                this.direction.z === -other.direction.z;
+                            // Check if this is a head-on collision
+                            // Block is currently at (this.gridX, this.gridZ), collision would be at (otherX, otherZ)
+                            const isHeadOn = isHeadOnCollision(this, other, otherX, otherZ, this.gridX, this.gridZ);
                             
                             if (isHeadOn) {
                                 if (window.debugMoveMode) {
@@ -1706,29 +1771,24 @@ export class Block {
                 // If Y ranges don't overlap, blocks can't collide (they're at different heights)
                 if (!yRangesOverlap) continue;
                 
-                if (other.isVertical) {
-                    if (checkX === other.gridX && checkZ === other.gridZ) {
-                        // Check if this is a head-on collision
-                        // For single-cube or vertical blocks: head-on collision
-                        // For horizontal multi-cell blocks: also allow head-on collision
-                        const isSingleOrVertical = (this.length === 1) || this.isVertical;
-                        const isHorizontalMultiCell = !this.isVertical && this.length > 1;
-                        const isHeadOn = (isSingleOrVertical || isHorizontalMultiCell) && 
-                            this.direction.x === -other.direction.x && 
-                            this.direction.z === -other.direction.z;
-                        
-                        if (isHeadOn) {
-                            if (window.debugMoveMode) {
-                                window.debugMoveInfo.blockers.push({
-                                    block: { gridX: other.gridX, gridZ: other.gridZ, yOffset: other.yOffset },
-                                    cell: { x: checkX, z: checkZ, index: i },
-                                    reason: 'Head-on collision (allowed)',
-                                    isHeadOn: true
-                                });
-                            }
-                            // Head-on collision: block can move (will rotate and continue)
-                            continue; // Skip this collision, allow movement
-                        }
+                        if (other.isVertical) {
+                            if (checkX === other.gridX && checkZ === other.gridZ) {
+                                // Check if this is a head-on collision
+                                // Block is currently at (this.gridX, this.gridZ), collision would be at (checkX, checkZ)
+                                const isHeadOn = isHeadOnCollision(this, other, checkX, checkZ, this.gridX, this.gridZ);
+                                
+                                if (isHeadOn) {
+                                    if (window.debugMoveMode) {
+                                        window.debugMoveInfo.blockers.push({
+                                            block: { gridX: other.gridX, gridZ: other.gridZ, yOffset: other.yOffset },
+                                            cell: { x: checkX, z: checkZ, index: i },
+                                            reason: 'Head-on collision (allowed)',
+                                            isHeadOn: true
+                                        });
+                                    }
+                                    // Head-on collision: block can move (will rotate and continue)
+                                    continue; // Skip this collision, allow movement
+                                }
                         
                         if (window.debugMoveMode) {
                             window.debugMoveInfo.result = 'blocked';
@@ -1756,13 +1816,8 @@ export class Block {
                         
                         if (checkX === otherX && checkZ === otherZ) {
                             // Check if this is a head-on collision
-                            // For single-cube or vertical blocks: head-on collision
-                            // For horizontal multi-cell blocks: also allow head-on collision
-                            const isSingleOrVertical = (this.length === 1) || this.isVertical;
-                            const isHorizontalMultiCell = !this.isVertical && this.length > 1;
-                            const isHeadOn = (isSingleOrVertical || isHorizontalMultiCell) && 
-                                this.direction.x === -other.direction.x && 
-                                this.direction.z === -other.direction.z;
+                            // Block is currently at (this.gridX, this.gridZ), collision would be at (checkX, checkZ)
+                            const isHeadOn = isHeadOnCollision(this, other, checkX, checkZ, this.gridX, this.gridZ);
                             
                             if (isHeadOn) {
                                 if (window.debugMoveMode) {
@@ -1934,13 +1989,12 @@ export class Block {
             
             if (blocked) {
                 // Check if this is a head-on collision
-                // For single-cube or vertical blocks: head-on collision
-                // For horizontal multi-cell blocks: also allow head-on collision
-                const isSingleOrVertical = (this.length === 1) || this.isVertical;
-                const isHorizontalMultiCell = !this.isVertical && this.length > 1;
-                const isHeadOn = (isSingleOrVertical || isHorizontalMultiCell) && collidedBlock && 
-                    this.direction.x === -collidedBlock.direction.x && 
-                    this.direction.z === -collidedBlock.direction.z;
+                // The collision occurs at nextGridX, nextGridZ
+                // Pass the current position (tempGridX, tempGridZ) so the helper can determine if collision is at head
+                const collisionX = nextGridX;
+                const collisionZ = nextGridZ;
+                
+                const isHeadOn = collidedBlock && isHeadOnCollision(this, collidedBlock, collisionX, collisionZ, tempGridX, tempGridZ);
                 
                 if (isHeadOn) {
                     // Safety check: prevent infinite head-on collision loops
@@ -1969,6 +2023,7 @@ export class Block {
                     // Rotate direction immediately (for movement calculation)
                     // Horizontal multi-cell blocks rotate 180 degrees (flip direction)
                     // Single-cube and vertical blocks rotate clockwise
+                    const isHorizontalMultiCell = !this.isVertical && this.length > 1;
                     if (isHorizontalMultiCell) {
                         // Flip direction 180 degrees: negate both x and z
                         this.direction = { x: -this.direction.x, z: -this.direction.z };

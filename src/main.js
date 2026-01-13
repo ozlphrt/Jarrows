@@ -5048,20 +5048,8 @@ function setupButtonWatcher() {
 // #region agent log
 debugTelemetry({location:'main.js:buttonSetup:entry',message:'Button setup code executing',data:{readyState:document.readyState},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'});
 // #endregion
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-        // #region agent log
-        debugTelemetry({location:'main.js:buttonSetup:DOMContentLoaded',message:'DOMContentLoaded fired, setting up buttons',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'});
-        // #endregion
-        setupDiceButton();
-        setupButtonWatcher();
-    });
-} else {
-    // #region agent log
-    debugTelemetry({location:'main.js:buttonSetup:immediate',message:'DOM already ready, setting up buttons immediately',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'});
-    // #endregion
-    setupDiceButton();
-    setupButtonWatcher();
+// Setup keyboard shortcut for debug panel (works regardless of DOM ready state)
+function setupDebugPanelShortcut() {
     document.addEventListener('keydown', (e) => {
         if (e.ctrlKey && e.shiftKey && e.altKey && e.key === 'D') {
             e.preventDefault();
@@ -5069,6 +5057,24 @@ if (document.readyState === 'loading') {
             toggleDebugPanel();
         }
     });
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+        // #region agent log
+        debugTelemetry({location:'main.js:buttonSetup:DOMContentLoaded',message:'DOMContentLoaded fired, setting up buttons',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'});
+        // #endregion
+        setupDiceButton();
+        setupButtonWatcher();
+        setupDebugPanelShortcut();
+    });
+} else {
+    // #region agent log
+    debugTelemetry({location:'main.js:buttonSetup:immediate',message:'DOM already ready, setting up buttons immediately',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'});
+    // #endregion
+    setupDiceButton();
+    setupButtonWatcher();
+    setupDebugPanelShortcut();
 }
 
 // Framing control removed (was previously adjustable in Settings and via gestures).
