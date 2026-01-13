@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 
+// Lighting system v5.0.0
+
 /**
  * Create a gradient background texture
  * @param {THREE.Scene} scene - The Three.js scene
