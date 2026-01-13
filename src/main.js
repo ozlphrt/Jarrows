@@ -3660,6 +3660,7 @@ function undoLastMove() {
         block.needsPhysicsBody = false;
         block.needsTransitionToFalling = false; // CRITICAL: Reset to prevent interference with replay
         block._physicsBodyCreating = false; // CRITICAL: Reset creation flag to prevent duplicate bodies
+        block._fallInitiated = false; // CRITICAL: Reset fall initiation flag to allow replay
         block.pendingAngularVel = null;
         block.pendingLinearVel = null;
 

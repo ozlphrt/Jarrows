@@ -2568,10 +2568,10 @@ export class Block {
                     this.addBounceEffect(blocks);
                 } else if (hitEdge) {
                     // Hit edge - start falling immediately without snapping to grid
-                    // CRITICAL FIX: Check if already falling BEFORE doing any work
+                    // CRITICAL FIX: Check if already falling or fall already initiated BEFORE doing any work
                     // This prevents duplicate fall() calls if animation callback runs multiple times
-                    if (this.isFalling) {
-                        return; // Already falling, don't call fall() again
+                    if (this.isFalling || this._fallInitiated) {
+                        return; // Already falling or fall initiated, don't call fall() again
                     }
                     
                     // CRITICAL FIX: After head-on collision, yOffset may have changed but visual position
@@ -2805,12 +2805,15 @@ export class Block {
     fall(horizontalVelX = null, horizontalVelZ = null, verticalVelY = null) {
         // CRITICAL FIX: Prevent duplicate fall() calls - check isFalling FIRST before any operations
         // This prevents race conditions where multiple calls could queue multiple physics body creations
-        if (this.isFalling) {
+        // Also check if fall has already been initiated (even if physics body not created yet)
+        if (this.isFalling || this._fallInitiated) {
+            // If already falling/initiated, don't overwrite velocities - they should already be set
             return;
         }
         
-        // CRITICAL FIX: Set isFalling IMMEDIATELY to prevent any other code path from calling fall() again
+        // CRITICAL FIX: Mark fall as initiated IMMEDIATELY to prevent any other code path from calling fall() again
         // This must be set before any other operations to ensure atomicity
+        this._fallInitiated = true;
         this.isFalling = true;
         
         // CRITICAL FIX: Clear needsTransitionToFalling to prevent double angular velocity calculation
