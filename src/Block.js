@@ -2009,16 +2009,19 @@ export class Block {
                     // Head-on collision detected: record collision info for animation
                     headOnCollision = {
                         block: collidedBlock,
-                        gridX: tempGridX,
-                        gridZ: tempGridZ,
+                        gridX: nextGridX,  // Collision position, not position before collision
+                        gridZ: nextGridZ,  // Collision position, not position before collision
                         originalDirection: { x: this.direction.x, z: this.direction.z },
                         stepsToCollision: stepsToObstacle,
                         originalYOffset: this.yOffset // Store original Y level before drop
                     };
                     
-                    // Update grid position to collision position
-                    this.gridX = tempGridX;
-                    this.gridZ = tempGridZ;
+                    // Update grid position to collision position (where the collision actually occurred)
+                    this.gridX = nextGridX;
+                    this.gridZ = nextGridZ;
+                    // Also update tempGridX/tempGridZ so the continue loop starts from the collision position
+                    tempGridX = nextGridX;
+                    tempGridZ = nextGridZ;
                     
                     // Rotate direction immediately (for movement calculation)
                     // Horizontal multi-cell blocks rotate 180 degrees (flip direction)
@@ -2045,15 +2048,15 @@ export class Block {
                     for (const other of blocks) {
                         if (other === this || other === collidedBlock || other.isFalling || other.isRemoved || other.removalStartTime) continue;
                         
-                        // Check if other block is at the collision position
+                        // Check if other block is at the collision position (nextGridX/nextGridZ, not tempGridX/tempGridZ)
                         const otherAtPosition = other.isVertical 
-                            ? (other.gridX === tempGridX && other.gridZ === tempGridZ)
+                            ? (other.gridX === nextGridX && other.gridZ === nextGridZ)
                             : (() => {
                                 const otherIsXAligned = Math.abs(other.direction.x) > 0;
                                 for (let j = 0; j < other.length; j++) {
                                     const otherX = other.gridX + (otherIsXAligned ? j : 0);
                                     const otherZ = other.gridZ + (otherIsXAligned ? 0 : j);
-                                    if (otherX === tempGridX && otherZ === tempGridZ) return true;
+                                    if (otherX === nextGridX && otherZ === nextGridZ) return true;
                                 }
                                 return false;
                             })();
@@ -2087,13 +2090,13 @@ export class Block {
                                 if (other === this || other === collidedBlock || other.isFalling || other.isRemoved || other.removalStartTime) continue;
                                 
                                 const otherAtPosition = other.isVertical 
-                                    ? (other.gridX === tempGridX && other.gridZ === tempGridZ)
+                                    ? (other.gridX === nextGridX && other.gridZ === nextGridZ)
                                     : (() => {
                                         const otherIsXAligned = Math.abs(other.direction.x) > 0;
                                         for (let j = 0; j < other.length; j++) {
                                             const otherX = other.gridX + (otherIsXAligned ? j : 0);
                                             const otherZ = other.gridZ + (otherIsXAligned ? 0 : j);
-                                            if (otherX === tempGridX && otherZ === tempGridZ) return true;
+                                            if (otherX === nextGridX && otherZ === nextGridZ) return true;
                                         }
                                         return false;
                                     })();
