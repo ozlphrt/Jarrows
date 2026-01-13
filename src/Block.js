@@ -158,6 +158,12 @@ export class Block {
     }
     
     createPhysicsBody() {
+        // CRITICAL FIX: Prevent duplicate physics body creation
+        // If a physics body already exists, don't create another one
+        if (this.physicsBody) {
+            return;
+        }
+        
         // Calculate block dimensions
         let sizeX, sizeY, sizeZ;
         
@@ -2413,6 +2419,9 @@ export class Block {
         let rotationStarted = false;
         let rotationCompleted = false;
         
+        // CRITICAL FIX: Track if animation has completed to prevent duplicate fall() calls
+        let animationCompleted = false;
+        
         const animate = () => {
             // Allow external cancellation (used by Undo)
             if (this.needsStop) {
@@ -2534,6 +2543,14 @@ export class Block {
             if (progress < 1) {
                 requestAnimationFrame(animate);
             } else {
+                // CRITICAL FIX: Prevent duplicate completion handling
+                // Animation callback might run multiple times even after progress >= 1
+                // if requestAnimationFrame was already queued, so we guard against duplicate calls
+                if (animationCompleted) {
+                    return;
+                }
+                animationCompleted = true;
+                
                 // If hit obstacle, snap to exact grid position and add bounce effect
                 if (hitObstacle) {
                     this.updateWorldPosition();
