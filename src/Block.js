@@ -2255,9 +2255,12 @@ export class Block {
             let directionZ = finalZ - startZ;
             let directionLength = Math.sqrt(directionX * directionX + directionZ * directionZ);
             
-            // If no movement (stepsToObstacle === 0), use block's direction vector instead
-            if (directionLength === 0 || stepsToObstacle === 0) {
-                // Use block's movement direction to calculate extension direction
+            // CRITICAL FIX: After head-on collision, block's direction is rotated, so we MUST use
+            // the rotated direction for extension, not the position difference (which might be 0 or wrong)
+            // This ensures blocks catapult correctly after head-on collisions
+            if (headOnCollision !== null || directionLength === 0 || stepsToObstacle === 0) {
+                // Use block's CURRENT direction (which is rotated after head-on collision)
+                // This is critical for head-on collisions where the block rotates and then hits edge
                 const dirX = this.direction.x;
                 const dirZ = this.direction.z;
                 directionLength = Math.sqrt(dirX * dirX + dirZ * dirZ);
@@ -2271,7 +2274,7 @@ export class Block {
                     directionLength = 1;
                 }
             } else {
-                // Normalize direction from position difference
+                // Normalize direction from position difference (only if no head-on collision)
                 directionX = directionX / directionLength;
                 directionZ = directionZ / directionLength;
             }
