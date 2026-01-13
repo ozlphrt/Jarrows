@@ -72,14 +72,14 @@ export function createLights(scene) {
     // Dramatic lighting setup: low ambient, strong key light, minimal fill
     
     // Ambient Light
-    // Default intensity: 0.27
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.27);
+    // Default intensity: 0.31
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.31);
     scene.add(ambientLight);
     
     // Key Light (Main Light) - primary light source, casts dramatic shadows
-    // Default intensity: 1.2, position: (20, 23.5, 14.5)
-    const keyLight = new THREE.DirectionalLight(0xffffff, 1.2);
-    keyLight.position.set(20, 23.5, 14.5);
+    // Default intensity: 1.8, position: (25.5, 26, 19.5)
+    const keyLight = new THREE.DirectionalLight(0xffffff, 1.8);
+    keyLight.position.set(25.5, 26, 19.5);
     keyLight.castShadow = true;
     // Shadow camera bounds: keep tight for better precision + less wasted shadow-map area.
     // The board is ~7x7 centered around (3.5, 0, 3.5). These values are tuned to cover
@@ -105,9 +105,9 @@ export function createLights(scene) {
     keyLight.shadow.normalBias = 0.02; // Reduce shadow acne
     scene.add(keyLight);
     
-    // Fill Light - default intensity: 0.63, position: (-14.5, 38, -23.5)
-    const fillLight = new THREE.DirectionalLight(0xffffff, 0.63);
-    fillLight.position.set(-14.5, 38, -23.5);
+    // Fill Light - default intensity: 1.09, position: (-25.5, 12.5, -11)
+    const fillLight = new THREE.DirectionalLight(0xffffff, 1.09);
+    fillLight.position.set(-25.5, 12.5, -11);
     scene.add(fillLight);
     
     return { 
