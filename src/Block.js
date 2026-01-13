@@ -2796,63 +2796,67 @@ export class Block {
         }
         
         // Calculate initial velocities for natural tumbling
-        const isXAligned = Math.abs(this.direction.x) > 0;
-        const moveDir = isXAligned ? this.direction.x : this.direction.z;
-        
-        // Primary rotation: tumble around axis perpendicular to movement (like rolling off edge)
-        // Secondary rotation: add some wobble/precession for natural motion
+        // CRITICAL: Catapulted blocks (from head-on collisions) should NOT rotate mid-air
+        // Only blocks that fall naturally (without catapult) get rotation
         let angularVelX = 0;
         let angularVelY = 0;
         let angularVelZ = 0;
         
-        // Catapult gets more dramatic spin
-        const spinMultiplier = isCatapult ? 1.8 : 1.0;
-        
-        // Single-cell blocks: simple rotation around one axis (like a coin flip)
-        // Multi-cell blocks: natural tumbling with multiple axes
-        const isSingleCell = !this.isVertical && this.length === 1;
-        
-        if (this.isVertical) {
-            // Vertical blocks: tumble around horizontal axis in direction of movement
-            if (isXAligned) {
-                angularVelZ = moveDir * 3.5 * spinMultiplier;
-                angularVelX = (Math.random() - 0.5) * 2.5 * spinMultiplier;
+        // Only apply rotation for non-catapult falls (natural falling from losing support)
+        if (!isCatapult) {
+            const isXAligned = Math.abs(this.direction.x) > 0;
+            const moveDir = isXAligned ? this.direction.x : this.direction.z;
+            
+            // Primary rotation: tumble around axis perpendicular to movement (like rolling off edge)
+            // Secondary rotation: add some wobble/precession for natural motion
+            const spinMultiplier = 1.0;
+            
+            // Single-cell blocks: simple rotation around one axis (like a coin flip)
+            // Multi-cell blocks: natural tumbling with multiple axes
+            const isSingleCell = !this.isVertical && this.length === 1;
+            
+            if (this.isVertical) {
+                // Vertical blocks: tumble around horizontal axis in direction of movement
+                if (isXAligned) {
+                    angularVelZ = moveDir * 3.5 * spinMultiplier;
+                    angularVelX = (Math.random() - 0.5) * 2.5 * spinMultiplier;
+                } else {
+                    angularVelX = -moveDir * 3.5 * spinMultiplier;
+                    angularVelZ = (Math.random() - 0.5) * 2.5 * spinMultiplier;
+                }
+                angularVelY = (Math.random() - 0.5) * 1.5 * spinMultiplier;
+            } else if (isSingleCell) {
+                // Single-cell blocks: rotate around axis perpendicular to movement direction
+                // This creates a simple "coin flip" effect rather than complex tumbling
+                if (isXAligned) {
+                    // Moving in X direction: rotate around Z axis (like a coin flipping)
+                    angularVelZ = moveDir * 5.0 * spinMultiplier;
+                    // Minimal wobble for natural look
+                    angularVelY = (Math.random() - 0.5) * 0.5 * spinMultiplier;
+                } else {
+                    // Moving in Z direction: rotate around X axis (like a coin flipping)
+                    angularVelX = -moveDir * 5.0 * spinMultiplier;
+                    // Minimal wobble for natural look
+                    angularVelY = (Math.random() - 0.5) * 0.5 * spinMultiplier;
+                }
+                // No rotation around the movement axis for single-cell blocks
             } else {
-                angularVelX = -moveDir * 3.5 * spinMultiplier;
-                angularVelZ = (Math.random() - 0.5) * 2.5 * spinMultiplier;
+                // Multi-cell horizontal blocks (2-3 cells): rotate around one primary axis
+                // This creates a "log rolling" effect rather than complex tumbling
+                // Single-cell blocks already handled above with coin-flip effect
+                if (isXAligned) {
+                    // Moving in X direction: rotate around Z axis (like a log rolling)
+                    angularVelZ = moveDir * 5.0 * spinMultiplier;
+                    // Minimal wobble for natural look
+                    angularVelY = (Math.random() - 0.5) * 0.8 * spinMultiplier;
+                } else {
+                    // Moving in Z direction: rotate around X axis (like a log rolling)
+                    angularVelX = -moveDir * 5.0 * spinMultiplier;
+                    // Minimal wobble for natural look
+                    angularVelY = (Math.random() - 0.5) * 0.8 * spinMultiplier;
+                }
+                // No rotation around the movement axis for cleaner appearance
             }
-            angularVelY = (Math.random() - 0.5) * 1.5 * spinMultiplier;
-        } else if (isSingleCell) {
-            // Single-cell blocks: rotate around axis perpendicular to movement direction
-            // This creates a simple "coin flip" effect rather than complex tumbling
-            if (isXAligned) {
-                // Moving in X direction: rotate around Z axis (like a coin flipping)
-                angularVelZ = moveDir * 5.0 * spinMultiplier;
-                // Minimal wobble for natural look
-                angularVelY = (Math.random() - 0.5) * 0.5 * spinMultiplier;
-            } else {
-                // Moving in Z direction: rotate around X axis (like a coin flipping)
-                angularVelX = -moveDir * 5.0 * spinMultiplier;
-                // Minimal wobble for natural look
-                angularVelY = (Math.random() - 0.5) * 0.5 * spinMultiplier;
-            }
-            // No rotation around the movement axis for single-cell blocks
-        } else {
-            // Multi-cell horizontal blocks (2-3 cells): rotate around one primary axis
-            // This creates a "log rolling" effect rather than complex tumbling
-            // Single-cell blocks already handled above with coin-flip effect
-            if (isXAligned) {
-                // Moving in X direction: rotate around Z axis (like a log rolling)
-                angularVelZ = moveDir * 5.0 * spinMultiplier;
-                // Minimal wobble for natural look
-                angularVelY = (Math.random() - 0.5) * 0.8 * spinMultiplier;
-            } else {
-                // Moving in Z direction: rotate around X axis (like a log rolling)
-                angularVelX = -moveDir * 5.0 * spinMultiplier;
-                // Minimal wobble for natural look
-                angularVelY = (Math.random() - 0.5) * 0.8 * spinMultiplier;
-            }
-            // No rotation around the movement axis for cleaner appearance
         }
         
         // Store velocities to apply after body creation
