@@ -2120,14 +2120,25 @@ export class Block {
             tempGridZ = nextGridZ;
         }
         
-        // If blocked immediately with no movement, add bounce effect
-        if (stepsToObstacle === 0 && hitObstacle) {
+        // CRITICAL FIX: After head-on collision, even if stepsToObstacle is 0 (can't move further),
+        // we still need to animate to the collision position and show the rotation.
+        // Otherwise the block appears to "disappear" because it never animates.
+        if (headOnCollision !== null && stepsToObstacle === 0) {
+            // Head-on collision happened but block can't move further after rotation
+            // Still animate to collision position and show rotation, then stop
+            // This ensures the block is visible and the rotation is shown
+            stepsToObstacle = 0; // Keep at 0 to indicate no further movement
+            // But we'll still animate to the collision position below
+        }
+        
+        // If blocked immediately with no movement AND no head-on collision, add bounce effect
+        if (stepsToObstacle === 0 && hitObstacle && headOnCollision === null) {
             this.addBounceEffect(blocks);
             return; // Can't move
         }
         
-        // If no movement possible, return (unless hitting edge - edge blocks should still fall)
-        if (stepsToObstacle === 0 && !hitEdge) {
+        // If no movement possible AND no head-on collision, return (unless hitting edge - edge blocks should still fall)
+        if (stepsToObstacle === 0 && !hitEdge && headOnCollision === null) {
             return;
         }
         
