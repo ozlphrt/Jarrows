@@ -1650,7 +1650,7 @@
                 <button class="toggle-icon" id="quality-toggle" title="Quality Preset">
                     <span id="quality-label">BAL</span>
                 </button>
-                <button class="toggle-icon" id="mode-toggle" title="Game Mode">
+                <button class="toggle-icon" id="mode-toggle" title="Game Mode" style="display: none;">
                     <span style="font-size: 11px; font-weight: 900; letter-spacing: 0.8px;">MODE</span>
                 </button>
                 <!-- Framing control removed -->
@@ -1706,27 +1706,6 @@
             <div class="modal-actions">
                 <button id="ver-modal-copy" class="game-button" style="padding: 10px 14px;">Copy</button>
                 <button id="ver-modal-ok" class="game-button" style="padding: 10px 14px;">Close</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Mode Select Modal (one-time unless user triggers via Settings/New Game) -->
-    <div id="mode-select-modal" class="extended-stats-modal-overlay" style="display:none; z-index: 3300;">
-        <div class="extended-stats-modal-panel">
-            <div style="display:flex; align-items:center; gap: 10px; margin-bottom: 12px;">
-                <span style="font-size: 24px;">🎮</span>
-                <div class="modal-title">Choose Mode</div>
-            </div>
-            <div style="margin-bottom: 14px;">
-                Can't decide? Don't worry—you can switch it up anytime! 😉
-            </div>
-            <div style="display:flex; gap:10px; flex-wrap: wrap; margin-bottom: 14px;">
-                <button id="mode-pick-free" class="game-button" style="padding: 12px 14px; flex:1; background: linear-gradient(135deg, rgba(59, 130, 246, 0.3), rgba(37, 99, 235, 0.4)); border-color: rgba(96, 165, 250, 0.5);">Free Flow</button>
-                <button id="mode-pick-time" class="game-button" style="padding: 12px 14px; flex:1; background: linear-gradient(135deg, rgba(251, 191, 36, 0.3), rgba(245, 158, 11, 0.4)); border-color: rgba(251, 191, 36, 0.5);">Time Challenge</button>
-                <button id="mode-pick-inferno" class="game-button" style="padding: 12px 14px; flex:1; background: linear-gradient(135deg, rgba(239, 68, 68, 0.3), rgba(220, 38, 38, 0.4)); border-color: rgba(248, 113, 113, 0.5);">Inferno</button>
-            </div>
-            <div class="modal-actions" style="display:flex; gap:10px;">
-                <button id="mode-select-cancel" class="game-button" style="padding: 10px 14px; flex:1;">Cancel</button>
             </div>
         </div>
     </div>

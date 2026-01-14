@@ -1,4 +1,4 @@
-﻿import * as THREE from 'three';
+import * as THREE from 'three';
 import { initPhysics, createPhysicsBlock, updatePhysics, isPhysicsStepping, hasPendingOperations, isPhysicsProcessing, removePhysicsBody } from './physics.js';
 import { Block } from './Block.js';
 import { createLights, createGrid, setGradientBackground, setupFog, setMysticalBackground } from './scene.js';
@@ -945,10 +945,9 @@ let currentLevel = 0;
 let _isStartingNewGame = false; // Flag to allow setting currentLevel to 0 only when starting new game
 
 // Safeguard function to set currentLevel - prevents accidental reset to 0
+// Always use inferno storage key (all modes have been migrated to inferno)
 function getStorageKey() {
-    if (isTimeChallengeMode()) return STORAGE_KEY_TIME_CHALLENGE;
-    if (isInfernoMode()) return STORAGE_KEY_INFERNO;
-    return STORAGE_KEY;
+    return STORAGE_KEY_INFERNO;
 }
 
 function setCurrentLevel(newLevel, allowZero = false) {
@@ -984,11 +983,13 @@ let remainingSpins = 3;
 const GAME_MODE_KEY = 'jarrows_game_mode'; // 'free_flow' | 'time_challenge' | 'inferno'
 const TIME_RULES_SEEN_KEY = 'jarrows_time_rules_seen';
 const INFERNO_RULES_SEEN_KEY = 'jarrows_inferno_rules_seen';
-const MODE_FREE_FLOW = 'free_flow';
-const MODE_TIME_CHALLENGE = 'time_challenge';
+// Mode constants (kept for backward compatibility, but only inferno is used)
+const MODE_FREE_FLOW = 'free_flow'; // Deprecated - all users migrated to inferno
+const MODE_TIME_CHALLENGE = 'time_challenge'; // Deprecated - all users migrated to inferno
 const MODE_INFERNO = 'inferno';
 
-let gameMode = MODE_FREE_FLOW;
+// Always start with inferno mode (migration will preserve user's level)
+let gameMode = MODE_INFERNO;
 
 // Time Challenge (survival) state
 const TIME_CHALLENGE_START_SECONDS = 30;
@@ -1025,7 +1026,93 @@ const STORAGE_KEY_INFERNO = 'jarrows_progress_inferno'; // Separate key for Infe
 const STORAGE_HIGHEST_LEVEL_KEY = 'jarrows_highest_level';
 const STORAGE_VERSION_KEY = 'jarrows_storage_version';
 const RESET_FLAG_KEY = 'jarrows_reset_completed';
+const MIGRATION_TO_INFERNO_KEY = 'jarrows_migrated_to_inferno';
 const CURRENT_STORAGE_VERSION = '2.0'; // Increment to reset all users
+
+// Migrate all users to inferno mode, preserving their highest level from any previous mode
+function migrateToInfernoMode() {
+    try {
+        // Check if migration has already been completed
+        const alreadyMigrated = localStorage.getItem(MIGRATION_TO_INFERNO_KEY) === '1';
+        if (alreadyMigrated) {
+            console.log('[Migration] Already migrated to inferno mode');
+            return;
+        }
+
+        console.log('[Migration] Starting migration to inferno mode...');
+
+        // Read levels from all previous modes
+        let freeFlowLevel = 0;
+        let timeChallengeLevel = 0;
+        let infernoLevel = 0;
+
+        try {
+            const freeFlowSaved = localStorage.getItem(STORAGE_KEY);
+            if (freeFlowSaved !== null && freeFlowSaved !== '') {
+                freeFlowLevel = parseInt(freeFlowSaved, 10);
+                if (isNaN(freeFlowLevel)) freeFlowLevel = 0;
+            }
+        } catch (e) {
+            console.warn('[Migration] Failed to read free flow level:', e);
+        }
+
+        try {
+            const timeChallengeSaved = localStorage.getItem(STORAGE_KEY_TIME_CHALLENGE);
+            if (timeChallengeSaved !== null && timeChallengeSaved !== '') {
+                timeChallengeLevel = parseInt(timeChallengeSaved, 10);
+                if (isNaN(timeChallengeLevel)) timeChallengeLevel = 0;
+            }
+        } catch (e) {
+            console.warn('[Migration] Failed to read time challenge level:', e);
+        }
+
+        try {
+            const infernoSaved = localStorage.getItem(STORAGE_KEY_INFERNO);
+            if (infernoSaved !== null && infernoSaved !== '') {
+                infernoLevel = parseInt(infernoSaved, 10);
+                if (isNaN(infernoLevel)) infernoLevel = 0;
+            }
+        } catch (e) {
+            console.warn('[Migration] Failed to read inferno level:', e);
+        }
+
+        // Take the maximum level from all modes
+        const maxLevel = Math.max(freeFlowLevel, timeChallengeLevel, infernoLevel);
+        
+        console.log('[Migration] Levels found:', {
+            freeFlow: freeFlowLevel,
+            timeChallenge: timeChallengeLevel,
+            inferno: infernoLevel,
+            max: maxLevel
+        });
+
+        // Save to inferno storage (use max level, or 1 if no progress exists)
+        const levelToSave = maxLevel > 0 ? maxLevel : 1;
+        localStorage.setItem(STORAGE_KEY_INFERNO, levelToSave.toString());
+        
+        // Set game mode to inferno
+        localStorage.setItem(GAME_MODE_KEY, MODE_INFERNO);
+        
+        // Update highest level if needed
+        const highestLevel = parseInt(localStorage.getItem(STORAGE_HIGHEST_LEVEL_KEY) || '0', 10);
+        if (levelToSave > highestLevel) {
+            localStorage.setItem(STORAGE_HIGHEST_LEVEL_KEY, levelToSave.toString());
+        }
+
+        // Mark migration as complete
+        localStorage.setItem(MIGRATION_TO_INFERNO_KEY, '1');
+        
+        console.log('[Migration] Migration complete. User starts at level', levelToSave, 'in inferno mode');
+    } catch (e) {
+        console.error('[Migration] Failed to migrate to inferno mode:', e);
+        // Try to set mode to inferno anyway, even if migration failed
+        try {
+            localStorage.setItem(GAME_MODE_KEY, MODE_INFERNO);
+        } catch (e2) {
+            console.error('[Migration] Failed to set game mode:', e2);
+        }
+    }
+}
 
 // One-time reset: Clear all existing progress for all users
 // This ensures everyone starts from level 1
@@ -1080,14 +1167,8 @@ function setBodyModeClass() {
         // Remove all mode classes first
         document.body.classList.remove('mode-time-challenge', 'mode-inferno', 'mode-free-flow');
         
-        // Add appropriate mode class
-        if (isTimeChallengeMode()) {
-            document.body.classList.add('mode-time-challenge');
-        } else if (isInfernoMode()) {
-            document.body.classList.add('mode-inferno');
-        } else {
-            document.body.classList.add('mode-free-flow');
-        }
+        // Always use inferno mode class
+        document.body.classList.add('mode-inferno');
         
         // Update game mode display
         updateGameModeDisplay();
@@ -1101,27 +1182,23 @@ function updateGameModeDisplay() {
         const modeValueEl = document.getElementById('game-mode-value');
         if (!modeValueEl) return;
         
-        let displayText = 'FREE FLOW';
-        if (isTimeChallengeMode()) {
-            displayText = 'TIME CHALLENGE';
-        } else if (isInfernoMode()) {
-            displayText = 'INFERNO';
-        }
-        
-        modeValueEl.textContent = displayText;
+        // Always show INFERNO mode
+        modeValueEl.textContent = 'INFERNO';
     } catch {
         // ignore
     }
 }
 
+// Always return inferno mode (all modes have been migrated to inferno)
 function loadGameMode() {
     try {
         const saved = localStorage.getItem(GAME_MODE_KEY);
-        if (saved === MODE_TIME_CHALLENGE) return MODE_TIME_CHALLENGE;
+        // If mode is already inferno, return it
         if (saved === MODE_INFERNO) return MODE_INFERNO;
-        return MODE_FREE_FLOW;
+        // Otherwise, default to inferno (migration will handle level preservation)
+        return MODE_INFERNO;
     } catch {
-        return MODE_FREE_FLOW;
+        return MODE_INFERNO;
     }
 }
 
@@ -1246,36 +1323,11 @@ function flashTimerDelta(deltaSeconds) {
     window.setTimeout(() => deltaEl.classList.remove('show'), 720);
 }
 
+// Mode selection modal removed - all users are in inferno mode
+// This function is kept for backward compatibility but always returns inferno mode
 function showModeSelectModal() {
-    const modal = document.getElementById('mode-select-modal');
-    const freeBtn = document.getElementById('mode-pick-free');
-    const timeBtn = document.getElementById('mode-pick-time');
-    const infernoBtn = document.getElementById('mode-pick-inferno');
-    const cancelBtn = document.getElementById('mode-select-cancel');
-    if (!modal || !freeBtn || !timeBtn || !infernoBtn) return Promise.resolve(MODE_FREE_FLOW);
-
-    setTimeFrozen('mode_select', true);
-    modal.style.display = 'flex';
-
-    return new Promise((resolve) => {
-        const cleanup = (mode) => {
-            modal.style.display = 'none';
-            freeBtn.removeEventListener('click', onFree);
-            timeBtn.removeEventListener('click', onTime);
-            infernoBtn.removeEventListener('click', onInferno);
-            if (cancelBtn) cancelBtn.removeEventListener('click', onCancel);
-            setTimeFrozen('mode_select', false);
-            resolve(mode);
-        };
-        const onFree = () => cleanup(MODE_FREE_FLOW);
-        const onTime = () => cleanup(MODE_TIME_CHALLENGE);
-        const onInferno = () => cleanup(MODE_INFERNO);
-        const onCancel = () => cleanup(null); // Return null to indicate cancellation
-        freeBtn.addEventListener('click', onFree);
-        timeBtn.addEventListener('click', onTime);
-        infernoBtn.addEventListener('click', onInferno);
-        if (cancelBtn) cancelBtn.addEventListener('click', onCancel);
-    });
+    // Always return inferno mode (no modal shown)
+    return Promise.resolve(MODE_INFERNO);
 }
 
 function showTimeRulesModalIfNeeded() {
@@ -1336,34 +1388,15 @@ function showInfernoRulesModalIfNeeded() {
     okBtn.addEventListener('click', onOk);
 }
 
+// Always set inferno mode (all modes have been migrated to inferno)
 async function ensureModeSelected({ forcePrompt = false } = {}) {
-    let mode = loadGameMode();
-
-    let hasKey = true;
-    try {
-        hasKey = localStorage.getItem(GAME_MODE_KEY) !== null;
-    } catch {
-        hasKey = true;
-    }
-
-    if (forcePrompt || !hasKey) {
-        const selectedMode = await showModeSelectModal();
-        // If user cancelled (selectedMode is null), keep current mode and return null to indicate cancellation
-        if (selectedMode === null) {
-            return null; // Indicate cancellation
-        }
-        mode = selectedMode;
-        saveGameMode(mode);
-    }
-
-    gameMode = mode;
+    // Always use inferno mode - no mode selection needed
+    gameMode = MODE_INFERNO;
+    saveGameMode(gameMode);
     setBodyModeClass();
 
-    if (isTimeChallengeMode()) {
-        showTimeRulesModalIfNeeded();
-    } else if (isInfernoMode()) {
-        showInfernoRulesModalIfNeeded();
-    }
+    // Show inferno rules modal if needed (only once)
+    showInfernoRulesModalIfNeeded();
 
     // Expose a simple hook for any UI callers
     if (typeof window !== 'undefined') {
@@ -1612,7 +1645,7 @@ function saveProgress() {
         }
         
         localStorage.setItem(storageKey, currentLevel.toString());
-        console.log(`Progress saved: Level ${currentLevel} (${isTimeChallengeMode() ? 'Time Challenge' : 'Free Flow'})`);
+        console.log(`Progress saved: Level ${currentLevel} (Inferno)`);
         
         // Also track highest level reached
         const highestLevel = parseInt(localStorage.getItem(STORAGE_HIGHEST_LEVEL_KEY) || '0', 10);
@@ -1691,17 +1724,17 @@ function loadProgress() {
             const level = parseInt(savedLevel, 10);
             // Validate level is a valid number
             if (!isNaN(level) && level >= 0) {
-                console.log(`Progress loaded: Level ${level} (${isTimeChallengeMode() ? 'Time Challenge' : 'Free Flow'})`);
+                console.log(`Progress loaded: Level ${level} (Inferno)`);
                 return level;
             } else {
-                console.warn('Invalid saved level, resetting to 0');
+                console.warn('Invalid saved level, resetting to 1');
                 localStorage.removeItem(storageKey);
             }
         }
     } catch (e) {
         console.warn('Failed to load progress:', e);
     }
-    console.log(`Starting from level 1 (no saved progress for ${isTimeChallengeMode() ? 'Time Challenge' : 'Free Flow'})`);
+    console.log(`Starting from level 1 (no saved progress for Inferno)`);
     return 1; // Default to level 1 if no saved progress
 }
 
@@ -1720,7 +1753,7 @@ function clearProgress() {
         }
         
         // Keep storage version and highest level for tracking
-        console.log(`Progress cleared - user will start from level 1 on next load (${isTimeChallengeMode() ? 'Time Challenge' : 'Free Flow'})`);
+        console.log(`Progress cleared - user will start from level 1 on next load (Inferno)`);
         return true;
     } catch (e) {
         console.warn('Failed to clear progress:', e);
@@ -4657,7 +4690,7 @@ async function restartCurrentLevel() {
     // PRIORITY 1: currentLevel (most recent state, most reliable)
     // PRIORITY 2: localStorage (persisted state, may be stale)
     // PRIORITY 3: Error if both invalid
-    const storageKey = isTimeChallengeMode() ? STORAGE_KEY_TIME_CHALLENGE : STORAGE_KEY;
+    const storageKey = STORAGE_KEY_INFERNO; // Always use inferno storage key
     const savedLevelBefore = parseInt(localStorage.getItem(storageKey) || '0', 10);
     
     // CRITICAL: Determine level to restart with PRIORITY system
@@ -4847,7 +4880,7 @@ async function startNewGame() {
     startLevelStats(currentLevel);
     
     // Verify localStorage is cleared
-    const storageKey = isTimeChallengeMode() ? STORAGE_KEY_TIME_CHALLENGE : STORAGE_KEY;
+    const storageKey = STORAGE_KEY_INFERNO; // Always use inferno storage key
     const savedLevel = parseInt(localStorage.getItem(storageKey) || '0', 10);
     if (savedLevel !== 0) {
         console.warn(`[startNewGame] WARNING: localStorage still has level ${savedLevel} after clearProgress(). Clearing again...`);
@@ -5684,21 +5717,9 @@ if (restartLevelButton) {
 const newGameButton = document.getElementById('new-game-button');
 if (newGameButton) {
     newGameButton.addEventListener('click', async () => {
-        // Per requirement: New Game should re-prompt mode selection (user can switch modes easily).
-        const selectedMode = await ensureModeSelected({ forcePrompt: true });
-        // If user cancelled (selectedMode is null), don't start a new game
-        if (selectedMode === null) {
-            return;
-        }
-        if (isTimeBasedMode()) {
-            timeChallengeResetRun();
-            remainingSpins = Number.POSITIVE_INFINITY;
-        } else {
-            timeChallengeActive = false;
-            timeFreezeReasons = new Set();
-            timeUpShown = false;
-            remainingSpins = 3;
-        }
+        // Always in inferno mode (time-based) - no mode selection needed
+        timeChallengeResetRun();
+        remainingSpins = Number.POSITIVE_INFINITY;
         updateSpinCounterDisplay();
         updateTimerDisplay();
         await startNewGame();
@@ -5988,33 +6009,12 @@ if (pauseResumeButton) {
     });
 }
 
-// Settings: MODE toggle opens the mode picker. Changing mode starts a fresh run/game.
+// Settings: MODE toggle - removed (only inferno mode available)
+// Mode toggle button can be hidden or removed from UI
 const modeToggleButton = document.getElementById('mode-toggle');
 if (modeToggleButton) {
-    modeToggleButton.addEventListener('click', async (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const prevMode = gameMode;
-        const selectedMode = await ensureModeSelected({ forcePrompt: true });
-        // If user cancelled (selectedMode is null), don't change mode or start new game
-        if (selectedMode === null) {
-            return;
-        }
-        if (gameMode !== prevMode) {
-            if (isTimeBasedMode()) {
-                timeChallengeResetRun();
-                remainingSpins = Number.POSITIVE_INFINITY;
-            } else {
-                timeChallengeActive = false;
-                timeFreezeReasons = new Set();
-                timeUpShown = false;
-                remainingSpins = 3;
-            }
-            updateSpinCounterDisplay();
-            updateTimerDisplay();
-            await startNewGame();
-        }
-    });
+    // Hide the mode toggle button since there's only one mode now
+    modeToggleButton.style.display = 'none';
 }
 
 // Time Up modal button: restart current level
@@ -6557,22 +6557,19 @@ if (typeof window !== 'undefined') {
 calculateInitialCameraPosition();
 updateCameraPosition(); // Position camera immediately to avoid default (0,0,0) view on first frame
 
-// Initialize game (mode selection before spawning the first puzzle)
+// Initialize game (migrate to inferno mode, then spawn the first puzzle)
 (async function boot() {
+    // Migrate all users to inferno mode (preserves their highest level from any previous mode)
+    migrateToInfernoMode();
+    
+    // Always use inferno mode (time-based)
     await ensureModeSelected({ forcePrompt: false });
 
-    if (isTimeBasedMode()) {
-        // Time-based modes: load saved progress (or start at level 0 if no progress)
-        currentLevel = loadProgress();
-        timeChallengeResetRun(); // This sets residual to 0 and initializes state
-        // Initial time for the level will be calculated in generateSolvablePuzzle()
-        remainingSpins = Number.POSITIVE_INFINITY;
-    } else {
-        // Free Flow uses saved progress.
-        currentLevel = loadProgress();
-        timeChallengeActive = false;
-        remainingSpins = 3;
-    }
+    // Inferno mode is time-based: load saved progress (or start at level 1 if no progress)
+    currentLevel = loadProgress();
+    timeChallengeResetRun(); // This sets residual to 0 and initializes state
+    // Initial time for the level will be calculated in generateSolvablePuzzle()
+    remainingSpins = Number.POSITIVE_INFINITY;
 
     updateSpinCounterDisplay();
     updateTimerDisplay();

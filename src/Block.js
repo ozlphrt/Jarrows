@@ -258,9 +258,22 @@ export class Block {
         // Get world position (accounting for towerGroup position)
         const worldPos = new THREE.Vector3();
         this.group.getWorldPosition(worldPos);
+        const bodyPos = { x: worldPos.x, y: worldPos.y + sizeY / 2, z: worldPos.z };
+        
+        // Calculate towerGroup's world Y position from the difference between world and local positions
+        // worldPos.y = towerGroup.worldY + group.position.y
+        // Therefore: towerGroup.worldY = worldPos.y - group.position.y
+        const calculatedTowerGroupWorldY = worldPos.y - this.group.position.y;
+        
+        // Store this for use in updateFromPhysics
+        this._towerGroupWorldY = calculatedTowerGroupWorldY;
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Block.js:268',message:'Creating physics body',data:{bodyPos,worldPos:{x:worldPos.x,y:worldPos.y,z:worldPos.z},sizeY,groupPos:{x:this.group.position.x,y:this.group.position.y,z:this.group.position.z},calculatedTowerGroupWorldY,pendingLinearVel:this.pendingLinearVel,wasCatapulted:this.wasCatapulted},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
         const physicsBody = createPhysicsBlock(
             this.physics,
-            { x: worldPos.x, y: worldPos.y + sizeY / 2, z: worldPos.z },
+            bodyPos,
             { x: sizeX, y: sizeY, z: sizeZ },
             true, // dynamic
             true  // use falling world
@@ -1995,14 +2008,27 @@ export class Block {
                     this.physicsBody.setEnabledRotations(true, true, true, true);
                     
                     if (this.pendingLinearVel) {
-                        this.physicsBody.setLinvel(
-                            new RAPIER.Vector3(
-                                this.pendingLinearVel.x,
-                                this.pendingLinearVel.y,
-                                this.pendingLinearVel.z
-                            ),
-                            true
+                        const vel = new RAPIER.Vector3(
+                            this.pendingLinearVel.x,
+                            this.pendingLinearVel.y,
+                            this.pendingLinearVel.z
                         );
+                        // Debug: log catapult velocity application
+                        if (this.wasCatapulted) {
+                            console.log('[Catapult] Applying velocity to physics body:', { x: vel.x, y: vel.y, z: vel.z });
+                        }
+                        // #region agent log
+                        fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Block.js:2007',message:'setLinvel called',data:{vel:{x:vel.x,y:vel.y,z:vel.z},pendingLinearVel:this.pendingLinearVel,wasCatapulted:this.wasCatapulted},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+                        // #endregion
+                        this.physicsBody.setLinvel(vel, true);
+                        // #region agent log
+                        try {
+                            const readBack = this.physicsBody.linvel();
+                            fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Block.js:2010',message:'Velocity read back after setLinvel',data:{readBack:{x:readBack.x,y:readBack.y,z:readBack.z},wasSet:{x:vel.x,y:vel.y,z:vel.z},wasCatapulted:this.wasCatapulted},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+                        } catch(e) {
+                            fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Block.js:2012',message:'Failed to read back velocity',data:{error:String(e)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+                        }
+                        // #endregion
                     }
                     
                     // Clear pending velocities
@@ -2064,6 +2090,11 @@ export class Block {
                 if (!isPhysicsStepping()) {
                     const lv = this.physicsBody.linvel();
                     if (lv) { lvx = lv.x; lvy = lv.y; lvz = lv.z; }
+                    // #region agent log
+                    if (this.wasCatapulted && lv) {
+                        fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Block.js:2083',message:'Velocity during updateFromPhysics',data:{linvel:{x:lv.x,y:lv.y,z:lv.z},position:{x,y,z},wasCatapulted:this.wasCatapulted},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+                    }
+                    // #endregion
                 }
             } catch {
                 // ignore
@@ -2085,9 +2116,44 @@ export class Block {
             // Physics body gives world coordinates, but group.position is relative to towerGroup
             // Convert world coordinates to local coordinates by subtracting towerGroup's world position
             const towerCenterOffset = this.gridSize * this.cubeSize / 2; // 3.5 for 7x7 grid
+            
+            // Get towerGroup's world Y position to convert from world space to local space
+            // Use the stored value from physics body creation, or calculate it
+            let towerGroupWorldY = this._towerGroupWorldY;
+            if (towerGroupWorldY === undefined) {
+                try {
+                    if (typeof window !== 'undefined' && window.towerGroup) {
+                        const towerWorldPos = new THREE.Vector3();
+                        window.towerGroup.getWorldPosition(towerWorldPos);
+                        towerGroupWorldY = towerWorldPos.y;
+                    } else {
+                        // Fallback: calculate from current group position
+                        const currentWorldPos = new THREE.Vector3();
+                        this.group.getWorldPosition(currentWorldPos);
+                        towerGroupWorldY = currentWorldPos.y - this.group.position.y;
+                    }
+                } catch (e) {
+                    // Final fallback: assume towerGroup is at y=0 in world space
+                    towerGroupWorldY = 0;
+                }
+            }
+            
+            // Convert physics body center (world space) to group position bottom (local space)
+            // Physics body center is at 'y' in world space
+            // Group position represents the BOTTOM of the block, relative to towerGroup
+            // Step 1: Convert center to bottom in world space: y - sizeY / 2
+            // Step 2: Convert world space to local space: subtract towerGroup's world Y
+            const physicsBottomWorldY = y - sizeY / 2;
+            const newGroupY = physicsBottomWorldY - towerGroupWorldY;
+            
+            // #region agent log
+            if (this.wasCatapulted) {
+                fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Block.js:2125',message:'Updating group position from physics',data:{physicsY:y,sizeY,towerGroupWorldY,newGroupY,oldGroupY:this.group.position.y,physicsPos:{x,y,z},calculation:'(y - sizeY/2) - towerGroupWorldY'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+            }
+            // #endregion
             this.group.position.set(
                 x - towerCenterOffset, 
-                y - sizeY / 2, 
+                newGroupY, 
                 z - towerCenterOffset
             );
             this.group.quaternion.set(qx, qy, qz, qw);
@@ -3291,15 +3357,19 @@ export class Block {
                     const dirZ = this.direction.z;
                     
                     if (isCatapult) {
-                        // CATAPULT: explosive launch with high velocity and upward arc
+                        // CATAPULT: explosive launch with high horizontal velocity
+                        // Negative velocity to ensure immediate falling (gravity will accelerate it)
                         const catapultSpeed = 8.0; // Much faster horizontal speed
-                        const launchAngle = 0.3; // Upward arc (radians, ~17 degrees)
                         
                         // Apply velocity in the direction of the arrow
                         velX = dirX * catapultSpeed;
                         velZ = dirZ * catapultSpeed;
-                        velY = Math.sin(launchAngle) * catapultSpeed * 0.6; // Upward velocity for arc
+                        velY = -3.0; // Strong downward velocity to start falling immediately (was 1.4 upward)
                         
+                        console.warn('[Catapult] Launching block with velocity:', { velX, velY, velZ }, 'Direction:', { dirX, dirZ });
+                        // #region agent log
+                        fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Block.js:3306',message:'Catapult fall() called',data:{velX,velY,velZ,dirX,dirZ,gridX:this.gridX,gridZ:this.gridZ,yOffset:this.yOffset},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+                        // #endregion
                         this.fall(velX, velZ, velY);
                     } else {
                         // Normal fall: use direction with moderate speed
@@ -3497,8 +3567,8 @@ export class Block {
         this.isFalling = true;
         this.fallingStartTime = Date.now();
         
-        // Check if this is a catapult launch (has upward velocity)
-        const isCatapult = verticalVelY !== null && verticalVelY > 0;
+        // Check if this is a catapult launch (has upward velocity OR was already marked as catapulted)
+        const isCatapult = (verticalVelY !== null && verticalVelY > 0) || this.wasCatapulted;
 
         // Remove shadows ONLY from catapulted blocks, and only while they are moving.
         // We mark the block as catapulted here and let updateFromPhysics() restore when it settles.
@@ -3563,6 +3633,13 @@ export class Block {
         if (horizontalVelX !== null && horizontalVelZ !== null) {
             const yVel = verticalVelY !== null ? verticalVelY : 0;
             this.pendingLinearVel = { x: horizontalVelX, y: yVel, z: horizontalVelZ };
+            // Debug: log catapult velocities
+            if (this.wasCatapulted || (verticalVelY !== null && verticalVelY !== 0)) {
+                console.log('[Catapult] Storing velocity:', this.pendingLinearVel, 'wasCatapulted:', this.wasCatapulted);
+            }
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Block.js:3568',message:'pendingLinearVel set',data:{pendingLinearVel:this.pendingLinearVel,horizontalVelX,horizontalVelZ,verticalVelY,yVel,wasCatapulted:this.wasCatapulted},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+            // #endregion
         } else {
             // Fallback: use direction with moderate speed for natural continuation
             this.pendingLinearVel = { x: this.direction.x * 3.5, y: 0, z: this.direction.z * 3.5 };
