@@ -64,6 +64,21 @@ npm run build
 
 ## Releases
 
+### v5.0.2 - iOS Color Tint Visibility Fix
+- **Tree**: https://github.com/ozlphrt/Jarrows/tree/v5.0.2
+- **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v5.0.2
+- **Live**: https://ozlphrt.github.io/Jarrows/
+- Fixed missing color tint on iPhone Pro 13 - stronger tint mix for white blocks (85%), increased emissive intensity on iOS (0.25)
+- Sync unlock animation with lock visual values for smooth transitions
+
+### v5.0.1 - Lock Visual Improvements & Auto-Unlock
+- **Tree**: https://github.com/ozlphrt/Jarrows/tree/v5.0.1
+- **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v5.0.1
+- **Live**: https://ozlphrt.github.io/Jarrows/
+- Enhanced lock appearance with tint colors and emissive glow
+- Auto-unlock all blocks when 5 or fewer blocks remain
+- Added lock explanation modal on first lock
+
 ### v4.6.1 - Bug Fixes & Animation Improvements
 - **Tree**: https://github.com/ozlphrt/Jarrows/tree/v4.6.1
 - **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v4.6.1
