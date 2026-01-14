@@ -122,6 +122,13 @@ export class Block {
         this.wasCatapulted = false;
         this._catapultShadowSuppressed = false;
         this._catapultRestStartMs = 0;
+        // Block lock state (for collision penalties)
+        this.isLocked = false;
+        this.lockEndTime = 0; // Timestamp when lock expires
+        this.lockStartTime = 0; // Timestamp when lock started (for auto-unlock protection)
+        this.originalColor = null; // Store original color for restoration
+        this.originalOpacity = 1.0; // Store original opacity for restoration
+        this.opacityAnimationId = null; // Track opacity animation frame ID
         this.scene = scene;
         this.physics = physics;
         this.gridSize = gridSize;
@@ -179,7 +186,9 @@ export class Block {
         const blockMaterial = new THREE.MeshStandardMaterial({ 
             color: blockColor,
             roughness: 0.1, // Low roughness for shiny plastic
-            metalness: 0.0 // No metalness for plastic
+            metalness: 0.0, // No metalness for plastic
+            opacity: 1.0, // Explicitly set opacity
+            transparent: false // Will be set to true when locked
         });
         
         // Create single mesh for the entire block
@@ -199,6 +208,9 @@ export class Block {
         // Store original material for highlighting
         this.originalMaterial = blockMaterial;
         this.isHighlighted = false;
+        
+        // Store original color for lock/unlock color restoration
+        this.originalColor = blockColor;
         
         // Create arrow with colored arrow (always colored for visibility)
         this.createArrow(arrowStyle, arrowColor);
@@ -869,6 +881,138 @@ export class Block {
             if (circleMesh && circleMesh.material) {
                 circleMesh.material.color.setHex(indicatorColor);
             }
+        }
+    }
+    
+    /**
+     * Calculate lock duration based on level (fallback for non-timer modes)
+     * Formula: baseTime + (level * scalingFactor)
+     * Early levels (1-10): ~8-16s
+     * Mid levels (11-25): ~16-32s
+     * Late levels (26-50): ~24-48s
+     * Post-50: ~32-64s (continues scaling)
+     */
+    static calculateLockDuration(level) {
+        const baseTime = 8.0; // Base lock time in seconds (4x increase: 2.0 * 4)
+        const scalingFactor = 0.4; // 0.4s per level (4x increase: 0.1 * 4)
+        return baseTime + (level * scalingFactor);
+    }
+    
+    /**
+     * Lock this block for a duration
+     * In timer modes: uses 1/3 of remaining time
+     * In Free Flow mode: uses level-based calculation
+     * Applies dark grey tint with smooth color transition
+     */
+    lockBlock(level, remainingTime = null) {
+        console.log('[Lock] lockBlock called for block at', this.gridX, this.gridZ, 'isLocked:', this.isLocked, 'isFalling:', this.isFalling, 'isRemoved:', this.isRemoved);
+        
+        if (this.isLocked || this.isFalling || this.isRemoved) {
+            console.log('[Lock] Block already locked/falling/removed, skipping');
+            return;
+        }
+        
+        let lockDuration;
+        if (remainingTime !== null && remainingTime > 0) {
+            // Timer mode: use 1/3 of remaining time
+            lockDuration = remainingTime / 3;
+        } else {
+            // Free Flow mode: use level-based calculation
+            lockDuration = Block.calculateLockDuration(level);
+        }
+        
+        console.log('[Lock] Setting lock duration:', lockDuration, 'seconds');
+        
+        this.isLocked = true;
+        this.lockStartTime = performance.now();
+        this.lockEndTime = performance.now() + (lockDuration * 1000);
+        
+        // Ensure original color is stored (should be set in constructor, but fallback here)
+        if (this.originalColor === null && this.originalMaterial) {
+            this.originalColor = this.originalMaterial.color.getHex();
+        }
+        
+        // Apply oscillating transparency (2% to 90% opacity)
+        // Use both opacity AND color darkening for maximum visibility
+        console.log('[Lock] Starting transparency effect, cubes count:', this.cubes.length);
+        if (this.cubes.length > 0) {
+            // Ensure each mesh has its own material (clone if shared)
+            for (const cube of this.cubes) {
+                if (cube.material) {
+                    // Clone material to ensure it's unique to this block
+                    if (!cube.material.userData.isBlockMaterial) {
+                        cube.material = cube.material.clone();
+                        cube.material.userData.isBlockMaterial = true;
+                    }
+                    
+                    // Store original values
+                    if (cube.material.userData.originalOpacity === undefined) {
+                        cube.material.userData.originalOpacity = cube.material.opacity !== undefined ? cube.material.opacity : 1.0;
+                    }
+                    if (cube.material.userData.originalColor === undefined) {
+                        cube.material.userData.originalColor = cube.material.color.clone();
+                    }
+                    
+                    // Enable transparency
+                    cube.material.transparent = true;
+                    cube.material.opacity = 1.0;
+                }
+            }
+            
+            // Apply static transparency and darkening (no oscillation)
+            const staticOpacity = 0.5; // Fixed opacity at 50%
+            const darkenFactor = 0.5; // Darken to 50% brightness
+            
+            for (const cube of this.cubes) {
+                if (cube.material) {
+                    if (!cube.material.userData.originalColor) {
+                        cube.material.userData.originalColor = cube.material.color.clone();
+                    }
+                    
+                    // Set static opacity
+                    cube.material.transparent = true;
+                    cube.material.opacity = staticOpacity;
+                    
+                    // Darken color
+                    cube.material.color.copy(cube.material.userData.originalColor).multiplyScalar(darkenFactor);
+                }
+            }
+            
+            console.log('[Lock] Applied static transparency and darkening effect');
+        } else {
+            console.log('[Lock] WARNING: No cubes found, cannot apply transparency effect');
+        }
+    }
+    
+    /**
+     * Unlock this block and restore original opacity
+     */
+    unlockBlock() {
+        if (!this.isLocked) return;
+        
+        this.isLocked = false;
+        this.lockEndTime = 0;
+        
+        // Restore original opacity and color for all cubes
+        for (const cube of this.cubes) {
+            if (cube.material && cube.material.userData.originalOpacity !== undefined) {
+                const origOpacity = cube.material.userData.originalOpacity;
+                cube.material.opacity = origOpacity;
+                cube.material.transparent = origOpacity < 1.0;
+                if (cube.material.userData.originalColor) {
+                    cube.material.color.copy(cube.material.userData.originalColor);
+                }
+            }
+        }
+    }
+    
+    /**
+     * Update lock state - check if lock has expired and unlock if needed
+     * Should be called regularly (e.g., in animation loop)
+     */
+    updateLockState() {
+        if (this.isLocked && performance.now() >= this.lockEndTime) {
+            this.unlockBlock();
         }
     }
     
@@ -1584,6 +1728,11 @@ export class Block {
     }
     
     canMove(blocks) {
+        // Locked blocks cannot move
+        if (this.isLocked) {
+            return 'blocked';
+        }
+        
         const newGridX = this.gridX + this.direction.x;
         const newGridZ = this.gridZ + this.direction.z;
         
@@ -1855,7 +2004,8 @@ export class Block {
     }
     
     move(blocks, gridSize) {
-        if (this.isAnimating || this.isFalling) return;
+        // Don't move if already animating, falling, or locked
+        if (this.isAnimating || this.isFalling || this.isLocked) return;
 
         // Snapshot state for Undo BEFORE any move logic mutates direction/yOffset/etc.
         const preMoveState = {
@@ -2287,8 +2437,24 @@ export class Block {
                     // The next iteration will calculate nextGridX/nextGridZ using the rotated direction
                     continue; // Skip updating tempGridX/tempGridZ, continue with rotated direction
                 } else {
-                    // Regular collision: stop
+                    // Regular side collision: stop and lock both blocks
                     hitObstacle = true;
+                    
+                    // Get remaining time if in timer mode (Time Challenge or Inferno)
+                    let remainingTime = null;
+                    if (typeof window !== 'undefined' && window.timeLeftSec !== undefined) {
+                        remainingTime = window.timeLeftSec;
+                    }
+                    
+                    // Lock both blocks: the moving block (this) and the stationary block (collidedBlock)
+                    if (collidedBlock && !collidedBlock.isLocked && !collidedBlock.isFalling && !collidedBlock.isRemoved) {
+                        collidedBlock.lockBlock(this.level, remainingTime);
+                    }
+                    // Lock the moving block as well
+                    if (!this.isLocked && !this.isFalling && !this.isRemoved) {
+                        this.lockBlock(this.level, remainingTime);
+                    }
+                    
                     break;
                 }
             }

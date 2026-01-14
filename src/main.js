@@ -313,6 +313,7 @@ const renderer = new THREE.WebGLRenderer({
     // AA is expensive on mobile and in battery mode; rely on lower DPR + post AA from browser compositor
     antialias: !isMobileLike && initialQualityPreset !== 'battery',
     powerPreference: (initialQualityPreset === 'battery' || isIOS || isMobileLike) ? 'low-power' : 'high-performance',
+    alpha: true, // Enable alpha channel for transparency support
 });
 renderer.setSize(window.innerWidth, window.innerHeight);
 // Limit pixel ratio via quality preset (keeps UI size the same; changes internal render resolution)
@@ -992,6 +993,19 @@ let gameMode = MODE_FREE_FLOW;
 // Time Challenge (survival) state
 const TIME_CHALLENGE_START_SECONDS = 30;
 let timeLeftSec = TIME_CHALLENGE_START_SECONDS; // carryover across levels in this mode
+
+// Helper function to update timeLeftSec and keep window.timeLeftSec in sync
+function setTimeLeftSec(value) {
+    timeLeftSec = value;
+    if (typeof window !== 'undefined') {
+        window.timeLeftSec = timeLeftSec;
+    }
+}
+
+// Initialize window.timeLeftSec
+if (typeof window !== 'undefined') {
+    window.timeLeftSec = timeLeftSec;
+}
 let timeChallengeActive = false;
 let timeChallengeRemovals = 0; // blocks removed in current run
 let timeChallengeResidualSec = 0; // Time left from previous level (carries over to next level)
@@ -1176,7 +1190,7 @@ function animateTimeAddition(deltaSeconds) {
         
         // Interpolate time value (countdown is paused during animation, so safe to set directly)
         const newTime = timeAnimationStart + (timeAnimationTarget - timeAnimationStart) * eased;
-        timeLeftSec = Math.max(0, newTime); // Ensure non-negative
+        setTimeLeftSec(Math.max(0, newTime)); // Ensure non-negative
         // Force immediate update during animation (bypass throttling)
         updateTimerDisplay();
         // Also update lastTimerUiMs to prevent throttling from skipping this update
@@ -1186,7 +1200,7 @@ function animateTimeAddition(deltaSeconds) {
             requestAnimationFrame(animate);
         } else {
             // Animation complete - snap to final value
-            timeLeftSec = Math.max(0, timeAnimationTarget);
+            setTimeLeftSec(Math.max(0, timeAnimationTarget));
             updateTimerDisplay();
             timeAnimationActive = false;
             console.log('[Time Challenge] Animation complete, final time:', timeLeftSec);
@@ -1362,7 +1376,7 @@ async function ensureModeSelected({ forcePrompt = false } = {}) {
 function timeChallengeResetRun() {
     // This is called when starting a NEW RUN (level 1, fresh start)
     // For new levels within a run, use timeChallengeStartNewLevel() instead
-    timeLeftSec = TIME_CHALLENGE_START_SECONDS;
+    setTimeLeftSec(TIME_CHALLENGE_START_SECONDS);
     timeChallengeInitialTime = TIME_CHALLENGE_START_SECONDS;
     timeChallengeTimeCollected = 0;
     timeChallengeTimeCollectedAllTime = 0;
@@ -1392,7 +1406,7 @@ function timeChallengeStartNewLevel(blocksArray) {
     const minTime = 30; // Minimum 30 seconds
     
     // Initial time = max(30, sum of block lengths) + residual from previous level
-    timeLeftSec = Math.max(minTime, calculatedTime) + timeChallengeResidualSec;
+    setTimeLeftSec(Math.max(minTime, calculatedTime) + timeChallengeResidualSec);
     timeChallengeInitialTime = timeLeftSec; // Track initial time for this level
     // Track carried over time before resetting
     if (timeChallengeResidualSec > 0) {
@@ -1446,7 +1460,7 @@ function timeChallengeAwardForBlockRemoved(blockLength) {
     
     // Add time immediately (like spin does), then show flash animation
     const before = timeLeftSec;
-    timeLeftSec += gained;
+    setTimeLeftSec(timeLeftSec + gained);
     
     // Play time added sound effect
     playSound('timeAdded', 0.6);
@@ -1470,7 +1484,7 @@ function timeChallengeApplySpinCost() {
     
     // Cost: multiplier of remaining time
     const before = timeLeftSec;
-    timeLeftSec = timeLeftSec * (1 - multiplier);
+    setTimeLeftSec(timeLeftSec * (1 - multiplier));
     const delta = Math.trunc(timeLeftSec) - Math.trunc(before);
     // Prefer to show a clear negative number of seconds.
     const spent = Math.max(1, Math.ceil(before * multiplier));
@@ -1556,7 +1570,7 @@ async function restartTimeChallengeLevelFromTimeUp() {
     
     // Restore timer to the saved initial time for this level
     if (savedInitialTime > 0) {
-        timeLeftSec = savedInitialTime;
+        setTimeLeftSec(savedInitialTime);
         timeChallengeInitialTime = savedInitialTime;
         updateTimerDisplay();
     }
@@ -6222,7 +6236,7 @@ function onMouseClick(event) {
     const allIntersections = [];
     
     for (const block of blocks) {
-        if (block.isAnimating || block.isFalling) continue;
+        if (block.isAnimating || block.isFalling || block.isLocked) continue; // Skip locked blocks
         
         const intersects = raycaster.intersectObjects(block.cubes, true);
         
@@ -7286,14 +7300,25 @@ function animate() {
     if (isTimeBasedMode() && timeChallengeActive && !timeUpShown) {
         const canDrain = !isTimeFrozen() && !isGeneratingLevel && !isPaused && !timeAnimationActive;
         if (canDrain) {
-            timeLeftSec -= deltaTime;
+            setTimeLeftSec(timeLeftSec - deltaTime);
             if (timeLeftSec <= 0) {
-                timeLeftSec = 0;
+                setTimeLeftSec(0);
                 updateTimerDisplay();
                 showTimeUpModal();
             }
         }
     }
+    
+    // Update block lock states (unlock blocks when lock duration expires)
+    for (const block of blocks) {
+        if (block && typeof block.updateLockState === 'function') {
+            block.updateLockState();
+        }
+    }
+    
+    // Note: Block unlocking is now handled by updateLockState() which respects
+    // the full lock duration (1/3 of timer in timer modes, or level-based in Free Flow)
+    // Removed auto-unlock logic that was unlocking blocks prematurely
     
     // Update tower group position
     _towerGroupWorldCenter.copy(towerCenter).add(towerPositionOffset);
