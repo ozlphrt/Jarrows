@@ -4237,7 +4237,7 @@ let lockExplanationModalShowing = false;
 /**
  * Show lock explanation modal (first time only)
  */
-function showLockExplanationModal(lockDuration, isTimerMode) {
+function showLockExplanationModal(lockDuration, isTimerMode, blockLength = null) {
     const LOCK_EXPLANATION_KEY = 'jarrows_lock_explanation_seen';
     
     // Check if already seen
@@ -4289,7 +4289,26 @@ function showLockExplanationModal(lockDuration, isTimerMode) {
     `;
     
     if (isTimerMode) {
-        content += `<p style="margin: 0;">In <b>Timer mode</b>: Lock lasts <b>1/3 of your remaining time</b>.</p>`;
+        if (blockLength) {
+            // Show proportional lock duration based on block length
+            let lockFraction = '';
+            if (blockLength === 1) {
+                lockFraction = '1/10';
+            } else if (blockLength === 2) {
+                lockFraction = '1/5';
+            } else {
+                lockFraction = '1/3';
+            }
+            content += `<p style="margin: 0;">In <b>Timer mode</b>: Lock duration is proportional to block size.</p>`;
+            content += `<ul style="margin: 5px 0 0 20px; padding: 0;">`;
+            content += `<li><b>Red</b> (1 cell): <b>1/10</b> of remaining time (10%)</li>`;
+            content += `<li><b>Teal</b> (2 cells): <b>1/5</b> of remaining time (20%)</li>`;
+            content += `<li><b>Yellow</b> (3 cells): <b>1/3</b> of remaining time (33.3%)</li>`;
+            content += `</ul>`;
+            content += `<p style="margin-top: 5px; margin-bottom: 0;">This block (${blockLength} cell${blockLength > 1 ? 's' : ''}) is locked for <b>${lockFraction}</b> of your remaining time.</p>`;
+        } else {
+            content += `<p style="margin: 0;">In <b>Timer mode</b>: Lock duration is proportional to block size (1/10, 1/5, or 1/3 of remaining time).</p>`;
+        }
     } else {
         content += `<p style="margin: 0;">In <b>Free Flow mode</b>: Lock duration increases with level difficulty.</p>`;
     }

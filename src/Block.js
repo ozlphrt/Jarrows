@@ -131,6 +131,9 @@ export class Block {
         this.opacityAnimationId = null; // Track opacity animation frame ID
         this.unlockAnimationId = null; // Track unlock transition animation frame ID
         this.isUnlocking = false; // Track if unlock animation is in progress
+        this.lockFillMesh = null; // Fill mesh for lock time visualization
+        this.lockFillGlowMesh = null; // Glow mesh for fill effect
+        this.lockFillProgress = 0; // Fill progress (0.0 to 1.0)
         this.scene = scene;
         this.physics = physics;
         this.gridSize = gridSize;
@@ -902,7 +905,10 @@ export class Block {
     
     /**
      * Lock this block for a duration
-     * In timer modes: uses 1/3 of remaining time
+     * In timer modes: lock duration proportional to block length
+     *   - Red (length 1): 1/10 of remaining time (10%)
+     *   - Teal (length 2): 1/5 of remaining time (20%)
+     *   - Yellow (length 3): 1/3 of remaining time (33.333%)
      * In Free Flow mode: uses level-based calculation
      * Applies dark grey tint with smooth color transition
      */
@@ -917,8 +923,17 @@ export class Block {
         let lockDuration;
         const isTimerMode = remainingTime !== null && remainingTime > 0;
         if (isTimerMode) {
-            // Timer mode: use 1/3 of remaining time
-            lockDuration = remainingTime / 3;
+            // Timer mode: lock duration proportional to block length
+            // Red (length 1): 1/10 = 10%
+            // Teal (length 2): 1/5 = 20%
+            // Yellow (length 3): 1/3 = 33.333%
+            if (this.length === 1) {
+                lockDuration = remainingTime / 10; // Red: 1/10th
+            } else if (this.length === 2) {
+                lockDuration = remainingTime / 5; // Teal: 1/5th
+            } else {
+                lockDuration = remainingTime / 3; // Yellow: 1/3rd (length 3)
+            }
         } else {
             // Free Flow mode: use level-based calculation
             lockDuration = Block.calculateLockDuration(level);
@@ -928,7 +943,7 @@ export class Block {
         
         // Show explanation modal on first lock (if function is available)
         if (typeof window !== 'undefined' && typeof window.showLockExplanationModal === 'function') {
-            window.showLockExplanationModal(lockDuration, isTimerMode);
+            window.showLockExplanationModal(lockDuration, isTimerMode, this.length);
         }
         
         this.isLocked = true;
@@ -939,6 +954,11 @@ export class Block {
         if (this.originalColor === null && this.originalMaterial) {
             this.originalColor = this.originalMaterial.color.getHex();
         }
+        
+        // Use length-based color for tint (same as arrow color) - define early so it's available for fill mesh
+        const colors = [0xff6b6b, 0x4ecdc4, 0xffc125]; // Red, Teal, Golden Yellow
+        const tintColorHex = colors[this.length - 1] || colors[0];
+        const tintColorObj = new THREE.Color(tintColorHex);
         
         // Apply oscillating transparency (2% to 90% opacity)
         // Use both opacity AND color darkening for maximum visibility
@@ -983,11 +1003,6 @@ export class Block {
                 }
             })();
             
-            // Use length-based color for tint (same as arrow color) - this ensures visible tint even for white blocks
-            const colors = [0xff6b6b, 0x4ecdc4, 0xffc125]; // Red, Teal, Golden Yellow
-            const tintColorHex = colors[this.length - 1] || colors[0];
-            const tintColorObj = new THREE.Color(tintColorHex);
-            
             for (const cube of this.cubes) {
                 if (cube.material) {
                     if (!cube.material.userData.originalColor) {
@@ -1012,7 +1027,7 @@ export class Block {
                     
                     // Check if original color is white (or very close to white) - use stronger tint mix
                     const isWhite = originalColorObj.r > 0.95 && originalColorObj.g > 0.95 && originalColorObj.b > 0.95;
-                    const tintMix = isWhite ? 0.85 : 0.65; // Stronger tint for white blocks (85% vs 65%)
+                    const tintMix = isWhite ? 0.50 : 0.35; // Reduced tint mix (50% for white, 35% for colored blocks)
                     
                     const tintedColor = originalColorObj.clone().lerp(tintColorObj, tintMix);
                     cube.material.color.copy(tintedColor).multiplyScalar(brightnessFactor);
@@ -1028,6 +1043,156 @@ export class Block {
         } else {
             console.log('[Lock] WARNING: No cubes found, cannot apply transparency effect');
         }
+        
+        // Create fill mesh for lock time visualization
+        this.createLockFillMesh(tintColorObj);
+    }
+    
+    /**
+     * Create fill mesh that visualizes remaining lock time
+     * Fill uses block's tint color and fills along the long axis
+     */
+    createLockFillMesh(tintColorObj) {
+        // Calculate block dimensions (same logic as constructor)
+        const isXAligned = Math.abs(this.direction.x) > 0;
+        let blockWidth, blockHeight, blockDepth;
+        
+        if (this.isVertical) {
+            blockWidth = this.cubeSize;
+            blockHeight = this.length * this.cubeSize;
+            blockDepth = this.cubeSize;
+        } else if (isXAligned) {
+            blockWidth = this.length * this.cubeSize;
+            blockHeight = this.cubeSize;
+            blockDepth = this.cubeSize;
+        } else {
+            blockWidth = this.cubeSize;
+            blockHeight = this.cubeSize;
+            blockDepth = this.length * this.cubeSize;
+        }
+        
+        // Create fill geometry with padding
+        // Bottom/end padding: 3% (reduced from 10%)
+        // Side padding: 15% (more padding around)
+        const bottomEndPaddingRatio = 0.03;
+        const sidePaddingRatio = 0.15;
+        
+        // Calculate fill dimensions with different padding for sides vs bottom/end
+        let fillWidth, fillHeight, fillDepth;
+        if (this.isVertical) {
+            // Vertical: padding on X/Z sides, and Y bottom/end
+            fillWidth = blockWidth * (1 - 2 * sidePaddingRatio);
+            fillHeight = blockHeight * (1 - 2 * bottomEndPaddingRatio);
+            fillDepth = blockDepth * (1 - 2 * sidePaddingRatio);
+        } else if (isXAligned) {
+            // X-aligned: padding on Y/Z sides, and X start/end
+            fillWidth = blockWidth * (1 - 2 * bottomEndPaddingRatio);
+            fillHeight = blockHeight * (1 - 2 * sidePaddingRatio);
+            fillDepth = blockDepth * (1 - 2 * sidePaddingRatio);
+        } else {
+            // Z-aligned: padding on X/Y sides, and Z start/end
+            fillWidth = blockWidth * (1 - 2 * sidePaddingRatio);
+            fillHeight = blockHeight * (1 - 2 * sidePaddingRatio);
+            fillDepth = blockDepth * (1 - 2 * bottomEndPaddingRatio);
+        }
+        
+        // Use RoundedBoxGeometry for rounded edges and corners (matching blocks)
+        const radius = 0.08; // Same rounding radius as blocks
+        const segments = 4; // Same segments as blocks
+        const fillGeometry = new RoundedBoxGeometry(fillWidth, fillHeight, fillDepth, segments, radius);
+        
+        // Create material with tint color, slightly darker, highly emissive
+        const darkerTintColor = tintColorObj.clone().multiplyScalar(0.7); // Darken by 30%
+        const fillMaterial = new THREE.MeshStandardMaterial({
+            color: darkerTintColor,
+            emissive: darkerTintColor,
+            emissiveIntensity: 2.0, // Increased emissive for stronger glow
+            roughness: 0.1,
+            metalness: 0.0,
+            opacity: 1.0, // Fully opaque
+            transparent: false, // Not transparent
+            depthWrite: true, // Write to depth buffer for proper occlusion
+            depthTest: true
+        });
+        
+        // Create glow geometry (slightly larger for glow effect)
+        const glowScale = 1.15; // 15% larger for glow
+        const glowGeometry = new RoundedBoxGeometry(
+            fillWidth * glowScale, 
+            fillHeight * glowScale, 
+            fillDepth * glowScale, 
+            segments, 
+            radius * glowScale
+        );
+        
+        // Create glow material (semi-transparent, highly emissive)
+        const glowMaterial = new THREE.MeshStandardMaterial({
+            color: darkerTintColor,
+            emissive: darkerTintColor,
+            emissiveIntensity: 3.0, // Very high emissive for glow
+            roughness: 0.1,
+            metalness: 0.0,
+            opacity: 0.4, // Semi-transparent for glow effect
+            transparent: true,
+            depthWrite: false, // Don't write to depth for glow
+            depthTest: true
+        });
+        
+        // Create glow mesh (renders behind fill mesh)
+        const glowMesh = new THREE.Mesh(glowGeometry, glowMaterial);
+        glowMesh.castShadow = false; // Glow doesn't cast shadow
+        glowMesh.receiveShadow = false; // Glow doesn't receive shadow
+        glowMesh.renderOrder = 0; // Render before fill mesh
+        
+        // Create fill mesh
+        const fillMesh = new THREE.Mesh(fillGeometry, fillMaterial);
+        fillMesh.castShadow = true; // Fill casts shadow
+        fillMesh.receiveShadow = true; // Fill receives shadow
+        fillMesh.renderOrder = 1; // Render after block mesh (which is at default 0)
+        
+        // Position and scale fill based on block orientation
+        // Block mesh is positioned at (0, blockHeight/2, 0), so bottom is at y=0, top at y=blockHeight
+        if (this.isVertical) {
+            // Vertical block: fill from bottom to top along Y axis
+            // Start at bottom with padding (y = padding + fillHeight/2 so bottom edge is at y=padding)
+            const paddingY = blockHeight * bottomEndPaddingRatio;
+            const posY = paddingY + fillHeight / 2;
+            fillMesh.position.set(0, posY, 0);
+            glowMesh.position.set(0, posY, 0);
+            fillMesh.scale.set(1, 0, 1); // Start with 0 height
+            glowMesh.scale.set(1, 0, 1); // Start with 0 height
+        } else if (isXAligned) {
+            // Horizontal X-aligned: fill along X axis
+            // Position at start based on direction with padding
+            const paddingX = blockWidth * bottomEndPaddingRatio;
+            const startX = this.direction.x > 0 
+                ? -blockWidth / 2 + paddingX + fillWidth / 2  // Start at left with padding if moving right
+                : blockWidth / 2 - paddingX - fillWidth / 2;  // Start at right with padding if moving left
+            fillMesh.position.set(startX, blockHeight / 2, 0);
+            glowMesh.position.set(startX, blockHeight / 2, 0);
+            fillMesh.scale.set(0, 1, 1); // Start with 0 width
+            glowMesh.scale.set(0, 1, 1); // Start with 0 width
+        } else {
+            // Horizontal Z-aligned: fill along Z axis
+            // Position at start based on direction with padding
+            const paddingZ = blockDepth * bottomEndPaddingRatio;
+            const startZ = this.direction.z > 0
+                ? -blockDepth / 2 + paddingZ + fillDepth / 2  // Start at back with padding if moving forward
+                : blockDepth / 2 - paddingZ - fillDepth / 2;   // Start at front with padding if moving back
+            fillMesh.position.set(0, blockHeight / 2, startZ);
+            glowMesh.position.set(0, blockHeight / 2, startZ);
+            fillMesh.scale.set(1, 1, 0); // Start with 0 depth
+            glowMesh.scale.set(1, 1, 0); // Start with 0 depth
+        }
+        
+        // Add glow and fill meshes to block group (glow first so it renders behind)
+        this.group.add(glowMesh);
+        this.group.add(fillMesh);
+        this.lockFillMesh = fillMesh;
+        this.lockFillGlowMesh = glowMesh; // Store glow mesh reference
+        this.lockFillProgress = 0;
+        
+        console.log('[Lock] Created fill mesh for lock time visualization');
     }
     
     /**
@@ -1038,6 +1203,29 @@ export class Block {
         
         // If already unlocking, don't start another animation
         if (this.isUnlocking) return;
+        
+        // Remove and dispose fill mesh
+        if (this.lockFillMesh) {
+            this.group.remove(this.lockFillMesh);
+            if (this.lockFillMesh.geometry) {
+                this.lockFillMesh.geometry.dispose();
+            }
+            if (this.lockFillMesh.material) {
+                this.lockFillMesh.material.dispose();
+            }
+            this.lockFillMesh = null;
+        }
+        if (this.lockFillGlowMesh) {
+            this.group.remove(this.lockFillGlowMesh);
+            if (this.lockFillGlowMesh.geometry) {
+                this.lockFillGlowMesh.geometry.dispose();
+            }
+            if (this.lockFillGlowMesh.material) {
+                this.lockFillGlowMesh.material.dispose();
+            }
+            this.lockFillGlowMesh = null;
+        }
+        this.lockFillProgress = 0;
         
         this.isLocked = false;
         this.lockEndTime = 0;
@@ -1058,7 +1246,7 @@ export class Block {
         // Recalculate locked state values using same logic as lock (for accurate animation)
         const originalColorObj = this.cubes[0]?.material?.userData?.originalColor?.clone() ?? new THREE.Color(0xffffff);
         const isWhite = originalColorObj.r > 0.95 && originalColorObj.g > 0.95 && originalColorObj.b > 0.95;
-        const tintMix = isWhite ? 0.85 : 0.65; // Match lock logic
+        const tintMix = isWhite ? 0.50 : 0.35; // Match lock logic (reduced tint mix)
         const emissiveIntensity = isIOS ? 0.25 : 0.15; // Match lock logic
         
         // Store current locked state values for animation
@@ -1161,10 +1349,126 @@ export class Block {
     }
     
     /**
+     * Update fill progress based on remaining lock time
+     */
+    updateLockFillProgress() {
+        if (!this.isLocked || !this.lockFillMesh || !this.lockStartTime || !this.lockEndTime) {
+            return;
+        }
+        
+        const now = performance.now();
+        const remainingMs = this.lockEndTime - now;
+        const totalDuration = this.lockEndTime - this.lockStartTime;
+        
+        if (totalDuration <= 0) {
+            return;
+        }
+        
+        // Calculate progress: 0.0 = just locked, 1.0 = about to unlock
+        const progress = Math.max(0.0, Math.min(1.0, 1.0 - (remainingMs / totalDuration)));
+        
+        // Update fill mesh scale and position based on block orientation
+        const isXAligned = Math.abs(this.direction.x) > 0;
+        
+        // Use minimum scale to ensure visibility (0.01 instead of 0)
+        const minScale = 0.01;
+        const effectiveProgress = Math.max(minScale, progress);
+        
+        // Padding constants (matches createLockFillMesh)
+        const bottomEndPaddingRatio = 0.03;
+        const sidePaddingRatio = 0.15;
+        
+        // Calculate block dimensions
+        let blockWidth, blockHeight, blockDepth;
+        if (this.isVertical) {
+            blockWidth = this.cubeSize;
+            blockHeight = this.length * this.cubeSize;
+            blockDepth = this.cubeSize;
+        } else if (isXAligned) {
+            blockWidth = this.length * this.cubeSize;
+            blockHeight = this.cubeSize;
+            blockDepth = this.cubeSize;
+        } else {
+            blockWidth = this.cubeSize;
+            blockHeight = this.cubeSize;
+            blockDepth = this.length * this.cubeSize;
+        }
+        
+        // Calculate fill dimensions (same as in createLockFillMesh)
+        let fillWidth, fillHeight, fillDepth;
+        if (this.isVertical) {
+            fillWidth = blockWidth * (1 - 2 * sidePaddingRatio);
+            fillHeight = blockHeight * (1 - 2 * bottomEndPaddingRatio);
+            fillDepth = blockDepth * (1 - 2 * sidePaddingRatio);
+        } else if (isXAligned) {
+            fillWidth = blockWidth * (1 - 2 * bottomEndPaddingRatio);
+            fillHeight = blockHeight * (1 - 2 * sidePaddingRatio);
+            fillDepth = blockDepth * (1 - 2 * sidePaddingRatio);
+        } else {
+            fillWidth = blockWidth * (1 - 2 * sidePaddingRatio);
+            fillHeight = blockHeight * (1 - 2 * sidePaddingRatio);
+            fillDepth = blockDepth * (1 - 2 * bottomEndPaddingRatio);
+        }
+        
+        if (this.isVertical) {
+            // Vertical: scale Y and adjust position to keep bottom-aligned with padding
+            const paddingY = blockHeight * bottomEndPaddingRatio;
+            const posY = paddingY + (fillHeight * effectiveProgress) / 2;
+            this.lockFillMesh.scale.y = effectiveProgress;
+            this.lockFillMesh.position.y = posY;
+            if (this.lockFillGlowMesh) {
+                this.lockFillGlowMesh.scale.y = effectiveProgress;
+                this.lockFillGlowMesh.position.y = posY;
+            }
+        } else if (isXAligned) {
+            // Horizontal X-aligned: scale X and adjust position with padding
+            const paddingX = blockWidth * bottomEndPaddingRatio;
+            let posX;
+            if (this.direction.x > 0) {
+                // Moving right: fill from left (negative X) with padding
+                posX = -blockWidth / 2 + paddingX + (fillWidth * effectiveProgress) / 2;
+            } else {
+                // Moving left: fill from right (positive X) with padding
+                posX = blockWidth / 2 - paddingX - (fillWidth * effectiveProgress) / 2;
+            }
+            this.lockFillMesh.scale.x = effectiveProgress;
+            this.lockFillMesh.position.x = posX;
+            if (this.lockFillGlowMesh) {
+                this.lockFillGlowMesh.scale.x = effectiveProgress;
+                this.lockFillGlowMesh.position.x = posX;
+            }
+        } else {
+            // Horizontal Z-aligned: scale Z and adjust position with padding
+            const paddingZ = blockDepth * bottomEndPaddingRatio;
+            let posZ;
+            if (this.direction.z > 0) {
+                // Moving forward: fill from back (negative Z) with padding
+                posZ = -blockDepth / 2 + paddingZ + (fillDepth * effectiveProgress) / 2;
+            } else {
+                // Moving back: fill from front (positive Z) with padding
+                posZ = blockDepth / 2 - paddingZ - (fillDepth * effectiveProgress) / 2;
+            }
+            this.lockFillMesh.scale.z = effectiveProgress;
+            this.lockFillMesh.position.z = posZ;
+            if (this.lockFillGlowMesh) {
+                this.lockFillGlowMesh.scale.z = effectiveProgress;
+                this.lockFillGlowMesh.position.z = posZ;
+            }
+        }
+        
+        this.lockFillProgress = progress;
+    }
+    
+    /**
      * Update lock state - check if lock has expired and unlock if needed
      * Should be called regularly (e.g., in animation loop)
      */
     updateLockState() {
+        // Update fill progress before checking expiration
+        if (this.isLocked) {
+            this.updateLockFillProgress();
+        }
+        
         if (this.isLocked && performance.now() >= this.lockEndTime) {
             this.unlockBlock();
         }
