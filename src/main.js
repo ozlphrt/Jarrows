@@ -4192,6 +4192,8 @@ function removeBlockWithAnimation(block) {
                 trackBlockRemoved();
                 // Time Challenge: gaining time is based on block removals (efficient moves)
                 timeChallengeAwardForBlockRemoved(this.length);
+                // Auto-unlock all blocks if 5 or fewer blocks remain
+                autoUnlockIfFewBlocksRemaining();
             }
             // Keep move history entries even if a block is removed.
             // Undo can resurrect the last-removed block back onto the board.
@@ -4205,6 +4207,129 @@ function removeBlockWithAnimation(block) {
         originalPosition,
         meltDuration: block.meltDuration
     });
+}
+
+/**
+ * Auto-unlock all locked blocks if 5 or fewer blocks remain
+ */
+function autoUnlockIfFewBlocksRemaining() {
+    // Count active blocks (not removed, not falling)
+    const activeBlocks = blocks.filter(b => !b.isRemoved && !b.isFalling);
+    
+    if (activeBlocks.length <= 5) {
+        // Unlock all locked blocks
+        let unlockedCount = 0;
+        for (const block of activeBlocks) {
+            if (block.isLocked && typeof block.unlockBlock === 'function') {
+                block.unlockBlock();
+                unlockedCount++;
+            }
+        }
+        if (unlockedCount > 0) {
+            console.log(`[Auto-unlock] Unlocked ${unlockedCount} block(s) - ${activeBlocks.length} blocks remaining`);
+        }
+    }
+}
+
+// Track if lock explanation modal is currently showing (prevents multiple simultaneous modals)
+let lockExplanationModalShowing = false;
+
+/**
+ * Show lock explanation modal (first time only)
+ */
+function showLockExplanationModal(lockDuration, isTimerMode) {
+    const LOCK_EXPLANATION_KEY = 'jarrows_lock_explanation_seen';
+    
+    // Check if already seen
+    try {
+        if (localStorage.getItem(LOCK_EXPLANATION_KEY) === '1') {
+            return; // Already shown
+        }
+    } catch {
+        // Ignore localStorage errors
+    }
+    
+    // Prevent multiple simultaneous modals
+    if (lockExplanationModalShowing) {
+        return;
+    }
+    
+    lockExplanationModalShowing = true;
+    
+    // Use the inferno-feature-modal structure
+    const modal = document.getElementById('inferno-feature-modal');
+    if (!modal) return;
+    
+    const titleEl = document.getElementById('inferno-feature-title');
+    const contentEl = document.getElementById('inferno-feature-content');
+    const okBtn = document.getElementById('inferno-feature-ok');
+    
+    if (!titleEl || !contentEl || !okBtn) return;
+    
+    // Format duration
+    const durationText = lockDuration >= 1 
+        ? `${lockDuration.toFixed(1)} seconds`
+        : `${(lockDuration * 1000).toFixed(0)} milliseconds`;
+    
+    // Set content
+    titleEl.textContent = '🔒 Block Locked!';
+    
+    let content = `
+        <p style="margin-bottom: 10px;"><b>What happened?</b></p>
+        <p style="margin-bottom: 10px;">This block collided with another block and is now <b>locked</b> for ${durationText}.</p>
+        
+        <p style="margin-bottom: 10px;"><b>What does locked mean?</b></p>
+        <ul style="margin: 0 0 10px 20px; padding: 0;">
+            <li>Block becomes <b>transparent</b> and <b>tinted</b> with its color</li>
+            <li>Block <b>cannot move</b> until the lock expires</li>
+            <li>Block still <b>intercepts clicks</b> (prevents clicking through)</li>
+        </ul>
+        
+        <p style="margin-bottom: 10px;"><b>Lock duration:</b></p>
+    `;
+    
+    if (isTimerMode) {
+        content += `<p style="margin: 0;">In <b>Timer mode</b>: Lock lasts <b>1/3 of your remaining time</b>.</p>`;
+    } else {
+        content += `<p style="margin: 0;">In <b>Free Flow mode</b>: Lock duration increases with level difficulty.</p>`;
+    }
+    
+    content += `
+        <p style="margin-top: 10px; margin-bottom: 0;"><b>Tip:</b> All blocks auto-unlock when 5 or fewer blocks remain!</p>
+    `;
+    
+    contentEl.innerHTML = content;
+    
+    // Freeze time if in time-based mode
+    if (typeof setTimeFrozen === 'function') {
+        setTimeFrozen('lock_explanation', true);
+    }
+    
+    modal.style.display = 'flex';
+    
+    const onOk = () => {
+        modal.style.display = 'none';
+        okBtn.removeEventListener('click', onOk);
+        lockExplanationModalShowing = false;
+        
+        // Mark as seen
+        try {
+            localStorage.setItem(LOCK_EXPLANATION_KEY, '1');
+        } catch {
+            // Ignore localStorage errors
+        }
+        
+        if (typeof setTimeFrozen === 'function') {
+            setTimeFrozen('lock_explanation', false);
+        }
+    };
+    
+    okBtn.addEventListener('click', onOk);
+}
+
+// Make function accessible globally for Block.js
+if (typeof window !== 'undefined') {
+    window.showLockExplanationModal = showLockExplanationModal;
 }
 
 // Restart current level
@@ -6236,7 +6361,7 @@ function onMouseClick(event) {
     const allIntersections = [];
     
     for (const block of blocks) {
-        if (block.isAnimating || block.isFalling || block.isLocked) continue; // Skip locked blocks
+        if (block.isAnimating || block.isFalling) continue; // Skip animating/falling blocks (but allow locked blocks to intercept clicks)
         
         const intersects = raycaster.intersectObjects(block.cubes, true);
         
@@ -6261,6 +6386,11 @@ function onMouseClick(event) {
     // Get the closest intersection (the block the user actually clicked on)
     const closestHit = allIntersections[0];
     const block = closestHit.block;
+    
+    // Prevent locked blocks from being moved (they can still intercept clicks)
+    if (block.isLocked) {
+        return; // Block intercepts click but doesn't move
+    }
     
     // Close settings menu when user clicks on a block (returns to game)
     const settingsMenu = document.getElementById('settings-menu');
@@ -7056,6 +7186,11 @@ function onTouchEnd(event) {
     const closestHit = allIntersections[0];
     const block = closestHit.block;
     
+    // Prevent locked blocks from being moved (they can still intercept taps)
+    if (block.isLocked) {
+        return; // Block intercepts tap but doesn't move
+    }
+    
     // Close settings menu when user clicks on a block (returns to game)
     const settingsMenu = document.getElementById('settings-menu');
     if (settingsMenu) {
@@ -7316,9 +7451,12 @@ function animate() {
         }
     }
     
+    // Auto-unlock all blocks if 5 or fewer blocks remain
+    autoUnlockIfFewBlocksRemaining();
+    
     // Note: Block unlocking is now handled by updateLockState() which respects
     // the full lock duration (1/3 of timer in timer modes, or level-based in Free Flow)
-    // Removed auto-unlock logic that was unlocking blocks prematurely
+    // Auto-unlock also triggers when 5 or fewer blocks remain
     
     // Update tower group position
     _towerGroupWorldCenter.copy(towerCenter).add(towerPositionOffset);

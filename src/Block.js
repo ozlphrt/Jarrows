@@ -129,6 +129,8 @@ export class Block {
         this.originalColor = null; // Store original color for restoration
         this.originalOpacity = 1.0; // Store original opacity for restoration
         this.opacityAnimationId = null; // Track opacity animation frame ID
+        this.unlockAnimationId = null; // Track unlock transition animation frame ID
+        this.isUnlocking = false; // Track if unlock animation is in progress
         this.scene = scene;
         this.physics = physics;
         this.gridSize = gridSize;
@@ -913,7 +915,8 @@ export class Block {
         }
         
         let lockDuration;
-        if (remainingTime !== null && remainingTime > 0) {
+        const isTimerMode = remainingTime !== null && remainingTime > 0;
+        if (isTimerMode) {
             // Timer mode: use 1/3 of remaining time
             lockDuration = remainingTime / 3;
         } else {
@@ -922,6 +925,11 @@ export class Block {
         }
         
         console.log('[Lock] Setting lock duration:', lockDuration, 'seconds');
+        
+        // Show explanation modal on first lock (if function is available)
+        if (typeof window !== 'undefined' && typeof window.showLockExplanationModal === 'function') {
+            window.showLockExplanationModal(lockDuration, isTimerMode);
+        }
         
         this.isLocked = true;
         this.lockStartTime = performance.now();
@@ -959,9 +967,26 @@ export class Block {
                 }
             }
             
-            // Apply static transparency and darkening (no oscillation)
-            const staticOpacity = 0.5; // Fixed opacity at 50%
-            const darkenFactor = 0.5; // Darken to 50% brightness
+            // Apply static transparency with visible color tint (no oscillation)
+            const staticOpacity = 0.7; // Increased opacity so colors are more visible
+            const brightnessFactor = 0.5; // Reduce brightness to 50% (darker appearance)
+            
+            // Detect iOS for enhanced emissive visibility
+            const isIOS = (() => {
+                try {
+                    return (
+                        /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+                        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+                    );
+                } catch {
+                    return false;
+                }
+            })();
+            
+            // Use length-based color for tint (same as arrow color) - this ensures visible tint even for white blocks
+            const colors = [0xff6b6b, 0x4ecdc4, 0xffc125]; // Red, Teal, Golden Yellow
+            const tintColorHex = colors[this.length - 1] || colors[0];
+            const tintColorObj = new THREE.Color(tintColorHex);
             
             for (const cube of this.cubes) {
                 if (cube.material) {
@@ -969,12 +994,33 @@ export class Block {
                         cube.material.userData.originalColor = cube.material.color.clone();
                     }
                     
+                    // Store original emissive properties for restoration
+                    if (cube.material.userData.originalEmissive === undefined) {
+                        cube.material.userData.originalEmissive = cube.material.emissive ? cube.material.emissive.clone() : new THREE.Color(0x000000);
+                    }
+                    if (cube.material.userData.originalEmissiveIntensity === undefined) {
+                        cube.material.userData.originalEmissiveIntensity = cube.material.emissiveIntensity !== undefined ? cube.material.emissiveIntensity : 0.0;
+                    }
+                    
                     // Set static opacity
                     cube.material.transparent = true;
                     cube.material.opacity = staticOpacity;
                     
-                    // Darken color
-                    cube.material.color.copy(cube.material.userData.originalColor).multiplyScalar(darkenFactor);
+                    // Apply tint: mix original block color with length-based tint color
+                    // This ensures visible tint even for white blocks
+                    const originalColorObj = cube.material.userData.originalColor.clone();
+                    
+                    // Check if original color is white (or very close to white) - use stronger tint mix
+                    const isWhite = originalColorObj.r > 0.95 && originalColorObj.g > 0.95 && originalColorObj.b > 0.95;
+                    const tintMix = isWhite ? 0.85 : 0.65; // Stronger tint for white blocks (85% vs 65%)
+                    
+                    const tintedColor = originalColorObj.clone().lerp(tintColorObj, tintMix);
+                    cube.material.color.copy(tintedColor).multiplyScalar(brightnessFactor);
+                    
+                    // Add emissive glow using length-based tint color - stronger on iOS for visibility
+                    cube.material.emissive.copy(tintColorObj);
+                    cube.material.emissiveIntensity = isIOS ? 0.25 : 0.15; // Increased emissive on iOS (0.25) vs desktop (0.15)
+                    cube.material.needsUpdate = true;
                 }
             }
             
@@ -985,25 +1031,133 @@ export class Block {
     }
     
     /**
-     * Unlock this block and restore original opacity
+     * Unlock this block with gradual transition back to original appearance
      */
     unlockBlock() {
-        if (!this.isLocked) return;
+        if (!this.isLocked && !this.isUnlocking) return;
+        
+        // If already unlocking, don't start another animation
+        if (this.isUnlocking) return;
         
         this.isLocked = false;
         this.lockEndTime = 0;
+        this.isUnlocking = true;
         
-        // Restore original opacity and color for all cubes
-        for (const cube of this.cubes) {
-            if (cube.material && cube.material.userData.originalOpacity !== undefined) {
-                const origOpacity = cube.material.userData.originalOpacity;
-                cube.material.opacity = origOpacity;
-                cube.material.transparent = origOpacity < 1.0;
-                if (cube.material.userData.originalColor) {
-                    cube.material.color.copy(cube.material.userData.originalColor);
+        // Detect iOS for emissive intensity calculation
+        const isIOS = (() => {
+            try {
+                return (
+                    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+                    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+                );
+            } catch {
+                return false;
+            }
+        })();
+        
+        // Recalculate locked state values using same logic as lock (for accurate animation)
+        const originalColorObj = this.cubes[0]?.material?.userData?.originalColor?.clone() ?? new THREE.Color(0xffffff);
+        const isWhite = originalColorObj.r > 0.95 && originalColorObj.g > 0.95 && originalColorObj.b > 0.95;
+        const tintMix = isWhite ? 0.85 : 0.65; // Match lock logic
+        const emissiveIntensity = isIOS ? 0.25 : 0.15; // Match lock logic
+        
+        // Store current locked state values for animation
+        const lockedState = {
+            opacity: 0.7, // Current locked opacity
+            brightnessFactor: 0.5, // Current locked brightness
+            tintMix: tintMix, // Current tint mix (matches lock logic)
+            emissiveIntensity: emissiveIntensity // Current emissive intensity (matches lock logic)
+        };
+        
+        // Get target values (original state)
+        const targetState = {
+            opacity: this.cubes[0]?.material?.userData?.originalOpacity ?? 1.0,
+            color: this.cubes[0]?.material?.userData?.originalColor?.clone() ?? new THREE.Color(0xffffff),
+            emissive: this.cubes[0]?.material?.userData?.originalEmissive?.clone() ?? new THREE.Color(0x000000),
+            emissiveIntensity: this.cubes[0]?.material?.userData?.originalEmissiveIntensity ?? 0.0
+        };
+        
+        // Get length-based tint color for interpolation
+        const colors = [0xff6b6b, 0x4ecdc4, 0xffc125]; // Red, Teal, Golden Yellow
+        const tintColorHex = colors[this.length - 1] || colors[0];
+        const tintColorObj = new THREE.Color(tintColorHex);
+        
+        // Animation parameters
+        const duration = 500; // 500ms transition
+        const startTime = performance.now();
+        
+        const animate = () => {
+            const elapsed = performance.now() - startTime;
+            const progress = Math.min(elapsed / duration, 1.0);
+            
+            // Easing function (ease-out for smooth transition)
+            const eased = 1 - Math.pow(1 - progress, 3);
+            
+            // Interpolate opacity
+            const currentOpacity = lockedState.opacity + (targetState.opacity - lockedState.opacity) * eased;
+            
+            // Interpolate color (from tinted to original)
+            const currentTintMix = lockedState.tintMix + (0 - lockedState.tintMix) * eased;
+            const currentBrightness = lockedState.brightnessFactor + (1.0 - lockedState.brightnessFactor) * eased;
+            
+            // Interpolate emissive intensity
+            const currentEmissiveIntensity = lockedState.emissiveIntensity + (targetState.emissiveIntensity - lockedState.emissiveIntensity) * eased;
+            
+            // Apply to all cubes
+            for (const cube of this.cubes) {
+                if (cube.material) {
+                    // Update opacity
+                    cube.material.opacity = currentOpacity;
+                    cube.material.transparent = currentOpacity < 1.0;
+                    
+                    // Update color: interpolate from tinted to original
+                    if (cube.material.userData.originalColor) {
+                        const originalColor = cube.material.userData.originalColor.clone();
+                        const tintedColor = originalColor.clone().lerp(tintColorObj, currentTintMix);
+                        cube.material.color.copy(tintedColor).multiplyScalar(currentBrightness);
+                    }
+                    
+                    // Update emissive: interpolate from tint color to original
+                    const currentEmissive = new THREE.Color().lerpColors(
+                        tintColorObj,
+                        targetState.emissive,
+                        eased
+                    );
+                    cube.material.emissive.copy(currentEmissive);
+                    cube.material.emissiveIntensity = currentEmissiveIntensity;
+                    cube.material.needsUpdate = true;
                 }
             }
-        }
+            
+            if (progress < 1.0) {
+                this.unlockAnimationId = requestAnimationFrame(animate);
+            } else {
+                // Animation complete - ensure final values are exactly correct
+                for (const cube of this.cubes) {
+                    if (cube.material && cube.material.userData.originalOpacity !== undefined) {
+                        const origOpacity = cube.material.userData.originalOpacity;
+                        cube.material.opacity = origOpacity;
+                        cube.material.transparent = origOpacity < 1.0;
+                        if (cube.material.userData.originalColor) {
+                            cube.material.color.copy(cube.material.userData.originalColor);
+                        }
+                        // Restore original emissive properties
+                        if (cube.material.userData.originalEmissive !== undefined) {
+                            cube.material.emissive.copy(cube.material.userData.originalEmissive);
+                        }
+                        if (cube.material.userData.originalEmissiveIntensity !== undefined) {
+                            cube.material.emissiveIntensity = cube.material.userData.originalEmissiveIntensity;
+                        }
+                        cube.material.needsUpdate = true;
+                    }
+                }
+                this.isUnlocking = false;
+                this.unlockAnimationId = null;
+            }
+        };
+        
+        // Start animation
+        this.unlockAnimationId = requestAnimationFrame(animate);
     }
     
     /**
