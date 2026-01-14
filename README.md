@@ -64,6 +64,14 @@ npm run build
 
 ## Releases
 
+### v5.0.3 - Floating Lock Time Display
+- **Tree**: https://github.com/ozlphrt/Jarrows/tree/v5.0.3
+- **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v5.0.3
+- **Live**: https://ozlphrt.github.io/Jarrows/
+- Added floating lock time display when clicking/tapping locked blocks - shows remaining time near block, flies up and fades out
+- Displays time in minutes and seconds format (e.g., "1m 30s" or "0m 45s")
+- Non-disruptive animation similar to timer add/remove effects
+
 ### v5.0.2 - iOS Color Tint Visibility Fix
 - **Tree**: https://github.com/ozlphrt/Jarrows/tree/v5.0.2
 - **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v5.0.2
