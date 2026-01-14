@@ -64,10 +64,11 @@ npm run build
 
 ## Releases
 
-### v5.1.0 - Proportional Lock Timers
-- **Tree**: https://github.com/ozlphrt/Jarrows/tree/v5.1.0
-- **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v5.1.0
+### v6.0.0 - Major Stable Version (Proportional Lock Timers) ⭐ STABLE MILESTONE
+- **Tree**: https://github.com/ozlphrt/Jarrows/tree/v6.0.0
+- **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v6.0.0
 - **Live**: https://ozlphrt.github.io/Jarrows/
+- **STABLE RESTORE POINT** - Use this version as a restore point if future versions break
 - Lock duration now proportional to block size: Red (1 cell) = 1/10, Teal (2 cells) = 1/5, Yellow (3 cells) = 1/3 of remaining time
 - Enhanced filler visuals: rounded edges, increased emissive glow, padding improvements
 - Updated lock explanation modal to show proportional system
