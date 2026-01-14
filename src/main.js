@@ -1888,12 +1888,14 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
             }
             
             // Check Y range overlap with lower layers if we have that info
+            // Use same logic as yRangesOverlap: (aTop - bBottom > EPS) && (bTop - aBottom > EPS)
             if (lowerLayerCells && typeof lowerLayerCells === 'object' && lowerLayerCells.yRanges) {
                 const existingRanges = lowerLayerCells.yRanges.get(cellKey);
                 if (existingRanges) {
+                    const Y_OVERLAP_EPS = 0.001; // Same as puzzle_validation.js
                     for (const range of existingRanges) {
-                        // Check if Y ranges overlap: overlap if NOT (yTop <= range.yBottom || yBottom >= range.yTop)
-                        if (!(yTop <= range.yBottom || yBottom >= range.yTop)) {
+                        // Check if Y ranges overlap using same logic as validation
+                        if ((yTop - range.yBottom > Y_OVERLAP_EPS) && (range.yTop - yBottom > Y_OVERLAP_EPS)) {
                             return null; // Y ranges overlap with lower layer
                         }
                     }
@@ -1921,12 +1923,14 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                 }
                 
                 // Check Y range overlap with lower layers (horizontal blocks are single Y level)
+                // Use same logic as yRangesOverlap: (aTop - bBottom > EPS) && (bTop - aBottom > EPS)
                 if (lowerLayerCells && typeof lowerLayerCells === 'object' && lowerLayerCells.yRanges) {
                     const existingRanges = lowerLayerCells.yRanges.get(cellKey);
                     if (existingRanges) {
+                        const Y_OVERLAP_EPS = 0.001; // Same as puzzle_validation.js
                         for (const range of existingRanges) {
-                            // Check if Y ranges overlap
-                            if (!(yTop <= range.yBottom || yBottom >= range.yTop)) {
+                            // Check if Y ranges overlap using same logic as validation
+                            if ((yTop - range.yBottom > Y_OVERLAP_EPS) && (range.yTop - yBottom > Y_OVERLAP_EPS)) {
                                 return null; // Y ranges overlap with lower layer
                             }
                         }
@@ -1982,11 +1986,11 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
     
     // SMALL COUNT MODE: Random placement across entire grid for variety
     if (isSmallCount) {
-        // Try multiple passes to ensure we reach the target count
-        // For high block counts in multi-layer, use more passes
-        // For upper layers (yOffset > 0), need even more passes due to support constraints
+        // Phase 1: Random placement with multiple passes
         const maxPasses = isUpperLayer ? (targetBlockCount > 100 ? 50 : 40) : (targetBlockCount > 100 ? 20 : 10);
         let pass = 0;
+        let consecutiveFailedPasses = 0;
+        const maxConsecutiveFailures = 3; // Allow 3 failed passes before switching strategy
         
         while (blocksToPlace.length < targetBlockCount && pass < maxPasses) {
             pass++;
@@ -2008,9 +2012,9 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
             // For level 0 with few blocks, add more shuffles to ensure variation
             const shuffleCount = level === 0 ? 3 : 1;
             for (let shuffle = 0; shuffle < shuffleCount; shuffle++) {
-            for (let i = availableCells.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [availableCells[i], availableCells[j]] = [availableCells[j], availableCells[i]];
+                for (let i = availableCells.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [availableCells[i], availableCells[j]] = [availableCells[j], availableCells[i]];
                 }
             }
             
@@ -2114,8 +2118,142 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                 placedThisPass++;
             }
             
-            // If we didn't place any blocks this pass, stop trying
-            if (placedThisPass === 0) break;
+            // Track consecutive failures - don't break early, continue to fallback strategies
+            if (placedThisPass === 0) {
+                consecutiveFailedPasses++;
+                // Switch to systematic approach after several failed random attempts
+                if (consecutiveFailedPasses >= maxConsecutiveFailures && pass >= 5) {
+                    break;
+                }
+            } else {
+                consecutiveFailedPasses = 0; // Reset on success
+            }
+        }
+        
+        // Phase 2: Systematic fallback - if random placement didn't reach target
+        if (blocksToPlace.length < targetBlockCount) {
+            const stillEmpty = [];
+            for (let x = 0; x < gridSize; x++) {
+                for (let z = 0; z < gridSize; z++) {
+                    if (!isCellOccupied(x, z)) {
+                        stillEmpty.push({x, z});
+                    }
+                }
+            }
+            
+            // Try each empty cell systematically with all valid configurations
+            for (const cell of stillEmpty) {
+                if (blocksToPlace.length >= targetBlockCount) break;
+                
+                // Try all directions
+                const dirs = [
+                    {x: 1, z: 0}, {x: -1, z: 0}, {x: 0, z: 1}, {x: 0, z: -1}
+                ];
+                
+                let placed = false;
+                
+                // Try lengths in order: 1, 2, 3 (prioritize single blocks to maximize count)
+                for (const tryLength of [1, 2, 3]) {
+                    if (placed) break;
+                    
+                    // Try both horizontal and vertical
+                    for (const isVert of [false, true]) {
+                        if (placed) break;
+                        
+                        // Try each direction
+                        for (const dir of dirs) {
+                            if (placed) break;
+                            
+                            // ATOMIC OPERATION: Try to reserve cells
+                            const reservation = tryReserveCells(cell.x, cell.z, tryLength, isVert, dir);
+                            if (!reservation) {
+                                continue;
+                            }
+                            
+                            // Create block for support check
+                            const testBlock = new Block(tryLength, cell.x, cell.z, dir, isVert, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level);
+                            scene.remove(testBlock.group);
+                            
+                            // Check support
+                            if (!hasSupport(testBlock)) {
+                                // Release reserved cells
+                                for (const cellKey of reservation.cells) {
+                                    occupiedCells.delete(cellKey);
+                                }
+                                continue;
+                            }
+                            
+                            // Valid placement - keep it
+                            blocksToPlace.push(testBlock);
+                            placed = true;
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Phase 3: Final aggressive fill - try every cell with every configuration
+        if (blocksToPlace.length < targetBlockCount) {
+            const allCells = [];
+            for (let x = 0; x < gridSize; x++) {
+                for (let z = 0; z < gridSize; z++) {
+                    allCells.push({x, z});
+                }
+            }
+            
+            // Shuffle for randomness
+            for (let i = allCells.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [allCells[i], allCells[j]] = [allCells[j], allCells[i]];
+            }
+            
+            for (const cell of allCells) {
+                if (blocksToPlace.length >= targetBlockCount) break;
+                
+                // Try all configurations systematically
+                const dirs = [
+                    {x: 1, z: 0}, {x: -1, z: 0}, {x: 0, z: 1}, {x: 0, z: -1}
+                ];
+                
+                let placed = false;
+                
+                // Try all lengths
+                for (const tryLength of [1, 2, 3]) {
+                    if (placed) break;
+                    
+                    // Try both orientations
+                    for (const isVert of [false, true]) {
+                        if (placed) break;
+                        
+                        // Try all directions
+                        for (const dir of dirs) {
+                            if (placed) break;
+                            
+                            // Try to reserve - this handles all validation
+                            const reservation = tryReserveCells(cell.x, cell.z, tryLength, isVert, dir);
+                            if (!reservation) {
+                                continue;
+                            }
+                            
+                            // Create block for support check
+                            const testBlock = new Block(tryLength, cell.x, cell.z, dir, isVert, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level);
+                            scene.remove(testBlock.group);
+                            
+                            // Check support
+                            if (!hasSupport(testBlock)) {
+                                for (const cellKey of reservation.cells) {
+                                    occupiedCells.delete(cellKey);
+                                }
+                                continue;
+                            }
+                            
+                            // Valid - keep it
+                            blocksToPlace.push(testBlock);
+                            placed = true;
+                        }
+                    }
+                }
+            }
         }
         
         // Sort blocks to prioritize those that can exit (for easier gameplay)
@@ -2631,69 +2769,67 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
         if (occupiedCells.size === beforeFill) break;
     }
     
-    // FINAL AGGRESSIVE FILL: If we're still short of target, fill remaining cells with single blocks
+    // FINAL AGGRESSIVE FILL: If we're still short of target, try every cell with every configuration
     // This ensures we reach the target block count for high-level puzzles
     // IMPORTANT: Use tryReserveCells for all validation to prevent overlaps
-    if (blocksToPlace.length < targetBlockCount && occupiedCells.size < totalCells) {
-        const remainingNeeded = targetBlockCount - blocksToPlace.length;
-        const remainingCells = [];
+    if (blocksToPlace.length < targetBlockCount) {
+        const allCells = [];
         for (let x = 0; x < gridSize; x++) {
             for (let z = 0; z < gridSize; z++) {
-                // Don't check isCellOccupied here - let tryReserveCells handle it
-                remainingCells.push({x, z});
+                allCells.push({x, z});
             }
         }
         
         // Shuffle for randomness
-        for (let i = remainingCells.length - 1; i > 0 && blocksToPlace.length < targetBlockCount; i--) {
+        for (let i = allCells.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
-            [remainingCells[i], remainingCells[j]] = [remainingCells[j], remainingCells[i]];
+            [allCells[i], allCells[j]] = [allCells[j], allCells[i]];
         }
         
-        for (const cell of remainingCells) {
+        for (const cell of allCells) {
             if (blocksToPlace.length >= targetBlockCount) break;
             
-            // Find nearest edge for direction
-            const distToEdges = {
-                east: gridSize - 1 - cell.x,
-                west: cell.x,
-                south: gridSize - 1 - cell.z,
-                north: cell.z
-            };
-            const minDist = Math.min(...Object.values(distToEdges));
-            const nearestEdges = Object.entries(distToEdges)
-                .filter(([_, dist]) => dist === minDist)
-                .map(([edge, _]) => edge);
+            // Try all configurations systematically
+            const dirs = [
+                {x: 1, z: 0}, {x: -1, z: 0}, {x: 0, z: 1}, {x: 0, z: -1}
+            ];
             
-            const edge = nearestEdges[Math.floor(Math.random() * nearestEdges.length)];
-            let direction = {x: 0, z: 0};
-            if (edge === 'east') direction = {x: 1, z: 0};
-            else if (edge === 'west') direction = {x: -1, z: 0};
-            else if (edge === 'south') direction = {x: 0, z: 1};
-            else if (edge === 'north') direction = {x: 0, z: -1};
+            let placed = false;
             
-            // Try to reserve cells first - this prevents overlaps
-            const reservation = tryReserveCells(cell.x, cell.z, 1, false, direction);
-            if (!reservation) {
-                // Cell already occupied or invalid - skip
-                continue;
-            }
-            
-            // Check support for level 2+ before creating block
-            // Create a temporary block just for support check
-            const testBlock = new Block(1, cell.x, cell.z, direction, false, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level);
-            const hasBlockSupport = yOffset === 0 || hasSupport(testBlock);
-            scene.remove(testBlock.group);
-            
-            if (hasBlockSupport) {
-                // Create the actual block - cells are already reserved
-                const block = new Block(1, cell.x, cell.z, direction, false, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level);
-                scene.remove(block.group); // Remove from scene, will be added with animation
-                blocksToPlace.push(block);
-            } else {
-                // No support - release reserved cells
-                for (const cellKey of reservation.cells) {
-                    occupiedCells.delete(cellKey);
+            // Try all lengths (prioritize single blocks to maximize count)
+            for (const tryLength of [1, 2, 3]) {
+                if (placed) break;
+                
+                // Try both orientations
+                for (const isVert of [false, true]) {
+                    if (placed) break;
+                    
+                    // Try all directions
+                    for (const dir of dirs) {
+                        if (placed) break;
+                        
+                        // Try to reserve - this handles all validation
+                        const reservation = tryReserveCells(cell.x, cell.z, tryLength, isVert, dir);
+                        if (!reservation) {
+                            continue;
+                        }
+                        
+                        // Create block for support check
+                        const testBlock = new Block(tryLength, cell.x, cell.z, dir, isVert, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level);
+                        scene.remove(testBlock.group);
+                        
+                        // Check support
+                        if (!hasSupport(testBlock)) {
+                            for (const cellKey of reservation.cells) {
+                                occupiedCells.delete(cellKey);
+                            }
+                            continue;
+                        }
+                        
+                        // Valid - keep it
+                        blocksToPlace.push(testBlock);
+                        placed = true;
+                    }
                 }
             }
         }
@@ -2703,8 +2839,7 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
     const totalBlockCount = blocksToPlace.length;
     const singleBlockPercent = ((singleBlockCount / totalBlockCount) * 100).toFixed(1);
     
-    console.log(`Generated puzzle with ${blocksToPlace.length} blocks, ${occupiedCells.size}/${totalCells} cells filled (${((occupiedCells.size/totalCells)*100).toFixed(1)}%)`);
-    console.log(`  Single blocks: ${singleBlockCount}/${totalBlockCount} (${singleBlockPercent}%)`);
+    // Logging removed - only show final summary in generateSolvablePuzzle
     
     return blocksToPlace;
 }
@@ -3144,8 +3279,10 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
         let lowerLayerCells = null;
         
         // Calculate max layers needed: targetBlockCount / gridCells (rounded up) + buffer
-        const maxLayersNeeded = Math.ceil(targetBlockCount / gridCells) + 2; // Add buffer for safety
-        const maxLayers = Math.max(10, maxLayersNeeded); // At least 10, but more if needed
+        // For high block counts, need more buffer since layers generate fewer blocks than requested
+        const blocksPerLayerEstimate = gridCells * 0.6; // Assume 60% fill rate per layer
+        const maxLayersNeeded = Math.ceil(targetBlockCount / blocksPerLayerEstimate) + 3; // More buffer
+        const maxLayers = Math.max(15, maxLayersNeeded); // At least 15, but more if needed
         while (remainingBlocks > 0 && currentLayer < maxLayers) {
             const yOffset = currentLayer * cubeSize;
             
@@ -3164,12 +3301,12 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
             } else {
                 // Layer 2+: Recalculate remaining blocks based on actual blocks placed so far
                 remainingBlocks = targetBlockCount - allBlocks.length;
-                // For upper layers, we need to be more conservative
+                // For upper layers, we need to be more aggressive to reach target
                 // Check how many cells in lower layer actually have support
                 const supportedCells = lowerLayerCells?.cells?.size || 0;
-                // Request blocks based on available support - can't place more blocks than we have support cells
-                // But also try to fill the layer reasonably (aim for 80-90% of support cells)
-                const maxBlocksBasedOnSupport = Math.floor(supportedCells * 0.95); // Use 95% of supported cells
+                // Request blocks based on available support - be more aggressive
+                // Use 98% instead of 95% to maximize block placement
+                const maxBlocksBasedOnSupport = Math.floor(supportedCells * 0.98); // Use 98% of supported cells
                 const maxBlocksPerUpperLayer = Math.min(gridCells, maxBlocksBasedOnSupport);
                 blocksForThisLayer = Math.min(remainingBlocks, maxBlocksPerUpperLayer);
                 preferLongBlocks = false;
@@ -3181,9 +3318,7 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
             }
             
             // Generate blocks for this layer with preference for longer blocks in layer 1
-            console.log(`  Layer ${currentLayer}: Requesting ${blocksForThisLayer} blocks (remaining: ${remainingBlocks}, total so far: ${allBlocks.length})`);
             const layerBlocks = createSolvableBlocks(yOffset, lowerLayerCells, blocksForThisLayer, level, preferLongBlocks, difficultyConfig);
-            console.log(`  Layer ${currentLayer}: Generated ${layerBlocks.length} blocks (requested ${blocksForThisLayer}, difference: ${blocksForThisLayer - layerBlocks.length})`);
             
             // Track cells occupied by this layer for next layer
             // We need to track both 2D cells (for support checking) and Y ranges (for overlap checking)
@@ -3255,18 +3390,91 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
             // If we've placed enough blocks, stop
             if (allBlocks.length >= targetBlockCount) break;
             
-            // If we didn't place any blocks this layer and we still need more, something went wrong
-            // Try to continue with next layer anyway
+            // If we didn't place any blocks this layer but we have support, try next layer
+            // Don't stop early - continue if we have support cells available
             if (layerBlocks.length === 0 && remainingBlocks > 0) {
-                console.warn(`⚠️ Layer ${currentLayer} generated 0 blocks, but ${remainingBlocks} blocks still needed`);
-                console.warn(`   Lower layer has ${lowerLayerCells?.cells?.size || 0} supported cells`);
+                const supportedCells = lowerLayerCells?.cells?.size || 0;
+                if (supportedCells === 0) {
+                    // No support at all - can't continue
+                    break;
+                }
+                // We have support but couldn't place blocks - might be Y-range conflicts
+                // Continue to next layer - it might work better
             }
-            
-            // If we placed significantly fewer blocks than requested, log details
-            if (layerBlocks.length < blocksForThisLayer * 0.8 && remainingBlocks > 0) {
-                console.warn(`⚠️ Layer ${currentLayer} only generated ${layerBlocks.length}/${blocksForThisLayer} blocks (${((layerBlocks.length/blocksForThisLayer)*100).toFixed(1)}%)`);
-                console.warn(`   Lower layer support: ${lowerLayerCells?.cells?.size || 0} cells`);
-                console.warn(`   Current layer occupied: ${currentLayerCells.size} cells`);
+        }
+        
+        // Final aggressive pass: If we're still short, try generating more layers with single blocks only
+        if (allBlocks.length < targetBlockCount && currentLayer < maxLayers * 2) {
+            // Try up to 5 more layers with single-block-only strategy
+            const additionalLayers = 5;
+            for (let extraLayer = 0; extraLayer < additionalLayers && allBlocks.length < targetBlockCount; extraLayer++) {
+                const yOffset = currentLayer * cubeSize;
+                remainingBlocks = targetBlockCount - allBlocks.length;
+                
+                // Check support
+                const supportedCells = lowerLayerCells?.cells?.size || 0;
+                if (supportedCells === 0) {
+                    break;
+                }
+                
+                // Request single blocks only - maximize count
+                const blocksForThisLayer = Math.min(remainingBlocks, supportedCells);
+                
+                // Create blocks with single-block-only preference (preferLongBlocks = false)
+                const layerBlocks = createSolvableBlocks(yOffset, lowerLayerCells, blocksForThisLayer, level, false, difficultyConfig);
+                
+                // Track cells (same as main loop)
+                const currentLayerCells = new Set();
+                const currentLayerYRanges = new Map();
+                for (const block of layerBlocks) {
+                    const blockCubeSize = block.cubeSize || cubeSize;
+                    const blockHeight = block.isVertical ? block.length * blockCubeSize : blockCubeSize;
+                    const yBottom = block.yOffset || yOffset;
+                    const yTop = yBottom + blockHeight;
+                    
+                    if (block.isVertical) {
+                        const cellKey = `${block.gridX},${block.gridZ}`;
+                        currentLayerCells.add(cellKey);
+                        if (!currentLayerYRanges.has(cellKey)) {
+                            currentLayerYRanges.set(cellKey, []);
+                        }
+                        currentLayerYRanges.get(cellKey).push({ yBottom, yTop });
+                    } else {
+                        const isXAligned = Math.abs(block.direction.x) > 0;
+                        for (let i = 0; i < block.length; i++) {
+                            const x = block.gridX + (isXAligned ? i : 0);
+                            const z = block.gridZ + (isXAligned ? 0 : i);
+                            const cellKey = `${x},${z}`;
+                            currentLayerCells.add(cellKey);
+                            if (!currentLayerYRanges.has(cellKey)) {
+                                currentLayerYRanges.set(cellKey, []);
+                            }
+                            currentLayerYRanges.get(cellKey).push({ yBottom, yTop });
+                        }
+                    }
+                }
+                
+                // Merge with previous layers
+                if (lowerLayerCells instanceof Set) {
+                    lowerLayerCells = { cells: lowerLayerCells, yRanges: new Map() };
+                }
+                for (const cell of currentLayerCells) {
+                    lowerLayerCells.cells.add(cell);
+                }
+                if (!lowerLayerCells.yRanges) {
+                    lowerLayerCells.yRanges = new Map();
+                }
+                for (const [cellKey, ranges] of currentLayerYRanges.entries()) {
+                    if (!lowerLayerCells.yRanges.has(cellKey)) {
+                        lowerLayerCells.yRanges.set(cellKey, []);
+                    }
+                    lowerLayerCells.yRanges.get(cellKey).push(...ranges);
+                }
+                
+                allBlocks = allBlocks.concat(layerBlocks);
+                currentLayer++;
+                
+                if (allBlocks.length >= targetBlockCount) break;
             }
         }
         
@@ -3445,9 +3653,7 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
     }
     
     // Place all blocks in batches
-    console.log(`  Placing ${allBlocks.length} blocks in batches...`);
     await placeBlocksBatch(allBlocks, 10, 10); // 10 blocks per batch, 10ms between batches
-    console.log(`  Placement complete. Blocks array now has ${blocks.length} blocks`);
     
     // Time-based modes: calculate initial time for this level based on actual block lengths
     // NOTE: This must happen AFTER blocks are created and placed
@@ -3643,23 +3849,13 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
     // Update button states after level generation
     updateUndoButtonState();
     
-    console.log(`✓ Generated Level ${level} puzzle using reverse generation`);
-    console.log(`  Target blocks: ${targetBlockCount}, Actual blocks: ${blocks.length}`);
-    console.log(`  Structure validation: ✓ PASSED`);
-    
-    // Enhanced block count verification
-    if (blocks.length !== targetBlockCount) {
-        console.warn(`⚠️ BLOCK COUNT MISMATCH: Expected ${targetBlockCount}, got ${blocks.length} (difference: ${targetBlockCount - blocks.length})`);
+    // Block count summary - always show
+    const difference = targetBlockCount - blocks.length;
+    if (difference !== 0) {
+        console.warn(`⚠️ BLOCK COUNT: Required ${targetBlockCount}, Created ${blocks.length} (difference: ${difference})`);
     } else {
-        console.log(`✓ Block count verified: ${blocks.length} blocks match target ${targetBlockCount}`);
+        console.warn(`✓ BLOCK COUNT: ${blocks.length}/${targetBlockCount}`);
     }
-    
-    // Log block breakdown by type
-    const verticalCount = blocks.filter(b => b.isVertical).length;
-    const horizontalCount = blocks.filter(b => !b.isVertical).length;
-    const singleCellCount = blocks.filter(b => b.length === 1).length;
-    const multiCellCount = blocks.filter(b => b.length > 1).length;
-    console.log(`  Block breakdown: ${verticalCount} vertical, ${horizontalCount} horizontal, ${singleCellCount} single-cell, ${multiCellCount} multi-cell`);
 }
 
 // Move history for undo functionality
