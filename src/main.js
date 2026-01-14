@@ -4332,6 +4332,104 @@ if (typeof window !== 'undefined') {
     window.showLockExplanationModal = showLockExplanationModal;
 }
 
+/**
+ * Show remaining lock time when user clicks on a locked block
+ * Creates a floating text element near the block that flies up and fades out
+ */
+function showLockTimeRemaining(block) {
+    if (!block || !block.isLocked || !block.lockEndTime) {
+        return;
+    }
+    
+    const now = performance.now();
+    const remainingMs = block.lockEndTime - now;
+    
+    // If already unlocked or time expired, don't show
+    if (remainingMs <= 0) {
+        return;
+    }
+    
+    const remainingSeconds = Math.ceil(remainingMs / 1000);
+    
+    // Format time as minutes and seconds
+    let timeText;
+    if (remainingSeconds >= 60) {
+        const minutes = Math.floor(remainingSeconds / 60);
+        const seconds = remainingSeconds % 60;
+        timeText = `${minutes}m ${seconds}s`;
+    } else if (remainingSeconds >= 1) {
+        timeText = `0m ${remainingSeconds}s`;
+    } else {
+        timeText = `${Math.ceil(remainingMs)}ms`;
+    }
+    
+    // Get block's world position (center of the block)
+    const worldPos = new THREE.Vector3();
+    block.group.getWorldPosition(worldPos);
+    
+    // Get block height to position text above the block
+    const blockHeight = block.isVertical ? block.length * block.cubeSize : block.cubeSize;
+    worldPos.y += blockHeight / 2 + 0.5; // Position above block center
+    
+    // Project 3D position to screen coordinates
+    worldPos.project(camera);
+    
+    const x = (worldPos.x * 0.5 + 0.5) * window.innerWidth;
+    const y = (-worldPos.y * 0.5 + 0.5) * window.innerHeight;
+    
+    // Create temporary floating text element
+    const floatText = document.createElement('div');
+    floatText.textContent = timeText;
+    floatText.style.cssText = `
+        position: fixed;
+        left: ${x}px;
+        top: ${y}px;
+        transform: translate(-50%, -50%);
+        font-size: 18px;
+        font-weight: 900;
+        color: #ffc125;
+        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+        pointer-events: none;
+        user-select: none;
+        z-index: 2000;
+        white-space: nowrap;
+        opacity: 0;
+        animation: lockTimeFloat 1.2s ease-out forwards;
+    `;
+    
+    // Add animation keyframes if not already present
+    if (!document.getElementById('lock-time-float-styles')) {
+        const style = document.createElement('style');
+        style.id = 'lock-time-float-styles';
+        style.textContent = `
+            @keyframes lockTimeFloat {
+                0% {
+                    opacity: 0;
+                    transform: translate(-50%, -50%) translateY(10px) scale(0.8);
+                }
+                20% {
+                    opacity: 1;
+                    transform: translate(-50%, -50%) translateY(0) scale(1);
+                }
+                100% {
+                    opacity: 0;
+                    transform: translate(-50%, -50%) translateY(-40px) scale(0.9);
+                }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+    
+    document.body.appendChild(floatText);
+    
+    // Remove element after animation completes
+    setTimeout(() => {
+        if (floatText.parentNode) {
+            floatText.parentNode.removeChild(floatText);
+        }
+    }, 1200);
+}
+
 // Restart current level
 async function restartCurrentLevel() {
     // Don't reset game-level state (remainingSpins, currentLevel, etc.)
@@ -6389,6 +6487,8 @@ function onMouseClick(event) {
     
     // Prevent locked blocks from being moved (they can still intercept clicks)
     if (block.isLocked) {
+        // Show remaining lock time when user clicks on locked block
+        showLockTimeRemaining(block);
         return; // Block intercepts click but doesn't move
     }
     
@@ -7188,6 +7288,8 @@ function onTouchEnd(event) {
     
     // Prevent locked blocks from being moved (they can still intercept taps)
     if (block.isLocked) {
+        // Show remaining lock time when user taps on locked block
+        showLockTimeRemaining(block);
         return; // Block intercepts tap but doesn't move
     }
     
