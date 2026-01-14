@@ -64,6 +64,15 @@ npm run build
 
 ## Releases
 
+### v7.0.0 - Inferno Mode Only (Major Version)
+- **Tree**: https://github.com/ozlphrt/Jarrows/tree/v7.0.0
+- **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v7.0.0
+- **Live**: https://ozlphrt.github.io/Jarrows/
+- **BREAKING CHANGE**: All users migrated to Inferno mode
+- Free Flow and Time Challenge modes removed
+- Automatic level migration preserves highest level from any previous mode
+- Mode selection UI removed - game now runs exclusively in Inferno mode
+
 ### v6.0.0 - Major Stable Version (Proportional Lock Timers) ⭐ STABLE MILESTONE
 - **Tree**: https://github.com/ozlphrt/Jarrows/tree/v6.0.0
 - **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v6.0.0
