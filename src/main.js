@@ -530,6 +530,137 @@ gridHelper.position.set(0, 0.01, 0);
 towerGroup.add(base);
 towerGroup.add(gridHelper);
 
+// Countdown timer display (only shown in time-based modes)
+let countdownTimerPlane = null;
+let countdownTimerCanvas = null;
+let countdownTimerTexture = null;
+let countdownTimerMaterial = null;
+let countdownDisplayedValue = 30; // Current displayed value (for smooth transitions)
+let countdownTransitionProgress = 0; // Transition progress between values (0-1)
+
+// Create countdown timer plane over the base plate
+function createCountdownTimer() {
+    const visualBaseSize = 21;
+    
+    // Create canvas for text rendering
+    const canvasSize = 1024; // High resolution for crisp text
+    const canvas = document.createElement('canvas');
+    canvas.width = canvasSize;
+    canvas.height = canvasSize;
+    countdownTimerCanvas = canvas;
+    
+    // Create texture from canvas
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+    texture.minFilter = THREE.LinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    countdownTimerTexture = texture;
+    
+    // Create material with transparency
+    const material = new THREE.MeshStandardMaterial({
+        map: texture,
+        transparent: true,
+        opacity: 0.4, // Transparent enough to see base plate and gridlines
+        emissive: 0xff0000, // Red neon glow
+        emissiveIntensity: 0.3,
+        side: THREE.DoubleSide,
+        alphaTest: 0.1 // Discard transparent pixels
+    });
+    countdownTimerMaterial = material;
+    
+    // Create plane geometry matching base plate size
+    const geometry = new THREE.PlaneGeometry(visualBaseSize, visualBaseSize);
+    const plane = new THREE.Mesh(geometry, material);
+    
+    // Position above the grid (grid is at y=0.01, place timer at y=0.15 to allow shadows)
+    plane.position.set(0, 0.15, 0);
+    plane.rotation.x = -Math.PI / 2; // Rotate to lay flat (face up)
+    plane.receiveShadow = true; // Allow blocks to cast shadows on it
+    plane.castShadow = false;
+    
+    countdownTimerPlane = plane;
+    towerGroup.add(plane);
+    
+    // Initial render - will update when timer becomes active
+    // Don't call updateCountdownDisplay() here since timeLeftSec may not be initialized yet
+}
+
+// Update the countdown timer display with smooth transitions
+function updateCountdownDisplay() {
+    if (!countdownTimerCanvas || !countdownTimerTexture) return;
+    
+    // Guard against accessing timeLeftSec before initialization
+    const currentTime = (typeof timeLeftSec !== 'undefined') ? timeLeftSec : 30;
+    
+    const ctx = countdownTimerCanvas.getContext('2d');
+    const size = countdownTimerCanvas.width;
+    
+    // Clear canvas
+    ctx.clearRect(0, 0, size, size);
+    
+    // Display only the seconds (no minutes)
+    // During animation, show precise value; otherwise use ceil (matching updateTimerDisplay logic)
+    const displaySeconds = (typeof timeAnimationActive !== 'undefined' && timeAnimationActive)
+        ? Math.max(0, Math.round(currentTime * 10) / 10) // Show 1 decimal during animation
+        : Math.max(0, Math.ceil(currentTime));
+    // Display only seconds as integer
+    const text = Math.ceil(displaySeconds).toString();
+    
+    // Scale up font size to fill the extended base plate (21x21 units)
+    // Canvas is 1024px for a 21 unit area
+    // Scale font to fill most of the base plate - larger for better visibility
+    const fontSize = Math.round(size * 0.6); // ~614px for 1024px canvas - fills extended base plate
+    
+    // Red neon outlined font styling
+    ctx.fillStyle = 'rgba(0, 0, 0, 0)'; // Transparent fill
+    ctx.strokeStyle = '#ff0000'; // Red outline
+    ctx.lineWidth = 12;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    
+    // Use a bold, outlined font
+    ctx.font = `900 ${fontSize}px Arial, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    
+    // Add neon glow effect with multiple shadow layers
+    ctx.shadowColor = '#ff0000';
+    ctx.shadowBlur = 40;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
+    
+    // Draw outline multiple times for thicker neon effect
+    for (let i = 0; i < 3; i++) {
+        ctx.strokeText(text, size / 2, size / 2);
+    }
+    
+    // Add inner glow with slightly brighter red
+    ctx.strokeStyle = '#ff3333';
+    ctx.lineWidth = 6;
+    ctx.shadowBlur = 20;
+    ctx.strokeText(text, size / 2, size / 2);
+    
+    // Reset shadow
+    ctx.shadowBlur = 0;
+    
+    // Mark texture for update
+    countdownTimerTexture.needsUpdate = true;
+}
+
+// Easing function for smooth transitions (ease-in-out cubic)
+function easeInOutCubic(t) {
+    return t < 0.5
+        ? 4 * t * t * t
+        : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+// Show/hide countdown timer based on game mode
+function setCountdownTimerVisible(visible) {
+    if (countdownTimerPlane) {
+        countdownTimerPlane.visible = visible;
+    }
+}
+
 // Toggle mystical view function
 function toggleMysticalView(enabled) {
     isMysticalView = enabled;
@@ -888,6 +1019,10 @@ const physics = await initPhysics();
 
 // Initialize service worker update detection
 await initServiceWorkerUpdates();
+
+// Create countdown timer (initialized but hidden until time-based mode is active)
+createCountdownTimer();
+setCountdownTimerVisible(false); // Hidden by default
 
 // Check and show changelog if new version detected
 checkAndShowChangelog();
@@ -7896,6 +8031,17 @@ function animate() {
     } else {
         // Reset pulsing effects when not in countdown
         resetPulsingFinishAnimation();
+    }
+    
+    // Update countdown timer display (only in time-based modes, only during last 30 seconds)
+    const shouldShowCountdown = isTimeBasedMode() && timeChallengeActive && !timeUpShown && timeLeftSec > 0 && timeLeftSec <= 30;
+    if (shouldShowCountdown) {
+        if (countdownTimerPlane) {
+            updateCountdownDisplay();
+            setCountdownTimerVisible(true);
+        }
+    } else {
+        setCountdownTimerVisible(false);
     }
     
     // Update block lock states (unlock blocks when lock duration expires)
