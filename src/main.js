@@ -455,14 +455,26 @@ renderer.domElement.addEventListener('contextmenu', (event) => {
 }, { passive: false });
 
 // Mouse wheel for zoom
+let isZooming = false; // Track if user is actively zooming
+let lastWheelTime = 0;
+
 renderer.domElement.addEventListener('wheel', (event) => {
     event.preventDefault();
     
-    // CRITICAL: Sync current radius to target radius when user starts zooming
-    // This prevents camera jump when zoom starts (current and target may be out of sync)
-    currentRadius = targetRadius;
+    const now = performance.now();
+    const timeSinceLastWheel = now - lastWheelTime;
+    lastWheelTime = now;
     
-    const zoomSpeed = 0.1; // 10% per scroll step
+    // Only sync current radius to target radius when starting a new zoom gesture
+    // (not on every wheel event, to allow smooth interpolation during rapid scrolling)
+    if (!isZooming || timeSinceLastWheel > 100) {
+        // Starting new zoom gesture or significant gap - sync to prevent jump
+        currentRadius = targetRadius;
+        isZooming = true;
+    }
+    
+    // Reduced zoom speed for smoother feel (5% per step instead of 10%)
+    const zoomSpeed = 0.05;
     const zoomFactor = 1 + (event.deltaY > 0 ? zoomSpeed : -zoomSpeed);
     targetRadius *= zoomFactor;
     targetRadius = Math.max(MIN_RADIUS, Math.min(MAX_RADIUS, targetRadius));
@@ -471,6 +483,12 @@ renderer.domElement.addEventListener('wheel', (event) => {
     
     // Disable auto-zoom when user manually zooms
     autoZoomDisabledUntilMs = performance.now() + AUTO_ZOOM_DISABLE_DURATION_MS;
+    
+    // Reset zooming flag after a delay (user stopped zooming)
+    clearTimeout(window.zoomTimeout);
+    window.zoomTimeout = setTimeout(() => {
+        isZooming = false;
+    }, 150);
 }, { passive: false });
 
 // Setup scene elements
@@ -681,12 +699,13 @@ function calculateInitialCameraPosition() {
     // Calculate for horizontal (width/depth) - use diagonal and aspect ratio
     const horizontalDistance = (basePlateDiagonal + ZOOM_PADDING) / (2 * Math.tan(fov / 2) * aspect);
     
-    // Calculate for vertical (height) - assume initial tower height estimate
-    const estimatedTowerHeight = 10; // Conservative estimate for initial positioning
+    // Calculate for vertical (height) - use more accurate initial estimate
+    // Start with a smaller estimate since auto-zoom will adjust immediately after spawn
+    const estimatedTowerHeight = 6; // Reduced from 10 - auto-zoom will fine-tune after spawn
     const verticalDistance = (estimatedTowerHeight + ZOOM_PADDING) / (2 * Math.tan(fov / 2));
     
-    // Use the larger distance with safety margin to ensure everything fits
-    const requiredDistance = Math.max(horizontalDistance, verticalDistance) * 1.3; // 30% safety margin
+    // Use the larger distance with reduced safety margin since auto-zoom handles fine-tuning
+    const requiredDistance = Math.max(horizontalDistance, verticalDistance) * 1.15; // 15% safety margin (reduced from 30%)
     
     // Set initial values
     cameraRadius = Math.max(MIN_RADIUS, Math.min(MAX_RADIUS, requiredDistance));
@@ -1530,6 +1549,45 @@ function timeChallengeApplySpinCost() {
     
     flashTimerDelta(-spent);
     updateTimerDisplay();
+    
+    // Show prominent spin time cost display
+    showSpinTimeCost(spent);
+}
+
+// Show spin time cost display prominently (larger than locked blocks timer)
+function showSpinTimeCost(seconds) {
+    const costItem = document.getElementById('spin-time-cost-item');
+    const costValue = document.getElementById('spin-time-cost-value');
+    
+    if (!costItem || !costValue) return;
+    
+    // Format time as MM:SS
+    const minutes = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    const timeStr = `-${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    
+    costValue.textContent = timeStr;
+    
+    // Show with animation
+    costItem.style.display = 'inline-block';
+    costItem.style.opacity = '0';
+    costItem.style.transform = 'scale(1.2)';
+    costItem.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+    
+    // Animate in
+    requestAnimationFrame(() => {
+        costItem.style.opacity = '1';
+        costItem.style.transform = 'scale(1)';
+    });
+    
+    // Hide after 3 seconds with fade out
+    setTimeout(() => {
+        costItem.style.opacity = '0';
+        costItem.style.transform = 'scale(0.9)';
+        setTimeout(() => {
+            costItem.style.display = 'none';
+        }, 300);
+    }, 3000);
 }
 
 function showPauseModal() {
@@ -3193,9 +3251,10 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
     levelCompleteShown = false; // Reset level complete flag for new level
     
     // CRITICAL: Reset tower position offset at start of level to prevent camera jumps
-    // This ensures smooth transition from previous level's offset
-    towerPositionOffset.set(0, 0, 0);
+    // Only set target to 0, let smooth interpolation handle the transition
+    // This ensures smooth transition from previous level's offset instead of instant snap
     targetTowerPositionOffset.set(0, 0, 0);
+    // Don't reset towerPositionOffset immediately - let interpolation smooth the transition
     
     // CRITICAL: Set currentLevel to the level parameter
     // This ensures the level is preserved, especially when restarting
@@ -3857,8 +3916,7 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
         // This bypasses the throttle to prevent camera jump
         lastAutoZoomUpdateMs = 0; // Reset throttle to force immediate auto-zoom on next frame
         
-        // Vertically center the tower after all blocks are spawned
-        // Shadows are manual/gated; keep them updating briefly so the post-spawn recenter doesn't "pop" a new shadow band.
+        // Shadows are manual/gated; keep them updating briefly after spawn completes.
         try {
             shadowUpdateCooldownUntilMs = performance.now() + 800;
             lastLightUpdateMs = 0;
@@ -3867,7 +3925,8 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
         } catch (e) {
             // best-effort
         }
-        centerTowerVertically();
+        // Removed centerTowerVertically() call - blocks are already positioned correctly,
+        // and auto-zoom handles framing. The artificial push-down was causing a visual jump.
     }, 1500); // 1.5 seconds to ensure all blocks are initialized
     
     // Start timer for new level
@@ -4144,97 +4203,141 @@ if (typeof window !== 'undefined') {
     window.recordMoveState = recordMoveState;
 }
 
-// Undo last move
+// Undo last move - completely rewritten to handle all edge cases
 function undoLastMove() {
+    // Validate we have moves to undo
     if (moveHistory.length === 0) return false;
     
+    // Get the last move from history
     const lastMove = moveHistory.pop();
     const block = lastMove.block;
-    if (!block) return false;
     
-    // If the block is actively falling (physics sim still running), don't fight physics.
-    // (If it already finished and was removed, we'll resurrect below.)
-    if (block.isFalling && !block.isRemoved) return false;
-
-    // If the block was removed (fell off / cleared), resurrect it so we can undo properly.
-    if (block.isRemoved || !blocks.includes(block)) {
-        // Ensure it exists in blocks array
-        if (!blocks.includes(block)) {
-            blocks.push(block);
-        }
-
-        // Ensure it is in the scene graph (towerGroup is the parent in current architecture)
+    // Validate block exists
+    if (!block || typeof block !== 'object') {
+        console.warn('[Undo] Invalid block in move history');
+        return false;
+    }
+    
+    // Don't undo if block is actively falling (physics simulation in progress)
+    // Exception: if block is removed, we can resurrect it
+    if (block.isFalling && !block.isRemoved) {
+        console.log('[Undo] Block is actively falling, cannot undo');
+        // Put the move back in history since we couldn't undo it
+        moveHistory.push(lastMove);
+        return false;
+    }
+    
+    // Step 1: Ensure block exists in blocks array and scene
+    if (!blocks.includes(block)) {
+        blocks.push(block);
+    }
+    
+    // Ensure block is in scene graph
+    if (block.group) {
         try {
-            if (block.group && !block.group.parent && typeof towerGroup !== 'undefined' && towerGroup) {
+            if (!block.group.parent && typeof towerGroup !== 'undefined' && towerGroup) {
                 towerGroup.add(block.group);
             }
         } catch (e) {
-            // best-effort
-        }
-
-        // Reset removal / physics flags
-        block.isRemoved = false;
-        block.isFalling = false;
-        block.isAnimating = false;
-        block.needsStop = true;
-        block.removalStartTime = null;
-        block.updateMeltAnimation = null;
-
-        // Restore shadow casting (Battery mode may have disabled casting during fall).
-        try {
-            if (block.cubes && block.cubes[0]) {
-                block.cubes[0].castShadow = true;
-                block.cubes[0].receiveShadow = true;
-            }
-        } catch {
-            // best-effort
-        }
-        
-        // Reset catapult shadow state (Battery-mode catapult suppression)
-        try {
-            block.wasCatapulted = false;
-            block._catapultShadowSuppressed = false;
-            block._catapultRestStartMs = 0;
-        } catch {
-            // best-effort
-        }
-
-        // Physics state (falling uses physics bodies)
-        block.physicsBody = null;
-        block.physicsCollider = null;
-        block.needsPhysicsBody = false;
-        block.pendingAngularVel = null;
-        block.pendingLinearVel = null;
-
-        // Reset transform (physics may have rotated it)
-        if (block.group) {
-            block.group.scale.set(1, 1, 1);
-            block.group.rotation.set(0, 0, 0);
-            block.group.quaternion.set(0, 0, 0, 1);
+            console.warn('[Undo] Failed to add block to scene:', e);
         }
     }
     
-    // Stop any ongoing animations
+    // Step 2: Stop all animations and physics
     block.needsStop = true;
     block.isAnimating = false;
     
-    // Restore block position
+    // Clean up physics if it exists
+    if (block.physicsBody) {
+        try {
+            if (block.physics && block.physics.world) {
+                block.physics.world.removeBody(block.physicsBody);
+            }
+        } catch (e) {
+            console.warn('[Undo] Failed to remove physics body:', e);
+        }
+        block.physicsBody = null;
+    }
+    
+    if (block.physicsCollider) {
+        try {
+            if (block.physics && block.physics.world) {
+                block.physics.world.removeCollider(block.physicsCollider);
+            }
+        } catch (e) {
+            console.warn('[Undo] Failed to remove physics collider:', e);
+        }
+        block.physicsCollider = null;
+    }
+    
+    block.needsPhysicsBody = false;
+    block.pendingAngularVel = null;
+    block.pendingLinearVel = null;
+    
+    // Step 3: Reset all state flags
+    block.isRemoved = false;
+    block.isFalling = false;
+    block.removalStartTime = null;
+    block.updateMeltAnimation = null;
+    
+    // Step 4: Reset transform (physics may have rotated/scaled it)
+    if (block.group) {
+        block.group.scale.set(1, 1, 1);
+        block.group.rotation.set(0, 0, 0);
+        block.group.quaternion.set(0, 0, 0, 1);
+    }
+    
+    // Step 5: Restore block position and orientation from move history
     block.gridX = lastMove.gridX;
     block.gridZ = lastMove.gridZ;
     block.yOffset = lastMove.yOffset ?? block.yOffset;
-    block.direction = lastMove.direction;
+    block.direction = { ...lastMove.direction }; // Create new object to avoid reference issues
     block.isVertical = lastMove.isVertical;
     
-    // Reset scale and position immediately
-    block.group.scale.set(1, 1, 1);
-    block.updateWorldPosition();
+    // Step 6: Update visual position immediately
+    if (typeof block.updateWorldPosition === 'function') {
+        block.updateWorldPosition();
+    }
+    
+    // Step 7: Update arrow rotation if function exists
     if (typeof block.updateArrowRotation === 'function') {
         block.updateArrowRotation();
     }
-
-    // Undo should also undo the move counter for the level (clamp at 0)
+    
+    // Step 8: Restore shadow casting (may have been disabled during fall/removal)
+    if (block.cubes && block.cubes.length > 0) {
+        try {
+            block.cubes.forEach(cube => {
+                if (cube && cube.material) {
+                    cube.castShadow = true;
+                    cube.receiveShadow = true;
+                }
+            });
+        } catch (e) {
+            console.warn('[Undo] Failed to restore shadows:', e);
+        }
+    }
+    
+    // Step 9: Reset catapult-related state
+    block.wasCatapulted = false;
+    block._catapultShadowSuppressed = false;
+    block._catapultRestStartMs = 0;
+    
+    // Step 10: Handle locked blocks - if block was locked after the move, unlock it
+    // Note: We don't store lock state in move history, so we can't restore it
+    // But we can ensure the block is in a valid state
+    if (block.isLocked) {
+        // Block might have been locked after the move - we can't undo that
+        // But we ensure it's still functional
+        console.log('[Undo] Block is locked, position restored but lock state preserved');
+    }
+    
+    // Step 11: Update move counter (decrement, clamp at 0)
     totalMoves = Math.max(0, totalMoves - 1);
-
+    
+    // Step 12: Update undo button state
+    updateUndoButtonState();
+    
     return true;
 }
 
@@ -4945,6 +5048,10 @@ function showLevelCompleteModal(completedLevel) {
         if (isTimeBasedMode() && timeChallengeActive) {
             timeChallengeResidualSec = Math.max(0, timeLeftSec);
             // Track carried over time for graph with all components
+            // Ensure history array exists before pushing
+            if (!Array.isArray(timeChallengeCarriedOverHistory)) {
+                timeChallengeCarriedOverHistory = [];
+            }
             timeChallengeCarriedOverHistory.push({
                 level: completedLevel,
                 carriedOver: timeChallengeResidualSec,
@@ -4952,6 +5059,10 @@ function showLevelCompleteModal(completedLevel) {
                 collected: timeChallengeTimeCollected || 0,
                 spin: timeChallengeSpinCost || 0
             });
+            // Keep only last 10 levels to prevent unbounded growth
+            if (timeChallengeCarriedOverHistory.length > 10) {
+                timeChallengeCarriedOverHistory.shift();
+            }
         }
         
         // Play level complete sound effect
@@ -7758,6 +7869,16 @@ function animate() {
         }
     }
     
+    // Pulsing finish animation - tense effects in last 30 seconds
+    // Check if we're in the final countdown (last 30 seconds)
+    const isInFinalCountdown = isTimeBasedMode() && timeChallengeActive && !timeUpShown && timeLeftSec > 0 && timeLeftSec <= 30;
+    if (isInFinalCountdown) {
+        updatePulsingFinishAnimation(timeLeftSec, deltaTime);
+    } else {
+        // Reset pulsing effects when not in countdown
+        resetPulsingFinishAnimation();
+    }
+    
     // Update block lock states (unlock blocks when lock duration expires)
     for (const block of blocks) {
         if (block && typeof block.updateLockState === 'function') {
@@ -7810,16 +7931,18 @@ function animate() {
                 const aspect = camera.aspect;
                 const effectivePadding = ZOOM_PADDING; // Use standard padding, not spawn-specific
 
-                // Calculate distance needed for height (vertical FOV)
-                const heightDistance = (size.y + effectivePadding) / (2 * Math.tan(fov / 2));
+                // Calculate distance needed for height (vertical FOV) with proper padding
+                const minVerticalPadding = ZOOM_PADDING;
+                const heightDistance = (size.y + minVerticalPadding * 2) / (2 * Math.tan(fov / 2));
 
-                // Calculate distance needed for width/depth (horizontal FOV)
+                // Calculate distance needed for width/depth (horizontal FOV) with proper padding
+                const minHorizontalPadding = ZOOM_PADDING;
                 const horizontalDiagonal = Math.sqrt(size.x * size.x + size.z * size.z);
-                const widthDistance = (horizontalDiagonal + effectivePadding) / (2 * Math.tan(fov / 2) * aspect);
+                const widthDistance = (horizontalDiagonal + minHorizontalPadding * 2) / (2 * Math.tan(fov / 2) * aspect);
 
                 // Use the larger distance with a safety margin to ensure all blocks stay visible
                 // This matches auto-zoom calculation for smooth transition
-                const safetyMargin = 1.3; // 30% safety margin during spawn - ensure all blocks visible
+                const safetyMargin = 1.25; // 25% safety margin during spawn - ensures proper padding on all sides
                 const requiredDistance = Math.max(heightDistance, widthDistance) * safetyMargin;
                 const clampedRequiredDistance = Math.max(MIN_RADIUS, Math.min(MAX_RADIUS, requiredDistance));
                 // During spawn, update smoothed auto-zoom immediately for responsive feel
@@ -7902,18 +8025,22 @@ function animate() {
                 const aspect = camera.aspect;
                 const effectivePadding = ZOOM_PADDING; // Standard padding
 
-                // Calculate distance needed for height (vertical FOV)
-                const heightDistance = (size.y + effectivePadding) / (2 * Math.tan(fov / 2));
+                // Calculate distance needed for height (vertical FOV) with proper padding
+                // Ensure minimum padding at top and bottom
+                const minVerticalPadding = ZOOM_PADDING;
+                const heightDistance = (size.y + minVerticalPadding * 2) / (2 * Math.tan(fov / 2));
 
-                // Calculate distance needed for width/depth (horizontal FOV)
+                // Calculate distance needed for width/depth (horizontal FOV) with proper padding
+                // Ensure minimum padding at left and right
+                const minHorizontalPadding = ZOOM_PADDING;
                 const horizontalDiagonal = Math.sqrt(size.x * size.x + size.z * size.z);
-                const widthDistance = (horizontalDiagonal + effectivePadding) / (2 * Math.tan(fov / 2) * aspect);
+                const widthDistance = (horizontalDiagonal + minHorizontalPadding * 2) / (2 * Math.tan(fov / 2) * aspect);
 
                 // Use the larger distance with a safety margin to ensure all blocks stay visible
                 // This accounts for perspective distortion, camera lookAt offset, and edge cases
                 // The camera looks at tower center + framingOffsetY, which may be offset from bounding box center
-                // Use a larger margin (1.2 = 20% safety margin) to ensure all blocks visible
-                const safetyMargin = 1.2; // 20% safety margin - accounts for lookAt offset and perspective
+                // Increased margin to 1.25 (25%) to ensure proper padding on all sides and prevent blocks from being cut off
+                const safetyMargin = 1.25; // 25% safety margin - ensures minimum padding on all sides
                 const requiredDistance = Math.max(heightDistance, widthDistance) * safetyMargin;
                 const clampedRequiredDistance = Math.max(MIN_RADIUS, Math.min(MAX_RADIUS, requiredDistance));
                 // Smooth the auto-zoom target to prevent jerky movement when bounding box changes
@@ -8276,8 +8403,11 @@ function animate() {
                         userStats.timeCarriedOverLevel = Math.max(0, calculatedCarriedOver);
                         // Use actual spin cost (time spent on spins) instead of calculated lost time
                         userStats.timeLostLevel = timeChallengeSpinCost;
-                        // Include carried over history for graph
-                        userStats.carriedOverHistory = [...timeChallengeCarriedOverHistory];
+                        // Include carried over history for graph - ensure it's a proper array
+                        // Create a defensive copy to prevent issues if the array is modified
+                        userStats.carriedOverHistory = Array.isArray(timeChallengeCarriedOverHistory) 
+                            ? [...timeChallengeCarriedOverHistory] 
+                            : [];
                     }
                     const comparison = await getLevelComparison(userStats);
                     updateLevelCompleteModal(userStats, comparison);
@@ -8374,6 +8504,221 @@ document.addEventListener('visibilitychange', () => {
     lastFrameTick = lastTime;
     scheduleNextFrame();
 });
+
+// Pulsing finish animation state
+let pulsingFinishActive = false;
+let pulsingFinishStartTime = 0;
+let beaconRotation = 0;
+let heartbeatPhase = 0;
+let lastHeartbeatCycle = -1; // Track which cycle we last played sound for (prevents multiple plays per cycle)
+let currentHeartbeatSource = null; // Track current heartbeat audio source to stop it if needed
+
+// Update pulsing finish animation (beacon light + heartbeat pulse)
+async function updatePulsingFinishAnimation(timeLeft, deltaTime) {
+    if (!pulsingFinishActive) {
+        pulsingFinishActive = true;
+        pulsingFinishStartTime = performance.now();
+        
+        // Initialize random phase offsets for each block (only once when animation starts)
+        // Small offsets (-0.05 to +0.05) create subtle timing variations while keeping overall pattern
+        if (blocks && blocks.length > 0) {
+            for (const block of blocks) {
+                if (block && !block.pulsePhaseOffset) {
+                    // Random offset between -0.05 and +0.05 (5% of cycle in each direction)
+                    block.pulsePhaseOffset = (Math.random() - 0.5) * 0.1;
+                }
+            }
+        }
+    }
+    
+    // Calculate intensity (ramps up as time approaches zero)
+    // At 30s: intensity = 0, at 0s: intensity = 1
+    const intensity = 1 - (timeLeft / 30);
+    const clampedIntensity = Math.min(1, Math.max(0, intensity));
+    
+    // Update beacon rotation (rotating red/blue lights)
+    const BEACON_ROTATION_SPEED = 0.003; // radians per ms
+    beaconRotation += deltaTime * BEACON_ROTATION_SPEED;
+    if (beaconRotation > Math.PI * 2) beaconRotation -= Math.PI * 2;
+    
+    // Update heartbeat phase (sine wave for pulse)
+    const HEARTBEAT_CYCLE_MS = 1200; // 1.2 second cycle
+    const currentTime = performance.now() - pulsingFinishStartTime;
+    heartbeatPhase = (currentTime % HEARTBEAT_CYCLE_MS) / HEARTBEAT_CYCLE_MS;
+    const currentCycle = Math.floor(currentTime / HEARTBEAT_CYCLE_MS);
+    
+    // Play heartbeat sound ONCE per animation cycle (not per block, not multiple times per cycle)
+    // Only trigger at the very start of a new cycle (phase 0-0.01) and only if we haven't played for this cycle
+    // If sound file is longer than cycle, stop previous sound before starting new one
+    if (heartbeatPhase >= 0.0 && heartbeatPhase < 0.01 && currentCycle !== lastHeartbeatCycle) {
+        // Stop previous heartbeat sound if it's still playing (in case sound file is longer than cycle)
+        if (currentHeartbeatSource) {
+            try {
+                currentHeartbeatSource.stop();
+            } catch (e) {
+                // Source may have already finished, ignore error
+            }
+            currentHeartbeatSource = null;
+        }
+        
+        // Play new heartbeat sound (fire and forget, but track source)
+        playSound('heartbeat', 0.4 * clampedIntensity).then(source => {
+            currentHeartbeatSource = source;
+        });
+        lastHeartbeatCycle = currentCycle; // Mark this cycle as having played the sound
+    }
+    
+    // Apply police beacon light effect (CSS overlay)
+    applyBeaconLightEffect(beaconRotation, clampedIntensity);
+    
+    // Apply heartbeat pulse to blocks
+    applyHeartbeatPulse(heartbeatPhase, clampedIntensity);
+}
+
+// Reset pulsing finish animation
+function resetPulsingFinishAnimation() {
+    if (!pulsingFinishActive) return;
+    
+    pulsingFinishActive = false;
+    beaconRotation = 0;
+    heartbeatPhase = 0;
+    lastHeartbeatCycle = -1; // Reset heartbeat sound tracking
+    
+    // Stop any playing heartbeat sound
+    if (currentHeartbeatSource) {
+        try {
+            currentHeartbeatSource.stop();
+        } catch (e) {
+            // Source may have already finished, ignore error
+        }
+        currentHeartbeatSource = null;
+    }
+    
+    // Remove beacon overlay
+    const beaconOverlay = document.getElementById('pulsing-beacon-overlay');
+    if (beaconOverlay) {
+        beaconOverlay.remove();
+    }
+    
+    // Reset block scales and clear phase offsets (will be regenerated on next activation)
+    if (blocks && blocks.length > 0) {
+        for (const block of blocks) {
+            if (block && block.group) {
+                block.group.scale.set(1, 1, 1);
+            }
+            // Clear phase offset so it gets a new random value next time
+            if (block.pulsePhaseOffset !== undefined) {
+                delete block.pulsePhaseOffset;
+            }
+        }
+    }
+}
+
+// Apply police beacon light effect (rotating red/blue lights)
+function applyBeaconLightEffect(rotation, intensity) {
+    let beaconOverlay = document.getElementById('pulsing-beacon-overlay');
+    
+    if (!beaconOverlay) {
+        // Create beacon overlay element
+        beaconOverlay = document.createElement('div');
+        beaconOverlay.id = 'pulsing-beacon-overlay';
+        beaconOverlay.style.cssText = `
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 1500;
+            mix-blend-mode: screen;
+        `;
+        document.body.appendChild(beaconOverlay);
+    }
+    
+    // Create rotating red/blue gradient
+    const redAngle = rotation;
+    const blueAngle = rotation + Math.PI;
+    
+    // Calculate positions for rotating lights
+    const centerX = window.innerWidth / 2;
+    const centerY = window.innerHeight / 2;
+    const radius = Math.max(window.innerWidth, window.innerHeight) * 0.8;
+    
+    const redX = centerX + Math.cos(redAngle) * radius;
+    const redY = centerY + Math.sin(redAngle) * radius;
+    const blueX = centerX + Math.cos(blueAngle) * radius;
+    const blueY = centerY + Math.sin(blueAngle) * radius;
+    
+    // Create radial gradients for rotating lights
+    const redIntensity = Math.max(0, Math.sin(rotation) * 0.5 + 0.5) * intensity * 0.4;
+    const blueIntensity = Math.max(0, Math.sin(rotation + Math.PI) * 0.5 + 0.5) * intensity * 0.4;
+    
+    beaconOverlay.style.background = `
+        radial-gradient(circle 300px at ${redX}px ${redY}px, rgba(255, 0, 0, ${redIntensity}) 0%, transparent 50%),
+        radial-gradient(circle 300px at ${blueX}px ${blueY}px, rgba(0, 100, 255, ${blueIntensity}) 0%, transparent 50%),
+        transparent
+    `;
+}
+
+// Apply heartbeat pulse to all blocks
+function applyHeartbeatPulse(phase, intensity) {
+    if (!blocks || blocks.length === 0) return;
+    
+    // Heartbeat pattern: quick beat, pause, quick beat, longer pause
+    // Use sine wave with phase adjustment for heartbeat rhythm
+    
+    // Apply pulse scale to each block with individual phase offset
+    for (const block of blocks) {
+        if (block && block.group && !block.isRemoved && !block.isFalling) {
+            // Apply block's individual phase offset (creates subtle timing variations)
+            const blockPhaseOffset = block.pulsePhaseOffset || 0;
+            const blockPhase = (phase + blockPhaseOffset + 1) % 1; // Wrap around if needed
+            
+            let pulseScale = 1.0;
+            
+            if (blockPhase < 0.15) {
+                // First beat (quick)
+                const t = blockPhase / 0.15;
+                pulseScale = 1.0 + Math.sin(t * Math.PI) * 0.08 * intensity;
+            } else if (blockPhase < 0.25) {
+                // Pause after first beat
+                pulseScale = 1.0;
+            } else if (blockPhase < 0.4) {
+                // Second beat (quick)
+                const t = (blockPhase - 0.25) / 0.15;
+                pulseScale = 1.0 + Math.sin(t * Math.PI) * 0.08 * intensity;
+            } else {
+                // Longer pause
+                pulseScale = 1.0;
+            }
+            
+            block.group.scale.set(pulseScale, pulseScale, pulseScale);
+        }
+    }
+}
+
+// Test function for pulsing finish animation
+// Usage: testPulsingFinishAnimation(seconds) - e.g., testPulsingFinishAnimation(25) to test with 25 seconds left
+window.testPulsingFinishAnimation = function(seconds = 25) {
+    if (!isTimeBasedMode()) {
+        console.warn('[Test] Not in time-based mode. Animation requires time-based mode.');
+        return;
+    }
+    
+    // Ensure time challenge is active
+    if (!timeChallengeActive) {
+        timeChallengeActive = true;
+        console.log('[Test] Activated time challenge mode');
+    }
+    
+    // Set timer to specified seconds
+    setTimeLeftSec(Math.max(0, Math.min(30, seconds)));
+    console.log(`[Test] Set timer to ${timeLeftSec} seconds. Animation should be active.`);
+    
+    // Force update the animation immediately
+    if (timeLeftSec > 0 && timeLeftSec <= 30) {
+        const deltaTime = 16; // Approximate frame time
+        updatePulsingFinishAnimation(timeLeftSec, deltaTime);
+        console.log('[Test] Pulsing finish animation activated!');
+    }
+};
 
 scheduleNextFrame();
 

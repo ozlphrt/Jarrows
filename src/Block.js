@@ -188,6 +188,9 @@ export class Block {
         // Arrow color always uses length-based colors (for visibility)
         const arrowColor = colors[length - 1];
         
+        // Check if this is a filler block (blocks used to fill empty cells)
+        this.isFiller = false; // Can be set after construction if needed
+        
         const blockMaterial = new THREE.MeshStandardMaterial({ 
             color: blockColor,
             roughness: 0.1, // Low roughness for shiny plastic
@@ -195,6 +198,21 @@ export class Block {
             opacity: 1.0, // Explicitly set opacity
             transparent: false // Will be set to true when locked
         });
+        
+        // Apply filler block styling if this is a filler
+        if (this.isFiller) {
+            // Brighter base color (increase brightness by 30%)
+            const fillerColor = new THREE.Color(blockColor);
+            fillerColor.r = Math.min(1.0, fillerColor.r * 1.3);
+            fillerColor.g = Math.min(1.0, fillerColor.g * 1.3);
+            fillerColor.b = Math.min(1.0, fillerColor.b * 1.3);
+            blockMaterial.color.copy(fillerColor);
+            
+            // Add blue glow effect with emissive
+            const blueGlow = new THREE.Color(0x4a9eff); // Bright blue
+            blockMaterial.emissive = blueGlow;
+            blockMaterial.emissiveIntensity = 0.4; // Strong glow
+        }
         
         // Create single mesh for the entire block
         const blockMesh = new THREE.Mesh(blockGeometry, blockMaterial);
@@ -232,6 +250,32 @@ export class Block {
         
         // Add to scene (will be moved to towerGroup later)
         scene.add(this.group);
+    }
+    
+    // Mark this block as a filler block and apply brighter blue glow styling
+    setAsFiller() {
+        this.isFiller = true;
+        
+        if (this.cubes && this.cubes[0] && this.cubes[0].material) {
+            const material = this.cubes[0].material;
+            
+            // Store original color if not already stored
+            if (!this.originalColor) {
+                this.originalColor = material.color.clone();
+            }
+            
+            // Increase brightness by 30%
+            const fillerColor = material.color.clone();
+            fillerColor.r = Math.min(1.0, fillerColor.r * 1.3);
+            fillerColor.g = Math.min(1.0, fillerColor.g * 1.3);
+            fillerColor.b = Math.min(1.0, fillerColor.b * 1.3);
+            material.color.copy(fillerColor);
+            
+            // Add blue glow effect with emissive
+            const blueGlow = new THREE.Color(0x4a9eff); // Bright blue
+            material.emissive = blueGlow;
+            material.emissiveIntensity = 0.4; // Strong glow
+        }
     }
     
     createPhysicsBody() {
@@ -1822,6 +1866,26 @@ export class Block {
     
     // Check if rotation is safe at a given position (no blocking blocks in new direction)
     // Excludes the collidedBlock from the check since it's the one we're colliding with
+    // Check if block is completely outside grid bounds
+    isOffGrid(gridSize) {
+        // Check if any part of the block is outside grid bounds
+        if (this.isVertical) {
+            return this.gridX < 0 || this.gridX >= gridSize || 
+                   this.gridZ < 0 || this.gridZ >= gridSize;
+        } else {
+            const isXAligned = Math.abs(this.direction.x) > 0;
+            for (let i = 0; i < this.length; i++) {
+                const checkX = this.gridX + (isXAligned ? i : 0);
+                const checkZ = this.gridZ + (isXAligned ? 0 : i);
+                if (checkX < 0 || checkX >= gridSize || 
+                    checkZ < 0 || checkZ >= gridSize) {
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+    
     canRotateSafelyAt(gridX, gridZ, blocks, gridSize, collidedBlock = null) {
         // Calculate what the new direction would be after clockwise rotation
         const newDirection = { x: -this.direction.z, z: this.direction.x };
@@ -1983,8 +2047,23 @@ export class Block {
     }
     
     updateFromPhysics() {
-        if (!this.isFalling) return;
         if (this.isRemoved) return; // Don't update if removed
+        
+        // Check if block is off grid and should start falling
+        // Only trigger if not already falling, not animating, and off grid
+        if (!this.isFalling && !this.isAnimating && this.isOffGrid(this.gridSize)) {
+            // Block has left the tower - trigger falling with direction-based velocity
+            const dirX = this.direction.x;
+            const dirZ = this.direction.z;
+            const fallSpeed = 3.5; // Moderate horizontal speed
+            const velX = dirX * fallSpeed;
+            const velZ = dirZ * fallSpeed;
+            const velY = 0; // Start with zero vertical velocity, let gravity take over
+            this.fall(velX, velZ, velY);
+            return; // Will be called again next frame when isFalling is true
+        }
+        
+        if (!this.isFalling) return;
         
         // Create physics body if needed - defer to safe time
         if (this.needsPhysicsBody && !this.physicsBody) {

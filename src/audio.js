@@ -44,13 +44,14 @@ async function loadSound(name, path) {
 }
 
 // Play a sound effect
+// Returns the audio source so it can be stopped if needed
 async function playSound(name, volume = 0.5) {
-    if (!audioEnabled) return;
+    if (!audioEnabled) return null;
     
     // Initialize AudioContext on first user interaction
     if (!audioContext) {
         if (!initAudioContext()) {
-            return; // Audio not supported
+            return null; // Audio not supported
         }
         // Decode all pending sound buffers
         for (const [soundName, arrayBuffer] of Object.entries(soundBuffers)) {
@@ -70,7 +71,7 @@ async function playSound(name, volume = 0.5) {
             await audioContext.resume();
         } catch (e) {
             // Silently fail - will retry next time
-            return;
+            return null;
         }
     }
     
@@ -81,10 +82,10 @@ async function playSound(name, volume = 0.5) {
             try {
                 sounds[name] = await audioContext.decodeAudioData(soundBuffers[name]);
             } catch (e) {
-                return; // Can't decode
+                return null; // Can't decode
             }
         } else {
-            return; // Sound not loaded
+            return null; // Sound not loaded
         }
     }
     
@@ -99,8 +100,10 @@ async function playSound(name, volume = 0.5) {
         gainNode.connect(audioContext.destination);
         
         source.start(0);
+        return source; // Return source so it can be stopped
     } catch (e) {
         // Silently fail
+        return null;
     }
 }
 
@@ -124,7 +127,8 @@ async function initAudio() {
     await Promise.all([
         loadSound('timeAdded', `${basePath}sound/time added.wav`),
         loadSound('timeRemoved', `${basePath}sound/time removed.wav`),
-        loadSound('levelComplete', `${basePath}sound/level.wav`)
+        loadSound('levelComplete', `${basePath}sound/level.wav`),
+        loadSound('heartbeat', `${basePath}sound/heartbeat.mp3`)
     ]);
     
     console.log('Audio system initialized', { audioEnabled, soundsLoaded: Object.keys(sounds).length });
