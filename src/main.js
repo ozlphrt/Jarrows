@@ -329,9 +329,12 @@ renderer.shadowMap.autoUpdate = false;
 renderer.shadowMap.needsUpdate = true;
 document.body.appendChild(renderer.domElement);
 
+// Ensure canvas is clickable - explicitly set pointer-events
+renderer.domElement.style.pointerEvents = 'auto';
+renderer.domElement.style.touchAction = 'none'; // Prevent default touch behaviors
+
 // Track camera drag state to prevent block clicks during camera movement
 let isCameraDragging = false;
-let wasCameraDragging = false; // Track if a drag occurred (persists until click is processed)
 let mouseDownPos = null;
 let mouseDownTime = null;
 const DRAG_THRESHOLD = 3; // pixels - minimum movement to consider it a drag
@@ -356,11 +359,10 @@ renderer.domElement.addEventListener('mousedown', (event) => {
         lastMouseX = event.clientX;
         lastMouseY = event.clientY;
         
-        // Track for block click detection
+        // Track for block click detection - simple version
         mouseDownPos = { x: event.clientX, y: event.clientY };
         mouseDownTime = performance.now();
-        isCameraDragging = false;
-        wasCameraDragging = false; // Reset drag flag on new mouse down
+        isCameraDragging = false; // Reset on new mousedown
         isRightDraggingFraming = false;
         return;
     }
@@ -374,7 +376,6 @@ renderer.domElement.addEventListener('mousedown', (event) => {
         isDraggingCamera = false;
         // Prevent block click selection after a framing drag
         isCameraDragging = true;
-        wasCameraDragging = true;
     }
 }, { passive: false });
 
@@ -383,22 +384,27 @@ renderer.domElement.addEventListener('mousemove', (event) => {
         const dx = event.clientX - lastMouseX;
         const dy = event.clientY - lastMouseY;
         
-        // Update azimuth (horizontal rotation)
-        targetAzimuth += dx * DRAG_SENSITIVITY;
-        
-        // Update elevation (vertical rotation)
-        targetElevation -= dy * DRAG_SENSITIVITY;
-        targetElevation = Math.max(MIN_ELEVATION, Math.min(MAX_ELEVATION, targetElevation));
+        // Only update camera if there was actual movement
+        if (dx !== 0 || dy !== 0) {
+            // Update azimuth (horizontal rotation)
+            targetAzimuth += dx * DRAG_SENSITIVITY;
+            
+            // Update elevation (vertical rotation)
+            targetElevation -= dy * DRAG_SENSITIVITY;
+            targetElevation = Math.max(MIN_ELEVATION, Math.min(MAX_ELEVATION, targetElevation));
+        }
         
         lastMouseX = event.clientX;
         lastMouseY = event.clientY;
         
-        // Mark as camera drag if movement exceeds threshold
+        // Mark as camera drag ONLY if movement from mouseDownPos exceeds threshold
+        // This prevents tiny movements from being treated as drags
         if (mouseDownPos) {
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            if (distance > DRAG_THRESHOLD) {
+            const totalDx = event.clientX - mouseDownPos.x;
+            const totalDy = event.clientY - mouseDownPos.y;
+            const totalDistance = Math.sqrt(totalDx * totalDx + totalDy * totalDy);
+            if (totalDistance > DRAG_THRESHOLD) {
                 isCameraDragging = true;
-                wasCameraDragging = true; // Mark that a drag occurred
             }
         }
     } else if (isRightDraggingFraming) {
@@ -424,7 +430,6 @@ renderer.domElement.addEventListener('mousemove', (event) => {
         const distance = Math.sqrt(dx * dx + dy * dy);
         if (distance > DRAG_THRESHOLD) {
             isCameraDragging = true;
-            wasCameraDragging = true; // Mark that a drag occurred
         }
     }
 });
@@ -437,10 +442,9 @@ renderer.domElement.addEventListener('mouseup', (event) => {
         isRightDraggingFraming = false;
     }
     
-    // Note: Don't reset wasCameraDragging here - let click handler check it first
-    // Reset drag state after a short delay to allow click handler to check
+    // Simple: just clear mouseDownPos, keep isCameraDragging until next mousedown
+    // This prevents click after drag
     mouseDownPos = null;
-    isCameraDragging = false;
 });
 
 renderer.domElement.addEventListener('mouseleave', () => {
@@ -448,7 +452,6 @@ renderer.domElement.addEventListener('mouseleave', () => {
     isRightDraggingFraming = false;
     mouseDownPos = null;
     isCameraDragging = false;
-    wasCameraDragging = false; // Reset on mouse leave
 });
 
 // Disable the native context menu on the canvas so right-drag feels like an intentional control.
@@ -540,6 +543,12 @@ let countdownTimerMaterial = null;
 let countdownDisplayedValue = 30; // Current displayed value (for smooth transitions)
 let countdownTransitionProgress = 0; // Transition progress between values (0-1)
 
+// Countdown bounce animation state
+let lastCountdownValue = 30; // Track number changes for bounce effect
+let countdownBounceProgress = 0; // Progress of bounce animation (0-1)
+let countdownBounceStartTime = 0; // When current bounce animation started
+
+
 // Create countdown timer plane over the base plate
 function createCountdownTimer() {
     const visualBaseSize = 21;
@@ -587,8 +596,46 @@ function createCountdownTimer() {
     // Don't call updateCountdownDisplay() here since timeLeftSec may not be initialized yet
 }
 
+// Update countdown bounce animation
+function updateCountdownBounce(timeLeftSec) {
+    const currentValue = Math.ceil(timeLeftSec);
+    
+    // Trigger bounce when number decreases
+    if (currentValue < lastCountdownValue) {
+        countdownBounceStartTime = performance.now();
+        countdownBounceProgress = 1.0; // Start at peak
+    }
+    lastCountdownValue = currentValue;
+    
+    // Update bounce animation progress
+    if (countdownBounceProgress > 0) {
+        const BOUNCE_DURATION_MS = 300; // 300ms bounce duration
+        const bounceElapsed = performance.now() - countdownBounceStartTime;
+        countdownBounceProgress = Math.max(0, 1 - (bounceElapsed / BOUNCE_DURATION_MS));
+    }
+    
+    // Calculate bounce scale (1.0 to 1.25, smooth ease-in-out)
+    let bounceScale = 1.0;
+    if (countdownBounceProgress > 0) {
+        // Smooth ease-in-out using quintic curve (very smooth)
+        const t = countdownBounceProgress;
+        let easedBounce;
+        if (t < 0.5) {
+            // Ease in (first half) - quintic
+            easedBounce = 16 * t * t * t * t * t;
+        } else {
+            // Ease out (second half) - quintic
+            const t2 = 2 * t - 1;
+            easedBounce = 1 - Math.pow(1 - t2, 5) / 2;
+        }
+        bounceScale = 1.0 + (easedBounce * 0.25); // Scale up to 1.25
+    }
+    
+    return bounceScale;
+}
+
 // Update the countdown timer display with smooth transitions
-function updateCountdownDisplay() {
+function updateCountdownDisplay(bounceScale = 1.0) {
     if (!countdownTimerCanvas || !countdownTimerTexture) return;
     
     // Guard against accessing timeLeftSec before initialization
@@ -608,10 +655,11 @@ function updateCountdownDisplay() {
     // Display only seconds as integer
     const text = Math.ceil(displaySeconds).toString();
     
-    // Scale up font size to fill the extended base plate (21x21 units)
-    // Canvas is 1024px for a 21 unit area
-    // Scale font to fill most of the base plate - larger for better visibility
-    const fontSize = Math.round(size * 0.6); // ~614px for 1024px canvas - fills extended base plate
+    // Base font size
+    const baseFontSize = Math.round(size * 0.6); // ~614px for 1024px canvas - fills extended base plate
+    
+    // Apply bounce scale to font size
+    const fontSize = Math.round(baseFontSize * bounceScale);
     
     // Red neon outlined font styling
     ctx.fillStyle = 'rgba(0, 0, 0, 0)'; // Transparent fill
@@ -661,7 +709,21 @@ function setCountdownTimerVisible(visible) {
     if (countdownTimerPlane) {
         countdownTimerPlane.visible = visible;
     }
+    // Reset state when hiding
+    if (!visible) {
+        if (countdownTimerPlane) {
+            countdownTimerPlane.scale.set(1, 1, 1);
+            countdownTimerPlane.position.y = 0.15;
+            countdownTimerPlane.position.x = 0;
+            countdownTimerPlane.position.z = 0;
+        }
+        if (countdownTimerMaterial) {
+            countdownTimerMaterial.emissiveIntensity = 0.3;
+            countdownTimerMaterial.opacity = 0.4;
+        }
+    }
 }
+
 
 // Toggle mystical view function
 function toggleMysticalView(enabled) {
@@ -778,6 +840,7 @@ const MAX_RADIUS = 50;
 const MIN_ELEVATION = -Math.PI / 2 + 0.1;
 const MAX_ELEVATION = Math.PI / 2 - 0.1;
 const ZOOM_PADDING = 2;
+const ZOOM_PADDING_MOBILE = 1.2; // Reduced padding for mobile to minimize side padding (moderate reduction from 2.0)
 const AUTO_ZOOM_MIN_BOUNDING_SIZE = 3; // Minimum bounding box size to prevent zooming in too much with few blocks
 const SPAWN_ZOOM_PADDING = 4; // Extra padding during spawn to show all blocks
 const SPAWN_ZOOM_MULTIPLIER = 1.3; // Additional multiplier for spawn zoom
@@ -785,7 +848,7 @@ const SPAWN_ZOOM_MULTIPLIER = 1.3; // Additional multiplier for spawn zoom
 // Desktop needs more zoom-out to prevent blocks going out of frame
 // Mobile can zoom in more to reduce wasted space on sides
 const AUTO_ZOOM_MULTIPLIER_DESKTOP = 1.4; // Desktop: minimal zoom to keep all blocks visible with minimal padding
-const AUTO_ZOOM_MULTIPLIER_MOBILE = 0.75; // Mobile: minimal zoom to keep all blocks visible with minimal padding
+const AUTO_ZOOM_MULTIPLIER_MOBILE = 0.70; // Mobile: reduced multiplier to minimize side padding (moderate reduction from 0.75)
 // Desktop-specific padding multiplier to ensure all blocks stay visible
 const DESKTOP_ZOOM_PADDING_MULTIPLIER = 1.15; // Minimal padding for desktop to keep all blocks visible
 // During generation, computing a world-space bounding box by expanding each block object
@@ -830,12 +893,14 @@ function calculateInitialCameraPosition() {
     const aspect = camera.aspect;
     
     // Calculate for horizontal (width/depth) - use diagonal and aspect ratio
-    const horizontalDistance = (basePlateDiagonal + ZOOM_PADDING) / (2 * Math.tan(fov / 2) * aspect);
+    // Use mobile-specific padding for mobile devices to reduce side padding
+    const initialPadding = isMobileLike ? ZOOM_PADDING_MOBILE : ZOOM_PADDING;
+    const horizontalDistance = (basePlateDiagonal + initialPadding) / (2 * Math.tan(fov / 2) * aspect);
     
     // Calculate for vertical (height) - use more accurate initial estimate
     // Start with a smaller estimate since auto-zoom will adjust immediately after spawn
     const estimatedTowerHeight = 6; // Reduced from 10 - auto-zoom will fine-tune after spawn
-    const verticalDistance = (estimatedTowerHeight + ZOOM_PADDING) / (2 * Math.tan(fov / 2));
+    const verticalDistance = (estimatedTowerHeight + initialPadding) / (2 * Math.tan(fov / 2));
     
     // Use the larger distance with reduced safety margin since auto-zoom handles fine-tuning
     const requiredDistance = Math.max(horizontalDistance, verticalDistance) * 1.15; // 15% safety margin (reduced from 30%)
@@ -6966,48 +7031,17 @@ const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 
 function onMouseClick(event) {
-    // Only process left-clicks (button 0) for block interaction
-    if (event.button !== 0) {
+    // Don't process block clicks if camera was being dragged
+    if (isCameraDragging) {
+        isCameraDragging = false; // Reset for next interaction
         return;
     }
-    
-    // Don't process block clicks if any modal is visible
-    const visibleModals = document.querySelectorAll('.extended-stats-modal-overlay[style*="flex"]');
-    if (visibleModals.length > 0) {
-        return; // Modal is open, don't process block clicks
-    }
-    
-    // Prevent block selection if camera was dragged
-    if (wasCameraDragging || isCameraDragging) {
-        // Reset drag tracking for next interaction
-        wasCameraDragging = false;
-        isCameraDragging = false;
-        mouseDownPos = null;
-        return; // Don't process as block click
-    }
-    
-    // Check if this was actually a drag by checking mouse movement
-    // If mouseDownPos exists and distance is small, it's a click, not a drag
-    if (mouseDownPos) {
-        const dx = event.clientX - mouseDownPos.x;
-        const dy = event.clientY - mouseDownPos.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        
-        // If distance exceeds threshold, it was a drag, not a click
-        if (distance > DRAG_THRESHOLD) {
-            mouseDownPos = null; // Reset for next interaction
-            return; // Don't process as block click
-        }
-    }
-    
-    // Reset drag tracking
-    mouseDownPos = null;
-    isCameraDragging = false;
-    wasCameraDragging = false;
     
     mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
     mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
     
+    // Update camera matrices to ensure raycasting is accurate
+    camera.updateMatrixWorld();
     raycaster.setFromCamera(mouse, camera);
     
     // Collect ALL intersections from ALL blocks first, then pick the closest one
@@ -7015,9 +7049,20 @@ function onMouseClick(event) {
     const allIntersections = [];
     
     for (const block of blocks) {
-        if (block.isAnimating || block.isFalling) continue; // Skip animating/falling blocks (but allow locked blocks to intercept clicks)
+        if (!block || block.isRemoved) continue;
+        if (block.isAnimating || block.isFalling) continue;
+        if (!block.group || !block.cubes || block.cubes.length === 0) continue;
         
-        const intersects = raycaster.intersectObjects(block.cubes, true);
+        // Update block's world matrix before raycasting
+        block.group.updateMatrixWorld(true);
+        
+        // Try both block.cubes and block.group for intersection
+        let intersects = raycaster.intersectObjects(block.cubes, true);
+        
+        // If no intersections with cubes, try the group itself
+        if (intersects.length === 0) {
+            intersects = raycaster.intersectObject(block.group, true);
+        }
         
         // Store intersections with block reference for later processing
         for (const intersection of intersects) {
@@ -7041,25 +7086,10 @@ function onMouseClick(event) {
     const closestHit = allIntersections[0];
     const block = closestHit.block;
     
-    // Prevent locked blocks from being moved (they can still intercept clicks)
+    // Prevent locked blocks from being moved
     if (block.isLocked) {
-        // Show remaining lock time when user clicks on locked block
         showLockTimeRemaining(block);
-        return; // Block intercepts click but doesn't move
-    }
-    
-    // Close settings menu when user clicks on a block (returns to game)
-    const settingsMenu = document.getElementById('settings-menu');
-    if (settingsMenu) {
-        settingsMenu.classList.remove('show');
-    }
-    
-    // If remove mode is active, remove the block instead of moving it
-    if (removeModeActive) {
-        removeBlockWithAnimation(block);
-        toggleRemoveMode(); // Deactivate remove mode after removing
-        updateUndoButtonState();
-        return; // Exit early, don't process as a move
+        return;
     }
     
     // Check if this matches the solution (if we're testing)
@@ -7079,161 +7109,13 @@ function onMouseClick(event) {
     const structureCheck = validateStructure(blocks, gridSize);
     if (!structureCheck.valid) {
         console.warn('Puzzle structure invalid before move, skipping:', structureCheck.reason);
-        console.warn('This may indicate a bug in the movement logic or puzzle generation.');
-        // Auto-fix attempt: if we already have overlaps, don't apply more moves on top of a broken state.
-        const fixResult = fixOverlappingBlocks(blocks, gridSize);
-        if (fixResult.fixed) {
-            console.warn(`Fixed ${fixResult.movedBlocks.length} overlapping block(s). Please click again.`);
-        } else {
-            if (fixResult.failedOverlaps && fixResult.failedOverlaps.length > 0) {
-                console.error(`Failed to fix ${fixResult.failedOverlaps.length} overlap(s) - manual intervention may be needed.`, fixResult.failedOverlaps);
-            } else {
-                console.error('Failed to fix overlaps - structure still invalid after fix attempt');
-            }
-            // Try to regenerate the level as a last resort
-            // Capture current level to ensure we regenerate the same level, not level 0
-            const levelToRegenerate = currentLevel;
-            console.warn(`Attempting to regenerate level ${levelToRegenerate} to recover from invalid state...`);
-            setTimeout(async () => {
-                // Ensure we're using the captured level, not a potentially reset currentLevel
-                currentLevel = levelToRegenerate;
-                await generateSolvablePuzzle(levelToRegenerate);
-                // Save progress after regeneration to ensure level is preserved
-                saveProgress();
-            }, 500);
-        }
         return;
     }
     
-    const debugEnabled = typeof window !== 'undefined' && !!window.debugMoveMode;
-    const preAttempt = {
-        gridX: block.gridX,
-        gridZ: block.gridZ,
-        yOffset: block.yOffset,
-        direction: block.direction ? { ...block.direction } : null,
-        length: block.length,
-        isVertical: block.isVertical,
-        isAnimating: block.isAnimating,
-        isFalling: block.isFalling,
-        isRemoved: block.isRemoved,
-        removalStartTime: block.removalStartTime ?? null
-    };
-
-    let canMoveDebugInfo = null;
-    if (debugEnabled) {
-        // Reset per-attempt so we don't accidentally read stale info.
-        window.debugMoveInfo = null;
-    }
-
     // Store if this block will fall (to update solution tracking)
-    const moveResult = block.canMove(blocks);
-    const willFall = moveResult === 'fall';
-
-    if (debugEnabled) {
-        canMoveDebugInfo = safeClone(window.debugMoveInfo);
-    }
+    const willFall = block.canMove(blocks) === 'fall';
     
     block.move(blocks, gridSize);
-
-    if (debugEnabled) {
-        const postAttempt = {
-            gridX: block.gridX,
-            gridZ: block.gridZ,
-            yOffset: block.yOffset,
-            direction: block.direction ? { ...block.direction } : null,
-            isAnimating: block.isAnimating,
-            isFalling: block.isFalling,
-            isRemoved: block.isRemoved,
-            removalStartTime: block.removalStartTime ?? null
-        };
-
-        const didStartMoving =
-            postAttempt.isAnimating ||
-            postAttempt.isFalling ||
-            (postAttempt.gridX !== preAttempt.gridX) ||
-            (postAttempt.gridZ !== preAttempt.gridZ) ||
-            (!!postAttempt.removalStartTime);
-
-        if (!didStartMoving) {
-            const firstStep = computeFirstStepPotentialBlockers(block, blocks, preAttempt);
-            const report = {
-                meta: {
-                    kind: 'non_moving_block_click',
-                    timestamp: Date.now(),
-                    userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : null
-                },
-                input: {
-                    click: { x: event?.clientX ?? null, y: event?.clientY ?? null }
-                },
-                canMoveResult: moveResult,
-                preAttempt,
-                postAttempt,
-                block: {
-                    gridX: block.gridX,
-                    gridZ: block.gridZ,
-                    yOffset: block.yOffset,
-                    length: block.length,
-                    isVertical: block.isVertical,
-                    direction: block.direction ? { ...block.direction } : null,
-                    isAnimating: block.isAnimating,
-                    isFalling: block.isFalling,
-                    isRemoved: block.isRemoved
-                },
-                support: {
-                    hasSupport: typeof blockHasSupport === 'function' ? blockHasSupport(block, blocks) : null
-                },
-                physics: {
-                    blockBody: snapshotPhysicsState(block)
-                },
-                diagnostics: {
-                    canMoveDebugInfo,
-                    moveFirstStepApprox: firstStep
-                }
-            };
-
-            recordNonMovingReport(report);
-        }
-    }
-    
-    // After a block moves, validate structure and fix any overlaps
-    setTimeout(() => {
-        const structureCheck = validateStructure(blocks, gridSize);
-        if (!structureCheck.valid) {
-            console.warn('Overlap detected after move, attempting to fix...');
-            const fixResult = fixOverlappingBlocks(blocks, gridSize);
-            if (fixResult.fixed) {
-                console.log(`Fixed ${fixResult.movedBlocks.length} overlapping block(s)`);
-            } else {
-                if (fixResult.failedOverlaps && fixResult.failedOverlaps.length > 0) {
-                    console.error(`Failed to fix ${fixResult.failedOverlaps.length} overlap(s) after move`, fixResult.failedOverlaps);
-                } else {
-                    console.error('Failed to fix overlaps after move - structure still invalid');
-                }
-                // Regenerate current level to recover (preserve level)
-                const levelToRegenerate = currentLevel;
-                console.warn(`Regenerating level ${levelToRegenerate} to recover from post-move overlap...`);
-                setTimeout(async () => {
-                    currentLevel = levelToRegenerate;
-                    await generateSolvablePuzzle(levelToRegenerate);
-                    saveProgress();
-                }, 500);
-            }
-        }
-    }, 100);
-    
-    // After a block moves, check if any other blocks lost support and need to fall
-    // Wait for move animation to complete before checking support
-    // Check multiple times to catch blocks that might need to fall after others land
-    setTimeout(() => {
-        checkAndTriggerFalling(blocks);
-        // Check again after a longer delay to catch cascading falls
-        setTimeout(() => {
-            checkAndTriggerFalling(blocks);
-        }, 500);
-    }, 400); // Delay to let move animation complete
-    
-    // Update button states after move
-    updateUndoButtonState();
     
     // If block will fall, it's being cleared - advance solution step
     if (willFall && window.puzzleSolution) {
@@ -7247,8 +7129,6 @@ function onMouseClick(event) {
             }
         }, 1000); // Wait for move animation + fall to start
     }
-    
-    // Structure validation after move is handled by Block.move() collision detection
 }
 
 /**
@@ -7572,23 +7452,9 @@ function startBlockFallingToTarget(block, targetYOffset) {
     fallAnimationId = requestAnimationFrame(animateFall);
 }
 
-// Add click listener to window in capture phase to catch all clicks early
-window.addEventListener('click', (event) => {
-    // Track clicks for block interaction
-}, { capture: true, passive: true }); // Use capture phase and passive for performance
-
-// Also handle touch events at window level
-window.addEventListener('touchstart', (event) => {
-    // Track touch start for tap detection (single touch only)
-    if (event.touches.length === 1) {
-        const touch = event.touches[0];
-        touchStartPos = { x: touch.clientX, y: touch.clientY };
-        touchStartTime = performance.now();
-    }
-}, { capture: true, passive: true }); // Use capture phase and passive for performance
-
-// Original click handler for block interaction (normal phase)
-window.addEventListener('click', onMouseClick);
+// Add click handler to window (simple, matches working version)
+// Attach in capture phase to catch clicks early, before any other handlers
+window.addEventListener('click', onMouseClick, true);
 
 // Touch controls for camera
 let touchState = {
@@ -7603,7 +7469,7 @@ let touchState = {
 
 // Touch start handler
 renderer.domElement.addEventListener('touchstart', (event) => {
-    event.preventDefault();
+    event.preventDefault(); // Always prevent default to enable proper touch handling
     
     touchState.touches = Array.from(event.touches);
     touchState.isActive = true;
@@ -7621,10 +7487,10 @@ renderer.domElement.addEventListener('touchstart', (event) => {
         const touch = touchState.touches[0];
         touchState.lastCenter = { x: touch.clientX, y: touch.clientY };
         
-        // Track for block tap detection
+        // Track for block tap detection - simple version (matches mouse handler)
         touchStartPos = { x: touch.clientX, y: touch.clientY };
         touchStartTime = performance.now();
-        isCameraDragging = false;
+        isCameraDragging = false; // Reset on new touch
     } else if (touchState.touches.length === 2) {
         // Dual touch - detect pinch vs drag
         touchState.hadDoubleTouch = true; // Mark that we had a double touch gesture
@@ -7647,7 +7513,7 @@ renderer.domElement.addEventListener('touchstart', (event) => {
 
 // Touch move handler
 renderer.domElement.addEventListener('touchmove', (event) => {
-    event.preventDefault();
+    event.preventDefault(); // Always prevent default to enable proper touch handling
     
     if (!touchState.isActive) return;
     
@@ -7668,10 +7534,12 @@ renderer.domElement.addEventListener('touchmove', (event) => {
         
         touchState.touches = currentTouches;
         
-        // Mark as camera drag
+        // Mark as camera drag - calculate total distance from touchStartPos
         if (touchStartPos) {
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            if (distance > DRAG_THRESHOLD) {
+            const totalDx = touch.clientX - touchStartPos.x;
+            const totalDy = touch.clientY - touchStartPos.y;
+            const totalDistance = Math.sqrt(totalDx * totalDx + totalDy * totalDy);
+            if (totalDistance > TOUCH_DRAG_THRESHOLD) {
                 isCameraDragging = true;
             }
         }
@@ -7739,9 +7607,14 @@ renderer.domElement.addEventListener('touchmove', (event) => {
     }
 }, { passive: false });
 
-// Touch end handler
+// Touch end handler - cleanup camera state only
 renderer.domElement.addEventListener('touchend', (event) => {
-    event.preventDefault();
+    // Don't preventDefault here - let window handler process block taps first
+    // event.preventDefault();
+    
+    // Call onTouchEnd to handle block taps (pass through)
+    // This ensures it runs even if window handler doesn't catch it
+    onTouchEnd(event);
     
     const remainingTouches = Array.from(event.touches);
     
@@ -7764,10 +7637,37 @@ let touchStartPos = null;
 let touchStartTime = null;
 const TOUCH_DRAG_THRESHOLD = 5; // pixels - minimum movement to consider it a drag
 
+// Track if we've already processed this touchend to prevent double-processing
+let lastProcessedTouchEndTime = 0;
+const TOUCH_END_DEBOUNCE_MS = 50;
+
 function onTouchEnd(event) {
+    // Debounce: prevent processing the same event twice (if called from both renderer and window handlers)
+    const now = performance.now();
+    if (now - lastProcessedTouchEndTime < TOUCH_END_DEBOUNCE_MS) {
+        return;
+    }
+    lastProcessedTouchEndTime = now;
+    
+    // Don't process block taps if camera was being dragged (same as mouse handler)
+    if (isCameraDragging) {
+        isCameraDragging = false; // Reset for next interaction
+        touchStartPos = null;
+        return;
+    }
+    
     // Don't process block taps if any modal is visible
-    const visibleModals = document.querySelectorAll('.extended-stats-modal-overlay[style*="flex"]');
-    if (visibleModals.length > 0) {
+    // Check computed display style, not just style attribute (modals have display:flex by default in CSS)
+    const modalOverlays = document.querySelectorAll('.extended-stats-modal-overlay');
+    let hasVisibleModal = false;
+    for (const modal of modalOverlays) {
+        const computedStyle = window.getComputedStyle(modal);
+        if (computedStyle.display !== 'none' && computedStyle.visibility !== 'hidden') {
+            hasVisibleModal = true;
+            break;
+        }
+    }
+    if (hasVisibleModal) {
         return; // Modal is open, don't process block taps
     }
     
@@ -7811,15 +7711,28 @@ function onTouchEnd(event) {
     mouse.x = (touch.clientX / window.innerWidth) * 2 - 1;
     mouse.y = -(touch.clientY / window.innerHeight) * 2 + 1;
     
+    // Update camera matrices to ensure raycasting is accurate
+    camera.updateMatrixWorld();
     raycaster.setFromCamera(mouse, camera);
     
     // Collect ALL intersections from ALL blocks first, then pick the closest one
     const allIntersections = [];
     
     for (const block of blocks) {
+        if (!block || block.isRemoved) continue;
         if (block.isAnimating || block.isFalling) continue;
+        if (!block.group || !block.cubes || block.cubes.length === 0) continue; // Ensure block has valid geometry
         
-        const intersects = raycaster.intersectObjects(block.cubes, true);
+        // Update block's world matrix before raycasting
+        block.group.updateMatrixWorld(true);
+        
+        // Try both block.cubes and block.group for intersection
+        let intersects = raycaster.intersectObjects(block.cubes, true);
+        
+        // If no intersections with cubes, try the group itself
+        if (intersects.length === 0) {
+            intersects = raycaster.intersectObject(block.group, true);
+        }
         
         for (const intersection of intersects) {
             allIntersections.push({
@@ -7834,6 +7747,7 @@ function onTouchEnd(event) {
     if (allIntersections.length === 0) {
         return;
     }
+    
     
     // Sort by distance (closest first)
     allIntersections.sort((a, b) => a.distance - b.distance);
@@ -7930,7 +7844,8 @@ function onTouchEnd(event) {
 // Touch start tracking is handled above in the capture phase handler
 
 // Handle touch end for block interaction
-window.addEventListener('touchend', onTouchEnd, { passive: true });
+// Use capture phase and non-passive to ensure we can process before renderer handler stops propagation
+window.addEventListener('touchend', onTouchEnd, { capture: true, passive: false });
 
 window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
@@ -8116,7 +8031,10 @@ function animate() {
     const shouldShowCountdown = isTimeBasedMode() && timeChallengeActive && !timeUpShown && timeLeftSec > 0 && timeLeftSec <= 30;
     if (shouldShowCountdown) {
         if (countdownTimerPlane) {
-            updateCountdownDisplay();
+            // Update bounce animation and get scale
+            const bounceScale = updateCountdownBounce(timeLeftSec);
+            // Update display with bounce scale
+            updateCountdownDisplay(bounceScale);
             setCountdownTimerVisible(true);
         }
     } else {
@@ -8173,21 +8091,23 @@ function animate() {
                 // Use unified zoom calculation (same as auto-zoom)
                 const fov = camera.fov * (Math.PI / 180);
                 const aspect = camera.aspect;
-                const effectivePadding = ZOOM_PADDING; // Use standard padding, not spawn-specific
+                // Use mobile-specific padding for mobile devices to reduce side padding
+                const effectivePadding = isMobileLike ? ZOOM_PADDING_MOBILE : ZOOM_PADDING;
 
                 // Calculate distance needed for height (vertical FOV) with proper padding
-                const minVerticalPadding = ZOOM_PADDING;
+                const minVerticalPadding = isMobileLike ? ZOOM_PADDING_MOBILE : ZOOM_PADDING;
                 const heightDistance = (size.y + minVerticalPadding * 2) / (2 * Math.tan(fov / 2));
 
                 // Calculate distance needed for width/depth (horizontal FOV) with proper padding
-                const minHorizontalPadding = ZOOM_PADDING;
+                const minHorizontalPadding = isMobileLike ? ZOOM_PADDING_MOBILE : ZOOM_PADDING;
                 const horizontalDiagonal = Math.sqrt(size.x * size.x + size.z * size.z);
                 const widthDistance = (horizontalDiagonal + minHorizontalPadding * 2) / (2 * Math.tan(fov / 2) * aspect);
 
-                // Use the larger distance with a safety margin to ensure all blocks stay visible
+                // Use the larger distance with platform-aware multiplier to ensure all blocks stay visible
                 // This matches auto-zoom calculation for smooth transition
-                const safetyMargin = 1.25; // 25% safety margin during spawn - ensures proper padding on all sides
-                const requiredDistance = Math.max(heightDistance, widthDistance) * safetyMargin;
+                // Mobile uses smaller multiplier (0.75) for less padding, desktop uses larger (1.4) for safety margin
+                const autoZoomMultiplier = isMobileLike ? AUTO_ZOOM_MULTIPLIER_MOBILE : AUTO_ZOOM_MULTIPLIER_DESKTOP;
+                const requiredDistance = Math.max(heightDistance, widthDistance) * autoZoomMultiplier;
                 const clampedRequiredDistance = Math.max(MIN_RADIUS, Math.min(MAX_RADIUS, requiredDistance));
                 // During spawn, update smoothed auto-zoom immediately for responsive feel
                 smoothedAutoZoomRadius = clampedRequiredDistance;
@@ -8267,25 +8187,26 @@ function animate() {
                 // Use unified calculation (same as spawn zoom) for smooth transition
                 const fov = camera.fov * (Math.PI / 180);
                 const aspect = camera.aspect;
-                const effectivePadding = ZOOM_PADDING; // Standard padding
+                // Use mobile-specific padding for mobile devices to reduce side padding
+                const effectivePadding = isMobileLike ? ZOOM_PADDING_MOBILE : ZOOM_PADDING;
 
                 // Calculate distance needed for height (vertical FOV) with proper padding
                 // Ensure minimum padding at top and bottom
-                const minVerticalPadding = ZOOM_PADDING;
+                const minVerticalPadding = isMobileLike ? ZOOM_PADDING_MOBILE : ZOOM_PADDING;
                 const heightDistance = (size.y + minVerticalPadding * 2) / (2 * Math.tan(fov / 2));
 
                 // Calculate distance needed for width/depth (horizontal FOV) with proper padding
-                // Ensure minimum padding at left and right
-                const minHorizontalPadding = ZOOM_PADDING;
+                // Ensure minimum padding at left and right - use mobile-specific padding to reduce side padding
+                const minHorizontalPadding = isMobileLike ? ZOOM_PADDING_MOBILE : ZOOM_PADDING;
                 const horizontalDiagonal = Math.sqrt(size.x * size.x + size.z * size.z);
                 const widthDistance = (horizontalDiagonal + minHorizontalPadding * 2) / (2 * Math.tan(fov / 2) * aspect);
 
-                // Use the larger distance with a safety margin to ensure all blocks stay visible
+                // Use the larger distance with platform-aware multiplier to ensure all blocks stay visible
                 // This accounts for perspective distortion, camera lookAt offset, and edge cases
                 // The camera looks at tower center + framingOffsetY, which may be offset from bounding box center
-                // Increased margin to 1.25 (25%) to ensure proper padding on all sides and prevent blocks from being cut off
-                const safetyMargin = 1.25; // 25% safety margin - ensures minimum padding on all sides
-                const requiredDistance = Math.max(heightDistance, widthDistance) * safetyMargin;
+                // Mobile uses smaller multiplier (0.75) for less padding, desktop uses larger (1.4) for safety margin
+                const autoZoomMultiplier = isMobileLike ? AUTO_ZOOM_MULTIPLIER_MOBILE : AUTO_ZOOM_MULTIPLIER_DESKTOP;
+                const requiredDistance = Math.max(heightDistance, widthDistance) * autoZoomMultiplier;
                 const clampedRequiredDistance = Math.max(MIN_RADIUS, Math.min(MAX_RADIUS, requiredDistance));
                 // Smooth the auto-zoom target to prevent jerky movement when bounding box changes
                 // This creates a stable target that gradually approaches the desired distance
