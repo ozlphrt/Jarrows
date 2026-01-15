@@ -64,6 +64,13 @@ npm run build
 
 ## Releases
 
+### v7.2.1 - Mobile Zoom Padding Fix
+- **Tree**: https://github.com/ozlphrt/Jarrows/tree/v7.2.1
+- **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v7.2.1
+- **Live**: https://ozlphrt.github.io/Jarrows/
+- Fixed excessive side padding on mobile auto-zoom
+- Reduced mobile padding from 2.0 to 1.2 and multiplier from 0.75 to 0.70
+
 ### v7.0.0 - Inferno Mode Only (Major Version)
 - **Tree**: https://github.com/ozlphrt/Jarrows/tree/v7.0.0
 - **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v7.0.0
