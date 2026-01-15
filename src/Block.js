@@ -116,6 +116,7 @@ export class Block {
         this.isVertical = isVertical;
         this.isAnimating = false;
         this.isFalling = false;
+        this.isExploding = false;
         this.needsTransitionToFalling = false;
         this.needsStop = false;
         // Catapult shadow policy (Battery preset only): suppress shadows only while a catapulted block is moving.
@@ -3775,6 +3776,152 @@ export class Block {
             const pulse = Math.sin(this.highlightAnimation.time * 3) * 0.3 + 0.7; // Pulse between 0.4 and 1.0
             this.cubes[0].material.emissiveIntensity = pulse;
         }
+    }
+    
+    /**
+     * Explode block with particle effects
+     * @param {Object} particleSystem - Particle system from particles.js
+     * @param {number} delay - Delay in milliseconds before explosion
+     * @returns {Promise} Promise that resolves when explosion animation completes
+     */
+    explodeWithParticles(particleSystem, delay = 0) {
+        return new Promise((resolve) => {
+            if (this.isRemoved || this.isExploding) {
+                resolve();
+                return;
+            }
+            
+            this.isExploding = true;
+            this.isAnimating = true;
+            
+            const explode = () => {
+                // Get block center position
+                const blockCenter = new THREE.Vector3();
+                this.group.getWorldPosition(blockCenter);
+                
+                // Get block color from first cube material
+                let blockColor = new THREE.Color(0x888888); // Default gray
+                if (this.cubes && this.cubes[0] && this.cubes[0].material) {
+                    blockColor = this.cubes[0].material.color.clone();
+                }
+                
+                // Spawn particles
+                const particleCount = 20 + Math.floor(Math.random() * 30); // 20-50 particles
+                const velocity = 2.0 + Math.random() * 2.0; // 2.0-4.0 velocity
+                particleSystem.addExplosion(blockCenter, blockColor, particleCount, velocity);
+                
+                // Animate block: scale down + fade out
+                const startTime = performance.now();
+                const explosionDuration = 400; // 400ms explosion animation
+                const originalScale = this.group.scale.clone();
+                const originalOpacity = this.cubes && this.cubes[0] && this.cubes[0].material 
+                    ? this.cubes[0].material.opacity 
+                    : 1.0;
+                
+                // Make materials transparent if needed
+                this.cubes.forEach(cube => {
+                    if (cube.material) {
+                        if (!cube.material.transparent) {
+                            cube.material.transparent = true;
+                        }
+                    }
+                });
+                
+                // Also handle arrow and direction indicators
+                if (this.arrow) {
+                    this.arrow.traverse((child) => {
+                        if (child.material) {
+                            if (!child.material.transparent) {
+                                child.material.transparent = true;
+                            }
+                        }
+                    });
+                }
+                
+                if (this.directionIndicators) {
+                    this.directionIndicators.traverse((child) => {
+                        if (child.material) {
+                            if (!child.material.transparent) {
+                                child.material.transparent = true;
+                            }
+                        }
+                    });
+                }
+                
+                const animateExplosion = () => {
+                    const elapsed = performance.now() - startTime;
+                    const progress = Math.min(elapsed / explosionDuration, 1.0);
+                    
+                    // Ease-out curve for smooth animation
+                    const eased = 1 - Math.pow(1 - progress, 3);
+                    
+                    // Scale down
+                    const scale = 1 - eased;
+                    this.group.scale.set(
+                        originalScale.x * scale,
+                        originalScale.y * scale,
+                        originalScale.z * scale
+                    );
+                    
+                    // Fade out
+                    const opacity = originalOpacity * (1 - eased);
+                    this.cubes.forEach(cube => {
+                        if (cube.material) {
+                            cube.material.opacity = opacity;
+                        }
+                    });
+                    
+                    if (this.arrow) {
+                        this.arrow.traverse((child) => {
+                            if (child.material) {
+                                child.material.opacity = opacity;
+                            }
+                        });
+                    }
+                    
+                    if (this.directionIndicators) {
+                        this.directionIndicators.traverse((child) => {
+                            if (child.material) {
+                                child.material.opacity = opacity;
+                            }
+                        });
+                    }
+                    
+                    if (progress < 1.0) {
+                        requestAnimationFrame(animateExplosion);
+                    } else {
+                        // Animation complete - remove block
+                        this.isRemoved = true;
+                        this.isExploding = false;
+                        this.isAnimating = false;
+                        
+                        // Remove physics body
+                        if (this.physicsBody) {
+                            removePhysicsBody(this.physics, this.physicsBody, true);
+                            this.physicsBody = null;
+                            this.physicsCollider = null;
+                        }
+                        
+                        // Remove from scene
+                        if (this.group.parent) {
+                            this.group.parent.remove(this.group);
+                        } else {
+                            this.scene.remove(this.group);
+                        }
+                        
+                        resolve();
+                    }
+                };
+                
+                requestAnimationFrame(animateExplosion);
+            };
+            
+            if (delay > 0) {
+                setTimeout(explode, delay);
+            } else {
+                explode();
+            }
+        });
     }
     
     remove() {

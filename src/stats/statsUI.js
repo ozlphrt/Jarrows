@@ -97,24 +97,34 @@ export function showProfileModal() {
         backdrop-filter: blur(10px);
         -webkit-backdrop-filter: blur(10px);
         display: flex;
-        align-items: stretch;
-        justify-content: stretch;
+        align-items: center;
+        justify-content: center;
+        padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
     `;
 
     const panel = document.createElement('div');
     panel.style.cssText = `
-        width: 100vw;
-        height: 100vh;
+        width: calc(100vw - 24px);
+        max-width: calc(100vw - 24px);
+        min-height: auto;
+        max-height: calc(100vh - 24px - max(12px, env(safe-area-inset-top, 0)) - max(12px, env(safe-area-inset-bottom, 0)));
+        margin: 0;
         box-sizing: border-box;
-        padding: calc(18px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) calc(18px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
+        padding: calc(16px + env(safe-area-inset-top)) calc(14px + env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) calc(14px + env(safe-area-inset-left));
         background: rgba(17, 24, 39, 0.55);
         border: 1px solid rgba(255,255,255,0.18);
         box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), 0 20px 60px rgba(0,0,0,0.35);
-        overflow: auto;
+        border-radius: 14px;
+        overflow-y: auto;
+        overflow-x: hidden;
         -webkit-overflow-scrolling: touch;
         color: rgba(255,255,255,0.92);
         font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
         position: relative;
+        display: flex;
+        flex-direction: column;
     `;
     
     // Add colored top accent
@@ -127,6 +137,7 @@ export function showProfileModal() {
         height: 6px;
         background: linear-gradient(90deg, rgba(96, 165, 250, 0.9), rgba(168, 85, 247, 0.9), rgba(236, 72, 153, 0.9));
         opacity: 0.9;
+        border-radius: 14px 14px 0 0;
     `;
     panel.appendChild(accent);
 
@@ -138,6 +149,7 @@ export function showProfileModal() {
         gap: 12px;
         margin-bottom: 14px;
         margin-top: 6px;
+        flex-wrap: wrap;
     `;
 
     const titleWrap = document.createElement('div');
@@ -162,10 +174,12 @@ export function showProfileModal() {
         background: rgba(255,255,255,0.10);
         color: rgba(255,255,255,0.9);
         border-radius: 10px;
-        padding: 10px 12px;
-        font-size: 12px;
+        padding: 12px 16px;
+        font-size: 14px;
         font-weight: 800;
         cursor: pointer;
+        min-height: 44px;
+        flex: 1 1 auto;
     `;
     closeBtn.addEventListener('click', () => overlay.remove());
 
@@ -323,10 +337,11 @@ export function showPersonalHistoryModal({ focusLevel = null } = {}) {
     const controls = document.createElement('div');
     controls.style.cssText = `
         display: flex;
-        align-items: center;
+        align-items: stretch;
         gap: 10px;
         flex-wrap: wrap;
         justify-content: flex-end;
+        width: 100%;
     `;
 
     function makeSelect(options) {
@@ -376,10 +391,12 @@ export function showPersonalHistoryModal({ focusLevel = null } = {}) {
         background: rgba(255,255,255,0.08);
         color: rgba(255,255,255,0.9);
         border-radius: 10px;
-        padding: 8px 10px;
-        font-size: 12px;
+        padding: 12px 16px;
+        font-size: 14px;
         font-weight: 800;
         cursor: pointer;
+        min-height: 44px;
+        flex: 1 1 auto;
     `;
 
     const closeBtn = document.createElement('button');
@@ -390,11 +407,12 @@ export function showPersonalHistoryModal({ focusLevel = null } = {}) {
         background: rgba(255,255,255,0.10);
         color: rgba(255,255,255,0.9);
         border-radius: 10px;
-        padding: 10px 12px;
-        font-size: 12px;
+        padding: 12px 16px;
+        font-size: 14px;
         font-weight: 800;
         cursor: pointer;
-        flex: 0 0 auto;
+        min-height: 44px;
+        flex: 1 1 auto;
     `;
     closeBtn.addEventListener('click', closeHistoryModal);
 
@@ -724,19 +742,29 @@ function showMetricInfoModal({ label, currentValue, baselineValue, scope = null,
         display: flex;
         align-items: center;
         justify-content: center;
-        padding: 18px;
+        padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
     `;
 
     const panel = document.createElement('div');
     panel.style.cssText = `
-        width: min(520px, 100%);
+        width: calc(100vw - 24px);
+        max-width: calc(100vw - 24px);
+        max-height: calc(100vh - 24px - max(12px, env(safe-area-inset-top, 0)) - max(12px, env(safe-area-inset-bottom, 0)));
+        margin: 0;
         background: rgba(17, 24, 39, 0.55);
         border: 1px solid rgba(255,255,255,0.18);
-        border-radius: 18px;
+        border-radius: 14px;
         box-shadow: 0 20px 60px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.14);
-        padding: 18px 16px 16px;
+        padding: calc(16px + env(safe-area-inset-top)) calc(14px + env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) calc(14px + env(safe-area-inset-left));
         color: rgba(255,255,255,0.92);
         font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
     `;
 
     const header = document.createElement('div');
@@ -800,11 +828,13 @@ function showMetricInfoModal({ label, currentValue, baselineValue, scope = null,
         background: rgba(255,255,255,0.10);
         color: rgba(255,255,255,0.9);
         border-radius: 10px;
-        padding: 8px 10px;
-        font-size: 12px;
+        padding: 12px 16px;
+        font-size: 14px;
         font-weight: 700;
         cursor: pointer;
-        flex: 0 0 auto;
+        min-height: 44px;
+        width: 100%;
+        margin-top: 12px;
     `;
     closeBtn.addEventListener('click', closeMetricInfoModal);
 
@@ -814,7 +844,7 @@ function showMetricInfoModal({ label, currentValue, baselineValue, scope = null,
     const values = document.createElement('div');
     values.style.cssText = `
         display: grid;
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: 1fr;
         gap: 10px;
         margin-top: 12px;
     `;

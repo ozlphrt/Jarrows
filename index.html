@@ -258,6 +258,11 @@
             color: rgba(239, 68, 68, 0.95);
         }
         
+        /* Hide game mode display in inferno mode */
+        body.mode-inferno #game-mode-display {
+            display: none !important;
+        }
+        
 
         #timer-delta {
             margin-left: 10px;
@@ -301,6 +306,7 @@
         }
         
         /* Extended Stats Modal Styling (applied to all modals) */
+        /* Optimized for portrait mode - primary use case */
         .extended-stats-modal-overlay {
             position: fixed;
             inset: 0;
@@ -310,44 +316,43 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
             z-index: 2000;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
         }
         
         .extended-stats-modal-panel {
-            width: calc(100vw - 32px);
-            max-width: 560px;
-            /* Optimize for portrait mode - reduce max-width on narrow screens */
-            max-height: calc(100vh - 32px);
-            margin: 16px;
-            padding: calc(18px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) calc(18px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
+            width: calc(100vw - 24px);
+            max-width: calc(100vw - 24px);
+            /* Portrait-first: use full height efficiently */
+            min-height: auto;
+            max-height: calc(100vh - 24px - max(12px, env(safe-area-inset-top, 0)) - max(12px, env(safe-area-inset-bottom, 0)));
+            margin: 0;
+            padding: calc(16px + env(safe-area-inset-top)) calc(14px + env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) calc(14px + env(safe-area-inset-left));
             box-sizing: border-box;
             background: rgba(17, 24, 39, 0.55);
             border: 1px solid rgba(255,255,255,0.18);
             box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), 0 20px 60px rgba(0,0,0,0.35);
             border-radius: 14px;
-            overflow: auto;
+            overflow-y: auto;
+            overflow-x: hidden;
             -webkit-overflow-scrolling: touch;
             color: rgba(255,255,255,0.92);
             font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             position: relative;
+            display: flex;
+            flex-direction: column;
         }
         
-        /* Portrait mode optimizations */
-        @media (orientation: portrait) and (max-width: 768px) {
+        /* Landscape mode adjustments (secondary) */
+        @media (orientation: landscape) and (min-width: 769px) {
             .extended-stats-modal-panel {
-                width: calc(100vw - 24px);
-                max-width: calc(100vw - 24px);
-                margin: 12px;
-                padding: calc(16px + env(safe-area-inset-top)) calc(14px + env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) calc(14px + env(safe-area-inset-left));
-            }
-            
-            .extended-stats-modal-panel .modal-title {
-                font-size: 32px !important;
-            }
-            
-            .extended-stats-modal-panel p,
-            .extended-stats-modal-panel div:not(.modal-actions):not(.extended-stats-modal-panel) {
-                font-size: 14px !important;
+                width: calc(100vw - 32px);
+                max-width: 560px;
+                max-height: calc(100vh - 32px);
+                margin: 16px;
+                padding: calc(18px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) calc(18px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
             }
         }
         
@@ -396,34 +401,85 @@
         
         .extended-stats-modal-panel .modal-actions {
             display: flex;
+            flex-direction: column;
             gap: 10px;
             justify-content: flex-end;
-            margin-top: 12px;
+            margin-top: 16px;
+            width: 100%;
         }
         
-        /* Portrait mode optimizations */
-        @media (orientation: portrait) and (max-width: 768px) {
-            .extended-stats-modal-panel {
-                width: calc(100vw - 24px);
-                max-width: calc(100vw - 24px);
-                margin: 12px;
-                padding: calc(16px + env(safe-area-inset-top)) calc(14px + env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) calc(14px + env(safe-area-inset-left));
+        /* Game Over Modal Animation */
+        #time-up-modal:not(.game-over-modal-entering) {
+            opacity: 0;
+        }
+        
+        #time-up-modal {
+            transition: opacity 0.4s ease-out;
+        }
+        
+        #time-up-modal.game-over-modal-entering {
+            opacity: 1;
+        }
+        
+        #time-up-modal:not(.game-over-modal-entering) .extended-stats-modal-panel {
+            transform: translateY(30px);
+            opacity: 0;
+        }
+        
+        #time-up-modal .extended-stats-modal-panel {
+            transition: transform 0.5s ease-out, opacity 0.5s ease-out;
+        }
+        
+        #time-up-modal.game-over-modal-entering .extended-stats-modal-panel {
+            transform: translateY(0);
+            opacity: 1;
+        }
+        
+        #time-up-modal:not(.game-over-modal-entering) .time-up-header,
+        #time-up-modal:not(.game-over-modal-entering) .time-up-summary,
+        #time-up-modal:not(.game-over-modal-entering) .time-up-actions {
+            opacity: 0;
+        }
+        
+        #time-up-modal .time-up-header,
+        #time-up-modal .time-up-summary,
+        #time-up-modal .time-up-actions {
+            transition: opacity 0.3s ease-out;
+        }
+        
+        #time-up-modal.game-over-modal-entering .time-up-header {
+            transition-delay: 0.1s;
+            opacity: 1;
+        }
+        
+        #time-up-modal.game-over-modal-entering .time-up-summary {
+            transition-delay: 0.2s;
+            opacity: 1;
+        }
+        
+        #time-up-modal.game-over-modal-entering .time-up-actions {
+            transition-delay: 0.3s;
+            opacity: 1;
+        }
+        
+        .extended-stats-modal-panel .modal-actions .game-button {
+            width: 100%;
+            min-height: 48px;
+            padding: 12px 20px;
+            font-size: 16px;
+            flex: 1;
+        }
+        
+        /* Landscape mode: buttons horizontal */
+        @media (orientation: landscape) and (min-width: 769px) {
+            .extended-stats-modal-panel .modal-actions {
+                flex-direction: row;
+                justify-content: flex-end;
             }
             
-            .extended-stats-modal-panel .modal-title {
-                font-size: 32px !important;
-            }
-            
-            .extended-stats-modal-panel p,
-            .extended-stats-modal-panel div:not(.modal-actions):not(.extended-stats-modal-panel) {
-                font-size: 14px !important;
-            }
-            
-            .extended-stats-modal-panel .modal-actions .game-button,
-            .modal-content .modal-actions .game-button {
-                min-height: 48px;
-                padding: 12px 20px;
-                font-size: 16px;
+            .extended-stats-modal-panel .modal-actions .game-button {
+                width: auto;
+                min-width: 120px;
             }
         }
         
@@ -1909,12 +1965,12 @@
     <!-- Time Up Modal -->
     <div id="time-up-modal" class="extended-stats-modal-overlay" style="display:none; z-index: 3600;">
         <div class="extended-stats-modal-panel">
-            <div style="display:flex; align-items:center; gap: 10px; margin-bottom: 12px;">
+            <div class="time-up-header" style="display:flex; align-items:center; gap: 10px; margin-bottom: 12px;">
                 <span style="font-size: 24px;">⏰</span>
                 <div class="modal-title">Time's Up</div>
             </div>
-            <div id="time-up-summary">—</div>
-            <div class="modal-actions">
+            <div id="time-up-summary" class="time-up-summary">—</div>
+            <div class="modal-actions time-up-actions">
                 <button id="time-up-restart-level" class="game-button" style="padding: 10px 14px;">Restart Level</button>
                 <button id="time-up-new-game" class="game-button" style="padding: 10px 14px;">New Run</button>
             </div>
@@ -2086,6 +2142,9 @@
     </div>
     
     <script type="module">
+        // Import QR code library
+        import QRCode from 'qrcode';
+        
         // DEV ONLY: prevent a previously-registered Service Worker from serving stale cached assets
         // (common cause of "localhost shows an old version").
         // We do this BEFORE loading the game module.
@@ -2508,10 +2567,12 @@
                     urlDisplay.textContent = currentUrl;
                 }
                 
-                // Generate QR code (simple canvas-based implementation)
+                // Generate QR code using real QR code library
                 const qrCanvas = document.getElementById('qr-code-canvas');
                 if (qrCanvas) {
-                    generateQRCode(qrCanvas, currentUrl);
+                    generateQRCode(qrCanvas, currentUrl).catch(err => {
+                        console.error('Error generating QR code:', err);
+                    });
                 }
                 
                 // Update PWA install guidance
@@ -2521,73 +2582,30 @@
                 modal.style.display = 'flex';
             }
             
-            // Simple QR code generator using canvas
-            function generateQRCode(canvas, text) {
-                const size = 200;
-                canvas.width = size;
-                canvas.height = size;
-                const ctx = canvas.getContext('2d');
-                
-                // Use a simple pattern-based QR code (for a proper implementation, use a library like qrcode.js)
-                // For now, we'll use a simple placeholder pattern
-                ctx.fillStyle = '#ffffff';
-                ctx.fillRect(0, 0, size, size);
-                
-                // Draw a simple QR-like pattern (in production, use a proper QR library)
-                ctx.fillStyle = '#000000';
-                const moduleSize = size / 25; // 25x25 grid
-                
-                // Draw finder patterns (corners)
-                function drawFinderPattern(x, y) {
-                    ctx.fillRect(x, y, moduleSize * 7, moduleSize * 7);
+            // Real QR code generator using qrcode library
+            async function generateQRCode(canvas, text) {
+                try {
+                    await QRCode.toCanvas(canvas, text, {
+                        width: 200,
+                        margin: 2,
+                        color: {
+                            dark: '#000000',
+                            light: '#FFFFFF'
+                        }
+                    });
+                } catch (error) {
+                    console.error('Failed to generate QR code:', error);
+                    // Fallback: draw error message
+                    const ctx = canvas.getContext('2d');
+                    canvas.width = 200;
+                    canvas.height = 200;
                     ctx.fillStyle = '#ffffff';
-                    ctx.fillRect(x + moduleSize, y + moduleSize, moduleSize * 5, moduleSize * 5);
-                    ctx.fillStyle = '#000000';
-                    ctx.fillRect(x + moduleSize * 2, y + moduleSize * 2, moduleSize * 3, moduleSize * 3);
+                    ctx.fillRect(0, 0, 200, 200);
+                    ctx.fillStyle = '#ff0000';
+                    ctx.font = '12px monospace';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('QR Error', 100, 100);
                 }
-                
-                drawFinderPattern(0, 0);
-                drawFinderPattern(size - moduleSize * 7, 0);
-                drawFinderPattern(0, size - moduleSize * 7);
-                
-                // Draw alignment pattern (center)
-                const centerX = Math.floor(size / 2 / moduleSize) * moduleSize;
-                const centerY = Math.floor(size / 2 / moduleSize) * moduleSize;
-                ctx.fillRect(centerX - moduleSize, centerY - moduleSize, moduleSize * 3, moduleSize * 3);
-                ctx.fillStyle = '#ffffff';
-                ctx.fillRect(centerX, centerY, moduleSize, moduleSize);
-                ctx.fillStyle = '#000000';
-                
-                // Draw data modules (simplified - in production use proper QR encoding)
-                // For now, create a pattern based on URL hash
-                let hash = 0;
-                for (let i = 0; i < text.length; i++) {
-                    hash = ((hash << 5) - hash) + text.charCodeAt(i);
-                    hash = hash & hash;
-                }
-                
-                for (let y = 0; y < 25; y++) {
-                    for (let x = 0; x < 25; x++) {
-                        // Skip finder patterns and alignment pattern
-                        if ((x < 9 && y < 9) || (x >= 16 && y < 9) || (x < 9 && y >= 16) || 
-                            (x >= 10 && x < 15 && y >= 10 && y < 15)) {
-                            continue;
-                        }
-                        
-                        // Use hash to determine if module should be filled
-                        const shouldFill = (hash + x * 31 + y * 17) % 3 === 0;
-                        if (shouldFill) {
-                            ctx.fillRect(x * moduleSize, y * moduleSize, moduleSize, moduleSize);
-                        }
-                    }
-                }
-                
-                // Note: For production, replace this with a proper QR code library
-                // For now, add a note that this is a placeholder
-                ctx.fillStyle = '#666666';
-                ctx.font = '10px monospace';
-                ctx.textAlign = 'center';
-                ctx.fillText('QR Code', size / 2, size - 5);
             }
             
             // Update PWA install guidance based on platform
@@ -2595,8 +2613,6 @@
                 const pwaContent = document.getElementById('pwa-install-content');
                 if (!pwaContent) return;
                 
-                const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-                const isAndroid = /Android/.test(navigator.userAgent);
                 const isStandalone = window.matchMedia('(display-mode: standalone)').matches || 
                                     window.navigator.standalone || 
                                     document.referrer.includes('android-app://');
@@ -2605,34 +2621,29 @@
                 
                 if (isStandalone) {
                     guidance = '<p style="opacity: 0.8; margin-bottom: 12px;">✅ App is already installed!</p>';
-                } else if (isIOS) {
-                    guidance = `
-                        <div style="margin-bottom: 12px;">
-                            <p style="font-weight: 700; margin-bottom: 8px;">Install on iOS:</p>
-                            <ol style="margin: 0; padding-left: 20px; line-height: 1.8;">
-                                <li>Tap the <b>Share</b> button (square with arrow) in Safari</li>
-                                <li>Scroll down and tap <b>"Add to Home Screen"</b></li>
-                                <li>Tap <b>"Add"</b> to confirm</li>
-                            </ol>
-                        </div>
-                    `;
-                } else if (isAndroid) {
-                    guidance = `
-                        <div style="margin-bottom: 12px;">
-                            <p style="font-weight: 700; margin-bottom: 8px;">Install on Android:</p>
-                            <ol style="margin: 0; padding-left: 20px; line-height: 1.8;">
-                                <li>Tap the <b>menu</b> (three dots) in Chrome</li>
-                                <li>Tap <b>"Install app"</b> or <b>"Add to Home screen"</b></li>
-                                <li>Tap <b>"Install"</b> to confirm</li>
-                            </ol>
-                            <p style="margin-top: 8px; opacity: 0.8; font-size: 12px;">Note: Installation prompt appears automatically when the app is installable.</p>
-                        </div>
-                    `;
                 } else {
                     guidance = `
                         <div style="margin-bottom: 12px;">
-                            <p style="font-weight: 700; margin-bottom: 8px;">Install as PWA:</p>
-                            <ol style="margin: 0; padding-left: 20px; line-height: 1.8;">
+                            <p style="font-weight: 700; margin-bottom: 8px;">Install on Mobile:</p>
+                            <div style="margin-bottom: 12px;">
+                                <p style="font-weight: 600; margin-bottom: 4px; font-size: 13px;">📱 iOS (iPhone/iPad):</p>
+                                <ol style="margin: 0 0 12px 0; padding-left: 20px; line-height: 1.6; font-size: 12px;">
+                                    <li>Tap the <b>Share</b> button (square with arrow) in Safari</li>
+                                    <li>Scroll down and tap <b>"Add to Home Screen"</b></li>
+                                    <li>Tap <b>"Add"</b> to confirm</li>
+                                </ol>
+                            </div>
+                            <div style="margin-bottom: 12px;">
+                                <p style="font-weight: 600; margin-bottom: 4px; font-size: 13px;">🤖 Android:</p>
+                                <ol style="margin: 0; padding-left: 20px; line-height: 1.6; font-size: 12px;">
+                                    <li>Tap the <b>menu</b> (three dots) in Chrome</li>
+                                    <li>Tap <b>"Install app"</b> or <b>"Add to Home screen"</b></li>
+                                    <li>Tap <b>"Install"</b> to confirm</li>
+                                </ol>
+                                <p style="margin-top: 6px; opacity: 0.8; font-size: 11px;">Note: Installation prompt may appear automatically.</p>
+                            </div>
+                            <p style="font-weight: 700; margin-top: 16px; margin-bottom: 8px;">Install on Desktop:</p>
+                            <ol style="margin: 0; padding-left: 20px; line-height: 1.6; font-size: 12px;">
                                 <li><b>Chrome/Edge:</b> Click the install icon in the address bar</li>
                                 <li><b>Firefox:</b> Use browser menu → "Install"</li>
                                 <li>Follow the browser's installation prompts</li>

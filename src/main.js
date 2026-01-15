@@ -1628,12 +1628,27 @@ function showTimeUpModal() {
 
     const stage = Math.floor(timeChallengeRemovals / 25);
     summary.innerHTML = `Stage <b>${stage}</b> • <b>${timeChallengeRemovals}</b> blocks removed`;
+    
+    // Remove animation class first to reset state
+    modal.classList.remove('game-over-modal-entering');
+    
+    // Show modal
     modal.style.display = 'flex';
+    
+    // Add animation class after display is set to trigger CSS transitions
+    // Use requestAnimationFrame to ensure the browser processes the display change first
+    requestAnimationFrame(() => {
+        modal.classList.add('game-over-modal-entering');
+    });
 }
 
 async function restartTimeChallengeLevelFromTimeUp() {
     const modal = document.getElementById('time-up-modal');
-    if (modal) modal.style.display = 'none';
+    if (modal) {
+        // Remove animation class before hiding
+        modal.classList.remove('game-over-modal-entering');
+        modal.style.display = 'none';
+    }
     setTimeFrozen('time_up', false);
     timeUpShown = false;
     
@@ -1671,7 +1686,11 @@ async function restartTimeChallengeLevelFromTimeUp() {
 
 async function resetTimeChallengeRunFromTimeUp() {
     const modal = document.getElementById('time-up-modal');
-    if (modal) modal.style.display = 'none';
+    if (modal) {
+        // Remove animation class before hiding
+        modal.classList.remove('game-over-modal-entering');
+        modal.style.display = 'none';
+    }
     setTimeFrozen('time_up', false);
     timeChallengeResetRun();
     await startNewGame(); // starts from level 1
