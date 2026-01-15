@@ -322,6 +322,19 @@
             -webkit-overflow-scrolling: touch;
         }
         
+        /* Time-up modal: transparent overlay, no blur - allow viewing debris animation */
+        #time-up-modal.extended-stats-modal-overlay {
+            background: transparent;
+            backdrop-filter: none;
+            -webkit-backdrop-filter: none;
+            pointer-events: none; /* Allow clicks to pass through overlay */
+        }
+        
+        /* But make the panel itself clickable */
+        #time-up-modal .extended-stats-modal-panel {
+            pointer-events: auto;
+        }
+        
         .extended-stats-modal-panel {
             width: calc(100vw - 24px);
             max-width: calc(100vw - 24px);
@@ -1963,16 +1976,10 @@
     </div>
 
     <!-- Time Up Modal -->
-    <div id="time-up-modal" class="extended-stats-modal-overlay" style="display:none; z-index: 3600;">
-        <div class="extended-stats-modal-panel">
-            <div class="time-up-header" style="display:flex; align-items:center; gap: 10px; margin-bottom: 12px;">
-                <span style="font-size: 24px;">⏰</span>
-                <div class="modal-title">Time's Up</div>
-            </div>
-            <div id="time-up-summary" class="time-up-summary">—</div>
-            <div class="modal-actions time-up-actions">
-                <button id="time-up-restart-level" class="game-button" style="padding: 10px 14px;">Restart Level</button>
-                <button id="time-up-new-game" class="game-button" style="padding: 10px 14px;">New Run</button>
+    <div id="time-up-modal" class="extended-stats-modal-overlay" style="display:none; z-index: 3600; align-items: flex-start; justify-content: center; padding-top: 80px;">
+        <div class="extended-stats-modal-panel" style="max-width: auto; padding: 12px;">
+            <div class="modal-actions time-up-actions" style="display: flex; justify-content: center;">
+                <button id="time-up-restart-level" class="game-button" style="padding: 10px 20px; font-size: 14px;">Restart</button>
             </div>
         </div>
     </div>

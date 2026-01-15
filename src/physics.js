@@ -107,13 +107,54 @@ export async function initPhysics() {
     }
     
     // Create ground plane in falling world (for sliding and falling)
-    // Grid is 7x7 with cubeSize 1, so ground should be 3.5 units from center
-    const groundSize = 3.5;
-    const groundColliderDesc = RAPIER.ColliderDesc.cuboid(groundSize, 0.1, groundSize)
-        .setTranslation(groundSize, -0.1, groundSize)
+    // Extended base plate is 21x21 units, centered at towerGroup origin (0,0,0 in towerGroup space)
+    // towerGroup is positioned at (3.5, 0, 3.5) in world space
+    // So in world space, extended base extends from (3.5-10.5) to (3.5+10.5) = -7 to +14 in X and Z
+    // Physics world uses world coordinates, so we need to account for towerGroup position
+    const extendedBaseSize = 10.5; // Half of 21 units
+    const towerGroupWorldX = 3.5; // towerGroup X position in world space
+    const towerGroupWorldZ = 3.5; // towerGroup Z position in world space
+    const baseCenterX = towerGroupWorldX; // Center of extended base in world X
+    const baseCenterZ = towerGroupWorldZ; // Center of extended base in world Z
+    
+    const groundColliderDesc = RAPIER.ColliderDesc.cuboid(extendedBaseSize, 0.1, extendedBaseSize)
+        .setTranslation(baseCenterX, -0.1, baseCenterZ)
         .setFriction(0.7) // Friction for sliding blocks
         .setRestitution(0.1);
     fallingWorld.createCollider(groundColliderDesc);
+    
+    // Create invisible walls around extended base plate to keep debris from falling off
+    // Walls positioned in world space to match extended base plate boundaries
+    const wallHeight = 5.0; // Tall enough to catch debris
+    const wallThickness = 0.2;
+    
+    // North wall (z = baseCenterZ - extendedBaseSize = 3.5 - 10.5 = -7)
+    const northWall = RAPIER.ColliderDesc.cuboid(extendedBaseSize, wallHeight, wallThickness)
+        .setTranslation(baseCenterX, wallHeight, baseCenterZ - extendedBaseSize - wallThickness)
+        .setFriction(0.5)
+        .setRestitution(0.3);
+    fallingWorld.createCollider(northWall);
+    
+    // South wall (z = baseCenterZ + extendedBaseSize = 3.5 + 10.5 = 14)
+    const southWall = RAPIER.ColliderDesc.cuboid(extendedBaseSize, wallHeight, wallThickness)
+        .setTranslation(baseCenterX, wallHeight, baseCenterZ + extendedBaseSize + wallThickness)
+        .setFriction(0.5)
+        .setRestitution(0.3);
+    fallingWorld.createCollider(southWall);
+    
+    // West wall (x = baseCenterX - extendedBaseSize = 3.5 - 10.5 = -7)
+    const westWall = RAPIER.ColliderDesc.cuboid(wallThickness, wallHeight, extendedBaseSize)
+        .setTranslation(baseCenterX - extendedBaseSize - wallThickness, wallHeight, baseCenterZ)
+        .setFriction(0.5)
+        .setRestitution(0.3);
+    fallingWorld.createCollider(westWall);
+    
+    // East wall (x = baseCenterX + extendedBaseSize = 3.5 + 10.5 = 14)
+    const eastWall = RAPIER.ColliderDesc.cuboid(wallThickness, wallHeight, extendedBaseSize)
+        .setTranslation(baseCenterX + extendedBaseSize + wallThickness, wallHeight, baseCenterZ)
+        .setFriction(0.5)
+        .setRestitution(0.3);
+    fallingWorld.createCollider(eastWall);
     
     return { world, eventQueue, fallingWorld, fallingEventQueue, RAPIER };
 }

@@ -3779,6 +3779,164 @@ export class Block {
     }
     
     /**
+     * Explode block into debris pieces with particle effects
+     * @param {Object} debrisManager - DebrisManager instance
+     * @param {Object} particleSystem - Particle system from particles.js
+     * @param {number} delay - Delay in milliseconds before explosion
+     * @returns {Promise} Promise that resolves when explosion animation completes
+     */
+    explodeIntoDebris(debrisManager, particleSystem, delay = 0) {
+        return new Promise((resolve) => {
+            if (this.isRemoved || this.isExploding) {
+                resolve();
+                return;
+            }
+            
+            this.isExploding = true;
+            this.isAnimating = true;
+            
+            const explode = () => {
+                // Get block center position
+                const blockCenter = new THREE.Vector3();
+                this.group.getWorldPosition(blockCenter);
+                
+                // Get block color from first cube material
+                let blockColor = new THREE.Color(0x888888); // Default gray
+                if (this.cubes && this.cubes[0] && this.cubes[0].material) {
+                    blockColor = this.cubes[0].material.color.clone();
+                }
+                
+                // Calculate piece count based on block length: 20 + (length * 10)
+                // This gives 20 pieces for 1-length, 30 for 2-length, 40 for 3-length
+                const pieceCount = 20 + Math.floor(this.length * 10);
+                
+                // Create debris pieces
+                if (debrisManager) {
+                    debrisManager.createDebrisFromBlock(blockCenter, blockColor, pieceCount);
+                }
+                
+                // Spawn particles for dust/smoke effect - BIGGER EXPLOSION, PUSH FARTHER
+                if (particleSystem) {
+                    const particleCount = 40 + Math.floor(Math.random() * 40); // 40-80 particles (more)
+                    const velocity = 5.0 + Math.random() * 6.0; // 5.0-11.0 velocity (push much farther)
+                    particleSystem.addExplosion(blockCenter, blockColor, particleCount, velocity);
+                }
+                
+                // Animate block: scale down + fade out (faster than particle-only explosion)
+                const startTime = performance.now();
+                const explosionDuration = 300; // 300ms explosion animation (faster)
+                const originalScale = this.group.scale.clone();
+                const originalOpacity = this.cubes && this.cubes[0] && this.cubes[0].material 
+                    ? this.cubes[0].material.opacity 
+                    : 1.0;
+                
+                // Make materials transparent if needed
+                this.cubes.forEach(cube => {
+                    if (cube.material) {
+                        if (!cube.material.transparent) {
+                            cube.material.transparent = true;
+                        }
+                    }
+                });
+                
+                // Also handle arrow and direction indicators
+                if (this.arrow) {
+                    this.arrow.traverse((child) => {
+                        if (child.material) {
+                            if (!child.material.transparent) {
+                                child.material.transparent = true;
+                            }
+                        }
+                    });
+                }
+                
+                if (this.directionIndicators) {
+                    this.directionIndicators.traverse((child) => {
+                        if (child.material) {
+                            if (!child.material.transparent) {
+                                child.material.transparent = true;
+                            }
+                        }
+                    });
+                }
+                
+                const animateExplosion = () => {
+                    const elapsed = performance.now() - startTime;
+                    const progress = Math.min(elapsed / explosionDuration, 1.0);
+                    
+                    // Ease-out curve for smooth animation
+                    const eased = 1 - Math.pow(1 - progress, 3);
+                    
+                    // Scale down
+                    const scale = 1 - eased;
+                    this.group.scale.set(
+                        originalScale.x * scale,
+                        originalScale.y * scale,
+                        originalScale.z * scale
+                    );
+                    
+                    // Fade out
+                    const opacity = originalOpacity * (1 - eased);
+                    this.cubes.forEach(cube => {
+                        if (cube.material) {
+                            cube.material.opacity = opacity;
+                        }
+                    });
+                    
+                    if (this.arrow) {
+                        this.arrow.traverse((child) => {
+                            if (child.material) {
+                                child.material.opacity = opacity;
+                            }
+                        });
+                    }
+                    
+                    if (this.directionIndicators) {
+                        this.directionIndicators.traverse((child) => {
+                            if (child.material) {
+                                child.material.opacity = opacity;
+                            }
+                        });
+                    }
+                    
+                    if (progress < 1.0) {
+                        requestAnimationFrame(animateExplosion);
+                    } else {
+                        // Animation complete - remove block
+                        this.isRemoved = true;
+                        this.isExploding = false;
+                        this.isAnimating = false;
+                        
+                        // Remove physics body
+                        if (this.physicsBody) {
+                            removePhysicsBody(this.physics, this.physicsBody, true);
+                            this.physicsBody = null;
+                            this.physicsCollider = null;
+                        }
+                        
+                        // Remove from scene
+                        if (this.group.parent) {
+                            this.group.parent.remove(this.group);
+                        } else {
+                            this.scene.remove(this.group);
+                        }
+                        
+                        resolve();
+                    }
+                };
+                
+                requestAnimationFrame(animateExplosion);
+            };
+            
+            if (delay > 0) {
+                setTimeout(explode, delay);
+            } else {
+                explode();
+            }
+        });
+    }
+    
+    /**
      * Explode block with particle effects
      * @param {Object} particleSystem - Particle system from particles.js
      * @param {number} delay - Delay in milliseconds before explosion

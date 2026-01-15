@@ -111,19 +111,63 @@ export function createParticleSystem(maxParticles = 1000, scene) {
      * @param {number} deltaTime - Time delta in seconds
      */
     function updateParticles(deltaTime) {
+        const BASE_PLATE_Y = -0.1; // Base plate is at y = -0.1
+        const EXTENDED_BASE_SIZE = 10.5; // Half of 21 units (extended base plate)
+        const TOWER_GROUP_X = 3.5; // towerGroup X position in world space
+        const TOWER_GROUP_Z = 3.5; // towerGroup Z position in world space
+        const BASE_MIN_X = TOWER_GROUP_X - EXTENDED_BASE_SIZE; // -7
+        const BASE_MAX_X = TOWER_GROUP_X + EXTENDED_BASE_SIZE; // +14
+        const BASE_MIN_Z = TOWER_GROUP_Z - EXTENDED_BASE_SIZE; // -7
+        const BASE_MAX_Z = TOWER_GROUP_Z + EXTENDED_BASE_SIZE; // +14
+        
         for (let i = 0; i < maxParticles; i++) {
             if (!particles[i] || !particles[i].active) continue;
             
             const particle = particles[i];
             particle.age += deltaTime;
             
-            // Update position with velocity and gravity
-            positions[i * 3] += particle.velocity.x * deltaTime;
-            positions[i * 3 + 1] += particle.velocity.y * deltaTime;
-            positions[i * 3 + 2] += particle.velocity.z * deltaTime;
+            // Calculate new position
+            const newX = positions[i * 3] + particle.velocity.x * deltaTime;
+            const newY = positions[i * 3 + 1] + particle.velocity.y * deltaTime;
+            const newZ = positions[i * 3 + 2] + particle.velocity.z * deltaTime;
             
-            // Apply gravity
-            particle.velocity.y += GRAVITY * deltaTime;
+            // Stop particles at base plate level (don't let them fall below)
+            if (newY < BASE_PLATE_Y) {
+                // Particle hit base plate - stop vertical movement
+                positions[i * 3 + 1] = BASE_PLATE_Y;
+                particle.velocity.y = 0;
+                
+                // Apply horizontal friction when on ground
+                particle.velocity.x *= 0.95;
+                particle.velocity.z *= 0.95;
+            } else {
+                // Particle is above base plate - normal physics
+                positions[i * 3 + 1] = newY;
+                
+                // Apply gravity
+                particle.velocity.y += GRAVITY * deltaTime;
+            }
+            
+            // Keep particles within extended base plate bounds (bounce off walls)
+            if (newX < BASE_MIN_X) {
+                positions[i * 3] = BASE_MIN_X;
+                particle.velocity.x *= -0.5; // Bounce with energy loss
+            } else if (newX > BASE_MAX_X) {
+                positions[i * 3] = BASE_MAX_X;
+                particle.velocity.x *= -0.5; // Bounce with energy loss
+            } else {
+                positions[i * 3] = newX;
+            }
+            
+            if (newZ < BASE_MIN_Z) {
+                positions[i * 3 + 2] = BASE_MIN_Z;
+                particle.velocity.z *= -0.5; // Bounce with energy loss
+            } else if (newZ > BASE_MAX_Z) {
+                positions[i * 3 + 2] = BASE_MAX_Z;
+                particle.velocity.z *= -0.5; // Bounce with energy loss
+            } else {
+                positions[i * 3 + 2] = newZ;
+            }
             
             // Update lifetime and fade
             const lifetimeProgress = particle.age / particle.lifetime;

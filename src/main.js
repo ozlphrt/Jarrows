@@ -10,6 +10,8 @@ import { initAudio, playSound, toggleAudio, isAudioEnabled } from './audio.js';
 import { getInfernoDifficultyConfig } from './inferno_difficulty.js';
 import { showMilestoneModal, showFeatureModal, showLevelUpdateModal } from './inferno_modals.js';
 import { getChangelogForVersion } from './changelog.js';
+import { createParticleSystem } from './particles.js';
+import { DebrisManager } from './debris.js';
 import appVersionRaw from '../VERSION?raw';
 
 // Build-time constant injected by Vite (see vite.config.js). Falls back to '' if not defined.
@@ -1008,6 +1010,22 @@ function updateLightsForCamera(lights, azimuth, elevation, center) {
 // Initialize Rapier physics
 const physics = await initPhysics();
 
+// Initialize particle system for explosions
+let particleSystem = null;
+try {
+    particleSystem = createParticleSystem(1000, scene);
+} catch (e) {
+    console.warn('Failed to create particle system:', e);
+}
+
+// Initialize debris manager for game over animation
+let debrisManager = null;
+try {
+    debrisManager = new DebrisManager(physics, scene);
+} catch (e) {
+    console.warn('Failed to create debris manager:', e);
+}
+
     // Initialize stats system
     await initStats();
 
@@ -1754,27 +1772,72 @@ function hidePauseModalAndResume() {
     scheduleNextFrame();
 }
 
+/**
+ * Trigger game over explosion animation - blocks explode sequentially
+ */
+function triggerGameOverExplosion() {
+    if (!debrisManager || !particleSystem) {
+        console.warn('Debris manager or particle system not available');
+        return;
+    }
+    
+    // Get all blocks that should explode (not already removed/exploding)
+    const blocksToExplode = blocks.filter(block => 
+        block && 
+        !block.isRemoved && 
+        !block.isExploding && 
+        !block.isFalling &&
+        !block.isAnimating
+    );
+    
+    if (blocksToExplode.length === 0) {
+        return; // No blocks to explode
+    }
+    
+    // Randomize block order for visual variety
+    const shuffled = [...blocksToExplode];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    
+    // Explode blocks sequentially with MORE RANDOM staggered delays
+    // Each block gets its own random delay for more varied timing
+    shuffled.forEach((block, index) => {
+        // More random delay: 100-400ms per block (much more variation)
+        const baseDelay = index * 150; // Base progression
+        const randomDelay = Math.random() * 300; // 0-300ms random variation
+        const delay = baseDelay + randomDelay;
+        block.explodeIntoDebris(debrisManager, particleSystem, delay);
+    });
+    
+    console.log(`[Game Over] Exploding ${shuffled.length} blocks sequentially`);
+}
+
 function showTimeUpModal() {
     const modal = document.getElementById('time-up-modal');
-    const summary = document.getElementById('time-up-summary');
-    if (!modal || !summary) return;
+    if (!modal) return;
+    
+    // Trigger explosion animation first (before modal appears)
+    triggerGameOverExplosion();
+    
     setTimeFrozen('time_up', true);
     timeUpShown = true;
-
-    const stage = Math.floor(timeChallengeRemovals / 25);
-    summary.innerHTML = `Stage <b>${stage}</b> • <b>${timeChallengeRemovals}</b> blocks removed`;
     
     // Remove animation class first to reset state
     modal.classList.remove('game-over-modal-entering');
     
-    // Show modal
-    modal.style.display = 'flex';
-    
-    // Add animation class after display is set to trigger CSS transitions
-    // Use requestAnimationFrame to ensure the browser processes the display change first
-    requestAnimationFrame(() => {
-        modal.classList.add('game-over-modal-entering');
-    });
+    // Show modal after debris animation has time to play (2-3 seconds)
+    // Simple restart button at bottom doesn't block the debris animation view
+    setTimeout(() => {
+        modal.style.display = 'flex';
+        
+        // Add animation class after display is set to trigger CSS transitions
+        // Use requestAnimationFrame to ensure the browser processes the display change first
+        requestAnimationFrame(() => {
+            modal.classList.add('game-over-modal-entering');
+        });
+    }, 2500); // 2.5 seconds delay - simple button at bottom, won't block debris view
 }
 
 async function restartTimeChallengeLevelFromTimeUp() {
@@ -1786,6 +1849,14 @@ async function restartTimeChallengeLevelFromTimeUp() {
     }
     setTimeFrozen('time_up', false);
     timeUpShown = false;
+    
+    // Clean up debris from previous explosion
+    if (debrisManager) {
+        debrisManager.cleanup();
+    }
+    if (particleSystem) {
+        particleSystem.cleanupParticles();
+    }
     
     if (isGeneratingLevel) return;
     
@@ -1827,6 +1898,15 @@ async function resetTimeChallengeRunFromTimeUp() {
         modal.style.display = 'none';
     }
     setTimeFrozen('time_up', false);
+    
+    // Clean up debris from previous explosion
+    if (debrisManager) {
+        debrisManager.cleanup();
+    }
+    if (particleSystem) {
+        particleSystem.cleanupParticles();
+    }
+    
     timeChallengeResetRun();
     await startNewGame(); // starts from level 1
 }
@@ -5102,6 +5182,13 @@ async function restartCurrentLevel() {
 
 // Start new game (reset to level 1)
 async function startNewGame() {
+    // Clean up debris from previous game
+    if (debrisManager) {
+        debrisManager.cleanup();
+    }
+    if (particleSystem) {
+        particleSystem.cleanupParticles();
+    }
     if (isGeneratingLevel) return;
     
     console.log(`[startNewGame] Starting new game. Current level before reset: ${currentLevel}`);
@@ -6292,15 +6379,7 @@ if (timeUpRestartLevelBtn) {
     });
 }
 
-// Time Up modal button: start a new Time Challenge run
-const timeUpNewGameBtn = document.getElementById('time-up-new-game');
-if (timeUpNewGameBtn) {
-    timeUpNewGameBtn.addEventListener('click', async (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        await resetTimeChallengeRunFromTimeUp();
-    });
-}
+// Time Up modal: New Run button removed - only restart level available
 
 // Store the click handler functions so we can reattach them if buttons are recreated
 let diceButtonClickHandler = null;
@@ -8406,6 +8485,20 @@ function animate() {
         updateTimerDisplay();
     }
     
+    // Update particle system
+    if (particleSystem) {
+        particleSystem.updateParticles(deltaTime);
+    }
+    
+    // Update debris pieces
+    if (debrisManager) {
+        debrisManager.update();
+        // Clean up settled debris pieces (below base plate, after 10 seconds)
+        if (debrisManager.getPieceCount() > 0) {
+            debrisManager.cleanupSettled(-0.5, 10);
+        }
+    }
+    
     // Update FPS counter
     fpsFrameCount++;
     if (currentTime - fpsLastUpdate >= fpsUpdateInterval) {
@@ -8427,9 +8520,11 @@ function animate() {
     // CRITICAL: Only call updatePhysics ONCE per frame, before any reads
     // Process operations and step physics
     // In battery mode, skip physics when truly idle to save CPU
+    // Also check for debris pieces - they need physics to fall
+    const hasDebris = debrisManager && debrisManager.getPieceCount() > 0;
     const shouldUpdatePhysics = !physicsUpdatedThisFrame && 
-                               (hasPhysicsBlocks || hasPendingOperations() || hasFallingBlocks) &&
-                               !(isBatteryQuality && !isActiveFrame && !hasFallingBlocks);
+                               (hasPhysicsBlocks || hasPendingOperations() || hasFallingBlocks || hasDebris) &&
+                               !(isBatteryQuality && !isActiveFrame && !hasFallingBlocks && !hasDebris);
     
     if (shouldUpdatePhysics) {
         updatePhysics(physics, deltaTime);
@@ -8523,7 +8618,8 @@ function animate() {
         
         // Check for level completion (all blocks cleared)
         // Only check if not generating a new level and level complete hasn't been shown yet
-        if (blocks.length === 0 && currentLevel >= 0 && !isGeneratingLevel && !levelCompleteShown) {
+        // Don't show level complete if time ran out (user failed)
+        if (blocks.length === 0 && currentLevel >= 0 && !isGeneratingLevel && !levelCompleteShown && !timeUpShown) {
             levelCompleteShown = true;
             stopTimer(); // Stop timer when level is complete
             // Save progress for the next level (currentLevel + 1) since they'll advance
