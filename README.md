@@ -64,6 +64,13 @@ npm run build
 
 ## Releases
 
+### v7.2.2 - Game Mechanics and UI Improvements
+- **Tree**: https://github.com/ozlphrt/Jarrows/tree/v7.2.2
+- **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v7.2.2
+- **Live**: https://ozlphrt.github.io/Jarrows/
+- Updated game mechanics and UI improvements
+- Enhanced block interactions and particle effects
+
 ### v7.2.1 - Mobile Zoom Padding Fix
 - **Tree**: https://github.com/ozlphrt/Jarrows/tree/v7.2.1
 - **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v7.2.1
