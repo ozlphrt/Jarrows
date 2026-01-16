@@ -96,8 +96,8 @@ export function createParticleSystem(maxParticles = 1000, scene) {
             colors[index * 3 + 1] = color.g * colorVariation;
             colors[index * 3 + 2] = color.b * colorVariation;
             
-            // Size variation
-            sizes[index] = 0.05 + Math.random() * 0.1;
+            // Size variation - slightly bigger particles for better visibility
+            sizes[index] = 0.08 + Math.random() * 0.15;
         }
         
         // Update geometry attributes

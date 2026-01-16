@@ -7,7 +7,7 @@ import { initStats, startLevelStats, trackMove, trackSpin, trackBlockRemoved, co
 import { updateLevelCompleteModal, showOfflineIndicator, hideOfflineIndicator, showPersonalHistoryModal, showProfileModal } from './stats/statsUI.js';
 import { isOnline, isLocalOnlyMode } from './stats/statsAPI.js';
 import { initAudio, playSound, toggleAudio, isAudioEnabled } from './audio.js';
-import { getInfernoDifficultyConfig } from './inferno_difficulty.js';
+import { getInfernoDifficultyConfig, getBigSpinCostMultiplier } from './inferno_difficulty.js';
 import { showMilestoneModal, showFeatureModal, showLevelUpdateModal } from './inferno_modals.js';
 import { getChangelogForVersion } from './changelog.js';
 import { createParticleSystem } from './particles.js';
@@ -848,7 +848,7 @@ const SPAWN_ZOOM_MULTIPLIER = 1.3; // Additional multiplier for spawn zoom
 // Desktop needs more zoom-out to prevent blocks going out of frame
 // Mobile can zoom in more to reduce wasted space on sides
 const AUTO_ZOOM_MULTIPLIER_DESKTOP = 1.4; // Desktop: minimal zoom to keep all blocks visible with minimal padding
-const AUTO_ZOOM_MULTIPLIER_MOBILE = 0.70; // Mobile: reduced multiplier to minimize side padding (moderate reduction from 0.75)
+const AUTO_ZOOM_MULTIPLIER_MOBILE = 0.72; // Mobile: slightly zoomed out for better viewport fit
 // Desktop-specific padding multiplier to ensure all blocks stay visible
 const DESKTOP_ZOOM_PADDING_MULTIPLIER = 1.15; // Minimal padding for desktop to keep all blocks visible
 // During generation, computing a world-space bounding box by expanding each block object
@@ -1079,6 +1079,8 @@ const physics = await initPhysics();
 let particleSystem = null;
 try {
     particleSystem = createParticleSystem(1000, scene);
+    // Expose globally for Block unlock animations
+    window.particleSystem = particleSystem;
 } catch (e) {
     console.warn('Failed to create particle system:', e);
 }
@@ -1772,38 +1774,76 @@ function timeChallengeApplySpinCost() {
     showSpinTimeCost(spent);
 }
 
-// Show spin time cost display prominently (larger than locked blocks timer)
+// Apply big spin cost (higher cost than regular spin)
+function timeChallengeApplyBigSpinCost() {
+    if (!isTimeBasedMode() || timeUpShown) return;
+    // Note: timeChallengeActive check removed - allow spin cost even if not yet active
+    // (timeChallengeActive might not be set during initialization)
+    
+    // Get big spin cost multiplier based on mode and level
+    let multiplier = 1/2; // Default for Time Challenge (1.5x regular 1/3)
+    if (isInfernoMode()) {
+        multiplier = getBigSpinCostMultiplier(currentLevel);
+    }
+    
+    // Cost: multiplier of remaining time
+    const before = timeLeftSec;
+    setTimeLeftSec(timeLeftSec * (1 - multiplier));
+    const delta = Math.trunc(timeLeftSec) - Math.trunc(before);
+    // Prefer to show a clear negative number of seconds.
+    const spent = Math.max(1, Math.ceil(before * multiplier));
+    
+    // Track total spin cost for this level
+    timeChallengeSpinCost += spent;
+    
+    // Play time removed sound effect (louder for big spin)
+    playSound('timeRemoved', 0.7);
+    
+    flashTimerDelta(-spent);
+    updateTimerDisplay();
+    
+    // Show prominent spin time cost display
+    showSpinTimeCost(spent);
+}
+
+// Show spin time cost display prominently (big, bold, centered)
 function showSpinTimeCost(seconds) {
-    const costItem = document.getElementById('spin-time-cost-item');
+    const overlay = document.getElementById('spin-time-cost-overlay');
     const costValue = document.getElementById('spin-time-cost-value');
     
-    if (!costItem || !costValue) return;
+    if (!overlay || !costValue) return;
     
-    // Format time as MM:SS
+    // Format time as "xx min xx sec"
     const minutes = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
-    const timeStr = `-${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    let timeStr = '';
+    if (minutes > 0) {
+        timeStr = `${minutes} min ${secs} sec`;
+    } else {
+        timeStr = `${secs} sec`;
+    }
+    timeStr = `-${timeStr}`;
     
     costValue.textContent = timeStr;
     
-    // Show with animation
-    costItem.style.display = 'inline-block';
-    costItem.style.opacity = '0';
-    costItem.style.transform = 'scale(1.2)';
-    costItem.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+    // Show with animation - centered on screen
+    overlay.style.display = 'block';
+    overlay.style.opacity = '0';
+    overlay.style.transform = 'translate(-50%, -50%) scale(1.3)';
+    overlay.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
     
     // Animate in
     requestAnimationFrame(() => {
-        costItem.style.opacity = '1';
-        costItem.style.transform = 'scale(1)';
+        overlay.style.opacity = '1';
+        overlay.style.transform = 'translate(-50%, -50%) scale(1)';
     });
     
     // Hide after 3 seconds with fade out
     setTimeout(() => {
-        costItem.style.opacity = '0';
-        costItem.style.transform = 'scale(0.9)';
+        overlay.style.opacity = '0';
+        overlay.style.transform = 'translate(-50%, -50%) scale(0.9)';
         setTimeout(() => {
-            costItem.style.display = 'none';
+            overlay.style.display = 'none';
         }, 300);
     }, 3000);
 }
@@ -7864,6 +7904,30 @@ let physicsUpdatedThisFrame = false; // Track if physics was updated this frame
 let lastSupportCheckTime = 0;
 // Support check interval is now calculated dynamically based on quality preset
 
+// FPS tracking
+let fpsFrameCount = 0;
+let fpsLastUpdate = performance.now();
+let fpsUpdateInterval = 500; // Update FPS display every 500ms
+let fpsEnabled = false; // Controlled by settings toggle
+
+// Expose fpsEnabled to window for settings toggle
+if (typeof window !== 'undefined') {
+    Object.defineProperty(window, 'fpsEnabled', {
+        get: () => fpsEnabled,
+        set: (value) => { fpsEnabled = value; }
+    });
+    
+    // Load FPS preference from localStorage on initialization
+    try {
+        const savedFpsEnabled = localStorage.getItem('jarrows_fps_enabled');
+        if (savedFpsEnabled === 'true') {
+            fpsEnabled = true;
+        }
+    } catch (e) {
+        console.warn('Failed to load FPS preference:', e);
+    }
+}
+
 // Cache block state flags to avoid full iteration every frame
 let cachedHasFallingBlocks = false;
 let cachedHasActiveAnimations = false;
@@ -7894,12 +7958,6 @@ let shadowUpdateCooldownUntilMs = 0;
 // Store target positions that are updated at intervals, then interpolate smoothly every frame
 let targetKeyLightPosition = null;
 let targetFillLightPosition = null;
-
-// FPS tracking
-let fpsFrameCount = 0;
-let fpsLastUpdate = performance.now();
-let fpsUpdateInterval = 500; // Update FPS display every 500ms
-const fpsElement = document.getElementById('fps-counter');
 
 function applyQualityPreset(nextPreset) {
     const normalized = (nextPreset === 'battery' || nextPreset === 'balanced' || nextPreset === 'performance')
@@ -8000,6 +8058,31 @@ function animate() {
 
     const deltaTime = (currentTime - lastTime) / 1000;
     lastTime = currentTime;
+    
+    // Update FPS counter if enabled
+    if (fpsEnabled) {
+        fpsFrameCount++;
+        if (currentTime - fpsLastUpdate >= fpsUpdateInterval) {
+            const fps = Math.round((fpsFrameCount * 1000) / (currentTime - fpsLastUpdate));
+            const fpsValue = document.getElementById('fps-value');
+            const fpsDisplay = document.getElementById('fps-display');
+            if (fpsValue) {
+                fpsValue.textContent = String(fps);
+            }
+            // Update color based on FPS: red < 30, yellow 30-50, green > 50
+            if (fpsDisplay) {
+                if (fps < 30) {
+                    fpsDisplay.style.color = '#ff6b6b'; // Red
+                } else if (fps >= 50) {
+                    fpsDisplay.style.color = '#51cf66'; // Green
+                } else {
+                    fpsDisplay.style.color = '#ffd43b'; // Yellow
+                }
+            }
+            fpsFrameCount = 0;
+            fpsLastUpdate = currentTime;
+        }
+    }
 
     // Time Challenge countdown (survival)
     // - drains in real time (1.0x)
@@ -8420,19 +8503,10 @@ function animate() {
         }
     }
     
-    // Update FPS counter
-    fpsFrameCount++;
-    if (currentTime - fpsLastUpdate >= fpsUpdateInterval) {
-        const fps = Math.round((fpsFrameCount * 1000) / (currentTime - fpsLastUpdate));
-        if (fpsElement) {
-            fpsElement.textContent = `FPS: ${fps}`;
-        }
-        const blockValueElement = document.getElementById('block-value');
-        if (blockValueElement) {
-            blockValueElement.textContent = blocks.length;
-        }
-        fpsFrameCount = 0;
-        fpsLastUpdate = currentTime;
+    // Update block count (FPS tracking moved to animate function)
+    const blockValueElement = document.getElementById('block-value');
+    if (blockValueElement) {
+        blockValueElement.textContent = blocks.length;
     }
     
     // Reset frame flag

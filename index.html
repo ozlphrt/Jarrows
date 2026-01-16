@@ -74,6 +74,29 @@
             box-sizing: border-box;
         }
         
+        /* FPS Display - top right */
+        #fps-display {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            z-index: 1000;
+            pointer-events: none;
+            color: rgba(255, 255, 255, 0.9);
+            background: rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            padding: 6px 12px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            font-weight: 700;
+            display: none;
+            align-items: center;
+            box-sizing: border-box;
+        }
+        
         /* Show stats bar after game initialization */
         body.game-initialized #stats-bar {
             display: inline-flex;
@@ -870,6 +893,43 @@
             }
         }
         
+        /* Spin Time Cost Overlay - Responsive adjustments */
+        @media (max-width: 768px) {
+            #spin-time-cost-overlay {
+                max-width: 90vw;
+                padding: 0 16px;
+            }
+            
+            #spin-time-cost-value {
+                font-size: 48px !important;
+                max-width: 100%;
+                word-wrap: break-word;
+                white-space: normal !important;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            #spin-time-cost-overlay {
+                max-width: 95vw;
+                padding: 0 12px;
+            }
+            
+            #spin-time-cost-value {
+                font-size: 36px !important;
+            }
+        }
+        
+        @media (max-width: 360px) {
+            #spin-time-cost-overlay {
+                max-width: 98vw;
+                padding: 0 8px;
+            }
+            
+            #spin-time-cost-value {
+                font-size: 28px !important;
+            }
+        }
+        
         /* Level Complete Modal */
         #level-complete-modal {
             display: none;
@@ -1641,11 +1701,21 @@
             <span class="stats-label" id="timer-level-label">Level:</span>
             <span class="stats-value" id="timer-level">0</span>
         </span>
-        <!-- Spin Time Cost Display - larger and more prominent than locked blocks timer -->
+        <!-- Legacy spin time cost display (kept for compatibility) -->
         <span class="stats-item" id="spin-time-cost-item" style="display: none; margin-left: 12px;">
             <span class="stats-label" style="color: #ff6b6b; font-weight: 700;">Time Lost:</span>
-            <span class="stats-value" id="spin-time-cost-value" style="color: #ff6b6b; font-size: 20px; font-weight: 900; text-shadow: 0 2px 4px rgba(255, 107, 107, 0.5);">-00:00</span>
+            <span class="stats-value" style="color: #ff6b6b; font-size: 20px; font-weight: 900; text-shadow: 0 2px 4px rgba(255, 107, 107, 0.5);">-00:00</span>
         </span>
+    </div>
+    
+    <!-- Spin Time Cost Display - centered overlay, big and bold (outside stats bar for true centering) -->
+    <div id="spin-time-cost-overlay" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 5000; pointer-events: none;">
+        <div id="spin-time-cost-value" style="color: #ff6b6b; font-size: 72px; font-weight: 900; text-shadow: 0 4px 8px rgba(0, 0, 0, 0.8), 0 0 20px rgba(255, 107, 107, 0.6); font-family: system-ui, -apple-system, sans-serif; text-align: center; white-space: nowrap;"></div>
+    </div>
+    
+    <!-- FPS Display - top right -->
+    <div id="fps-display" style="display: none;">
+        <span id="fps-value">60</span> FPS
     </div>
     
     <!-- Level Complete Modal -->
@@ -1801,6 +1871,9 @@
                         <polyline points="16 6 12 2 8 6"></polyline>
                         <line x1="12" y1="2" x2="12" y2="15"></line>
                     </svg>
+                </button>
+                <button class="toggle-icon" id="fps-toggle" title="Show FPS">
+                    <span style="font-size: 11px; font-weight: 900; letter-spacing: 0.8px;">FPS</span>
                 </button>
                 <div id="settings-version"
                     style="display:none; padding: 6px 10px; font-size: 11px; font-weight: 800; letter-spacing: 0.6px; opacity: 0.85; color: white; user-select: text;">
@@ -2466,6 +2539,64 @@
                     window.autoZoomEnabled = autoZoomEnabled;
                     updateAutoZoomIcon();
                     savePreferences();
+                });
+            }
+
+            // FPS toggle handler
+            const fpsToggle = document.getElementById('fps-toggle');
+            const fpsDisplay = document.getElementById('fps-display');
+            
+            // Load FPS preference from localStorage
+            try {
+                const savedFpsEnabled = localStorage.getItem('jarrows_fps_enabled');
+                if (savedFpsEnabled === 'true') {
+                    if (window.fpsEnabled !== undefined) {
+                        window.fpsEnabled = true;
+                    }
+                    if (fpsDisplay) fpsDisplay.style.display = 'flex';
+                    if (fpsToggle) fpsToggle.classList.add('active');
+                }
+            } catch (e) {
+                console.warn('Failed to load FPS preference:', e);
+            }
+            
+            function updateFpsDisplay() {
+                if (!fpsDisplay) return;
+                const enabled = window.fpsEnabled || false;
+                if (enabled) {
+                    fpsDisplay.style.display = 'flex';
+                } else {
+                    fpsDisplay.style.display = 'none';
+                }
+            }
+            
+            if (fpsToggle) {
+                // Initialize state
+                updateFpsDisplay();
+                
+                fpsToggle.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const currentState = window.fpsEnabled || false;
+                    const newState = !currentState;
+                    if (window.fpsEnabled !== undefined) {
+                        window.fpsEnabled = newState;
+                    }
+                    updateFpsDisplay();
+                    
+                    // Update toggle active state
+                    if (newState) {
+                        fpsToggle.classList.add('active');
+                    } else {
+                        fpsToggle.classList.remove('active');
+                    }
+                    
+                    // Save preference
+                    try {
+                        localStorage.setItem('jarrows_fps_enabled', String(newState));
+                    } catch (e) {
+                        console.warn('Failed to save FPS preference:', e);
+                    }
                 });
             }
 

@@ -274,6 +274,19 @@ function getSpinCostMultiplier(level) {
 }
 
 /**
+ * Get big spin cost multiplier (fraction of remaining time to charge)
+ * Big spin costs 1.5x the regular spin cost, capped at 95%
+ * Higher multiplier = more expensive big spins = harder
+ */
+export function getBigSpinCostMultiplier(level) {
+    const regularMultiplier = getSpinCostMultiplier(level);
+    // Big spin costs 1.5x the regular spin cost
+    const bigSpinMultiplier = regularMultiplier * 1.5;
+    // Cap at 95% (slightly higher than regular spin's 90% cap)
+    return Math.max(1/3, Math.min(0.95, bigSpinMultiplier));
+}
+
+/**
  * Get difficulty score threshold (minimum difficulty for puzzle generation)
  */
 function getDifficultyThreshold(level) {

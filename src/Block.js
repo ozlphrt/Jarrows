@@ -1,6 +1,33 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { createPhysicsBlock, removePhysicsBody, isPhysicsStepping, deferBodyCreation, deferBodyModification } from './physics.js';
+import { playSound, isAudioEnabled } from './audio.js';
+
+/**
+ * Safe telemetry logging - only sends if telemetry server is available
+ * Suppresses console errors when server is not running
+ */
+let telemetryAvailable = null; // null = not checked yet, true/false = cached result
+function safeTelemetry(data) {
+    // Only check once, then cache the result
+    if (telemetryAvailable === null) {
+        // Check if we're in a development environment that might have telemetry
+        // For now, disable by default to prevent console errors
+        telemetryAvailable = false;
+    }
+    
+    // Only attempt fetch if telemetry is available
+    if (telemetryAvailable) {
+        fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        }).catch(() => {
+            // Silently fail - telemetry server not available
+            telemetryAvailable = false; // Cache failure to avoid future attempts
+        });
+    }
+}
 
 /**
  * Movement/collision Y-overlap rules.
@@ -135,6 +162,9 @@ export class Block {
         this.lockFillMesh = null; // Fill mesh for lock time visualization
         this.lockFillGlowMesh = null; // Glow mesh for fill effect
         this.lockFillProgress = 0; // Fill progress (0.0 to 1.0)
+        this.isFlashing = false; // Track if block is in countdown flash mode
+        this.flashAnimationId = null; // Track flash animation frame ID
+        this.lastFlashTime = 0; // Track last flash toggle time
         this.scene = scene;
         this.physics = physics;
         this.gridSize = gridSize;
@@ -314,7 +344,7 @@ export class Block {
         this._towerGroupWorldY = calculatedTowerGroupWorldY;
         
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Block.js:268',message:'Creating physics body',data:{bodyPos,worldPos:{x:worldPos.x,y:worldPos.y,z:worldPos.z},sizeY,groupPos:{x:this.group.position.x,y:this.group.position.y,z:this.group.position.z},calculatedTowerGroupWorldY,pendingLinearVel:this.pendingLinearVel,wasCatapulted:this.wasCatapulted},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+        safeTelemetry({location:'Block.js:268',message:'Creating physics body',data:{bodyPos,worldPos:{x:worldPos.x,y:worldPos.y,z:worldPos.z},sizeY,groupPos:{x:this.group.position.x,y:this.group.position.y,z:this.group.position.z},calculatedTowerGroupWorldY,pendingLinearVel:this.pendingLinearVel,wasCatapulted:this.wasCatapulted},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'});
         // #endregion
         const physicsBody = createPhysicsBlock(
             this.physics,
@@ -1285,9 +1315,42 @@ export class Block {
         }
         this.lockFillProgress = 0;
         
+        // Stop countdown flash if active
+        this.stopCountdownFlash();
+        
         this.isLocked = false;
         this.lockEndTime = 0;
         this.isUnlocking = true;
+        
+        // Get length-based tint color for particle burst and flash
+        const colors = [0xff6b6b, 0x4ecdc4, 0xffc125]; // Red, Teal, Golden Yellow
+        const tintColorHex = colors[this.length - 1] || colors[0];
+        const tintColorObj = new THREE.Color(tintColorHex);
+        
+        // MASSIVE PARTICLE BURST: Dramatic explosion at unlock
+        if (typeof window !== 'undefined' && window.particleSystem && this.cubes && this.cubes.length > 0) {
+            try {
+                const blockCenter = new THREE.Vector3();
+                this.group.getWorldPosition(blockCenter);
+                // Huge explosion: 120-180 particles (was 80-120, originally 15-25)
+                const particleCount = 120 + Math.floor(Math.random() * 61);
+                // Very high velocity: 9.0-13.0 (was 7.0-10.0, originally 2.0-3.5) for dramatic effect
+                const velocity = 9.0 + Math.random() * 4.0;
+                window.particleSystem.addExplosion(blockCenter, tintColorObj, particleCount, velocity);
+            } catch (e) {
+                console.warn('[Unlock] Failed to spawn particle burst:', e);
+            }
+        }
+        
+        // OPTIONAL SOUND EFFECT: Play subtle unlock sound if audio is enabled
+        if (typeof isAudioEnabled === 'function' && isAudioEnabled()) {
+            // Use timeAdded sound as a subtle unlock indicator (can be replaced with dedicated sound later)
+            if (typeof playSound === 'function') {
+                playSound('timeAdded', 0.35).catch(() => {
+                    // Silently fail if sound can't play
+                });
+            }
+        }
         
         // Detect iOS for emissive intensity calculation
         const isIOS = (() => {
@@ -1323,13 +1386,10 @@ export class Block {
             emissiveIntensity: this.cubes[0]?.material?.userData?.originalEmissiveIntensity ?? 0.0
         };
         
-        // Get length-based tint color for interpolation
-        const colors = [0xff6b6b, 0x4ecdc4, 0xffc125]; // Red, Teal, Golden Yellow
-        const tintColorHex = colors[this.length - 1] || colors[0];
-        const tintColorObj = new THREE.Color(tintColorHex);
-        
         // Animation parameters
         const duration = 500; // 500ms transition
+        const flashDuration = 200; // 200ms flash effect
+        const flashPeakTime = 50; // Flash peaks at 50ms
         const startTime = performance.now();
         
         const animate = () => {
@@ -1339,6 +1399,20 @@ export class Block {
             // Easing function (ease-out for smooth transition)
             const eased = 1 - Math.pow(1 - progress, 3);
             
+            // BRIGHT FLASH EFFECT: Brief emissive pulse (0-200ms)
+            // Flash peaks at 50ms, then fades back
+            let flashIntensity = 0;
+            if (elapsed < flashDuration) {
+                if (elapsed <= flashPeakTime) {
+                    // Rising phase: 0ms to 50ms (0.0 to 1.0)
+                    flashIntensity = elapsed / flashPeakTime;
+                } else {
+                    // Fading phase: 50ms to 200ms (1.0 to 0.0)
+                    const fadeProgress = (elapsed - flashPeakTime) / (flashDuration - flashPeakTime);
+                    flashIntensity = 1.0 - fadeProgress; // Ease-out fade
+                }
+            }
+            
             // Interpolate opacity
             const currentOpacity = lockedState.opacity + (targetState.opacity - lockedState.opacity) * eased;
             
@@ -1346,8 +1420,12 @@ export class Block {
             const currentTintMix = lockedState.tintMix + (0 - lockedState.tintMix) * eased;
             const currentBrightness = lockedState.brightnessFactor + (1.0 - lockedState.brightnessFactor) * eased;
             
-            // Interpolate emissive intensity
-            const currentEmissiveIntensity = lockedState.emissiveIntensity + (targetState.emissiveIntensity - lockedState.emissiveIntensity) * eased;
+            // Calculate emissive intensity: combine flash with transition
+            // Flash adds extra intensity on top of the transition
+            const baseEmissiveIntensity = lockedState.emissiveIntensity + (targetState.emissiveIntensity - lockedState.emissiveIntensity) * eased;
+            // Flash intensity: 0.15 → 1.0 → 0.15 (adds 0.85 at peak)
+            const flashBoost = flashIntensity * 0.85; // Maximum flash boost
+            const currentEmissiveIntensity = baseEmissiveIntensity + flashBoost;
             
             // Apply to all cubes
             for (const cube of this.cubes) {
@@ -1363,13 +1441,28 @@ export class Block {
                         cube.material.color.copy(tintedColor).multiplyScalar(currentBrightness);
                     }
                     
-                    // Update emissive: interpolate from tint color to original
-                    const currentEmissive = new THREE.Color().lerpColors(
-                        tintColorObj,
-                        targetState.emissive,
-                        eased
-                    );
-                    cube.material.emissive.copy(currentEmissive);
+                    // Update emissive: flash uses tint color, then transitions to original
+                    if (flashIntensity > 0.01) {
+                        // During flash: blend between flash color (tint) and transition color
+                        // Flash color is pure tint color at peak
+                        const flashEmissive = tintColorObj.clone();
+                        // Transition emissive (normal unlock fade)
+                        const transitionEmissive = new THREE.Color().lerpColors(
+                            tintColorObj,
+                            targetState.emissive,
+                            eased
+                        );
+                        // Blend: more flash color when flash is strong, more transition when fading
+                        cube.material.emissive.lerpColors(transitionEmissive, flashEmissive, flashIntensity);
+                    } else {
+                        // After flash: normal transition
+                        const currentEmissive = new THREE.Color().lerpColors(
+                            tintColorObj,
+                            targetState.emissive,
+                            eased
+                        );
+                        cube.material.emissive.copy(currentEmissive);
+                    }
                     cube.material.emissiveIntensity = currentEmissiveIntensity;
                     cube.material.needsUpdate = true;
                 }
@@ -1525,10 +1618,126 @@ export class Block {
         // Update fill progress before checking expiration
         if (this.isLocked) {
             this.updateLockFillProgress();
+            
+            // Check if we should start flashing (5 seconds remaining)
+            const now = performance.now();
+            const remainingMs = this.lockEndTime - now;
+            const remainingSeconds = remainingMs / 1000;
+            
+            // Start flashing at 5 seconds remaining
+            if (remainingSeconds <= 5.0 && remainingSeconds > 0) {
+                if (!this.isFlashing) {
+                    this.startCountdownFlash();
+                }
+                // Update flash speed based on remaining time (faster as time runs out)
+                this.updateCountdownFlash(remainingSeconds);
+            }
         }
         
         if (this.isLocked && performance.now() >= this.lockEndTime) {
             this.unlockBlock();
+        }
+    }
+    
+    /**
+     * Start countdown flash animation (starts at 5 seconds remaining)
+     */
+    startCountdownFlash() {
+        if (this.isFlashing) return; // Already flashing
+        
+        this.isFlashing = true;
+        this.lastFlashTime = performance.now();
+        
+        // Get length-based tint color for flash
+        const colors = [0xff6b6b, 0x4ecdc4, 0xffc125]; // Red, Teal, Golden Yellow
+        const tintColorHex = colors[this.length - 1] || colors[0];
+        this.flashTintColor = new THREE.Color(tintColorHex);
+        
+        // Store original emissive values if not already stored
+        if (this.cubes && this.cubes.length > 0) {
+            for (const cube of this.cubes) {
+                if (cube.material) {
+                    if (cube.material.userData.originalEmissive === undefined) {
+                        cube.material.userData.originalEmissive = cube.material.emissive ? cube.material.emissive.clone() : new THREE.Color(0x000000);
+                    }
+                    if (cube.material.userData.originalEmissiveIntensity === undefined) {
+                        cube.material.userData.originalEmissiveIntensity = cube.material.emissiveIntensity !== undefined ? cube.material.emissiveIntensity : 0.15;
+                    }
+                }
+            }
+        }
+    }
+    
+    /**
+     * Update countdown flash animation - speed increases as time runs out
+     * @param {number} remainingSeconds - Seconds remaining until unlock
+     */
+    updateCountdownFlash(remainingSeconds) {
+        if (!this.isFlashing || !this.cubes || this.cubes.length === 0) return;
+        
+        // Calculate flash speed: linear transition from ~2 flashes/sec to ~20 flashes/sec
+        // At 5s: 2 flashes/sec = 0.5s period
+        // At 0s: 20 flashes/sec = 0.05s period
+        // Linear interpolation between these values
+        const minPeriod = 0.05; // Fastest flash period (at 0 seconds) = 20 flashes/sec
+        const maxPeriod = 0.5; // Slowest flash period (at 5 seconds) = 2 flashes/sec
+        const timeProgress = 1.0 - (remainingSeconds / 5.0); // 0.0 at 5s, 1.0 at 0s
+        // Linear interpolation (no easing curve)
+        const flashPeriod = maxPeriod - (timeProgress * (maxPeriod - minPeriod));
+        
+        const now = performance.now();
+        const timeSinceLastFlash = (now - this.lastFlashTime) / 1000; // Convert to seconds
+        
+        // Calculate flash state: alternate between on and off based on period
+        const cyclePosition = (timeSinceLastFlash % (flashPeriod * 2)) / flashPeriod;
+        const isFlashOn = cyclePosition < 1.0; // First half of cycle = ON, second half = OFF
+        
+        // Apply flash: bright emissive when on, normal when off
+        const baseEmissiveIntensity = this.cubes[0]?.material?.userData?.originalEmissiveIntensity ?? 0.15;
+        
+        for (const cube of this.cubes) {
+            if (cube.material) {
+                if (isFlashOn) {
+                    // Flash ON: bright tint color with high intensity
+                    cube.material.emissive.copy(this.flashTintColor);
+                    cube.material.emissiveIntensity = 1.2; // Very bright flash
+                } else {
+                    // Flash OFF: return to normal locked state
+                    const originalEmissive = cube.material.userData.originalEmissive || new THREE.Color(0x000000);
+                    cube.material.emissive.copy(originalEmissive);
+                    cube.material.emissiveIntensity = baseEmissiveIntensity;
+                }
+                cube.material.needsUpdate = true;
+            }
+        }
+        
+        // Update last flash time when we complete a full cycle
+        if (timeSinceLastFlash >= flashPeriod * 2) {
+            this.lastFlashTime = now;
+        }
+    }
+    
+    /**
+     * Stop countdown flash animation
+     */
+    stopCountdownFlash() {
+        if (!this.isFlashing) return;
+        
+        this.isFlashing = false;
+        if (this.flashAnimationId) {
+            cancelAnimationFrame(this.flashAnimationId);
+            this.flashAnimationId = null;
+        }
+        
+        // Restore normal locked state emissive
+        if (this.cubes && this.cubes.length > 0) {
+            for (const cube of this.cubes) {
+                if (cube.material && cube.material.userData.originalEmissive !== undefined) {
+                    cube.material.emissive.copy(cube.material.userData.originalEmissive);
+                    cube.material.emissiveIntensity = cube.material.userData.originalEmissiveIntensity || 0.15;
+                    cube.material.needsUpdate = true;
+                }
+            }
         }
     }
     
@@ -2098,15 +2307,15 @@ export class Block {
                             console.log('[Catapult] Applying velocity to physics body:', { x: vel.x, y: vel.y, z: vel.z });
                         }
                         // #region agent log
-                        fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Block.js:2007',message:'setLinvel called',data:{vel:{x:vel.x,y:vel.y,z:vel.z},pendingLinearVel:this.pendingLinearVel,wasCatapulted:this.wasCatapulted},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+                        safeTelemetry({location:'Block.js:2007',message:'setLinvel called',data:{vel:{x:vel.x,y:vel.y,z:vel.z},pendingLinearVel:this.pendingLinearVel,wasCatapulted:this.wasCatapulted},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'});
                         // #endregion
                         this.physicsBody.setLinvel(vel, true);
                         // #region agent log
                         try {
                             const readBack = this.physicsBody.linvel();
-                            fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Block.js:2010',message:'Velocity read back after setLinvel',data:{readBack:{x:readBack.x,y:readBack.y,z:readBack.z},wasSet:{x:vel.x,y:vel.y,z:vel.z},wasCatapulted:this.wasCatapulted},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+                            safeTelemetry({location:'Block.js:2010',message:'Velocity read back after setLinvel',data:{readBack:{x:readBack.x,y:readBack.y,z:readBack.z},wasSet:{x:vel.x,y:vel.y,z:vel.z},wasCatapulted:this.wasCatapulted},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'});
                         } catch(e) {
-                            fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Block.js:2012',message:'Failed to read back velocity',data:{error:String(e)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+                            safeTelemetry({location:'Block.js:2012',message:'Failed to read back velocity',data:{error:String(e)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'});
                         }
                         // #endregion
                     }
@@ -2172,7 +2381,7 @@ export class Block {
                     if (lv) { lvx = lv.x; lvy = lv.y; lvz = lv.z; }
                     // #region agent log
                     if (this.wasCatapulted && lv) {
-                        fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Block.js:2083',message:'Velocity during updateFromPhysics',data:{linvel:{x:lv.x,y:lv.y,z:lv.z},position:{x,y,z},wasCatapulted:this.wasCatapulted},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+                        safeTelemetry({location:'Block.js:2083',message:'Velocity during updateFromPhysics',data:{linvel:{x:lv.x,y:lv.y,z:lv.z},position:{x,y,z},wasCatapulted:this.wasCatapulted},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'});
                     }
                     // #endregion
                 }
@@ -2228,7 +2437,7 @@ export class Block {
             
             // #region agent log
             if (this.wasCatapulted) {
-                fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Block.js:2125',message:'Updating group position from physics',data:{physicsY:y,sizeY,towerGroupWorldY,newGroupY,oldGroupY:this.group.position.y,physicsPos:{x,y,z},calculation:'(y - sizeY/2) - towerGroupWorldY'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+                safeTelemetry({location:'Block.js:2125',message:'Updating group position from physics',data:{physicsY:y,sizeY,towerGroupWorldY,newGroupY,oldGroupY:this.group.position.y,physicsPos:{x,y,z},calculation:'(y - sizeY/2) - towerGroupWorldY'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'});
             }
             // #endregion
             this.group.position.set(
@@ -3448,7 +3657,7 @@ export class Block {
                         
                         console.warn('[Catapult] Launching block with velocity:', { velX, velY, velZ }, 'Direction:', { dirX, dirZ });
                         // #region agent log
-                        fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Block.js:3306',message:'Catapult fall() called',data:{velX,velY,velZ,dirX,dirZ,gridX:this.gridX,gridZ:this.gridZ,yOffset:this.yOffset},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+                        safeTelemetry({location:'Block.js:3306',message:'Catapult fall() called',data:{velX,velY,velZ,dirX,dirZ,gridX:this.gridX,gridZ:this.gridZ,yOffset:this.yOffset},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'});
                         // #endregion
                         this.fall(velX, velZ, velY);
                     } else {
@@ -3718,7 +3927,7 @@ export class Block {
                 console.log('[Catapult] Storing velocity:', this.pendingLinearVel, 'wasCatapulted:', this.wasCatapulted);
             }
             // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Block.js:3568',message:'pendingLinearVel set',data:{pendingLinearVel:this.pendingLinearVel,horizontalVelX,horizontalVelZ,verticalVelY,yVel,wasCatapulted:this.wasCatapulted},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+            safeTelemetry({location:'Block.js:3568',message:'pendingLinearVel set',data:{pendingLinearVel:this.pendingLinearVel,horizontalVelX,horizontalVelZ,verticalVelY,yVel,wasCatapulted:this.wasCatapulted},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'});
             // #endregion
         } else {
             // Fallback: use direction with moderate speed for natural continuation
