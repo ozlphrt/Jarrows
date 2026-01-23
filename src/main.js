@@ -42,7 +42,7 @@ function compareVersions(v1, v2) {
     const parts1 = v1.split('.').map(Number);
     const parts2 = v2.split('.').map(Number);
     const maxLength = Math.max(parts1.length, parts2.length);
-    
+
     for (let i = 0; i < maxLength; i++) {
         const part1 = parts1[i] || 0;
         const part2 = parts2[i] || 0;
@@ -77,10 +77,10 @@ async function handleUpdateReload() {
         window.location.reload();
         return;
     }
-    
+
     // Send skip waiting message to service worker
     swRegistration.waiting.postMessage({ type: 'SKIP_WAITING' });
-    
+
     // Wait for controller change (service worker took control)
     navigator.serviceWorker.addEventListener('controllerchange', () => {
         window.location.reload();
@@ -90,10 +90,10 @@ async function handleUpdateReload() {
 // Check for service worker updates
 async function checkForUpdates() {
     if (!swRegistration) return;
-    
+
     try {
         await swRegistration.update();
-        
+
         // Check if there's a waiting service worker
         if (swRegistration.waiting) {
             showUpdateNotification();
@@ -106,19 +106,19 @@ async function checkForUpdates() {
 // Initialize service worker update detection
 async function initServiceWorkerUpdates() {
     if (!('serviceWorker' in navigator)) return;
-    
+
     try {
         // Get service worker registration
         const registration = await navigator.serviceWorker.getRegistration();
         if (!registration) return;
-        
+
         swRegistration = registration;
-        
+
         // Listen for update found event
         registration.addEventListener('updatefound', () => {
             const newWorker = registration.installing;
             if (!newWorker) return;
-            
+
             newWorker.addEventListener('statechange', () => {
                 if (newWorker.state === 'installed') {
                     // New service worker is installed
@@ -134,15 +134,15 @@ async function initServiceWorkerUpdates() {
                 }
             });
         });
-        
+
         // Check if there's already a waiting service worker
         if (registration.waiting) {
             showUpdateNotification();
         }
-        
+
         // Periodically check for updates (every 60 seconds)
         updateCheckInterval = setInterval(checkForUpdates, 60000);
-        
+
         // Also check on visibility change (when user returns to tab)
         document.addEventListener('visibilitychange', () => {
             if (!document.hidden) {
@@ -159,13 +159,13 @@ function showChangelogModal(version) {
     const modal = document.getElementById('changelog-modal');
     const content = document.getElementById('changelog-content');
     if (!modal || !content) return;
-    
+
     const changelog = getChangelogForVersion(version);
     if (!changelog) {
         // No changelog for this version, don't show modal
         return;
     }
-    
+
     // Build changelog HTML
     let html = `<div style="margin-bottom: 16px;">`;
     html += `<div style="font-size: 18px; font-weight: 600; margin-bottom: 8px; opacity: 0.95;">Version ${version}</div>`;
@@ -183,7 +183,7 @@ function showChangelogModal(version) {
         html += `</div>`;
     }
     html += `</div>`;
-    
+
     content.innerHTML = html;
     modal.style.display = 'flex';
 }
@@ -199,18 +199,18 @@ function checkAndShowChangelog() {
     try {
         const currentVersion = parseVersionString(appVersionRaw);
         if (!currentVersion) return;
-        
+
         const lastSeenVersion = localStorage.getItem('jarrows_last_seen_version') || '';
-        
+
         // Compare versions
         if (lastSeenVersion && compareVersions(currentVersion, lastSeenVersion) <= 0) {
             // Current version is not newer than last seen, skip changelog
             return;
         }
-        
+
         // New version detected, show changelog
         showChangelogModal(currentVersion);
-        
+
         // Update last seen version
         localStorage.setItem('jarrows_last_seen_version', currentVersion);
     } catch (error) {
@@ -226,7 +226,7 @@ function debugTelemetry(data) {
         localStorage.getItem('jarrows_debug_telemetry') === '1'
     );
     if (!debugEnabled) return;
-    
+
     // Silently fail - don't show errors in console
     fetch('http://127.0.0.1:7242/ingest/0b1046b5-cc01-4f54-9eee-ab789885ebe3', {
         method: 'POST',
@@ -338,6 +338,7 @@ let isCameraDragging = false;
 let mouseDownPos = null;
 let mouseDownTime = null;
 const DRAG_THRESHOLD = 3; // pixels - minimum movement to consider it a drag
+const PAN_SENSITIVITY = 0.015; // World units per pixel for panning
 
 // Camera control state
 let isDraggingCamera = false;
@@ -354,11 +355,11 @@ renderer.domElement.addEventListener('mousedown', (event) => {
         currentAzimuth = targetAzimuth;
         currentElevation = targetElevation;
         currentRadius = targetRadius;
-        
+
         isDraggingCamera = true;
         lastMouseX = event.clientX;
         lastMouseY = event.clientY;
-        
+
         // Track for block click detection - simple version
         mouseDownPos = { x: event.clientX, y: event.clientY };
         mouseDownTime = performance.now();
@@ -367,14 +368,14 @@ renderer.domElement.addEventListener('mousedown', (event) => {
         return;
     }
 
-    // Right-click: framing tilt (matches dual-touch non-pinch drag)
+    // Right-click: Pan (free-form movement)
     if (event.button === 2) {
         event.preventDefault();
-        isRightDraggingFraming = true;
+        isRightDraggingFraming = true; // Reusing this flag for Pan to minimize state changes
         lastMouseX = event.clientX;
         lastMouseY = event.clientY;
         isDraggingCamera = false;
-        // Prevent block click selection after a framing drag
+        // Prevent block click selection after a pan drag
         isCameraDragging = true;
     }
 }, { passive: false });
@@ -383,20 +384,20 @@ renderer.domElement.addEventListener('mousemove', (event) => {
     if (isDraggingCamera) {
         const dx = event.clientX - lastMouseX;
         const dy = event.clientY - lastMouseY;
-        
+
         // Only update camera if there was actual movement
         if (dx !== 0 || dy !== 0) {
             // Update azimuth (horizontal rotation)
             targetAzimuth += dx * DRAG_SENSITIVITY;
-            
+
             // Update elevation (vertical rotation)
             targetElevation -= dy * DRAG_SENSITIVITY;
             targetElevation = Math.max(MIN_ELEVATION, Math.min(MAX_ELEVATION, targetElevation));
         }
-        
+
         lastMouseX = event.clientX;
         lastMouseY = event.clientY;
-        
+
         // Mark as camera drag ONLY if movement from mouseDownPos exceeds threshold
         // This prevents tiny movements from being treated as drags
         if (mouseDownPos) {
@@ -408,20 +409,35 @@ renderer.domElement.addEventListener('mousemove', (event) => {
             }
         }
     } else if (isRightDraggingFraming) {
+        // PANNING LOGIC (Replaces Framing Tilt)
+        const dx = event.clientX - lastMouseX;
         const dy = event.clientY - lastMouseY;
+        lastMouseX = event.clientX;
         lastMouseY = event.clientY;
 
-        // World-space framing tilt (look-at offset on +Y)
-        const next = clampFramingOffsetY(framingOffsetY + (dy * TWO_FINGER_FRAMING_SENSITIVITY));
-        if (next !== framingOffsetY) {
-            framingOffsetY = next;
-            if (typeof window !== 'undefined') window.framingOffsetY = framingOffsetY;
-            updateCameraPosition();
-            try {
-                localStorage.setItem('jarrows_framing', framingOffsetY.toString());
-            } catch {
-                // ignore
-            }
+        // Move targetTowerPositionOffset relative to camera view
+        // We use camera basis vectors to ensure pan follows user's view direction
+
+        // Camera Right vector (Column 0 of matrix)
+        const camRight = new THREE.Vector3();
+        camRight.setFromMatrixColumn(camera.matrix, 0);
+
+        // Camera Up vector (Column 1 of matrix)
+        const camUp = new THREE.Vector3();
+        camUp.setFromMatrixColumn(camera.matrix, 1);
+
+        // Apply pan (Drag World direction)
+        // -dx moves world right (revealing left content)
+        // +dy moves world down (revealing top content)
+        targetTowerPositionOffset.addScaledVector(camRight, -dx * PAN_SENSITIVITY);
+        targetTowerPositionOffset.addScaledVector(camUp, dy * PAN_SENSITIVITY);
+
+        // Ensure we wake up the render loop
+        const totalDx = event.clientX - mouseDownPos.x;
+        const totalDy = event.clientY - mouseDownPos.y;
+        const distance = Math.sqrt(totalDx * totalDx + totalDy * totalDy);
+        if (distance > DRAG_THRESHOLD) {
+            isCameraDragging = true;
         }
     } else if (mouseDownPos) {
         // Track mouse movement for block click detection
@@ -441,7 +457,7 @@ renderer.domElement.addEventListener('mouseup', (event) => {
     if (event.button === 2) {
         isRightDraggingFraming = false;
     }
-    
+
     // Simple: just clear mouseDownPos, keep isCameraDragging until next mousedown
     // This prevents click after drag
     mouseDownPos = null;
@@ -465,11 +481,11 @@ let lastWheelTime = 0;
 
 renderer.domElement.addEventListener('wheel', (event) => {
     event.preventDefault();
-    
+
     const now = performance.now();
     const timeSinceLastWheel = now - lastWheelTime;
     lastWheelTime = now;
-    
+
     // Only sync current radius to target radius when starting a new zoom gesture
     // (not on every wheel event, to allow smooth interpolation during rapid scrolling)
     if (!isZooming || timeSinceLastWheel > 100) {
@@ -477,7 +493,7 @@ renderer.domElement.addEventListener('wheel', (event) => {
         currentRadius = targetRadius;
         isZooming = true;
     }
-    
+
     // Reduced zoom speed for smoother feel (5% per step instead of 10%)
     const zoomSpeed = 0.05;
     const zoomFactor = 1 + (event.deltaY > 0 ? zoomSpeed : -zoomSpeed);
@@ -485,10 +501,10 @@ renderer.domElement.addEventListener('wheel', (event) => {
     targetRadius = Math.max(MIN_RADIUS, Math.min(MAX_RADIUS, targetRadius));
     // Sync smoothed auto-zoom radius to manual zoom so auto-zoom doesn't fight when it re-enables
     smoothedAutoZoomRadius = targetRadius;
-    
+
     // Disable auto-zoom when user manually zooms
     autoZoomDisabledUntilMs = performance.now() + AUTO_ZOOM_DISABLE_DURATION_MS;
-    
+
     // Reset zooming flag after a delay (user stopped zooming)
     clearTimeout(window.zoomTimeout);
     window.zoomTimeout = setTimeout(() => {
@@ -552,21 +568,21 @@ let countdownBounceStartTime = 0; // When current bounce animation started
 // Create countdown timer plane over the base plate
 function createCountdownTimer() {
     const visualBaseSize = 21;
-    
+
     // Create canvas for text rendering
     const canvasSize = 1024; // High resolution for crisp text
     const canvas = document.createElement('canvas');
     canvas.width = canvasSize;
     canvas.height = canvasSize;
     countdownTimerCanvas = canvas;
-    
+
     // Create texture from canvas
     const texture = new THREE.CanvasTexture(canvas);
     texture.needsUpdate = true;
     texture.minFilter = THREE.LinearFilter;
     texture.magFilter = THREE.LinearFilter;
     countdownTimerTexture = texture;
-    
+
     // Create material with transparency
     const material = new THREE.MeshStandardMaterial({
         map: texture,
@@ -578,20 +594,20 @@ function createCountdownTimer() {
         alphaTest: 0.1 // Discard transparent pixels
     });
     countdownTimerMaterial = material;
-    
+
     // Create plane geometry matching base plate size
     const geometry = new THREE.PlaneGeometry(visualBaseSize, visualBaseSize);
     const plane = new THREE.Mesh(geometry, material);
-    
+
     // Position above the grid (grid is at y=0.01, place timer at y=0.15 to allow shadows)
     plane.position.set(0, 0.15, 0);
     plane.rotation.x = -Math.PI / 2; // Rotate to lay flat (face up)
     plane.receiveShadow = true; // Allow blocks to cast shadows on it
     plane.castShadow = false;
-    
+
     countdownTimerPlane = plane;
     towerGroup.add(plane);
-    
+
     // Initial render - will update when timer becomes active
     // Don't call updateCountdownDisplay() here since timeLeftSec may not be initialized yet
 }
@@ -599,21 +615,21 @@ function createCountdownTimer() {
 // Update countdown bounce animation
 function updateCountdownBounce(timeLeftSec) {
     const currentValue = Math.ceil(timeLeftSec);
-    
+
     // Trigger bounce when number decreases
     if (currentValue < lastCountdownValue) {
         countdownBounceStartTime = performance.now();
         countdownBounceProgress = 1.0; // Start at peak
     }
     lastCountdownValue = currentValue;
-    
+
     // Update bounce animation progress
     if (countdownBounceProgress > 0) {
         const BOUNCE_DURATION_MS = 300; // 300ms bounce duration
         const bounceElapsed = performance.now() - countdownBounceStartTime;
         countdownBounceProgress = Math.max(0, 1 - (bounceElapsed / BOUNCE_DURATION_MS));
     }
-    
+
     // Calculate bounce scale (1.0 to 1.25, smooth ease-in-out)
     let bounceScale = 1.0;
     if (countdownBounceProgress > 0) {
@@ -630,23 +646,23 @@ function updateCountdownBounce(timeLeftSec) {
         }
         bounceScale = 1.0 + (easedBounce * 0.25); // Scale up to 1.25
     }
-    
+
     return bounceScale;
 }
 
 // Update the countdown timer display with smooth transitions
 function updateCountdownDisplay(bounceScale = 1.0) {
     if (!countdownTimerCanvas || !countdownTimerTexture) return;
-    
+
     // Guard against accessing timeLeftSec before initialization
     const currentTime = (typeof timeLeftSec !== 'undefined') ? timeLeftSec : 30;
-    
+
     const ctx = countdownTimerCanvas.getContext('2d');
     const size = countdownTimerCanvas.width;
-    
+
     // Clear canvas
     ctx.clearRect(0, 0, size, size);
-    
+
     // Display only the seconds (no minutes)
     // During animation, show precise value; otherwise use ceil (matching updateTimerDisplay logic)
     const displaySeconds = (typeof timeAnimationActive !== 'undefined' && timeAnimationActive)
@@ -654,45 +670,45 @@ function updateCountdownDisplay(bounceScale = 1.0) {
         : Math.max(0, Math.ceil(currentTime));
     // Display only seconds as integer
     const text = Math.ceil(displaySeconds).toString();
-    
+
     // Base font size
     const baseFontSize = Math.round(size * 0.6); // ~614px for 1024px canvas - fills extended base plate
-    
+
     // Apply bounce scale to font size
     const fontSize = Math.round(baseFontSize * bounceScale);
-    
+
     // Red neon outlined font styling
     ctx.fillStyle = 'rgba(0, 0, 0, 0)'; // Transparent fill
     ctx.strokeStyle = '#ff0000'; // Red outline
     ctx.lineWidth = 12;
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
-    
+
     // Use a bold, outlined font
     ctx.font = `900 ${fontSize}px Arial, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    
+
     // Add neon glow effect with multiple shadow layers
     ctx.shadowColor = '#ff0000';
     ctx.shadowBlur = 40;
     ctx.shadowOffsetX = 0;
     ctx.shadowOffsetY = 0;
-    
+
     // Draw outline multiple times for thicker neon effect
     for (let i = 0; i < 3; i++) {
         ctx.strokeText(text, size / 2, size / 2);
     }
-    
+
     // Add inner glow with slightly brighter red
     ctx.strokeStyle = '#ff3333';
     ctx.lineWidth = 6;
     ctx.shadowBlur = 20;
     ctx.strokeText(text, size / 2, size / 2);
-    
+
     // Reset shadow
     ctx.shadowBlur = 0;
-    
+
     // Mark texture for update
     countdownTimerTexture.needsUpdate = true;
 }
@@ -728,18 +744,18 @@ function setCountdownTimerVisible(visible) {
 // Toggle mystical view function
 function toggleMysticalView(enabled) {
     isMysticalView = enabled;
-    
+
     if (enabled) {
         // Enable mystical view - only change background and lighting
         // Keep base visible (no ground replacement)
         base.visible = true;
-        
+
         // Set mystical background
         setMysticalBackground(scene);
-        
+
         // No fog
         setupFog(scene, true, false);
-        
+
         // Optionally adjust lighting for softer look
         if (lights.ambientLight) {
             lights.ambientLight.intensity = 0.18; // Slightly higher ambient
@@ -751,13 +767,13 @@ function toggleMysticalView(enabled) {
         // Disable mystical view - restore normal view
         // Keep base visible
         base.visible = true;
-        
+
         // Restore dark background
         setGradientBackground(scene, 0x0f0f0f, 0x050505);
-        
+
         // No fog
         setupFog(scene, true, false);
-        
+
         // Restore original lighting
         if (lights.ambientLight) {
             lights.ambientLight.intensity = 0.10;
@@ -766,7 +782,7 @@ function toggleMysticalView(enabled) {
             lights.keyLight.intensity = 1.8;
         }
     }
-    
+
     // Save preference
     try {
         localStorage.setItem('jarrows_mystical_view', enabled ? '1' : '0');
@@ -792,45 +808,45 @@ function centerTower() {
 // Function to vertically center the tower based on block positions
 function centerTowerVertically() {
     // #region agent log
-    debugTelemetry({location:'main.js:centerTowerVertically:entry',message:'centerTowerVertically called',data:{blocksCount:blocks.length,isGeneratingLevel:isGeneratingLevel},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'});
+    debugTelemetry({ location: 'main.js:centerTowerVertically:entry', message: 'centerTowerVertically called', data: { blocksCount: blocks.length, isGeneratingLevel: isGeneratingLevel }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' });
     // #endregion
     if (blocks.length === 0) return;
-    
+
     let minY = Infinity;
     let maxY = -Infinity;
-    
+
     // Calculate min and max Y positions of all blocks
     for (const block of blocks) {
         if (block.isRemoved || block.isFalling) continue;
-        
+
         const blockHeight = block.isVertical ? block.length * block.cubeSize : block.cubeSize;
         const blockBottom = block.yOffset;
         const blockTop = blockBottom + blockHeight;
-        
+
         minY = Math.min(minY, blockBottom);
         maxY = Math.max(maxY, blockTop);
     }
-    
+
     if (minY === Infinity || maxY === -Infinity) return;
-    
+
     // Calculate center Y position
     const centerY = (minY + maxY) / 2;
-    
+
     // #region agent log
     const oldOffsetY = towerPositionOffset.y;
     // #endregion
-    
+
     // Adjust target tower position offset to center vertically (negative because we want to move the tower down)
     // Use target value for smooth interpolation instead of immediate change
     targetTowerPositionOffset.y = -centerY;
-    
+
     // Note: Actual towerPositionOffset.y will be interpolated smoothly in the animation loop
     // This prevents camera jumps when recentering
-    
+
     // #region agent log
-    debugTelemetry({location:'main.js:centerTowerVertically:exit',message:'Tower offset target changed',data:{minY:minY.toFixed(2),maxY:maxY.toFixed(2),centerY:centerY.toFixed(2),oldOffsetY:oldOffsetY.toFixed(2),newTargetOffsetY:targetTowerPositionOffset.y.toFixed(2),currentOffsetY:towerPositionOffset.y.toFixed(2),deltaY:(targetTowerPositionOffset.y-oldOffsetY).toFixed(2)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'});
+    debugTelemetry({ location: 'main.js:centerTowerVertically:exit', message: 'Tower offset target changed', data: { minY: minY.toFixed(2), maxY: maxY.toFixed(2), centerY: centerY.toFixed(2), oldOffsetY: oldOffsetY.toFixed(2), newTargetOffsetY: targetTowerPositionOffset.y.toFixed(2), currentOffsetY: towerPositionOffset.y.toFixed(2), deltaY: (targetTowerPositionOffset.y - oldOffsetY).toFixed(2) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' });
     // #endregion
-    
+
     console.log(`Tower vertically centered: minY=${minY.toFixed(2)}, maxY=${maxY.toFixed(2)}, centerY=${centerY.toFixed(2)}, targetOffsetY=${targetTowerPositionOffset.y.toFixed(2)}, currentOffsetY=${towerPositionOffset.y.toFixed(2)}`);
 }
 
@@ -839,23 +855,23 @@ const MIN_RADIUS = 5;
 const MAX_RADIUS = 50;
 const MIN_ELEVATION = -Math.PI / 2 + 0.1;
 const MAX_ELEVATION = Math.PI / 2 - 0.1;
-const ZOOM_PADDING = 2;
-const ZOOM_PADDING_MOBILE = 1.2; // Reduced padding for mobile to minimize side padding (moderate reduction from 2.0)
+const ZOOM_PADDING = 2.5; // Padding for desktop (increased to 2.5 to provide significant bottom clearance)
+const ZOOM_PADDING_MOBILE = 0.5; // Minimal padding for mobile
 const AUTO_ZOOM_MIN_BOUNDING_SIZE = 3; // Minimum bounding box size to prevent zooming in too much with few blocks
-const SPAWN_ZOOM_PADDING = 4; // Extra padding during spawn to show all blocks
-const SPAWN_ZOOM_MULTIPLIER = 1.3; // Additional multiplier for spawn zoom
+const SPAWN_ZOOM_PADDING = 1; // Minimal extra padding during spawn
+const SPAWN_ZOOM_MULTIPLIER = 1.05; // Minimal additional multiplier for spawn zoom
 // Auto-zoom multiplier: platform-aware - larger on desktop (zoom out more), smaller on mobile (zoom in more)
 // Desktop needs more zoom-out to prevent blocks going out of frame
 // Mobile can zoom in more to reduce wasted space on sides
-const AUTO_ZOOM_MULTIPLIER_DESKTOP = 1.4; // Desktop: minimal zoom to keep all blocks visible with minimal padding
-const AUTO_ZOOM_MULTIPLIER_MOBILE = 0.72; // Mobile: slightly zoomed out for better viewport fit
+const AUTO_ZOOM_MULTIPLIER_DESKTOP = 1.25; // Desktop: 1.25 for comfortable fit above UI
+const AUTO_ZOOM_MULTIPLIER_MOBILE = 1.05; // Mobile: very tight fit (5% margin)
 // Desktop-specific padding multiplier to ensure all blocks stay visible
-const DESKTOP_ZOOM_PADDING_MULTIPLIER = 1.15; // Minimal padding for desktop to keep all blocks visible
+const DESKTOP_ZOOM_PADDING_MULTIPLIER = 1.0; // No extra multiplier needed
 // During generation, computing a world-space bounding box by expanding each block object
 // (updateMatrixWorld + expandByObject) is expensive. Throttle it to avoid long rAF frames.
 const SPAWN_ZOOM_UPDATE_INTERVAL_MS = 120;
 const DRAG_SENSITIVITY = 0.0025; // Slightly increased for more responsive rotation
-const PAN_SENSITIVITY = 0.01;
+
 // Mobile touch rotation sensitivity (higher for faster rotation on mobile)
 const TOUCH_DRAG_SENSITIVITY = 0.004; // 60% faster than desktop for better mobile experience
 
@@ -877,43 +893,43 @@ let currentElevation = cameraElevation;
 // Calculate initial camera position to show entire base plate
 function calculateInitialCameraPosition() {
     // #region agent log
-    debugTelemetry({location:'main.js:calculateInitialCameraPosition:entry',message:'Initial camera position calculation',data:{isGeneratingLevel:isGeneratingLevel},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'});
+    debugTelemetry({ location: 'main.js:calculateInitialCameraPosition:entry', message: 'Initial camera position calculation', data: { isGeneratingLevel: isGeneratingLevel }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'D' });
     // #endregion
     // Ensure camera aspect is up to date
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
-    
+
     // Base plate dimensions
     const basePlateSize = gridSize * cubeSize; // 7 units
     const basePlateDiagonal = Math.sqrt(basePlateSize * basePlateSize * 2);
-    
+
     // Calculate required distance to fit base plate in view
     // Account for both horizontal and vertical FOV
     const fov = camera.fov * (Math.PI / 180); // Convert to radians
     const aspect = camera.aspect;
-    
+
     // Calculate for horizontal (width/depth) - use diagonal and aspect ratio
     // Use mobile-specific padding for mobile devices to reduce side padding
     const initialPadding = isMobileLike ? ZOOM_PADDING_MOBILE : ZOOM_PADDING;
     const horizontalDistance = (basePlateDiagonal + initialPadding) / (2 * Math.tan(fov / 2) * aspect);
-    
+
     // Calculate for vertical (height) - use more accurate initial estimate
     // Start with a smaller estimate since auto-zoom will adjust immediately after spawn
     const estimatedTowerHeight = 6; // Reduced from 10 - auto-zoom will fine-tune after spawn
     const verticalDistance = (estimatedTowerHeight + initialPadding) / (2 * Math.tan(fov / 2));
-    
+
     // Use the larger distance with reduced safety margin since auto-zoom handles fine-tuning
-    const requiredDistance = Math.max(horizontalDistance, verticalDistance) * 1.15; // 15% safety margin (reduced from 30%)
-    
+    const requiredDistance = Math.max(horizontalDistance, verticalDistance) * 1.05; // 5% safety margin (minimal padding)
+
     // Set initial values
     cameraRadius = Math.max(MIN_RADIUS, Math.min(MAX_RADIUS, requiredDistance));
     cameraElevation = Math.PI / 4; // 45°
     cameraAzimuth = Math.PI / 4; // 45° (diagonal view)
-    
+
     // #region agent log
     const oldTargetRadius = targetRadius;
     // #endregion
-    
+
     // Set target and current values
     targetRadius = cameraRadius;
     targetAzimuth = cameraAzimuth;
@@ -923,9 +939,9 @@ function calculateInitialCameraPosition() {
     currentElevation = cameraElevation;
     // Initialize smoothed auto-zoom radius
     smoothedAutoZoomRadius = cameraRadius;
-    
+
     // #region agent log
-    debugTelemetry({location:'main.js:calculateInitialCameraPosition:exit',message:'Initial camera position set',data:{basePlateDiagonal:basePlateDiagonal.toFixed(2),horizontalDistance:horizontalDistance.toFixed(2),verticalDistance:verticalDistance.toFixed(2),requiredDistance:requiredDistance.toFixed(2),oldTargetRadius:oldTargetRadius.toFixed(2),newTargetRadius:targetRadius.toFixed(2),currentRadius:currentRadius.toFixed(2),elevation:(cameraElevation*180/Math.PI).toFixed(2)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'});
+    debugTelemetry({ location: 'main.js:calculateInitialCameraPosition:exit', message: 'Initial camera position set', data: { basePlateDiagonal: basePlateDiagonal.toFixed(2), horizontalDistance: horizontalDistance.toFixed(2), verticalDistance: verticalDistance.toFixed(2), requiredDistance: requiredDistance.toFixed(2), oldTargetRadius: oldTargetRadius.toFixed(2), newTargetRadius: targetRadius.toFixed(2), currentRadius: currentRadius.toFixed(2), elevation: (cameraElevation * 180 / Math.PI).toFixed(2) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'D' });
     // #endregion
 }
 
@@ -985,29 +1001,29 @@ if (typeof window !== 'undefined') {
 function updateCameraPosition() {
     // Calculate effective tower center (with offset)
     _effectiveTowerCenter.copy(towerCenter).add(towerPositionOffset);
-    
+
     // Convert spherical to Cartesian coordinates
     const x = currentRadius * Math.sin(currentElevation) * Math.cos(currentAzimuth);
     const y = currentRadius * Math.cos(currentElevation);
     const z = currentRadius * Math.sin(currentElevation) * Math.sin(currentAzimuth);
-    
+
     // Set camera position
     camera.position.set(
         _effectiveTowerCenter.x + x,
         _effectiveTowerCenter.y + y,
         _effectiveTowerCenter.z + z
     );
-    
+
     // Look at a point above tower center to move base plate down in frame (closer to bottom).
     // Two-finger drag adjusts this by changing the WORLD-space look-at target.
     _lookAtOffset.set(0, framingOffsetY, 0);
     _lookAtTarget.copy(_effectiveTowerCenter).add(_lookAtOffset);
     camera.lookAt(_lookAtTarget);
-    
+
     // Update tower group position
     towerGroup.position.copy(towerCenter.clone().add(towerPositionOffset));
     towerGroup.rotation.set(0, 0, 0); // Always locked to zero
-    
+
     // #region agent log
     // REMOVED: Per-frame telemetry call was causing ERR_INSUFFICIENT_RESOURCES
     // This was making fetch requests every frame, overwhelming the browser
@@ -1023,52 +1039,52 @@ function updateCameraPosition() {
 // Update lights to follow camera angle
 function updateLightsForCamera(lights, azimuth, elevation, center) {
     if (!lights) return;
-    
+
     // Calculate camera direction vector (normalized)
     const cameraDirX = Math.sin(elevation) * Math.cos(azimuth);
     const cameraDirY = Math.cos(elevation);
     const cameraDirZ = Math.sin(elevation) * Math.sin(azimuth);
-    
+
     const cameraDirection = new THREE.Vector3(cameraDirX, cameraDirY, cameraDirZ).normalize();
-    
+
     // Minimum angle above base plate: 30 degrees
     // tan(30°) ≈ 0.577, so y >= 0.577 * sqrt(x² + z²)
     const minAngleRad = Math.PI / 6; // 30 degrees
     const minTanAngle = Math.tan(minAngleRad); // ≈ 0.577
-    
+
     // Key light: positioned more towards camera to increase shadows and reflections visible from camera
     // Position light closer to camera direction but slightly offset to create visible shadows
     const keyLightDistance = 30;
     // Offset the light slightly to the side and above camera to create dramatic shadows
     const keyLightOffset = new THREE.Vector3(
-        cameraDirection.x * 0.3 + Math.sin(azimuth + Math.PI/4) * 0.2,
+        cameraDirection.x * 0.3 + Math.sin(azimuth + Math.PI / 4) * 0.2,
         cameraDirection.y * 0.5 + 0.3, // More elevation for better shadows
-        cameraDirection.z * 0.3 + Math.cos(azimuth + Math.PI/4) * 0.2
+        cameraDirection.z * 0.3 + Math.cos(azimuth + Math.PI / 4) * 0.2
     );
     let keyLightPos = cameraDirection.clone().multiplyScalar(keyLightDistance).add(keyLightOffset);
-    
+
     // Ensure minimum 30° angle above base plate
     const keyHorizontalDist = Math.sqrt(keyLightPos.x * keyLightPos.x + keyLightPos.z * keyLightPos.z);
     const minKeyY = keyHorizontalDist * minTanAngle;
     if (keyLightPos.y < minKeyY) {
         keyLightPos.y = minKeyY;
     }
-    
+
     // Store target position for smooth interpolation (prevents jitter in battery mode)
     targetKeyLightPosition = center.clone().add(keyLightPos);
-    
+
     // Fill light: minimal fill light for dramatic shadows (positioned opposite to key light)
     const fillLightDistance = 25;
     let fillLightPos = cameraDirection.clone().multiplyScalar(-fillLightDistance);
     fillLightPos.y += 6; // Keep it elevated but lower for more shadow contrast
-    
+
     // Ensure minimum 30° angle above base plate
     const fillHorizontalDist = Math.sqrt(fillLightPos.x * fillLightPos.x + fillLightPos.z * fillLightPos.z);
     const minFillY = fillHorizontalDist * minTanAngle;
     if (fillLightPos.y < minFillY) {
         fillLightPos.y = minFillY;
     }
-    
+
     targetFillLightPosition = center.clone().add(fillLightPos);
 }
 
@@ -1093,14 +1109,14 @@ try {
     console.warn('Failed to create debris manager:', e);
 }
 
-    // Initialize stats system
-    await initStats();
+// Initialize stats system
+await initStats();
 
-    // Initialize audio system
-    await initAudio();
-    
-    // Mark game as initialized to show stats bar
-    document.body.classList.add('game-initialized');
+// Initialize audio system
+await initAudio();
+
+// Mark game as initialized to show stats bar
+document.body.classList.add('game-initialized');
 
 // Initialize service worker update detection
 await initServiceWorkerUpdates();
@@ -1173,10 +1189,10 @@ window.debugJumpToLevel = async (level) => {
 };
 
 const directions = [
-    {x: 1, z: 0},   // East
-    {x: -1, z: 0},  // West
-    {x: 0, z: 1},   // South
-    {x: 0, z: -1}   // North
+    { x: 1, z: 0 },   // East
+    { x: -1, z: 0 },  // West
+    { x: 0, z: 1 },   // South
+    { x: 0, z: -1 }   // North
 ];
 
 // Leveling system
@@ -1317,7 +1333,7 @@ function migrateToInfernoMode() {
 
         // Take the maximum level from all modes
         const maxLevel = Math.max(freeFlowLevel, timeChallengeLevel, infernoLevel);
-        
+
         console.log('[Migration] Levels found:', {
             freeFlow: freeFlowLevel,
             timeChallenge: timeChallengeLevel,
@@ -1328,10 +1344,10 @@ function migrateToInfernoMode() {
         // Save to inferno storage (use max level, or 1 if no progress exists)
         const levelToSave = maxLevel > 0 ? maxLevel : 1;
         localStorage.setItem(STORAGE_KEY_INFERNO, levelToSave.toString());
-        
+
         // Set game mode to inferno
         localStorage.setItem(GAME_MODE_KEY, MODE_INFERNO);
-        
+
         // Update highest level if needed
         const highestLevel = parseInt(localStorage.getItem(STORAGE_HIGHEST_LEVEL_KEY) || '0', 10);
         if (levelToSave > highestLevel) {
@@ -1340,7 +1356,7 @@ function migrateToInfernoMode() {
 
         // Mark migration as complete
         localStorage.setItem(MIGRATION_TO_INFERNO_KEY, '1');
-        
+
         console.log('[Migration] Migration complete. User starts at level', levelToSave, 'in inferno mode');
     } catch (e) {
         console.error('[Migration] Failed to migrate to inferno mode:', e);
@@ -1361,11 +1377,11 @@ function resetAllProgress() {
     try {
         const storedVersion = localStorage.getItem(STORAGE_VERSION_KEY);
         const resetFlag = localStorage.getItem(RESET_FLAG_KEY);
-        const hasExistingProgress = localStorage.getItem(STORAGE_KEY) !== null || 
-                                    localStorage.getItem(STORAGE_KEY_TIME_CHALLENGE) !== null ||
-                                    localStorage.getItem(STORAGE_KEY_INFERNO) !== null ||
-                                    localStorage.getItem(STORAGE_HIGHEST_LEVEL_KEY) !== null;
-        
+        const hasExistingProgress = localStorage.getItem(STORAGE_KEY) !== null ||
+            localStorage.getItem(STORAGE_KEY_TIME_CHALLENGE) !== null ||
+            localStorage.getItem(STORAGE_KEY_INFERNO) !== null ||
+            localStorage.getItem(STORAGE_HIGHEST_LEVEL_KEY) !== null;
+
         // Only reset if user has no existing progress (new user)
         // Otherwise, just update version without clearing
         if (storedVersion !== CURRENT_STORAGE_VERSION) {
@@ -1405,10 +1421,10 @@ function setBodyModeClass() {
     try {
         // Remove all mode classes first
         document.body.classList.remove('mode-time-challenge', 'mode-inferno', 'mode-free-flow');
-        
+
         // Always use inferno mode class
         document.body.classList.add('mode-inferno');
-        
+
         // Update game mode display
         updateGameModeDisplay();
     } catch {
@@ -1420,7 +1436,7 @@ function updateGameModeDisplay() {
     try {
         const modeValueEl = document.getElementById('game-mode-value');
         if (!modeValueEl) return;
-        
+
         // Always show INFERNO mode
         modeValueEl.textContent = 'INFERNO';
     } catch {
@@ -1470,40 +1486,40 @@ function animateTimeAddition(deltaSeconds) {
         console.log('[Time Challenge] Animation skipped - mode check failed:', { isTimeChallengeMode: isTimeChallengeMode(), isInfernoMode: isInfernoMode(), timeChallengeActive });
         return;
     }
-    
+
     const deltaInt = Math.trunc(deltaSeconds);
     if (deltaInt === 0) {
         console.log('[Time Challenge] Animation skipped - delta is 0');
         return;
     }
-    
+
     // If animation is already running, add to target
     if (timeAnimationActive) {
         console.log('[Time Challenge] Animation already running, adding to target:', deltaInt);
         timeAnimationTarget += deltaInt;
         return;
     }
-    
+
     // Start new animation
     console.log('[Time Challenge] Starting animation:', { deltaInt, from: timeLeftSec, to: timeLeftSec + deltaInt });
     timeAnimationActive = true;
     timeAnimationStart = timeLeftSec;
     timeAnimationTarget = timeLeftSec + deltaInt;
-    
+
     const startTime = performance.now();
-    
+
     function animate(currentTime) {
         if (!timeAnimationActive) {
             // Animation was cancelled, exit
             return;
         }
-        
+
         const elapsed = currentTime - startTime;
         const progress = Math.min(elapsed / timeAnimationDuration, 1.0);
-        
+
         // Ease-out curve for smooth animation
         const eased = 1 - Math.pow(1 - progress, 3);
-        
+
         // Interpolate time value (countdown is paused during animation, so safe to set directly)
         const newTime = timeAnimationStart + (timeAnimationTarget - timeAnimationStart) * eased;
         setTimeLeftSec(Math.max(0, newTime)); // Ensure non-negative
@@ -1511,7 +1527,7 @@ function animateTimeAddition(deltaSeconds) {
         updateTimerDisplay();
         // Also update lastTimerUiMs to prevent throttling from skipping this update
         lastTimerUiMs = currentTime;
-        
+
         if (progress < 1.0) {
             requestAnimationFrame(animate);
         } else {
@@ -1520,7 +1536,7 @@ function animateTimeAddition(deltaSeconds) {
             updateTimerDisplay();
             timeAnimationActive = false;
             console.log('[Time Challenge] Animation complete, final time:', timeLeftSec);
-            
+
             // Check if there's more to animate (if target was updated during animation)
             // This shouldn't happen since we add to target, but just in case
             const finalTarget = timeAnimationTarget;
@@ -1533,7 +1549,7 @@ function animateTimeAddition(deltaSeconds) {
             }
         }
     }
-    
+
     // Start animation immediately
     requestAnimationFrame(animate);
 }
@@ -1664,19 +1680,19 @@ function timeChallengeResetRun() {
 
 function timeChallengeStartNewLevel(blocksArray) {
     // #region agent log
-    debugTelemetry({location:'main.js:timeChallengeStartNewLevel:entry',message:'timeChallengeStartNewLevel called',data:{isTimeBasedMode:isTimeBasedMode(),blocksCount:blocksArray?blocksArray.length:0,currentLevel:currentLevel},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'});
+    debugTelemetry({ location: 'main.js:timeChallengeStartNewLevel:entry', message: 'timeChallengeStartNewLevel called', data: { isTimeBasedMode: isTimeBasedMode(), blocksCount: blocksArray ? blocksArray.length : 0, currentLevel: currentLevel }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H2' });
     // #endregion
     if (!isTimeBasedMode()) return;
-    
+
     // Calculate base time by summing actual block lengths
     // Length 1 (Red) = 1 second, Length 2 (Teal) = 2 seconds, Length 3+ (Yellow) = 3 seconds
     let calculatedTime = 0;
     for (const block of blocksArray) {
         calculatedTime += timeChallengeGetColorBonusSeconds(block.length);
     }
-    
+
     const minTime = 30; // Minimum 30 seconds
-    
+
     // Initial time = max(30, sum of block lengths) + residual from previous level
     setTimeLeftSec(Math.max(minTime, calculatedTime) + timeChallengeResidualSec);
     timeChallengeInitialTime = timeLeftSec; // Track initial time for this level
@@ -1687,19 +1703,19 @@ function timeChallengeStartNewLevel(blocksArray) {
     timeChallengeTimeCollected = 0; // Reset time collected counter for this level
     timeChallengeSpinCost = 0; // Reset spin cost counter for this level
     timeChallengeResidualSec = 0; // Clear residual after using it
-    
+
     // Keep removal counter cumulative across levels (for per-removal bonuses)
     // Don't reset timeChallengeRemovals here
-    
+
     const wasActive = timeChallengeActive;
     timeChallengeActive = true;
     timeUpShown = false;
     setTimeFrozen('time_up', false);
-    
+
     // #region agent log
-    debugTelemetry({location:'main.js:timeChallengeStartNewLevel:exit',message:'timeChallengeStartNewLevel completed',data:{wasActive:wasActive,nowActive:timeChallengeActive,timeLeftSec:timeLeftSec},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'});
+    debugTelemetry({ location: 'main.js:timeChallengeStartNewLevel:exit', message: 'timeChallengeStartNewLevel completed', data: { wasActive: wasActive, nowActive: timeChallengeActive, timeLeftSec: timeLeftSec }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H2' });
     // #endregion
-    
+
     updateTimerDisplay();
 }
 
@@ -1722,21 +1738,21 @@ function timeChallengeGetColorBonusSeconds(blockLength) {
 }
 
 function timeChallengeAwardForBlockRemoved(blockLength) {
-    if (!isTimeBasedMode() || !timeChallengeActive || timeUpShown) return;
-    
+    if (!isTimeBasedMode() || timeUpShown) return;
+
     timeChallengeRemovals += 1;
     // Simplified: only use color bonus based on block length
     const gained = timeChallengeGetColorBonusSeconds(blockLength);
     timeChallengeTimeCollected += gained; // Track time collected this level
     timeChallengeTimeCollectedAllTime += gained; // Track cumulative time collected across all levels
-    
+
     // Add time immediately (like spin does), then show flash animation
     const before = timeLeftSec;
     setTimeLeftSec(timeLeftSec + gained);
-    
+
     // Play time added sound effect
     playSound('timeAdded', 0.6);
-    
+
     // Show flash animation (same as spin)
     flashTimerDelta(gained);
     updateTimerDisplay();
@@ -1746,30 +1762,30 @@ function timeChallengeApplySpinCost() {
     if (!isTimeBasedMode() || timeUpShown) return;
     // Note: timeChallengeActive check removed - allow spin cost even if not yet active
     // (timeChallengeActive might not be set during initialization)
-    
+
     // Get spin cost multiplier based on mode and level
-    let multiplier = 1/3; // Default for Time Challenge
+    let multiplier = 1 / 3; // Default for Time Challenge
     if (isInfernoMode()) {
         const config = getInfernoDifficultyConfig(currentLevel);
         multiplier = config.spinCostMultiplier;
     }
-    
+
     // Cost: multiplier of remaining time
     const before = timeLeftSec;
     setTimeLeftSec(timeLeftSec * (1 - multiplier));
     const delta = Math.trunc(timeLeftSec) - Math.trunc(before);
     // Prefer to show a clear negative number of seconds.
     const spent = Math.max(1, Math.ceil(before * multiplier));
-    
+
     // Track total spin cost for this level
     timeChallengeSpinCost += spent;
-    
+
     // Play time removed sound effect
     playSound('timeRemoved', 0.5);
-    
+
     flashTimerDelta(-spent);
     updateTimerDisplay();
-    
+
     // Show prominent spin time cost display
     showSpinTimeCost(spent);
 }
@@ -1779,29 +1795,29 @@ function timeChallengeApplyBigSpinCost() {
     if (!isTimeBasedMode() || timeUpShown) return;
     // Note: timeChallengeActive check removed - allow spin cost even if not yet active
     // (timeChallengeActive might not be set during initialization)
-    
+
     // Get big spin cost multiplier based on mode and level
-    let multiplier = 1/2; // Default for Time Challenge (1.5x regular 1/3)
+    let multiplier = 1 / 2; // Default for Time Challenge (1.5x regular 1/3)
     if (isInfernoMode()) {
         multiplier = getBigSpinCostMultiplier(currentLevel);
     }
-    
+
     // Cost: multiplier of remaining time
     const before = timeLeftSec;
     setTimeLeftSec(timeLeftSec * (1 - multiplier));
     const delta = Math.trunc(timeLeftSec) - Math.trunc(before);
     // Prefer to show a clear negative number of seconds.
     const spent = Math.max(1, Math.ceil(before * multiplier));
-    
+
     // Track total spin cost for this level
     timeChallengeSpinCost += spent;
-    
+
     // Play time removed sound effect (louder for big spin)
     playSound('timeRemoved', 0.7);
-    
+
     flashTimerDelta(-spent);
     updateTimerDisplay();
-    
+
     // Show prominent spin time cost display
     showSpinTimeCost(spent);
 }
@@ -1810,9 +1826,9 @@ function timeChallengeApplyBigSpinCost() {
 function showSpinTimeCost(seconds) {
     const overlay = document.getElementById('spin-time-cost-overlay');
     const costValue = document.getElementById('spin-time-cost-value');
-    
+
     if (!overlay || !costValue) return;
-    
+
     // Format time as "xx min xx sec"
     const minutes = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
@@ -1823,21 +1839,21 @@ function showSpinTimeCost(seconds) {
         timeStr = `${secs} sec`;
     }
     timeStr = `-${timeStr}`;
-    
+
     costValue.textContent = timeStr;
-    
+
     // Show with animation - centered on screen
     overlay.style.display = 'block';
     overlay.style.opacity = '0';
     overlay.style.transform = 'translate(-50%, -50%) scale(1.3)';
     overlay.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
-    
+
     // Animate in
     requestAnimationFrame(() => {
         overlay.style.opacity = '1';
         overlay.style.transform = 'translate(-50%, -50%) scale(1)';
     });
-    
+
     // Hide after 3 seconds with fade out
     setTimeout(() => {
         overlay.style.opacity = '0';
@@ -1885,27 +1901,27 @@ function triggerGameOverExplosion() {
         console.warn('Debris manager or particle system not available');
         return;
     }
-    
+
     // Get all blocks that should explode (not already removed/exploding)
-    const blocksToExplode = blocks.filter(block => 
-        block && 
-        !block.isRemoved && 
-        !block.isExploding && 
+    const blocksToExplode = blocks.filter(block =>
+        block &&
+        !block.isRemoved &&
+        !block.isExploding &&
         !block.isFalling &&
         !block.isAnimating
     );
-    
+
     if (blocksToExplode.length === 0) {
         return; // No blocks to explode
     }
-    
+
     // Randomize block order for visual variety
     const shuffled = [...blocksToExplode];
     for (let i = shuffled.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
     }
-    
+
     // Explode blocks sequentially with MORE RANDOM staggered delays
     // Each block gets its own random delay for more varied timing
     shuffled.forEach((block, index) => {
@@ -1915,28 +1931,34 @@ function triggerGameOverExplosion() {
         const delay = baseDelay + randomDelay;
         block.explodeIntoDebris(debrisManager, particleSystem, delay);
     });
-    
+
     console.log(`[Game Over] Exploding ${shuffled.length} blocks sequentially`);
 }
 
 function showTimeUpModal() {
     const modal = document.getElementById('time-up-modal');
     if (!modal) return;
-    
+
+    // Update level display
+    const levelDisplay = document.getElementById('time-up-level');
+    if (levelDisplay) {
+        levelDisplay.textContent = currentLevel.toString();
+    }
+
     // Trigger explosion animation first (before modal appears)
     triggerGameOverExplosion();
-    
+
     setTimeFrozen('time_up', true);
     timeUpShown = true;
-    
+
     // Remove animation class first to reset state
     modal.classList.remove('game-over-modal-entering');
-    
+
     // Show modal after debris animation has time to play (2-3 seconds)
     // Simple restart button at bottom doesn't block the debris animation view
     setTimeout(() => {
         modal.style.display = 'flex';
-        
+
         // Add animation class after display is set to trigger CSS transitions
         // Use requestAnimationFrame to ensure the browser processes the display change first
         requestAnimationFrame(() => {
@@ -1954,7 +1976,7 @@ async function restartTimeChallengeLevelFromTimeUp() {
     }
     setTimeFrozen('time_up', false);
     timeUpShown = false;
-    
+
     // Clean up debris from previous explosion
     if (debrisManager) {
         debrisManager.cleanup();
@@ -1962,36 +1984,36 @@ async function restartTimeChallengeLevelFromTimeUp() {
     if (particleSystem) {
         particleSystem.cleanupParticles();
     }
-    
+
     if (isGeneratingLevel) return;
-    
+
     // Save the initial time for this level before regenerating
     const savedInitialTime = timeChallengeInitialTime;
-    
+
     // Reset level-specific stats (but keep run stats like timeChallengeRemovals, timeChallengeTimeCollectedAllTime)
     timeChallengeTimeCollected = 0;
     timeChallengeSpinCost = 0;
-    
+
     // Clear move history
     moveHistory = [];
     totalMoves = 0;
     debugMoveHistory = []; // Clear debug move history
     debugCollisionEvents = []; // Clear collision events
     debugMovementCalculations = []; // Clear movement calculations
-    
+
     // Reset stats tracking for current level
     startLevelStats(currentLevel);
-    
+
     // Regenerate current level (this will recalculate initial time, but we'll restore it)
     await generateSolvablePuzzle(currentLevel);
-    
+
     // Restore timer to the saved initial time for this level
     if (savedInitialTime > 0) {
         setTimeLeftSec(savedInitialTime);
         timeChallengeInitialTime = savedInitialTime;
         updateTimerDisplay();
     }
-    
+
     updateUndoButtonState();
 }
 
@@ -2003,7 +2025,7 @@ async function resetTimeChallengeRunFromTimeUp() {
         modal.style.display = 'none';
     }
     setTimeFrozen('time_up', false);
-    
+
     // Clean up debris from previous explosion
     if (debrisManager) {
         debrisManager.cleanup();
@@ -2011,7 +2033,7 @@ async function resetTimeChallengeRunFromTimeUp() {
     if (particleSystem) {
         particleSystem.cleanupParticles();
     }
-    
+
     timeChallengeResetRun();
     await startNewGame(); // starts from level 1
 }
@@ -2028,10 +2050,10 @@ function saveProgress() {
                 localStorage.setItem(RESET_FLAG_KEY, 'true');
             }
         }
-        
+
         // Save current level (use correct storage key for current mode)
         const storageKey = getStorageKey();
-        
+
         // Safety check: Don't save level 0 or 1 unless there's a good reason (like starting new game)
         // Check if we're overwriting a higher level with 0 or 1
         const existingLevel = parseInt(localStorage.getItem(storageKey) || '0', 10);
@@ -2040,17 +2062,17 @@ function saveProgress() {
             // Don't save 0 or 1 over a higher level - this prevents accidental progress loss
             return;
         }
-        
+
         localStorage.setItem(storageKey, currentLevel.toString());
         console.log(`Progress saved: Level ${currentLevel} (Inferno)`);
-        
+
         // Also track highest level reached
         const highestLevel = parseInt(localStorage.getItem(STORAGE_HIGHEST_LEVEL_KEY) || '0', 10);
         if (currentLevel > highestLevel) {
             localStorage.setItem(STORAGE_HIGHEST_LEVEL_KEY, currentLevel.toString());
             console.log(`New highest level reached: ${currentLevel}`);
         }
-        
+
         // Verify save was successful
         const verify = localStorage.getItem(storageKey);
         if (verify !== currentLevel.toString()) {
@@ -2083,18 +2105,18 @@ function loadProgress() {
             return level;
         }
     }
-    
+
     try {
         // Use different storage keys for different game modes
         const storageKey = getStorageKey();
-        
+
         // Check if we need to update version (but preserve existing progress)
         const storedVersion = localStorage.getItem(STORAGE_VERSION_KEY);
-        const hasExistingProgress = localStorage.getItem(STORAGE_KEY) !== null || 
-                                    localStorage.getItem(STORAGE_KEY_TIME_CHALLENGE) !== null ||
-                                    localStorage.getItem(STORAGE_KEY_INFERNO) !== null ||
-                                    localStorage.getItem(STORAGE_HIGHEST_LEVEL_KEY) !== null;
-        
+        const hasExistingProgress = localStorage.getItem(STORAGE_KEY) !== null ||
+            localStorage.getItem(STORAGE_KEY_TIME_CHALLENGE) !== null ||
+            localStorage.getItem(STORAGE_KEY_INFERNO) !== null ||
+            localStorage.getItem(STORAGE_HIGHEST_LEVEL_KEY) !== null;
+
         // Only update version - don't reset if user has existing progress
         if (storedVersion !== CURRENT_STORAGE_VERSION) {
             if (hasExistingProgress) {
@@ -2114,7 +2136,7 @@ function loadProgress() {
                 localStorage.setItem(RESET_FLAG_KEY, 'true');
             }
         }
-        
+
         // Now try to load saved progress
         const savedLevel = localStorage.getItem(storageKey);
         if (savedLevel !== null && savedLevel !== '') {
@@ -2141,14 +2163,14 @@ function clearProgress() {
         // Clear progress for the current game mode
         const storageKey = getStorageKey();
         localStorage.removeItem(storageKey);
-        
+
         // Clear level update modal keys so modals show again on new game
         // Clear all level update keys (levels 1, 3, 5, 8, 12, 15, 20, 30, 40, 60, 75, 100)
         const levelUpdateIntervals = [1, 3, 5, 8, 12, 15, 20, 30, 40, 60, 75, 100];
         for (const level of levelUpdateIntervals) {
             localStorage.removeItem(`jarrows_level_update_${level}`);
         }
-        
+
         // Keep storage version and highest level for tracking
         console.log(`Progress cleared - user will start from level 1 on next load (Inferno)`);
         return true;
@@ -2187,17 +2209,17 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
     // This allows us to add multiple layers
     // preferLongBlocks: If true, prefer longer blocks (2-3 cells) over single blocks
     // difficultyConfig: Optional Inferno mode difficulty configuration
-    
+
     const totalCells = gridSize * gridSize;
     const occupiedCells = new Set();
     const blocksToPlace = []; // Store blocks to be placed sequentially
     const isUpperLayer = yOffset > 0; // Declare once for use throughout function
-    
+
     // For small/medium block counts (Level 0-5: 3, 10, 20, 30, 40, 50 blocks), use random placement across entire grid
     // This prevents all blocks being at edges, all arrows pointing out, and all being vertical
     // Extended to include Level 5 (50 blocks) to ensure proper generation
     const isSmallCount = targetBlockCount <= 50;
-    
+
     // Check if a cell is occupied in the CURRENT layer only
     // Note: Lower layer cells are NOT considered "occupied" - blocks can be placed on top of them
     // Support from lower layers is checked separately via hasSupport()
@@ -2205,17 +2227,17 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
         // Only check if this cell is occupied in the current layer
         return occupiedCells.has(`${x},${z}`);
     }
-    
+
     // For level 2+, check if a block has support from lower layer (prevent floating)
     function hasSupport(block) {
         // Level 1 blocks don't need support (they're on the ground)
         if (yOffset === 0) {
             return true;
         }
-        
+
         // Get the cells Set from lowerLayerCells (it might be a Set or an object with .cells)
         const lowerCells = lowerLayerCells instanceof Set ? lowerLayerCells : (lowerLayerCells?.cells || null);
-        
+
         // Level 2+ blocks need at least one cell to have a block below
         if (block.isVertical) {
             return lowerCells && lowerCells.has(`${block.gridX},${block.gridZ}`);
@@ -2231,7 +2253,7 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
             return false; // No support found
         }
     }
-    
+
     /**
      * Check if a block faces toward the nearest edge (can exit)
      * Returns: { canExit: boolean, distanceToEdge: number }
@@ -2242,11 +2264,11 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
         const distToSouth = gridSize - 1 - gridZ;
         const distToWest = gridX;
         const distToEast = gridSize - 1 - gridX;
-        
+
         // Check if direction points toward nearest edge
         let distanceToEdge = Infinity;
         let facesOutward = false;
-        
+
         if (direction.z === -1 && distToNorth < distToSouth && distToNorth < distToWest && distToNorth < distToEast) {
             // Facing north, and north is the nearest edge
             distanceToEdge = distToNorth;
@@ -2264,10 +2286,10 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
             distanceToEdge = distToEast;
             facesOutward = true;
         }
-        
+
         return { canExit: facesOutward, distanceToEdge };
     }
-    
+
     /**
      * Get the best direction pointing toward the nearest edge
      */
@@ -2276,15 +2298,15 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
         const distToSouth = gridSize - 1 - gridZ;
         const distToWest = gridX;
         const distToEast = gridSize - 1 - gridX;
-        
+
         const minDist = Math.min(distToNorth, distToSouth, distToWest, distToEast);
-        
-        if (minDist === distToNorth) return {x: 0, z: -1};
-        if (minDist === distToSouth) return {x: 0, z: 1};
-        if (minDist === distToWest) return {x: -1, z: 0};
-        return {x: 1, z: 0}; // East
+
+        if (minDist === distToNorth) return { x: 0, z: -1 };
+        if (minDist === distToSouth) return { x: 0, z: 1 };
+        if (minDist === distToWest) return { x: -1, z: 0 };
+        return { x: 1, z: 0 }; // East
     }
-    
+
     /**
      * ATOMIC CELL RESERVATION: Try to reserve cells for a block BEFORE creating it.
      * This prevents race conditions where multiple blocks try to occupy the same cells.
@@ -2302,21 +2324,21 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
      */
     function tryReserveCells(gridX, gridZ, length, isVertical, direction) {
         const cellsToReserve = new Set();
-        
+
         // Calculate Y range for this block
         const blockHeight = isVertical ? length * cubeSize : cubeSize;
         const yBottom = yOffset;
         const yTop = yOffset + blockHeight;
-        
+
         if (isVertical) {
             // Vertical block occupies single X,Z cell but spans multiple Y levels
             const cellKey = `${gridX},${gridZ}`;
-            
+
             // Check if cell is occupied in current layer
             if (occupiedCells.has(cellKey)) {
                 return null; // Cell already occupied in this layer
             }
-            
+
             // Check Y range overlap with lower layers if we have that info
             // Use same logic as yRangesOverlap: (aTop - bBottom > EPS) && (bTop - aBottom > EPS)
             if (lowerLayerCells && typeof lowerLayerCells === 'object' && lowerLayerCells.yRanges) {
@@ -2331,7 +2353,7 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                     }
                 }
             }
-            
+
             cellsToReserve.add(cellKey);
         } else {
             // Horizontal block occupies multiple X,Z cells but single Y level
@@ -2339,19 +2361,19 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
             for (let i = 0; i < length; i++) {
                 const x = gridX + (isXAligned ? i : 0);
                 const z = gridZ + (isXAligned ? 0 : i);
-                
+
                 // Check bounds
                 if (x < 0 || x >= gridSize || z < 0 || z >= gridSize) {
                     return null; // Out of bounds
                 }
-                
+
                 const cellKey = `${x},${z}`;
-                
+
                 // Check if cell is occupied in current layer
                 if (occupiedCells.has(cellKey)) {
                     return null; // Cell already occupied in this layer
                 }
-                
+
                 // Check Y range overlap with lower layers (horizontal blocks are single Y level)
                 // Use same logic as yRangesOverlap: (aTop - bBottom > EPS) && (bTop - aBottom > EPS)
                 if (lowerLayerCells && typeof lowerLayerCells === 'object' && lowerLayerCells.yRanges) {
@@ -2366,19 +2388,19 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                         }
                     }
                 }
-                
+
                 cellsToReserve.add(cellKey);
             }
         }
-        
+
         // All cells are available - reserve them atomically
         for (const cellKey of cellsToReserve) {
             occupiedCells.add(cellKey);
         }
-        
+
         return { cells: cellsToReserve, yBottom, yTop };
     }
-    
+
     /**
      * Mark cells as occupied for an already-created block.
      * This is a fallback for edge cases, but tryReserveCells should be used instead.
@@ -2413,7 +2435,7 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
             return true;
         }
     }
-    
+
     // SMALL COUNT MODE: Random placement across entire grid for variety
     if (isSmallCount) {
         // Phase 1: Random placement with multiple passes
@@ -2421,23 +2443,23 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
         let pass = 0;
         let consecutiveFailedPasses = 0;
         const maxConsecutiveFailures = 3; // Allow 3 failed passes before switching strategy
-        
+
         while (blocksToPlace.length < targetBlockCount && pass < maxPasses) {
             pass++;
-            
+
             // Get all available cells (recalculate each pass)
             const availableCells = [];
             for (let x = 0; x < gridSize; x++) {
                 for (let z = 0; z < gridSize; z++) {
                     if (!isCellOccupied(x, z)) {
-                        availableCells.push({x, z});
+                        availableCells.push({ x, z });
                     }
                 }
             }
-            
+
             // If no available cells, we can't place more blocks
             if (availableCells.length === 0) break;
-            
+
             // Shuffle for randomness - add extra randomization for small levels
             // For level 0 with few blocks, add more shuffles to ensure variation
             const shuffleCount = level === 0 ? 3 : 1;
@@ -2447,20 +2469,20 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                     [availableCells[i], availableCells[j]] = [availableCells[j], availableCells[i]];
                 }
             }
-            
+
             let placedThisPass = 0;
-            
+
             // Try to place blocks randomly
             for (const cell of availableCells) {
                 if (blocksToPlace.length >= targetBlockCount) break;
-                
+
                 // Adjust length distribution based on remaining blocks needed and preferLongBlocks flag
                 // If preferLongBlocks is true (layer 1 in multi-layer), prefer longer blocks (2-3 cells)
                 // If difficultyConfig is provided (Inferno mode), use config-driven distribution
                 const remaining = targetBlockCount - blocksToPlace.length;
                 const rand = Math.random();
                 let length;
-                
+
                 if (difficultyConfig && difficultyConfig.lengthDistribution) {
                     // Use Inferno mode difficulty configuration
                     const dist = difficultyConfig.lengthDistribution;
@@ -2499,7 +2521,7 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                         length = 3;
                     }
                 }
-                
+
                 // Prioritize blocks that face outward (toward edges) for easier gameplay
                 // Use difficulty config if available (Inferno mode), otherwise default to 70%
                 let randomDir;
@@ -2513,24 +2535,24 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                 } else {
                     randomDir = directions[Math.floor(Math.random() * directions.length)];
                 }
-                
+
                 // Use difficulty config for vertical percentage if available (Inferno mode), otherwise 50%
                 const verticalPercentage = difficultyConfig ? difficultyConfig.verticalPercentage : 0.5;
                 const isVertical = Math.random() < verticalPercentage;
-                
+
                 // ATOMIC OPERATION: Try to reserve cells BEFORE creating the block
                 // This prevents race conditions where multiple blocks compete for the same cells
                 const reservation = tryReserveCells(cell.x, cell.z, length, isVertical, randomDir);
                 if (!reservation) {
                     continue; // Cells not available - skip this attempt
                 }
-                
+
                 // Cells are now reserved - create the block
                 const block = new Block(length, cell.x, cell.z, randomDir, isVertical, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level);
-                
+
                 // Move block from scene to towerGroup
                 scene.remove(block.group);
-                
+
                 // Check if block has support (for level 2+)
                 // Note: We check support AFTER reserving cells because support check is independent
                 // and doesn't affect cell occupation. If support fails, we release the cells.
@@ -2541,13 +2563,13 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                     }
                     continue;
                 }
-                
+
                 // Block is valid - keep it and cells remain reserved
                 // Will be added to towerGroup with animation in placeBlocksBatch
                 blocksToPlace.push(block);
                 placedThisPass++;
             }
-            
+
             // Track consecutive failures - don't break early, continue to fallback strategies
             if (placedThisPass === 0) {
                 consecutiveFailedPasses++;
@@ -2559,51 +2581,51 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                 consecutiveFailedPasses = 0; // Reset on success
             }
         }
-        
+
         // Phase 2: Systematic fallback - if random placement didn't reach target
         if (blocksToPlace.length < targetBlockCount) {
             const stillEmpty = [];
             for (let x = 0; x < gridSize; x++) {
                 for (let z = 0; z < gridSize; z++) {
                     if (!isCellOccupied(x, z)) {
-                        stillEmpty.push({x, z});
+                        stillEmpty.push({ x, z });
                     }
                 }
             }
-            
+
             // Try each empty cell systematically with all valid configurations
             for (const cell of stillEmpty) {
                 if (blocksToPlace.length >= targetBlockCount) break;
-                
+
                 // Try all directions
                 const dirs = [
-                    {x: 1, z: 0}, {x: -1, z: 0}, {x: 0, z: 1}, {x: 0, z: -1}
+                    { x: 1, z: 0 }, { x: -1, z: 0 }, { x: 0, z: 1 }, { x: 0, z: -1 }
                 ];
-                
+
                 let placed = false;
-                
+
                 // Try lengths in order: 1, 2, 3 (prioritize single blocks to maximize count)
                 for (const tryLength of [1, 2, 3]) {
                     if (placed) break;
-                    
+
                     // Try both horizontal and vertical
                     for (const isVert of [false, true]) {
                         if (placed) break;
-                        
+
                         // Try each direction
                         for (const dir of dirs) {
                             if (placed) break;
-                            
+
                             // ATOMIC OPERATION: Try to reserve cells
                             const reservation = tryReserveCells(cell.x, cell.z, tryLength, isVert, dir);
                             if (!reservation) {
                                 continue;
                             }
-                            
+
                             // Create block for support check
                             const testBlock = new Block(tryLength, cell.x, cell.z, dir, isVert, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level);
                             scene.remove(testBlock.group);
-                            
+
                             // Check support
                             if (!hasSupport(testBlock)) {
                                 // Release reserved cells
@@ -2612,7 +2634,7 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                                 }
                                 continue;
                             }
-                            
+
                             // Valid placement - keep it
                             blocksToPlace.push(testBlock);
                             placed = true;
@@ -2621,54 +2643,54 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                 }
             }
         }
-        
+
         // Phase 3: Final aggressive fill - try every cell with every configuration
         if (blocksToPlace.length < targetBlockCount) {
             const allCells = [];
             for (let x = 0; x < gridSize; x++) {
                 for (let z = 0; z < gridSize; z++) {
-                    allCells.push({x, z});
+                    allCells.push({ x, z });
                 }
             }
-            
+
             // Shuffle for randomness
             for (let i = allCells.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
                 [allCells[i], allCells[j]] = [allCells[j], allCells[i]];
             }
-            
+
             for (const cell of allCells) {
                 if (blocksToPlace.length >= targetBlockCount) break;
-                
+
                 // Try all configurations systematically
                 const dirs = [
-                    {x: 1, z: 0}, {x: -1, z: 0}, {x: 0, z: 1}, {x: 0, z: -1}
+                    { x: 1, z: 0 }, { x: -1, z: 0 }, { x: 0, z: 1 }, { x: 0, z: -1 }
                 ];
-                
+
                 let placed = false;
-                
+
                 // Try all lengths
                 for (const tryLength of [1, 2, 3]) {
                     if (placed) break;
-                    
+
                     // Try both orientations
                     for (const isVert of [false, true]) {
                         if (placed) break;
-                        
+
                         // Try all directions
                         for (const dir of dirs) {
                             if (placed) break;
-                            
+
                             // Try to reserve - this handles all validation
                             const reservation = tryReserveCells(cell.x, cell.z, tryLength, isVert, dir);
                             if (!reservation) {
                                 continue;
                             }
-                            
+
                             // Create block for support check
                             const testBlock = new Block(tryLength, cell.x, cell.z, dir, isVert, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level);
                             scene.remove(testBlock.group);
-                            
+
                             // Check support
                             if (!hasSupport(testBlock)) {
                                 for (const cellKey of reservation.cells) {
@@ -2676,7 +2698,7 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                                 }
                                 continue;
                             }
-                            
+
                             // Valid - keep it
                             blocksToPlace.push(testBlock);
                             placed = true;
@@ -2685,7 +2707,7 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                 }
             }
         }
-        
+
         // Sort blocks to prioritize those that can exit (for easier gameplay)
         if (blocksToPlace.length > 0) {
             // Build occupied cells map for exit checking
@@ -2694,46 +2716,46 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                 const cells = getBlockCells(block);
                 cells.forEach(cell => occupiedCellsForExit.add(`${cell.x},${cell.z}`));
             });
-            
+
             blocksToPlace.sort((a, b) => {
                 const aExit = canBlockExit(a, occupiedCellsForExit, gridSize);
                 const bExit = canBlockExit(b, occupiedCellsForExit, gridSize);
-                
+
                 // Blocks that can exit come first
                 if (aExit.canExit && !bExit.canExit) return -1;
                 if (!aExit.canExit && bExit.canExit) return 1;
-                
+
                 // If both can exit, prefer those with fewer steps to exit
                 if (aExit.canExit && bExit.canExit) {
                     return aExit.stepsToExit - bExit.stepsToExit;
                 }
-                
+
                 // If neither can exit, prefer blocks that face outward (toward nearest edge)
                 const aOutward = canBlockFaceOutward(a.gridX, a.gridZ, a.direction, gridSize);
                 const bOutward = canBlockFaceOutward(b.gridX, b.gridZ, b.direction, gridSize);
-                
+
                 if (aOutward.canExit && !bOutward.canExit) return -1;
                 if (!aOutward.canExit && bOutward.canExit) return 1;
-                
+
                 // If both face outward, prefer closer to edge
                 if (aOutward.canExit && bOutward.canExit) {
                     return aOutward.distanceToEdge - bOutward.distanceToEdge;
                 }
-                
+
                 return 0;
             });
         }
-        
+
         // Return blocks placed
         return blocksToPlace;
     }
-    
+
     // LARGE COUNT MODE: Use edge placement strategy (original logic)
     // STEP 1: Place blocks at edges pointing outward (guaranteed solvable)
     // This creates a "solved" state where all blocks can exit immediately
-    
+
     const edgeBlocks = [];
-    
+
     // Place blocks along each edge
     // Helper: Check if horizontal block extends in X or Z direction
     function getBlockExtent(block) {
@@ -2741,7 +2763,7 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
         const isXAligned = Math.abs(block.direction.x) > 0;
         return isXAligned ? 'x' : 'z';
     }
-    
+
     // Place blocks at edges - STRICTLY prefer longer blocks (2-3), avoid single blocks
     // North edge (z = 0, pointing north/up)
     for (let x = 0; x < gridSize; x++) {
@@ -2750,8 +2772,8 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
             // 90% chance of length 2-3, only use 1 as last resort
             const length = Math.random() < 0.9 ? (Math.floor(Math.random() * 2) + 2) : 1; // 90% chance of 2-3
             const isVertical = length > 1 && Math.random() < 0.7; // Prefer vertical for multi-block
-            const direction = {x: 0, z: -1}; // North
-            
+            const direction = { x: 0, z: -1 }; // North
+
             // Only place vertical blocks or single blocks at edges
             if (isVertical || length === 1) {
                 // ATOMIC OPERATION: Try to reserve cells BEFORE creating the block
@@ -2777,15 +2799,15 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
             }
         }
     }
-    
+
     // South edge (z = gridSize-1, pointing south/down)
     for (let x = 0; x < gridSize; x++) {
         if (blocksToPlace.length >= targetBlockCount) break;
         if (!isCellOccupied(x, gridSize - 1)) {
             const length = Math.random() < 0.9 ? (Math.floor(Math.random() * 2) + 2) : 1;
             const isVertical = length > 1 && Math.random() < 0.7;
-            const direction = {x: 0, z: 1}; // South
-            
+            const direction = { x: 0, z: 1 }; // South
+
             if (isVertical || length === 1) {
                 // ATOMIC OPERATION: Try to reserve cells BEFORE creating the block
                 const reservation = tryReserveCells(x, gridSize - 1, length, isVertical, direction);
@@ -2810,15 +2832,15 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
             }
         }
     }
-    
+
     // West edge (x = 0, pointing west/left)
     for (let z = 0; z < gridSize; z++) {
         if (blocksToPlace.length >= targetBlockCount) break;
         if (!isCellOccupied(0, z)) {
             const length = Math.random() < 0.9 ? (Math.floor(Math.random() * 2) + 2) : 1;
             const isVertical = length > 1 && Math.random() < 0.7;
-            const direction = {x: -1, z: 0}; // West
-            
+            const direction = { x: -1, z: 0 }; // West
+
             if (isVertical || length === 1) {
                 // ATOMIC OPERATION: Try to reserve cells BEFORE creating the block
                 const reservation = tryReserveCells(0, z, length, isVertical, direction);
@@ -2843,15 +2865,15 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
             }
         }
     }
-    
+
     // East edge (x = gridSize-1, pointing east/right)
     for (let z = 0; z < gridSize; z++) {
         if (blocksToPlace.length >= targetBlockCount) break;
         if (!isCellOccupied(gridSize - 1, z)) {
             const length = Math.random() < 0.9 ? (Math.floor(Math.random() * 2) + 2) : 1;
             const isVertical = length > 1 && Math.random() < 0.7;
-            const direction = {x: 1, z: 0}; // East
-            
+            const direction = { x: 1, z: 0 }; // East
+
             if (isVertical || length === 1) {
                 // ATOMIC OPERATION: Try to reserve cells BEFORE creating the block
                 const reservation = tryReserveCells(gridSize - 1, z, length, isVertical, direction);
@@ -2876,53 +2898,53 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
             }
         }
     }
-    
+
     // STEP 2: Move blocks inward aggressively to create complexity (while maintaining solvability)
     // This creates interdependencies and makes puzzles more interesting
     // Skip this step if we've already reached target block count
     const maxInwardAttempts = 800; // More attempts for complexity
     let inwardAttempts = 0;
-    
+
     // For high block counts, allow filling up to 100% of cells
     // For multi-layer scenarios (yOffset > 0), we need to be more aggressive to reach target
     // Lower the fill threshold for upper layers to allow more attempts
     const fillThreshold = isUpperLayer ? 0.98 : (targetBlockCount > 100 ? 1.0 : 0.95);
     while (inwardAttempts < maxInwardAttempts && occupiedCells.size < totalCells * fillThreshold && blocksToPlace.length < targetBlockCount) {
         inwardAttempts++;
-        
+
         // Pick a random edge block to try moving inward
         if (edgeBlocks.length === 0) break;
         const block = edgeBlocks[Math.floor(Math.random() * edgeBlocks.length)];
         if (!block || block.isFalling) continue;
-        
+
         // Calculate inward direction (opposite of block's direction)
         const inwardDir = {
             x: -block.direction.x,
             z: -block.direction.z
         };
-        
+
         // Try moving 1 step inward (conservative)
         const newX = block.gridX + inwardDir.x;
         const newZ = block.gridZ + inwardDir.z;
-        
+
         // Check if new position is valid and doesn't overlap
         let canMove = true;
         const testCells = [];
-        
+
         if (block.isVertical) {
             if (newX < 0 || newX >= gridSize || newZ < 0 || newZ >= gridSize) {
                 canMove = false;
             } else if (isCellOccupied(newX, newZ)) {
                 canMove = false;
             } else {
-                testCells.push({x: newX, z: newZ});
+                testCells.push({ x: newX, z: newZ });
             }
         } else {
             const isXAligned = Math.abs(block.direction.x) > 0;
             for (let i = 0; i < block.length; i++) {
                 const checkX = newX + (isXAligned ? i : 0);
                 const checkZ = newZ + (isXAligned ? 0 : i);
-                
+
                 if (checkX < 0 || checkX >= gridSize || checkZ < 0 || checkZ >= gridSize) {
                     canMove = false;
                     break;
@@ -2931,57 +2953,57 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                     canMove = false;
                     break;
                 }
-                testCells.push({x: checkX, z: checkZ});
+                testCells.push({ x: checkX, z: checkZ });
             }
         }
-        
+
         if (!canMove) continue;
-        
+
         // ATOMIC OPERATION: Try to reserve new cells BEFORE releasing old ones
         // This prevents race conditions where another block could claim the new cells
         const reservation = tryReserveCells(newX, newZ, block.length, block.isVertical, block.direction);
         if (!reservation) {
             continue; // New cells not available - can't move
         }
-        
+
         // New cells are reserved - now safely release old cells and update block
         const oldX = block.gridX;
         const oldZ = block.gridZ;
         const oldCells = getBlockCells(block);
-        
+
         // Remove old cells from occupied cells (safe now since new cells are reserved)
         for (const cell of oldCells) {
             occupiedCells.delete(`${cell.x},${cell.z}`);
         }
-        
+
         // Update block position
         block.gridX = newX;
         block.gridZ = newZ;
         block.updateWorldPosition();
-        
+
         // New cells are already reserved by tryReserveCells, so we're done
         // Move successful - keep new position
         continue;
     }
-    
+
     // STEP 3: Fill remaining cells with longer blocks when possible
-    
+
     // STEP 3: Fill remaining cells - try to create longer blocks (2-3) first, single blocks only as last resort
     const remainingCells = [];
     for (let x = 0; x < gridSize; x++) {
         for (let z = 0; z < gridSize; z++) {
             if (!isCellOccupied(x, z)) {
-                remainingCells.push({x, z});
+                remainingCells.push({ x, z });
             }
         }
     }
-    
+
     // Shuffle remaining cells for randomness
     for (let i = remainingCells.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [remainingCells[i], remainingCells[j]] = [remainingCells[j], remainingCells[i]];
     }
-    
+
     // Try to fill cells, preferring longer blocks
     // Stop if we've reached target block count
     for (const cell of remainingCells) {
@@ -2992,39 +3014,39 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
             south: gridSize - 1 - cell.z,
             north: cell.z
         };
-        
+
         const minDist = Math.min(...Object.values(distToEdges));
         const nearestEdges = Object.entries(distToEdges)
             .filter(([_, dist]) => dist === minDist)
             .map(([edge, _]) => edge);
-        
+
         let chosenDirection = directions[0];
         if (nearestEdges.includes('east')) {
-            chosenDirection = {x: 1, z: 0};
+            chosenDirection = { x: 1, z: 0 };
         } else if (nearestEdges.includes('west')) {
-            chosenDirection = {x: -1, z: 0};
+            chosenDirection = { x: -1, z: 0 };
         } else if (nearestEdges.includes('south')) {
-            chosenDirection = {x: 0, z: 1};
+            chosenDirection = { x: 0, z: 1 };
         } else if (nearestEdges.includes('north')) {
-            chosenDirection = {x: 0, z: -1};
+            chosenDirection = { x: 0, z: -1 };
         }
-        
+
         // Try to create longer blocks (2-3) first, single blocks only as absolute last resort
         let blockAdded = false;
         const isXAligned = Math.abs(chosenDirection.x) > 0;
-        
+
         // Try length 3, then 2, then 1 (with very low probability for 1)
         for (const tryLength of [3, 2, 1]) {
             if (tryLength === 1 && Math.random() < 0.85) continue; // Only 15% chance to use single blocks
-            
+
             let canPlace = true;
             const testCells = [];
-            
+
             // Check if we can place a horizontal block of this length
             for (let i = 0; i < tryLength; i++) {
                 const checkX = cell.x + (isXAligned ? i : 0);
                 const checkZ = cell.z + (isXAligned ? 0 : i);
-                
+
                 if (checkX < 0 || checkX >= gridSize || checkZ < 0 || checkZ >= gridSize) {
                     canPlace = false;
                     break;
@@ -3033,20 +3055,20 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                     canPlace = false;
                     break;
                 }
-                testCells.push({x: checkX, z: checkZ});
+                testCells.push({ x: checkX, z: checkZ });
             }
-            
+
             if (!canPlace) continue;
-            
+
             // ATOMIC OPERATION: Try to reserve cells BEFORE creating the block
             const reservation = tryReserveCells(cell.x, cell.z, tryLength, false, chosenDirection);
             if (!reservation) {
                 continue; // Cells not available - skip this attempt
             }
-            
+
             // Cells reserved - create block
             const testBlock = new Block(tryLength, cell.x, cell.z, chosenDirection, false, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level);
-            
+
             // Check if block has support (for level 2+)
             if (!hasSupport(testBlock)) {
                 // Release reserved cells since block can't be placed
@@ -3057,7 +3079,7 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                 // Debug: Log why block was rejected (only for upper layers to avoid spam)
                 if (isUpperLayer && blocksToPlace.length < targetBlockCount * 0.5) {
                     const lowerCells = lowerLayerCells instanceof Set ? lowerLayerCells : (lowerLayerCells?.cells || null);
-                    const supportCount = testBlock.isVertical 
+                    const supportCount = testBlock.isVertical
                         ? (lowerCells && lowerCells.has(`${testBlock.gridX},${testBlock.gridZ}`) ? 1 : 0)
                         : (() => {
                             const isXAligned = Math.abs(testBlock.direction.x) > 0;
@@ -3075,7 +3097,7 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                 }
                 continue;
             }
-            
+
             // Block is valid - keep it and cells remain reserved
             scene.remove(testBlock.group); // Remove from scene, will be added with animation
             blocksToPlace.push(testBlock);
@@ -3086,10 +3108,10 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
             if (blocksToPlace.length >= targetBlockCount) break;
             break;
         }
-        
+
         // If we couldn't add any block, skip this cell for now
     }
-    
+
     // STEP 4: Aggressive fill pass - try to fill every remaining cell
     // Try multiple times with different strategies to maximize fill
     // Skip if we've already reached target block count
@@ -3097,56 +3119,56 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
     // For high block counts, use more passes to ensure we reach target
     // For upper layers, need more passes due to support constraints
     const maxFillPasses = isUpperLayer ? (targetBlockCount > 100 ? 25 : 15) : (targetBlockCount > 100 ? 10 : 3);
-    
+
     while (fillPasses < maxFillPasses && occupiedCells.size < totalCells && blocksToPlace.length < targetBlockCount) {
         fillPasses++;
         const beforeFill = occupiedCells.size;
-        
+
         // Get remaining cells
         const stillEmpty = [];
         for (let x = 0; x < gridSize; x++) {
             for (let z = 0; z < gridSize; z++) {
                 if (!isCellOccupied(x, z)) {
-                    stillEmpty.push({x, z});
+                    stillEmpty.push({ x, z });
                 }
             }
         }
-        
+
         // Shuffle for randomness
         for (let i = stillEmpty.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
             [stillEmpty[i], stillEmpty[j]] = [stillEmpty[j], stillEmpty[i]];
         }
-        
+
         // Try to fill each empty cell
         for (const cell of stillEmpty) {
             // Try all 4 directions to find one that works
             const dirs = [
-                {x: 1, z: 0}, {x: -1, z: 0}, {x: 0, z: 1}, {x: 0, z: -1}
+                { x: 1, z: 0 }, { x: -1, z: 0 }, { x: 0, z: 1 }, { x: 0, z: -1 }
             ];
-            
+
             // Shuffle directions
             for (let i = dirs.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
                 [dirs[i], dirs[j]] = [dirs[j], dirs[i]];
             }
-            
+
             let filled = false;
-            
+
             // Try each direction
             for (const dir of dirs) {
                 // Try length 2 first (single blocks only if absolutely necessary)
                 for (const tryLength of [2, 3, 1]) {
                     if (tryLength === 1 && Math.random() < 0.9) continue; // Only 10% chance for single
-                    
+
                     const isXAligned = Math.abs(dir.x) > 0;
                     let canPlace = true;
                     const testCells = [];
-                    
+
                     for (let i = 0; i < tryLength; i++) {
                         const checkX = cell.x + (isXAligned ? i : 0);
                         const checkZ = cell.z + (isXAligned ? 0 : i);
-                        
+
                         if (checkX < 0 || checkX >= gridSize || checkZ < 0 || checkZ >= gridSize) {
                             canPlace = false;
                             break;
@@ -3155,20 +3177,20 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                             canPlace = false;
                             break;
                         }
-                        testCells.push({x: checkX, z: checkZ});
+                        testCells.push({ x: checkX, z: checkZ });
                     }
-                    
+
                     if (!canPlace) continue;
-                    
+
                     // ATOMIC OPERATION: Try to reserve cells BEFORE creating the block
                     const reservation = tryReserveCells(cell.x, cell.z, tryLength, false, dir);
                     if (!reservation) {
                         continue; // Cells not available - skip this attempt
                     }
-                    
+
                     // Cells reserved - create block
                     const testBlock = new Block(tryLength, cell.x, cell.z, dir, false, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level);
-                    
+
                     // Check if block has support (for level 2+)
                     if (!hasSupport(testBlock)) {
                         // Release reserved cells since block can't be placed
@@ -3178,27 +3200,27 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                         scene.remove(testBlock.group);
                         continue;
                     }
-                    
+
                     // Block is valid - keep it and cells remain reserved
                     scene.remove(testBlock.group); // Remove from scene, will be added with animation
                     blocksToPlace.push(testBlock);
-                    
+
                     filled = true;
                     // Stop if we've reached target block count
                     if (blocksToPlace.length >= targetBlockCount) break;
                     break;
                 }
-                
+
                 if (filled) break;
                 // Stop outer loop if we've reached target block count
                 if (blocksToPlace.length >= targetBlockCount) break;
             }
         }
-        
+
         // If we didn't fill any new cells this pass, stop trying
         if (occupiedCells.size === beforeFill) break;
     }
-    
+
     // FINAL AGGRESSIVE FILL: If we're still short of target, try every cell with every configuration
     // This ensures we reach the target block count for high-level puzzles
     // IMPORTANT: Use tryReserveCells for all validation to prevent overlaps
@@ -3206,48 +3228,48 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
         const allCells = [];
         for (let x = 0; x < gridSize; x++) {
             for (let z = 0; z < gridSize; z++) {
-                allCells.push({x, z});
+                allCells.push({ x, z });
             }
         }
-        
+
         // Shuffle for randomness
         for (let i = allCells.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
             [allCells[i], allCells[j]] = [allCells[j], allCells[i]];
         }
-        
+
         for (const cell of allCells) {
             if (blocksToPlace.length >= targetBlockCount) break;
-            
+
             // Try all configurations systematically
             const dirs = [
-                {x: 1, z: 0}, {x: -1, z: 0}, {x: 0, z: 1}, {x: 0, z: -1}
+                { x: 1, z: 0 }, { x: -1, z: 0 }, { x: 0, z: 1 }, { x: 0, z: -1 }
             ];
-            
+
             let placed = false;
-            
+
             // Try all lengths (prioritize single blocks to maximize count)
             for (const tryLength of [1, 2, 3]) {
                 if (placed) break;
-                
+
                 // Try both orientations
                 for (const isVert of [false, true]) {
                     if (placed) break;
-                    
+
                     // Try all directions
                     for (const dir of dirs) {
                         if (placed) break;
-                        
+
                         // Try to reserve - this handles all validation
                         const reservation = tryReserveCells(cell.x, cell.z, tryLength, isVert, dir);
                         if (!reservation) {
                             continue;
                         }
-                        
+
                         // Create block for support check
                         const testBlock = new Block(tryLength, cell.x, cell.z, dir, isVert, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level);
                         scene.remove(testBlock.group);
-                        
+
                         // Check support
                         if (!hasSupport(testBlock)) {
                             for (const cellKey of reservation.cells) {
@@ -3255,7 +3277,7 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                             }
                             continue;
                         }
-                        
+
                         // Valid - keep it
                         blocksToPlace.push(testBlock);
                         placed = true;
@@ -3264,13 +3286,13 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
             }
         }
     }
-    
+
     const singleBlockCount = blocksToPlace.filter(b => b.length === 1).length;
     const totalBlockCount = blocksToPlace.length;
     const singleBlockPercent = ((singleBlockCount / totalBlockCount) * 100).toFixed(1);
-    
+
     // Logging removed - only show final summary in generateSolvablePuzzle
-    
+
     return blocksToPlace;
 }
 
@@ -3278,16 +3300,16 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
 function placeBlocksBatch(blocksToPlace, batchSize = 10, delayBetweenBatches = 10) {
     return new Promise((resolve) => {
         let batchIndex = 0;
-        
+
         const placeBatch = () => {
             const startIdx = batchIndex * batchSize;
             const endIdx = Math.min(startIdx + batchSize, blocksToPlace.length);
-            
+
             if (startIdx >= blocksToPlace.length) {
                 resolve();
                 return;
             }
-            
+
             // Add all blocks in this batch to towerGroup immediately
             for (let i = startIdx; i < endIdx; i++) {
                 const block = blocksToPlace[i];
@@ -3299,12 +3321,12 @@ function placeBlocksBatch(blocksToPlace, batchSize = 10, delayBetweenBatches = 1
                 towerGroup.add(block.group);
                 blocks.push(block);
             }
-            
+
             // Animate all blocks in batch simultaneously - very fast
-        const startTime = performance.now();
+            const startTime = performance.now();
             const duration = 50; // Very fast animation
             let batchAnimationId = null;
-        
+
             const animate = () => {
                 // Check if level generation was cancelled
                 const startIdx = batchIndex * batchSize;
@@ -3315,44 +3337,44 @@ function placeBlocksBatch(blocksToPlace, batchSize = 10, delayBetweenBatches = 1
                     }
                     return;
                 }
-                
+
                 const elapsed = performance.now() - startTime;
                 const progress = Math.min(elapsed / duration, 1);
-                
+
                 // Ease-out cubic for smooth animation
                 const eased = 1 - Math.pow(1 - progress, 3);
-                
+
                 // Update all blocks in batch
                 for (let i = startIdx; i < endIdx && i < blocksToPlace.length; i++) {
                     if (blocksToPlace[i] && blocksToPlace[i].group) {
-                    blocksToPlace[i].group.scale.set(eased, eased, eased);
+                        blocksToPlace[i].group.scale.set(eased, eased, eased);
                     }
                 }
-                            
-                            if (progress < 1) {
+
+                if (progress < 1) {
                     batchAnimationId = requestAnimationFrame(animate);
-                            } else {
+                } else {
                     // Finalize scale
                     for (let i = startIdx; i < endIdx && i < blocksToPlace.length; i++) {
                         if (blocksToPlace[i] && blocksToPlace[i].group) {
-                        blocksToPlace[i].group.scale.set(1, 1, 1);
+                            blocksToPlace[i].group.scale.set(1, 1, 1);
                         }
                     }
-                    
+
                     if (batchAnimationId !== null) {
                         cancelAnimationFrame(batchAnimationId);
                         batchAnimationId = null;
                     }
-                    
+
                     // Move to next batch
                     batchIndex++;
                     setTimeout(placeBatch, delayBetweenBatches);
-                        }
-                    };
-                    
+                }
+            };
+
             batchAnimationId = requestAnimationFrame(animate);
         };
-        
+
         placeBatch();
     });
 }
@@ -3361,35 +3383,35 @@ function placeBlocksBatch(blocksToPlace, batchSize = 10, delayBetweenBatches = 1
 function createHeadOnCollisionBlocks(targetBlockCount = 10) {
     const blocksToPlace = [];
     const occupiedCells = new Set();
-    
+
     // Head-on collision pairs: blocks facing each other
     const headOnPairs = [
         // Mix: Start with some horizontal blocks first
-        { x1: 1, z1: 1, dir1: {x: 1, z: 0}, x2: 3, z2: 1, dir2: {x: -1, z: 0}, len1: 1, len2: 1, vert1: false, vert2: false },
-        { x1: 1, z1: 3, dir1: {x: 1, z: 0}, x2: 4, z2: 3, dir2: {x: -1, z: 0}, len1: 1, len2: 1, vert1: false, vert2: false },
-        { x1: 0, z1: 5, dir1: {x: 1, z: 0}, x2: 3, z2: 5, dir2: {x: -1, z: 0}, len1: 2, len2: 2, vert1: false, vert2: false }, // Multi-cell horizontal
-        { x1: 2, z1: 1, dir1: {x: 0, z: 1}, x2: 2, z2: 3, dir2: {x: 0, z: -1}, len1: 1, len2: 1, vert1: false, vert2: false },
-        { x1: 5, z1: 2, dir1: {x: 0, z: 1}, x2: 5, z2: 5, dir2: {x: 0, z: -1}, len1: 1, len2: 1, vert1: false, vert2: false },
-        { x1: 0, z1: 2, dir1: {x: 0, z: 1}, x2: 0, z2: 4, dir2: {x: 0, z: -1}, len1: 2, len2: 2, vert1: false, vert2: false }, // Multi-cell horizontal
-        
+        { x1: 1, z1: 1, dir1: { x: 1, z: 0 }, x2: 3, z2: 1, dir2: { x: -1, z: 0 }, len1: 1, len2: 1, vert1: false, vert2: false },
+        { x1: 1, z1: 3, dir1: { x: 1, z: 0 }, x2: 4, z2: 3, dir2: { x: -1, z: 0 }, len1: 1, len2: 1, vert1: false, vert2: false },
+        { x1: 0, z1: 5, dir1: { x: 1, z: 0 }, x2: 3, z2: 5, dir2: { x: -1, z: 0 }, len1: 2, len2: 2, vert1: false, vert2: false }, // Multi-cell horizontal
+        { x1: 2, z1: 1, dir1: { x: 0, z: 1 }, x2: 2, z2: 3, dir2: { x: 0, z: -1 }, len1: 1, len2: 1, vert1: false, vert2: false },
+        { x1: 5, z1: 2, dir1: { x: 0, z: 1 }, x2: 5, z2: 5, dir2: { x: 0, z: -1 }, len1: 1, len2: 1, vert1: false, vert2: false },
+        { x1: 0, z1: 2, dir1: { x: 0, z: 1 }, x2: 0, z2: 4, dir2: { x: 0, z: -1 }, len1: 2, len2: 2, vert1: false, vert2: false }, // Multi-cell horizontal
+
         // Vertical blocks (head-on collisions) - Use positions that don't conflict
-        { x1: 3, z1: 2, dir1: {x: 1, z: 0}, x2: 5, z2: 2, dir2: {x: -1, z: 0}, len1: 2, len2: 2, vert1: true, vert2: true }, // Vertical multi-cell
-        { x1: 1, z1: 4, dir1: {x: 0, z: 1}, x2: 1, z2: 6, dir2: {x: 0, z: -1}, len1: 3, len2: 2, vert1: true, vert2: true }, // Vertical multi-cell
-        { x1: 6, z1: 1, dir1: {x: 1, z: 0}, x2: 4, z2: 1, dir2: {x: -1, z: 0}, len1: 2, len2: 1, vert1: true, vert2: true }, // Vertical multi-cell
-        { x1: 6, z1: 4, dir1: {x: 0, z: 1}, x2: 6, z2: 6, dir2: {x: 0, z: -1}, len1: 2, len2: 2, vert1: true, vert2: true }, // Vertical multi-cell
-        { x1: 0, z1: 0, dir1: {x: 1, z: 0}, x2: 6, z2: 0, dir2: {x: -1, z: 0}, len1: 3, len2: 2, vert1: true, vert2: true }, // Vertical multi-cell - moved to avoid conflict
-        { x1: 3, z1: 5, dir1: {x: 0, z: 1}, x2: 3, z2: 3, dir2: {x: 0, z: -1}, len1: 2, len2: 3, vert1: true, vert2: true }, // Vertical multi-cell - moved to avoid conflict
-        
+        { x1: 3, z1: 2, dir1: { x: 1, z: 0 }, x2: 5, z2: 2, dir2: { x: -1, z: 0 }, len1: 2, len2: 2, vert1: true, vert2: true }, // Vertical multi-cell
+        { x1: 1, z1: 4, dir1: { x: 0, z: 1 }, x2: 1, z2: 6, dir2: { x: 0, z: -1 }, len1: 3, len2: 2, vert1: true, vert2: true }, // Vertical multi-cell
+        { x1: 6, z1: 1, dir1: { x: 1, z: 0 }, x2: 4, z2: 1, dir2: { x: -1, z: 0 }, len1: 2, len2: 1, vert1: true, vert2: true }, // Vertical multi-cell
+        { x1: 6, z1: 4, dir1: { x: 0, z: 1 }, x2: 6, z2: 6, dir2: { x: 0, z: -1 }, len1: 2, len2: 2, vert1: true, vert2: true }, // Vertical multi-cell
+        { x1: 0, z1: 0, dir1: { x: 1, z: 0 }, x2: 6, z2: 0, dir2: { x: -1, z: 0 }, len1: 3, len2: 2, vert1: true, vert2: true }, // Vertical multi-cell - moved to avoid conflict
+        { x1: 3, z1: 5, dir1: { x: 0, z: 1 }, x2: 3, z2: 3, dir2: { x: 0, z: -1 }, len1: 2, len2: 3, vert1: true, vert2: true }, // Vertical multi-cell - moved to avoid conflict
+
         // More horizontal blocks
-        { x1: 2, z1: 0, dir1: {x: 1, z: 0}, x2: 5, z2: 0, dir2: {x: -1, z: 0}, len1: 3, len2: 2, vert1: false, vert2: false }, // Multi-cell horizontal
-        { x1: 4, z1: 0, dir1: {x: 0, z: 1}, x2: 4, z2: 2, dir2: {x: 0, z: -1}, len1: 2, len2: 1, vert1: false, vert2: false }, // Moved to avoid conflict
-        { x1: 3, z1: 6, dir1: {x: 1, z: 0}, x2: 5, z2: 6, dir2: {x: -1, z: 0}, len1: 1, len2: 1, vert1: false, vert2: false },
+        { x1: 2, z1: 0, dir1: { x: 1, z: 0 }, x2: 5, z2: 0, dir2: { x: -1, z: 0 }, len1: 3, len2: 2, vert1: false, vert2: false }, // Multi-cell horizontal
+        { x1: 4, z1: 0, dir1: { x: 0, z: 1 }, x2: 4, z2: 2, dir2: { x: 0, z: -1 }, len1: 2, len2: 1, vert1: false, vert2: false }, // Moved to avoid conflict
+        { x1: 3, z1: 6, dir1: { x: 1, z: 0 }, x2: 5, z2: 6, dir2: { x: -1, z: 0 }, len1: 1, len2: 1, vert1: false, vert2: false },
     ];
-    
+
     function isCellOccupied(x, z) {
         return occupiedCells.has(`${x},${z}`);
     }
-    
+
     function occupyCells(x, z, length, isXAligned) {
         for (let i = 0; i < length; i++) {
             const cellX = x + (isXAligned ? i : 0);
@@ -3397,11 +3419,11 @@ function createHeadOnCollisionBlocks(targetBlockCount = 10) {
             occupiedCells.add(`${cellX},${cellZ}`);
         }
     }
-    
+
     // Place head-on collision pairs
     for (const pair of headOnPairs) {
         if (blocksToPlace.length >= targetBlockCount) break;
-        
+
         // Place first block
         const isXAligned1 = Math.abs(pair.dir1.x) > 0;
         let canPlace1 = true;
@@ -3420,7 +3442,7 @@ function createHeadOnCollisionBlocks(targetBlockCount = 10) {
                 }
             }
         }
-        
+
         if (canPlace1) {
             if (pair.vert1) {
                 occupiedCells.add(`${pair.x1},${pair.z1}`);
@@ -3434,7 +3456,7 @@ function createHeadOnCollisionBlocks(targetBlockCount = 10) {
             scene.remove(block1.group);
             blocksToPlace.push(block1);
         }
-        
+
         // Place second block (head-on collision partner)
         if (blocksToPlace.length < targetBlockCount) {
             const isXAligned2 = Math.abs(pair.dir2.x) > 0;
@@ -3454,7 +3476,7 @@ function createHeadOnCollisionBlocks(targetBlockCount = 10) {
                     }
                 }
             }
-            
+
             if (canPlace2) {
                 if (pair.vert2) {
                     occupiedCells.add(`${pair.x2},${pair.z2}`);
@@ -3470,18 +3492,18 @@ function createHeadOnCollisionBlocks(targetBlockCount = 10) {
             }
         }
     }
-    
+
     // Fill remaining slots with random blocks if needed
     while (blocksToPlace.length < targetBlockCount) {
         const x = Math.floor(Math.random() * gridSize);
         const z = Math.floor(Math.random() * gridSize);
         if (!isCellOccupied(x, z)) {
-            const directions = [{x: 1, z: 0}, {x: -1, z: 0}, {x: 0, z: 1}, {x: 0, z: -1}];
+            const directions = [{ x: 1, z: 0 }, { x: -1, z: 0 }, { x: 0, z: 1 }, { x: 0, z: -1 }];
             const direction = directions[Math.floor(Math.random() * directions.length)];
             const length = Math.random() < 0.5 ? 1 : (Math.random() < 0.5 ? 2 : 3);
             const isVertical = Math.random() < 0.3; // 30% chance for vertical blocks
             const isXAligned = Math.abs(direction.x) > 0;
-            
+
             let canPlace = true;
             if (isVertical) {
                 // Vertical blocks only occupy the base cell
@@ -3498,7 +3520,7 @@ function createHeadOnCollisionBlocks(targetBlockCount = 10) {
                     }
                 }
             }
-            
+
             if (canPlace) {
                 if (isVertical) {
                     occupiedCells.add(`${x},${z}`);
@@ -3511,7 +3533,7 @@ function createHeadOnCollisionBlocks(targetBlockCount = 10) {
             }
         }
     }
-    
+
     return blocksToPlace;
 }
 
@@ -3520,7 +3542,7 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
     if (isGeneratingLevel) {
         return;
     }
-    
+
     // ABSOLUTE HARD STOP: If isRestart and level is 0, reject immediately
     // This is the last line of defense - should never be reached if restartCurrentLevel works correctly
     if (isRestart && level <= 0) {
@@ -3536,14 +3558,14 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
             return;
         }
     }
-    
+
     // CRITICAL HARD GUARD: Never accept level 0 for restart
     // This prevents any possibility of restarting from level 0
     if (isRestart && (level <= 0 || isNaN(level))) {
         // Try to recover from localStorage
         const storageKey = getStorageKey();
         const savedLevel = parseInt(localStorage.getItem(storageKey) || '0', 10);
-        
+
         if (savedLevel > 0) {
             level = savedLevel;
             currentLevel = savedLevel;
@@ -3555,13 +3577,13 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
             return;
         }
     }
-    
+
     // CRITICAL: Validate level parameter - never generate level 0 unless explicitly starting new game
     if (level <= 0 || isNaN(level)) {
         // Try to recover from localStorage (for both restart and initial load)
         const storageKey = getStorageKey();
         const savedLevel = parseInt(localStorage.getItem(storageKey) || '0', 10);
-        
+
         // If savedLevel > 0, we have progress - recover it (this shouldn't happen for new games)
         if (savedLevel > 0) {
             level = savedLevel;
@@ -3585,20 +3607,20 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
             }
         }
     }
-    
+
     isGeneratingLevel = true;
     levelCompleteShown = false; // Reset level complete flag for new level
-    
+
     // CRITICAL: Reset tower position offset at start of level to prevent camera jumps
     // Only set target to 0, let smooth interpolation handle the transition
     // This ensures smooth transition from previous level's offset instead of instant snap
     targetTowerPositionOffset.set(0, 0, 0);
     // Don't reset towerPositionOffset immediately - let interpolation smooth the transition
-    
+
     // CRITICAL: Set currentLevel to the level parameter
     // This ensures the level is preserved, especially when restarting
     currentLevel = level;
-    
+
     // CRITICAL: If this is a restart, NEVER save 0 to localStorage
     // This prevents corruption if level parameter is somehow 0
     if (isRestart && currentLevel <= 0) {
@@ -3614,10 +3636,10 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
             return;
         }
     }
-    
+
     // IMMEDIATELY save to prevent any loss
     saveProgress();
-    
+
     // Only reset spin counter for NEW level, not when restarting the same level
     // When restarting, preserve remainingSpins (game-level state)
     if (!isRestart) {
@@ -3628,13 +3650,13 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
         }
         updateSpinCounterDisplay();
     }
-    
+
     // Ensure randomization by consuming some random numbers at start
     // This helps prevent identical layouts when generation happens quickly
     for (let i = 0; i < (Date.now() % 50 + Math.floor(Math.random() * 50)); i++) {
         Math.random(); // Consume random numbers to shift the sequence
     }
-    
+
     // Clear existing blocks first and clean up animations
     for (const block of blocks) {
         // Stop any ongoing animations
@@ -3664,51 +3686,51 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
         }
     }
     blocks.length = 0;
-    
+
     // Framing control removed: no framing animation frames to cancel
-    
+
     // Get target block count for this level
     const targetBlockCount = getBlocksForLevel(level);
-    
+
     // Get Inferno mode difficulty configuration if applicable
     let difficultyConfig = null;
     if (isInfernoMode()) {
         difficultyConfig = getInfernoDifficultyConfig(level);
     }
-    
+
     // Special case: Level 1 with head-on collisions for testing
     if (level === 1) {
         const headOnBlocks = createHeadOnCollisionBlocks(targetBlockCount);
-        
+
         // Use the same animation system as normal generation
         await placeBlocksBatch(headOnBlocks);
-        
+
         // Time-based modes: calculate initial time for this level based on actual block lengths
         if (isTimeBasedMode()) {
             timeChallengeStartNewLevel(headOnBlocks);
             console.log('[Time Challenge] Level started, timeChallengeActive:', timeChallengeActive, 'timeLeftSec:', timeLeftSec);
         }
-        
+
         isGeneratingLevel = false;
         return;
     }
-    
+
     // Determine if we need multiple layers
     // Grid has 7x7 = 49 cells, so if targetBlockCount > 49, we need multiple layers
     const gridCells = gridSize * gridSize; // 49 cells
     const needsMultipleLayers = targetBlockCount > gridCells;
-    
+
     let allBlocks = [];
-    
+
     if (needsMultipleLayers) {
         // Multi-layer generation: Use longer blocks in lower layers to push more blocks to upper layers
         // Strategy: Layer 1 uses longer blocks (2-3 cells), leaving fewer blocks in layer 1
         // This pushes more blocks to layer 2, creating a better tower structure
-        
+
         let remainingBlocks = targetBlockCount;
         let currentLayer = 0;
         let lowerLayerCells = null;
-        
+
         // Calculate max layers needed: targetBlockCount / gridCells (rounded up) + buffer
         // For high block counts, need more buffer since layers generate fewer blocks than requested
         const blocksPerLayerEstimate = gridCells * 0.6; // Assume 60% fill rate per layer
@@ -3716,13 +3738,13 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
         const maxLayers = Math.max(15, maxLayersNeeded); // At least 15, but more if needed
         while (remainingBlocks > 0 && currentLayer < maxLayers) {
             const yOffset = currentLayer * cubeSize;
-            
+
             // For layer 1: Use longer blocks to minimize block count (prefer 2-3 cell blocks)
             // This leaves more room for layer 2
             // For layer 2+: Fill remaining blocks
             let blocksForThisLayer;
             let preferLongBlocks = false;
-            
+
             if (currentLayer === 0) {
                 // Layer 1: Use longer blocks to minimize block count (prefer 2-3 cell blocks)
                 // For high block counts, allow more blocks in layer 1 to reduce total layers needed
@@ -3741,31 +3763,31 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
                 const maxBlocksPerUpperLayer = Math.min(gridCells, maxBlocksBasedOnSupport);
                 blocksForThisLayer = Math.min(remainingBlocks, maxBlocksPerUpperLayer);
                 preferLongBlocks = false;
-                
+
                 // If we have very few supported cells, we might not be able to place many blocks
                 if (supportedCells < 10 && remainingBlocks > 50) {
                     console.warn(`⚠️ Layer ${currentLayer}: Only ${supportedCells} supported cells, limiting block requests`);
                 }
             }
-            
+
             // Generate blocks for this layer with preference for longer blocks in layer 1
             const layerBlocks = createSolvableBlocks(yOffset, lowerLayerCells, blocksForThisLayer, level, preferLongBlocks, difficultyConfig);
-            
+
             // Track cells occupied by this layer for next layer
             // We need to track both 2D cells (for support checking) and Y ranges (for overlap checking)
             const currentLayerCells = new Set();
             const currentLayerYRanges = new Map(); // key: "x,z" -> array of {yBottom, yTop}
-            
+
             for (const block of layerBlocks) {
                 const blockCubeSize = block.cubeSize || cubeSize;
                 const blockHeight = block.isVertical ? block.length * blockCubeSize : blockCubeSize;
                 const yBottom = block.yOffset || yOffset;
                 const yTop = yBottom + blockHeight;
-                
+
                 if (block.isVertical) {
                     const cellKey = `${block.gridX},${block.gridZ}`;
                     currentLayerCells.add(cellKey);
-                    
+
                     // Track Y range for this cell
                     if (!currentLayerYRanges.has(cellKey)) {
                         currentLayerYRanges.set(cellKey, []);
@@ -3778,7 +3800,7 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
                         const z = block.gridZ + (isXAligned ? 0 : i);
                         const cellKey = `${x},${z}`;
                         currentLayerCells.add(cellKey);
-                        
+
                         // Track Y range for this cell
                         if (!currentLayerYRanges.has(cellKey)) {
                             currentLayerYRanges.set(cellKey, []);
@@ -3787,7 +3809,7 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
                     }
                 }
             }
-            
+
             // Merge with previous layers
             if (lowerLayerCells) {
                 // Merge 2D cells (for support checking)
@@ -3813,14 +3835,14 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
                 // First layer - create structure with both cells and Y ranges
                 lowerLayerCells = { cells: currentLayerCells, yRanges: currentLayerYRanges };
             }
-            
+
             allBlocks = allBlocks.concat(layerBlocks);
             remainingBlocks = targetBlockCount - allBlocks.length; // Recalculate remaining based on actual placed blocks
             currentLayer++;
-            
+
             // If we've placed enough blocks, stop
             if (allBlocks.length >= targetBlockCount) break;
-            
+
             // If we didn't place any blocks this layer but we have support, try next layer
             // Don't stop early - continue if we have support cells available
             if (layerBlocks.length === 0 && remainingBlocks > 0) {
@@ -3833,7 +3855,7 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
                 // Continue to next layer - it might work better
             }
         }
-        
+
         // Final aggressive pass: If we're still short, try generating more layers with single blocks only
         if (allBlocks.length < targetBlockCount && currentLayer < maxLayers * 2) {
             // Try up to 5 more layers with single-block-only strategy
@@ -3841,19 +3863,19 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
             for (let extraLayer = 0; extraLayer < additionalLayers && allBlocks.length < targetBlockCount; extraLayer++) {
                 const yOffset = currentLayer * cubeSize;
                 remainingBlocks = targetBlockCount - allBlocks.length;
-                
+
                 // Check support
                 const supportedCells = lowerLayerCells?.cells?.size || 0;
                 if (supportedCells === 0) {
                     break;
                 }
-                
+
                 // Request single blocks only - maximize count
                 const blocksForThisLayer = Math.min(remainingBlocks, supportedCells);
-                
+
                 // Create blocks with single-block-only preference (preferLongBlocks = false)
                 const layerBlocks = createSolvableBlocks(yOffset, lowerLayerCells, blocksForThisLayer, level, false, difficultyConfig);
-                
+
                 // Track cells (same as main loop)
                 const currentLayerCells = new Set();
                 const currentLayerYRanges = new Map();
@@ -3862,7 +3884,7 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
                     const blockHeight = block.isVertical ? block.length * blockCubeSize : blockCubeSize;
                     const yBottom = block.yOffset || yOffset;
                     const yTop = yBottom + blockHeight;
-                    
+
                     if (block.isVertical) {
                         const cellKey = `${block.gridX},${block.gridZ}`;
                         currentLayerCells.add(cellKey);
@@ -3884,7 +3906,7 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
                         }
                     }
                 }
-                
+
                 // Merge with previous layers
                 if (lowerLayerCells instanceof Set) {
                     lowerLayerCells = { cells: lowerLayerCells, yRanges: new Map() };
@@ -3901,14 +3923,14 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
                     }
                     lowerLayerCells.yRanges.get(cellKey).push(...ranges);
                 }
-                
+
                 allBlocks = allBlocks.concat(layerBlocks);
                 currentLayer++;
-                
+
                 if (allBlocks.length >= targetBlockCount) break;
             }
         }
-        
+
         // Inferno mode: Create multi-layer dependencies (upper blocks block lower exits)
         if (isInfernoMode() && difficultyConfig && difficultyConfig.multilayerBlockingPercentage > 0 && allBlocks.length > 0) {
             // Group blocks by layer (yOffset)
@@ -3920,48 +3942,48 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
                 }
                 blocksByLayer.get(layerKey).push(block);
             }
-            
+
             // Sort layers by Y (lower to upper)
             const sortedLayers = Array.from(blocksByLayer.keys()).sort((a, b) => a - b);
-            
+
             // For each upper layer, try to create dependencies with lower layers
             for (let i = 1; i < sortedLayers.length; i++) {
                 const upperLayerY = sortedLayers[i];
                 const upperBlocks = blocksByLayer.get(upperLayerY);
                 const lowerBlocks = [];
-                
+
                 // Collect all blocks from lower layers
                 for (let j = 0; j < i; j++) {
                     lowerBlocks.push(...blocksByLayer.get(sortedLayers[j]));
                 }
-                
+
                 // Calculate how many upper blocks should block lower exits
                 const targetBlockingCount = Math.floor(upperBlocks.length * difficultyConfig.multilayerBlockingPercentage);
                 let blockingCount = 0;
-                
+
                 // Check each upper block to see if it blocks any lower block's exit
                 for (const upperBlock of upperBlocks) {
                     if (blockingCount >= targetBlockingCount) break;
-                    
+
                     // Check if this upper block is in the path of any lower block's exit
                     let blocksLowerExit = false;
                     for (const lowerBlock of lowerBlocks) {
                         if (lowerBlock.isFalling || lowerBlock.isRemoved) continue;
-                        
+
                         // Get lower block's exit path
                         const lowerCells = getBlockCells(lowerBlock);
                         const lowerDir = lowerBlock.direction;
-                        
+
                         // Check if upper block is in the path
                         for (const lowerCell of lowerCells) {
                             let checkX = lowerCell.x;
                             let checkZ = lowerCell.z;
                             const maxSteps = gridSize * 2;
-                            
+
                             for (let step = 0; step < maxSteps; step++) {
                                 checkX += lowerDir.x;
                                 checkZ += lowerDir.z;
-                                
+
                                 // Check if we've reached the upper block's position
                                 const upperCells = getBlockCells(upperBlock);
                                 for (const upperCell of upperCells) {
@@ -3970,17 +3992,17 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
                                         break;
                                     }
                                 }
-                                
+
                                 if (blocksLowerExit) break;
                                 if (checkX < 0 || checkX >= gridSize || checkZ < 0 || checkZ >= gridSize) break;
                             }
-                            
+
                             if (blocksLowerExit) break;
                         }
-                        
+
                         if (blocksLowerExit) break;
                     }
-                    
+
                     if (blocksLowerExit) {
                         blockingCount++;
                     } else {
@@ -3990,32 +4012,32 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
                             x: -upperBlock.direction.x,
                             z: -upperBlock.direction.z
                         };
-                        
+
                         // Try moving backward a few steps
                         let moved = false;
                         for (let steps = 1; steps <= 3 && !moved; steps++) {
                             const newX = upperBlock.gridX + backwardDir.x * steps;
                             const newZ = upperBlock.gridZ + backwardDir.z * steps;
-                            
+
                             // Check bounds
                             if (newX >= 0 && newX < gridSize && newZ >= 0 && newZ < gridSize) {
                                 // Check if this position would block a lower exit
                                 let wouldBlock = false;
                                 for (const lowerBlock of lowerBlocks) {
                                     if (lowerBlock.isFalling || lowerBlock.isRemoved) continue;
-                                    
+
                                     const lowerCells = getBlockCells(lowerBlock);
                                     const lowerDir = lowerBlock.direction;
-                                    
+
                                     for (const lowerCell of lowerCells) {
                                         let checkX = lowerCell.x;
                                         let checkZ = lowerCell.z;
                                         const maxSteps = gridSize * 2;
-                                        
+
                                         for (let step = 0; step < maxSteps; step++) {
                                             checkX += lowerDir.x;
                                             checkZ += lowerDir.z;
-                                            
+
                                             // Check if upper block at new position would be in path
                                             const upperCells = getBlockCells(upperBlock);
                                             for (const upperCell of upperCells) {
@@ -4026,17 +4048,17 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
                                                     break;
                                                 }
                                             }
-                                            
+
                                             if (wouldBlock) break;
                                             if (checkX < 0 || checkX >= gridSize || checkZ < 0 || checkZ >= gridSize) break;
                                         }
-                                        
+
                                         if (wouldBlock) break;
                                     }
-                                    
+
                                     if (wouldBlock) break;
                                 }
-                                
+
                                 if (wouldBlock) {
                                     // Check if new position doesn't overlap with other blocks
                                     let canMove = true;
@@ -4057,7 +4079,7 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
                                         }
                                         if (!canMove) break;
                                     }
-                                    
+
                                     if (canMove) {
                                         // Move the block
                                         upperBlock.gridX = newX;
@@ -4074,7 +4096,7 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
                         }
                     }
                 }
-                
+
                 console.log(`  Inferno: Created ${blockingCount}/${upperBlocks.length} multi-layer dependencies in layer ${i}`);
             }
         }
@@ -4082,26 +4104,26 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
         // Single layer generation (base layer at Y=0)
         allBlocks = createSolvableBlocks(0, null, targetBlockCount, level, false, difficultyConfig);
     }
-    
+
     // Place all blocks in batches
     await placeBlocksBatch(allBlocks, 10, 10); // 10 blocks per batch, 10ms between batches
-    
+
     // Time-based modes: calculate initial time for this level based on actual block lengths
     // NOTE: This must happen AFTER blocks are created and placed
     // to ensure we can sum the actual block lengths
     if (isTimeBasedMode()) {
         timeChallengeStartNewLevel(allBlocks);
         // #region agent log
-        debugTelemetry({location:'main.js:generateSolvablePuzzle:timeChallengeStart',message:'Time challenge level started',data:{timeChallengeActive:timeChallengeActive,timeLeftSec:timeLeftSec,level:level},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'});
+        debugTelemetry({ location: 'main.js:generateSolvablePuzzle:timeChallengeStart', message: 'Time challenge level started', data: { timeChallengeActive: timeChallengeActive, timeLeftSec: timeLeftSec, level: level }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H2' });
         // #endregion
         console.log('[Time Challenge] Level started, timeChallengeActive:', timeChallengeActive, 'timeLeftSec:', timeLeftSec);
         // Re-check button states after level start
         updateSpinCounterDisplay();
     }
-    
+
     // CRITICAL: Support checking is already disabled by isGeneratingLevel flag
     // The flag will be set to false after a delay to ensure all blocks are initialized
-    
+
     // Validate structure after placement to catch any overlaps
     const structureCheck = validateStructure(blocks, gridSize);
     if (!structureCheck.valid) {
@@ -4112,16 +4134,16 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
         await generateSolvablePuzzle(level, isRestart);
         return;
     }
-    
+
     // Inferno mode: Validate difficulty threshold (difficulty-based generation)
     if (isInfernoMode() && difficultyConfig) {
         let attempts = 0;
         const maxAttempts = 5;
         let difficulty = calculateDifficulty(blocks, gridSize);
-        
+
         while (attempts < maxAttempts && difficulty.score < difficultyConfig.difficultyThreshold) {
             console.log(`⚠️ Inferno mode: Puzzle difficulty ${difficulty.score.toFixed(1)} below threshold ${difficultyConfig.difficultyThreshold.toFixed(1)}, regenerating... (attempt ${attempts + 1}/${maxAttempts})`);
-            
+
             // Clear current blocks
             for (const block of blocks) {
                 towerGroup.remove(block.group);
@@ -4145,7 +4167,7 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
                 }
             }
             blocks.length = 0;
-            
+
             // Regenerate with slightly adjusted parameters
             // Increase outward percentage reduction and length preference
             const adjustedConfig = { ...difficultyConfig };
@@ -4161,7 +4183,7 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
             adjustedConfig.lengthDistribution.length1 /= sum;
             adjustedConfig.lengthDistribution.length2 /= sum;
             adjustedConfig.lengthDistribution.length3 /= sum;
-            
+
             // Regenerate
             if (needsMultipleLayers) {
                 // Regenerate multi-layer (simplified - just regenerate single layer for now)
@@ -4169,39 +4191,39 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
             } else {
                 allBlocks = createSolvableBlocks(0, null, targetBlockCount, level, false, adjustedConfig);
             }
-            
+
             // Place blocks
             await placeBlocksBatch(allBlocks, 10, 10);
-            
+
             // Re-validate structure
             const newStructureCheck = validateStructure(blocks, gridSize);
             if (!newStructureCheck.valid) {
                 console.error(`✗ Structure validation failed after difficulty adjustment: ${newStructureCheck.reason}`);
                 break;
             }
-            
+
             // Recalculate difficulty
             difficulty = calculateDifficulty(blocks, gridSize);
             attempts++;
         }
-        
+
         if (difficulty.score < difficultyConfig.difficultyThreshold) {
             console.warn(`⚠️ Inferno mode: Could not reach difficulty threshold after ${maxAttempts} attempts. Using best attempt (${difficulty.score.toFixed(1)})`);
         } else {
             console.log(`✓ Inferno mode: Puzzle difficulty ${difficulty.score.toFixed(1)} meets threshold ${difficultyConfig.difficultyThreshold.toFixed(1)}`);
         }
     }
-    
+
     // Show general level updates (all modes) - meaningful messages at key intervals
     showLevelUpdateModal(level);
-    
+
     // Inferno mode: Show milestone and feature modals
     if (isInfernoMode() && difficultyConfig) {
         // Show milestone modal if applicable
         if (difficultyConfig.isMilestone) {
             showMilestoneModal(level);
         }
-        
+
         // Show feature modals on first encounter
         // Check which features are active at this level
         if (difficultyConfig.outwardPercentage < 0.7 && level >= 6) {
@@ -4216,27 +4238,27 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
         if (difficultyConfig.multilayerBlockingPercentage > 0 && level >= 11) {
             showFeatureModal('multilayer', level);
         }
-        if (difficultyConfig.spinCostMultiplier > 1/3 && level >= 6) {
+        if (difficultyConfig.spinCostMultiplier > 1 / 3 && level >= 6) {
             showFeatureModal('spincost', level);
         }
         if (difficultyConfig.difficultyThreshold > 50 && level >= 10) {
             showFeatureModal('difficulty', level);
         }
     }
-    
+
     // Update level counter display
     const levelValueElement = document.getElementById('level-value');
     if (levelValueElement) {
         levelValueElement.textContent = level;
     }
-    
+
     // CRITICAL: Ensure currentLevel matches the level parameter
     // This is a safety check to prevent level from being wrong
     if (currentLevel !== level) {
         console.warn(`[generateSolvablePuzzle] Level mismatch: currentLevel=${currentLevel}, level=${level}. Fixing...`);
         currentLevel = level;
     }
-    
+
     // Keep isGeneratingLevel true for a bit longer to prevent support checking from running
     // Blocks need time to fully initialize before support checking resumes
     setTimeout(() => {
@@ -4247,14 +4269,14 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
         // #endregion
         isGeneratingLevel = false;
         // #region agent log
-        debugTelemetry({location:'main.js:generateSolvablePuzzle:isGeneratingLevelFalse',message:'isGeneratingLevel set to false',data:{oldIsGeneratingLevel:oldIsGeneratingLevel,newIsGeneratingLevel:isGeneratingLevel,oldTargetRadius:oldTargetRadius.toFixed(2),oldCurrentRadius:oldCurrentRadius.toFixed(2),currentTargetRadius:targetRadius.toFixed(2),currentCurrentRadius:currentRadius.toFixed(2),blocksCount:blocks.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'});
+        debugTelemetry({ location: 'main.js:generateSolvablePuzzle:isGeneratingLevelFalse', message: 'isGeneratingLevel set to false', data: { oldIsGeneratingLevel: oldIsGeneratingLevel, newIsGeneratingLevel: isGeneratingLevel, oldTargetRadius: oldTargetRadius.toFixed(2), oldCurrentRadius: oldCurrentRadius.toFixed(2), currentTargetRadius: targetRadius.toFixed(2), currentCurrentRadius: currentRadius.toFixed(2), blocksCount: blocks.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' });
         // #endregion
         console.log('  Level generation complete, support checking enabled');
-        
+
         // Force immediate auto-zoom update after spawn ends to ensure smooth transition
         // This bypasses the throttle to prevent camera jump
         lastAutoZoomUpdateMs = 0; // Reset throttle to force immediate auto-zoom on next frame
-        
+
         // Shadows are manual/gated; keep them updating briefly after spawn completes.
         try {
             shadowUpdateCooldownUntilMs = performance.now() + 800;
@@ -4267,19 +4289,19 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
         // Removed centerTowerVertically() call - blocks are already positioned correctly,
         // and auto-zoom handles framing. The artificial push-down was causing a visual jump.
     }, 1500); // 1.5 seconds to ensure all blocks are initialized
-    
+
     // Start timer for new level
     resetTimer();
     startTimer();
     // Reset move counter for new level
     totalMoves = 0;
-    
+
     // Start stats tracking for new level
     startLevelStats(currentLevel);
-    
+
     // Update button states after level generation
     updateUndoButtonState();
-    
+
     // Block count summary - always show
     const difference = targetBlockCount - blocks.length;
     if (difference !== 0) {
@@ -4306,41 +4328,41 @@ const DEBUG_COLLISION_BUFFER_SIZE = 50; // Store last 50 collision events
 const DEBUG_MOVEMENT_BUFFER_SIZE = 50; // Store last 50 movement calculations
 
 // Intercept console methods to capture logs
-(function() {
+(function () {
     const originalLog = console.log;
     const originalWarn = console.warn;
     const originalError = console.error;
-    
+
     function captureLog(level, args) {
         const timestamp = Date.now();
-        const message = Array.from(args).map(arg => 
+        const message = Array.from(args).map(arg =>
             typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
         ).join(' ');
-        
+
         consoleLogBuffer.push({
             level,
             message,
             timestamp,
             stack: new Error().stack
         });
-        
+
         // Keep buffer size limited
         if (consoleLogBuffer.length > CONSOLE_LOG_BUFFER_SIZE) {
             consoleLogBuffer.shift();
         }
     }
-    
-    console.log = function(...args) {
+
+    console.log = function (...args) {
         captureLog('log', args);
         originalLog.apply(console, args);
     };
-    
-    console.warn = function(...args) {
+
+    console.warn = function (...args) {
         captureLog('warn', args);
         originalWarn.apply(console, args);
     };
-    
-    console.error = function(...args) {
+
+    console.error = function (...args) {
         captureLog('error', args);
         originalError.apply(console, args);
     };
@@ -4388,7 +4410,7 @@ function formatTime(seconds) {
 // Start timer
 function startTimer() {
     if (isTimerRunning) return;
-    
+
     timerStartTime = performance.now() / 1000; // Convert to seconds
     timerPausedTime = 0;
     isTimerRunning = true;
@@ -4397,7 +4419,7 @@ function startTimer() {
 // Stop timer
 function stopTimer() {
     if (!isTimerRunning) return;
-    
+
     if (timerStartTime !== null) {
         timerPausedTime += (performance.now() / 1000) - timerStartTime;
     }
@@ -4427,7 +4449,7 @@ function updateTimerDisplay() {
     if (isTimeBasedMode() && timeChallengeActive) {
         // During animation, show precise value for smooth visual feedback
         // Otherwise, show ceil so players don't feel robbed at 0.1s remaining
-        const displaySeconds = timeAnimationActive 
+        const displaySeconds = timeAnimationActive
             ? Math.max(0, Math.round(timeLeftSec * 10) / 10) // Show 1 decimal during animation
             : Math.max(0, Math.ceil(timeLeftSec));
         timerValueElement.textContent = formatTime(displaySeconds);
@@ -4435,11 +4457,11 @@ function updateTimerDisplay() {
     }
 
     let elapsedSeconds = timerPausedTime;
-    
+
     if (isTimerRunning && timerStartTime !== null) {
         elapsedSeconds += (performance.now() / 1000) - timerStartTime;
     }
-    
+
     timerValueElement.textContent = formatTime(elapsedSeconds);
 }
 
@@ -4452,14 +4474,14 @@ function saveMoveState(block) {
         gridX: block.gridX,
         gridZ: block.gridZ,
         yOffset: block.yOffset,
-        direction: {...block.direction},
+        direction: { ...block.direction },
         isVertical: block.isVertical,
         timestamp: performance.now()
     });
-    
+
     // Increment total move counter
     totalMoves++;
-    
+
     // Limit history to last 50 moves
     if (moveHistory.length > 50) {
         moveHistory.shift();
@@ -4477,7 +4499,7 @@ function recordMoveState(block, preMoveState) {
         isVertical: preMoveState.isVertical,
         timestamp: performance.now(),
     };
-    
+
     moveHistory.push(moveEntry);
 
     // Enhanced debug move history with full block state (before and after)
@@ -4517,9 +4539,9 @@ function recordMoveState(block, preMoveState) {
             gameMode: gameMode || 'unknown',
         }
     };
-    
+
     debugMoveHistory.push(debugMoveEntry);
-    
+
     // Keep only last N moves for investigation
     if (debugMoveHistory.length > DEBUG_MOVE_HISTORY_SIZE) {
         debugMoveHistory.shift();
@@ -4546,17 +4568,17 @@ if (typeof window !== 'undefined') {
 function undoLastMove() {
     // Validate we have moves to undo
     if (moveHistory.length === 0) return false;
-    
+
     // Get the last move from history
     const lastMove = moveHistory.pop();
     const block = lastMove.block;
-    
+
     // Validate block exists
     if (!block || typeof block !== 'object') {
         console.warn('[Undo] Invalid block in move history');
         return false;
     }
-    
+
     // Don't undo if block is actively falling (physics simulation in progress)
     // Exception: if block is removed, we can resurrect it
     if (block.isFalling && !block.isRemoved) {
@@ -4565,12 +4587,12 @@ function undoLastMove() {
         moveHistory.push(lastMove);
         return false;
     }
-    
+
     // Step 1: Ensure block exists in blocks array and scene
     if (!blocks.includes(block)) {
         blocks.push(block);
     }
-    
+
     // Ensure block is in scene graph
     if (block.group) {
         try {
@@ -4581,11 +4603,11 @@ function undoLastMove() {
             console.warn('[Undo] Failed to add block to scene:', e);
         }
     }
-    
+
     // Step 2: Stop all animations and physics
     block.needsStop = true;
     block.isAnimating = false;
-    
+
     // Clean up physics if it exists
     if (block.physicsBody) {
         try {
@@ -4597,7 +4619,7 @@ function undoLastMove() {
         }
         block.physicsBody = null;
     }
-    
+
     if (block.physicsCollider) {
         try {
             if (block.physics && block.physics.world) {
@@ -4608,41 +4630,41 @@ function undoLastMove() {
         }
         block.physicsCollider = null;
     }
-    
+
     block.needsPhysicsBody = false;
     block.pendingAngularVel = null;
     block.pendingLinearVel = null;
-    
+
     // Step 3: Reset all state flags
     block.isRemoved = false;
     block.isFalling = false;
     block.removalStartTime = null;
     block.updateMeltAnimation = null;
-    
+
     // Step 4: Reset transform (physics may have rotated/scaled it)
     if (block.group) {
         block.group.scale.set(1, 1, 1);
         block.group.rotation.set(0, 0, 0);
         block.group.quaternion.set(0, 0, 0, 1);
     }
-    
+
     // Step 5: Restore block position and orientation from move history
     block.gridX = lastMove.gridX;
     block.gridZ = lastMove.gridZ;
     block.yOffset = lastMove.yOffset ?? block.yOffset;
     block.direction = { ...lastMove.direction }; // Create new object to avoid reference issues
     block.isVertical = lastMove.isVertical;
-    
+
     // Step 6: Update visual position immediately
     if (typeof block.updateWorldPosition === 'function') {
         block.updateWorldPosition();
     }
-    
+
     // Step 7: Update arrow rotation if function exists
     if (typeof block.updateArrowRotation === 'function') {
         block.updateArrowRotation();
     }
-    
+
     // Step 8: Restore shadow casting (may have been disabled during fall/removal)
     if (block.cubes && block.cubes.length > 0) {
         try {
@@ -4656,12 +4678,12 @@ function undoLastMove() {
             console.warn('[Undo] Failed to restore shadows:', e);
         }
     }
-    
+
     // Step 9: Reset catapult-related state
     block.wasCatapulted = false;
     block._catapultShadowSuppressed = false;
     block._catapultRestStartMs = 0;
-    
+
     // Step 10: Handle locked blocks - if block was locked after the move, unlock it
     // Note: We don't store lock state in move history, so we can't restore it
     // But we can ensure the block is in a valid state
@@ -4670,13 +4692,13 @@ function undoLastMove() {
         // But we ensure it's still functional
         console.log('[Undo] Block is locked, position restored but lock state preserved');
     }
-    
+
     // Step 11: Update move counter (decrement, clamp at 0)
     totalMoves = Math.max(0, totalMoves - 1);
-    
+
     // Step 12: Update undo button state
     updateUndoButtonState();
-    
+
     return true;
 }
 
@@ -4685,19 +4707,19 @@ function removeBlockWithAnimation(block) {
     if (!blocks.includes(block) || block.isRemoved || block.isFalling || block.isAnimating) {
         return;
     }
-    
+
     // Mark as animating (but NOT removed yet - let animation complete first)
     block.isAnimating = true;
     block.isRemoved = false; // Don't mark as removed until animation completes
     block.removalStartTime = performance.now();
     block.meltDuration = 600; // 600ms melt animation (faster)
-    
+
     // Store original scale, position, rotation, and colors
     const originalScale = block.group.scale.clone();
     const originalPosition = block.group.position.clone();
     const originalRotation = block.group.rotation.clone();
     const originalColors = [];
-    
+
     // Make materials transparent for fade effect and store original colors
     block.cubes.forEach((cube, index) => {
         if (cube.material) {
@@ -4713,7 +4735,7 @@ function removeBlockWithAnimation(block) {
             }
         }
     });
-    
+
     // Also handle arrow and direction indicators if they exist
     if (block.arrow) {
         block.arrow.traverse((child) => {
@@ -4725,7 +4747,7 @@ function removeBlockWithAnimation(block) {
             }
         });
     }
-    
+
     if (block.directionIndicators) {
         block.directionIndicators.traverse((child) => {
             if (child.material) {
@@ -4736,50 +4758,50 @@ function removeBlockWithAnimation(block) {
             }
         });
     }
-    
+
     // Animation function - called each frame
-    block.updateMeltAnimation = function(deltaTime) {
+    block.updateMeltAnimation = function (deltaTime) {
         if (!this.removalStartTime) return;
-        
+
         const elapsed = performance.now() - this.removalStartTime;
         const progress = Math.min(elapsed / this.meltDuration, 1.0);
-        
+
         // Easing function for smooth melt (ease-in-out with slight bounce at end)
         let eased;
         if (progress < 0.7) {
             // Smooth ease-in-out for most of animation
-            eased = progress < 0.35 
-                ? 2 * progress * progress 
+            eased = progress < 0.35
+                ? 2 * progress * progress
                 : 1 - Math.pow(-2 * progress + 2, 2) / 2;
         } else {
             // Accelerate melt at the end (like liquid pooling)
             const t = (progress - 0.7) / 0.3;
             eased = 0.755 + 0.245 * (1 - Math.pow(1 - t, 3));
         }
-        
+
         // Melt effect: scale down Y (height) more than X/Z, simulate melting
         const scaleY = 1 - eased; // Height melts away completely
         // Width/depth shrink more as it melts (starts slow, accelerates)
         const scaleXZ = 1 - eased * 0.5; // Width/depth shrinks up to 50%
-        
+
         // Add slight wobble/rotation as it melts (like liquid sloshing)
         const wobbleAmount = Math.sin(progress * Math.PI * 8) * (1 - eased) * 0.05;
         const rotationWobble = Math.sin(progress * Math.PI * 6) * (1 - eased) * 0.1;
-        
+
         this.group.scale.set(
             originalScale.x * scaleXZ * (1 + wobbleAmount),
             originalScale.y * scaleY,
             originalScale.z * scaleXZ * (1 - wobbleAmount * 0.5)
         );
-        
+
         // Add slight rotation wobble
         this.group.rotation.x = rotationWobble * 0.3;
         this.group.rotation.z = rotationWobble * 0.2;
-        
+
         // Slight downward movement as it melts (more pronounced at end)
         const sinkAmount = eased * 0.3 + Math.pow(eased, 2) * 0.2;
         this.group.position.y = originalPosition.y - sinkAmount;
-        
+
         // Fade out opacity with slight glow effect mid-animation
         let opacity = 1 - eased;
         if (progress > 0.3 && progress < 0.7) {
@@ -4787,7 +4809,7 @@ function removeBlockWithAnimation(block) {
             const glow = Math.sin(progress * Math.PI * 4) * 0.1;
             opacity = Math.min(1, opacity + glow);
         }
-        
+
         // Debug log first frame and every 200ms
         if (!this._meltDebugLogged || elapsed % 200 < 16) {
             if (!this._meltDebugLogged) {
@@ -4795,15 +4817,15 @@ function removeBlockWithAnimation(block) {
                 this._meltDebugLogged = true;
             }
         }
-        
+
         // Color shift towards warmer tones as it "heats up" during melt
         const heatProgress = Math.min(progress * 1.5, 1.0); // Heat effect peaks earlier
         const heatIntensity = Math.sin(heatProgress * Math.PI) * 0.4;
-        
+
         this.cubes.forEach((cube, index) => {
             if (cube.material && originalColors[index]) {
                 cube.material.opacity = opacity;
-                
+
                 // Add heat glow effect (shift towards orange/red)
                 if (heatProgress < 0.85) {
                     const originalColor = originalColors[index];
@@ -4814,7 +4836,7 @@ function removeBlockWithAnimation(block) {
                         heatIntensity
                     );
                     cube.material.color.copy(heatColor);
-                    
+
                     // Add emissive glow during heat phase (pulsing effect)
                     const pulse = Math.sin(progress * Math.PI * 6) * 0.2 + 0.8;
                     cube.material.emissive.copy(heatColor);
@@ -4832,7 +4854,7 @@ function removeBlockWithAnimation(block) {
                 }
             }
         });
-        
+
         // Fade arrow and indicators
         if (this.arrow) {
             this.arrow.traverse((child) => {
@@ -4841,7 +4863,7 @@ function removeBlockWithAnimation(block) {
                 }
             });
         }
-        
+
         if (this.directionIndicators) {
             this.directionIndicators.traverse((child) => {
                 if (child.material) {
@@ -4849,7 +4871,7 @@ function removeBlockWithAnimation(block) {
                 }
             });
         }
-        
+
         // Remove block when animation completes
         if (progress >= 1.0) {
             // Mark as removed first
@@ -4872,7 +4894,7 @@ function removeBlockWithAnimation(block) {
             this.updateMeltAnimation = null;
         }
     };
-    
+
     console.log(`Melting block at (${block.gridX}, ${block.gridZ})`, {
         originalScale,
         originalPosition,
@@ -4886,7 +4908,7 @@ function removeBlockWithAnimation(block) {
 function autoUnlockIfFewBlocksRemaining() {
     // Count active blocks (not removed, not falling)
     const activeBlocks = blocks.filter(b => !b.isRemoved && !b.isFalling);
-    
+
     if (activeBlocks.length <= 5) {
         // Unlock all locked blocks
         let unlockedCount = 0;
@@ -4910,7 +4932,7 @@ let lockExplanationModalShowing = false;
  */
 function showLockExplanationModal(lockDuration, isTimerMode, blockLength = null) {
     const LOCK_EXPLANATION_KEY = 'jarrows_lock_explanation_seen';
-    
+
     // Check if already seen
     try {
         if (localStorage.getItem(LOCK_EXPLANATION_KEY) === '1') {
@@ -4919,32 +4941,32 @@ function showLockExplanationModal(lockDuration, isTimerMode, blockLength = null)
     } catch {
         // Ignore localStorage errors
     }
-    
+
     // Prevent multiple simultaneous modals
     if (lockExplanationModalShowing) {
         return;
     }
-    
+
     lockExplanationModalShowing = true;
-    
+
     // Use the inferno-feature-modal structure
     const modal = document.getElementById('inferno-feature-modal');
     if (!modal) return;
-    
+
     const titleEl = document.getElementById('inferno-feature-title');
     const contentEl = document.getElementById('inferno-feature-content');
     const okBtn = document.getElementById('inferno-feature-ok');
-    
+
     if (!titleEl || !contentEl || !okBtn) return;
-    
+
     // Format duration
-    const durationText = lockDuration >= 1 
+    const durationText = lockDuration >= 1
         ? `${lockDuration.toFixed(1)} seconds`
         : `${(lockDuration * 1000).toFixed(0)} milliseconds`;
-    
+
     // Set content
     titleEl.textContent = '🔒 Block Locked!';
-    
+
     let content = `
         <p style="margin-bottom: 10px;"><b>What happened?</b></p>
         <p style="margin-bottom: 10px;">This block collided with another block and is now <b>locked</b> for ${durationText}.</p>
@@ -4958,7 +4980,7 @@ function showLockExplanationModal(lockDuration, isTimerMode, blockLength = null)
         
         <p style="margin-bottom: 10px;"><b>Lock duration:</b></p>
     `;
-    
+
     if (isTimerMode) {
         if (blockLength) {
             // Show proportional lock duration based on block length
@@ -4983,37 +5005,37 @@ function showLockExplanationModal(lockDuration, isTimerMode, blockLength = null)
     } else {
         content += `<p style="margin: 0;">In <b>Free Flow mode</b>: Lock duration increases with level difficulty.</p>`;
     }
-    
+
     content += `
         <p style="margin-top: 10px; margin-bottom: 0;"><b>Tip:</b> All blocks auto-unlock when 5 or fewer blocks remain!</p>
     `;
-    
+
     contentEl.innerHTML = content;
-    
+
     // Freeze time if in time-based mode
     if (typeof setTimeFrozen === 'function') {
         setTimeFrozen('lock_explanation', true);
     }
-    
+
     modal.style.display = 'flex';
-    
+
     const onOk = () => {
         modal.style.display = 'none';
         okBtn.removeEventListener('click', onOk);
         lockExplanationModalShowing = false;
-        
+
         // Mark as seen
         try {
             localStorage.setItem(LOCK_EXPLANATION_KEY, '1');
         } catch {
             // Ignore localStorage errors
         }
-        
+
         if (typeof setTimeFrozen === 'function') {
             setTimeFrozen('lock_explanation', false);
         }
     };
-    
+
     okBtn.addEventListener('click', onOk);
 }
 
@@ -5030,17 +5052,17 @@ function showLockTimeRemaining(block) {
     if (!block || !block.isLocked || !block.lockEndTime) {
         return;
     }
-    
+
     const now = performance.now();
     const remainingMs = block.lockEndTime - now;
-    
+
     // If already unlocked or time expired, don't show
     if (remainingMs <= 0) {
         return;
     }
-    
+
     const remainingSeconds = Math.ceil(remainingMs / 1000);
-    
+
     // Format time as minutes and seconds
     let timeText;
     if (remainingSeconds >= 60) {
@@ -5052,21 +5074,21 @@ function showLockTimeRemaining(block) {
     } else {
         timeText = `${Math.ceil(remainingMs)}ms`;
     }
-    
+
     // Get block's world position (center of the block)
     const worldPos = new THREE.Vector3();
     block.group.getWorldPosition(worldPos);
-    
+
     // Get block height to position text above the block
     const blockHeight = block.isVertical ? block.length * block.cubeSize : block.cubeSize;
     worldPos.y += blockHeight / 2 + 0.5; // Position above block center
-    
+
     // Project 3D position to screen coordinates
     worldPos.project(camera);
-    
+
     const x = (worldPos.x * 0.5 + 0.5) * window.innerWidth;
     const y = (-worldPos.y * 0.5 + 0.5) * window.innerHeight;
-    
+
     // Create temporary floating text element
     const floatText = document.createElement('div');
     floatText.textContent = timeText;
@@ -5086,7 +5108,7 @@ function showLockTimeRemaining(block) {
         opacity: 0;
         animation: lockTimeFloat 1.2s ease-out forwards;
     `;
-    
+
     // Add animation keyframes if not already present
     if (!document.getElementById('lock-time-float-styles')) {
         const style = document.createElement('style');
@@ -5109,9 +5131,9 @@ function showLockTimeRemaining(block) {
         `;
         document.head.appendChild(style);
     }
-    
+
     document.body.appendChild(floatText);
-    
+
     // Remove element after animation completes
     setTimeout(() => {
         if (floatText.parentNode) {
@@ -5127,24 +5149,24 @@ async function restartCurrentLevel() {
     if (isGeneratingLevel) {
         return;
     }
-    
+
     // CRITICAL: Determine level to restart with PRIORITY system
     // PRIORITY 1: currentLevel (most recent state, most reliable)
     // PRIORITY 2: localStorage (persisted state, may be stale)
     // PRIORITY 3: Error if both invalid
     const storageKey = STORAGE_KEY_INFERNO; // Always use inferno storage key
     const savedLevelBefore = parseInt(localStorage.getItem(storageKey) || '0', 10);
-    
+
     // CRITICAL: Determine level to restart with PRIORITY system
     // PRIORITY 1: currentLevel (most recent state, most reliable)
     // PRIORITY 2: localStorage (persisted state, may be stale)
     // PRIORITY 3: Error if both invalid
     let levelToRestart;
-    
+
     if (currentLevel > 0) {
         // PRIORITY 1: currentLevel is valid - use it
         levelToRestart = currentLevel;
-        
+
         // Verify localStorage matches, fix if not
         if (savedLevelBefore !== currentLevel) {
             localStorage.setItem(storageKey, String(currentLevel));
@@ -5166,45 +5188,45 @@ async function restartCurrentLevel() {
         alert(`Cannot restart: No level found. You appear to be at level 0. Please start a new game or continue to the next level.`);
         return;
     }
-    
+
     // ALWAYS sync currentLevel to the level we're restarting
     // This ensures consistency throughout the restart process
     if (currentLevel !== levelToRestart) {
         currentLevel = levelToRestart;
     }
-    
+
     // Safety check: Don't allow restarting if level is 0 or invalid
     if (!levelToRestart || levelToRestart < 0 || isNaN(levelToRestart)) {
         console.error(`[Restart Level] Invalid level to restart: ${levelToRestart}`);
         alert(`Cannot restart: Invalid level (${levelToRestart}). Please start a new game.`);
         return;
     }
-    
+
     // FINAL safety check: Never proceed if levelToRestart is 0
     if (levelToRestart <= 0) {
         console.error(`[Restart Level] FINAL CHECK FAILED: levelToRestart is ${levelToRestart}`);
         alert(`Error: Cannot restart level ${levelToRestart}. Your progress may have been lost.`);
         return;
     }
-    
+
     // Clear move history for this level
     moveHistory = [];
     totalMoves = 0;
     debugMoveHistory = []; // Clear debug move history
     debugCollisionEvents = []; // Clear collision events
     debugMovementCalculations = []; // Clear movement calculations
-    
+
     // Reset stats tracking for current level
     startLevelStats(levelToRestart);
-    
+
     // CRITICAL: Set currentLevel BEFORE calling generateSolvablePuzzle
     // This ensures it's set correctly even if generateSolvablePuzzle has issues
     currentLevel = levelToRestart;
-    
+
     // IMMEDIATELY save progress to prevent any loss
     saveProgress();
     const savedAfter = parseInt(localStorage.getItem(storageKey) || '0', 10);
-    
+
     // Verify save was successful
     if (savedAfter !== levelToRestart) {
         console.error(`[Restart Level] Save verification failed! Saved ${savedAfter}, expected ${levelToRestart}. Retrying...`);
@@ -5217,16 +5239,16 @@ async function restartCurrentLevel() {
             return;
         }
     }
-    
+
     // FINAL FINAL SAFEGUARD: Read localStorage ONE MORE TIME right before generation
     // This is the absolute last chance to catch any corruption
     const finalCheckLevel = parseInt(localStorage.getItem(storageKey) || '0', 10);
     const finalCheckCurrent = currentLevel;
-    
+
     // If ANY of these are 0 or invalid, we have a problem
     if (levelToRestart <= 0 || finalCheckCurrent <= 0 || finalCheckLevel <= 0) {
         console.error(`[Restart Level] FINAL CHECK FAILED: levelToRestart=${levelToRestart}, currentLevel=${finalCheckCurrent}, localStorage=${finalCheckLevel}`);
-        
+
         // Try one last recovery attempt
         if (finalCheckLevel > 0) {
             levelToRestart = finalCheckLevel;
@@ -5241,24 +5263,24 @@ async function restartCurrentLevel() {
             return;
         }
     }
-    
+
     // Verify one more time that we have a valid level
     if (levelToRestart <= 0) {
         console.error(`[Restart Level] CRITICAL: levelToRestart is still 0 after all recovery attempts!`);
         alert(`Error: Cannot restart level. Please start a new game.`);
         return;
     }
-    
+
     // Update currentLevel to match levelToRestart one final time
     currentLevel = levelToRestart;
-    
+
     // Save one more time to ensure consistency
     saveProgress();
-    
+
     // Regenerate current level (keeps same level number)
     // Pass isRestart=true to preserve game-level state (remainingSpins, etc.)
     await generateSolvablePuzzle(levelToRestart, true);
-    
+
     // Ensure currentLevel is still correct after generation
     // This is a safety check in case something went wrong
     if (currentLevel !== levelToRestart) {
@@ -5266,10 +5288,10 @@ async function restartCurrentLevel() {
         currentLevel = levelToRestart;
         saveProgress();
     }
-    
+
     // Save progress to ensure it's persisted (with the correct level)
     saveProgress();
-    
+
     // Final verification
     const finalSavedLevel = parseInt(localStorage.getItem(storageKey) || '0', 10);
     if (finalSavedLevel !== levelToRestart) {
@@ -5277,7 +5299,7 @@ async function restartCurrentLevel() {
         currentLevel = levelToRestart;
         saveProgress();
     }
-    
+
     // Update level display to ensure it shows the correct level
     const levelValueElement = document.getElementById('level-value');
     if (levelValueElement) {
@@ -5295,39 +5317,39 @@ async function startNewGame() {
         particleSystem.cleanupParticles();
     }
     if (isGeneratingLevel) return;
-    
+
     console.log(`[startNewGame] Starting new game. Current level before reset: ${currentLevel}`);
-    
+
     // Check for debug level parameter in URL (e.g., ?level=40)
     const urlParams = new URLSearchParams(window.location.search);
     const debugLevel = urlParams.get('level');
     const targetLevel = debugLevel ? parseInt(debugLevel, 10) : 1;
-    
+
     // Clear saved progress FIRST (before resetting currentLevel)
     // This ensures localStorage is cleared before any validation checks
     clearProgress();
-    
+
     // Reset to level 1 (or debug level if specified)
     currentLevel = targetLevel;
     levelCompleteShown = false;
-    
+
     // Clear move history
     moveHistory = [];
     totalMoves = 0;
     debugMoveHistory = []; // Clear debug move history
     debugCollisionEvents = []; // Clear collision events
     debugMovementCalculations = []; // Clear movement calculations
-    
+
     // Reset spin counter
     remainingSpins = isTimeBasedMode() ? Number.POSITIVE_INFINITY : 3;
     updateSpinCounterDisplay();
-    
+
     // Hide level complete modal if visible
     hideLevelCompleteModal();
-    
+
     // Reset stats tracking
     startLevelStats(currentLevel);
-    
+
     // Verify localStorage is cleared
     const storageKey = STORAGE_KEY_INFERNO; // Always use inferno storage key
     const savedLevel = parseInt(localStorage.getItem(storageKey) || '0', 10);
@@ -5335,9 +5357,9 @@ async function startNewGame() {
         console.warn(`[startNewGame] WARNING: localStorage still has level ${savedLevel} after clearProgress(). Clearing again...`);
         localStorage.removeItem(storageKey);
     }
-    
+
     console.log(`[startNewGame] Generating level 1 (currentLevel=${currentLevel}, savedLevel=${parseInt(localStorage.getItem(storageKey) || '0', 10)})`);
-    
+
     // Generate level 1 - pass isRestart=false explicitly to indicate this is a new game
     await generateSolvablePuzzle(1, false);
 }
@@ -5351,21 +5373,21 @@ function showLevelCompleteModal(completedLevel) {
     const timeElement = document.getElementById('level-complete-time');
     const movesElement = document.getElementById('level-complete-moves');
     const blocksElement = document.getElementById('level-complete-blocks');
-    
+
     if (modal) {
         // Per request: remove the "Outstanding performance" line.
         if (message) message.textContent = '';
-        
+
         // Update title to include level number: "Level X Complete!" with styled number
         if (title) {
             title.innerHTML = `Level <span class="modal-level-number-inline">${completedLevel}</span> Complete!`;
         }
-        
+
         // Hide the separate level number display since it's now in the title
         if (levelNumber) {
             levelNumber.style.display = 'none';
         }
-        
+
         // Pause Time Challenge while modal is open
         if (isTimeBasedMode() && timeChallengeActive) {
             setTimeFrozen('level_complete', true);
@@ -5378,18 +5400,18 @@ function showLevelCompleteModal(completedLevel) {
         if (timeElement) {
             timeElement.textContent = timeString;
         }
-        
+
         // Get move count (use totalMoves for accurate count)
         if (movesElement) {
             movesElement.textContent = String(totalMoves);
         }
-        
+
         // Get number of blocks cleared (initial block count for this level)
         const initialBlockCount = getBlocksForLevel(completedLevel);
         if (blocksElement) {
             blocksElement.textContent = String(initialBlockCount);
         }
-        
+
         // Time Challenge/Inferno: save residual time for next level
         if (isTimeBasedMode() && timeChallengeActive) {
             timeChallengeResidualSec = Math.max(0, timeLeftSec);
@@ -5410,10 +5432,10 @@ function showLevelCompleteModal(completedLevel) {
                 timeChallengeCarriedOverHistory.shift();
             }
         }
-        
+
         // Play level complete sound effect
         playSound('levelComplete', 0.03);
-        
+
         modal.style.display = 'flex';
     }
 }
@@ -5468,8 +5490,8 @@ if (nextLevelButton) {
         moveHistory = []; // Clear move history for new level
         totalMoves = 0; // Reset move counter
         debugMoveHistory = []; // Clear debug move history
-    debugCollisionEvents = []; // Clear collision events
-    debugMovementCalculations = []; // Clear movement calculations for new level
+        debugCollisionEvents = []; // Clear collision events
+        debugMovementCalculations = []; // Clear movement calculations for new level
         debugCollisionEvents = []; // Clear collision events for new level
         debugMovementCalculations = []; // Clear movement calculations for new level
         // CRITICAL: Save progress IMMEDIATELY after incrementing
@@ -5492,13 +5514,13 @@ if (nextLevelButton) {
 async function handleJumpToLevel() {
     const levelInput = document.getElementById('debug-level-input');
     if (!levelInput) return;
-    
+
     const targetLevel = parseInt(levelInput.value, 10);
     if (isNaN(targetLevel) || targetLevel < 0) {
         alert('Please enter a valid level number (0 or greater)');
         return;
     }
-    
+
     hideDebugPanel();
     await window.debugJumpToLevel(targetLevel);
 }
@@ -5541,19 +5563,19 @@ async function investigateBug() {
         isGeneratingLevel: isGeneratingLevel,
         timestamp: Date.now(),
     };
-    
+
     // Get last N moves from debug history
     const recentMoves = debugMoveHistory.slice(-DEBUG_MOVE_HISTORY_SIZE);
-    
+
     // Get recent console logs
     const recentLogs = consoleLogBuffer.slice(-50); // Last 50 log entries
-    
+
     // Get recent collision events
     const recentCollisions = debugCollisionEvents.slice(-20); // Last 20 collision events
-    
+
     // Get recent movement calculations
     const recentMovements = debugMovementCalculations.slice(-20); // Last 20 movement calculations
-    
+
     // Prompt user for description
     const userDescription = prompt(
         '🔍 Bug Investigation\n\n' +
@@ -5563,12 +5585,12 @@ async function investigateBug() {
         '- When did it occur? (e.g., "after moving block X")\n\n' +
         'Your description:'
     );
-    
+
     if (userDescription === null) {
         // User cancelled
         return;
     }
-    
+
     // Compile investigation report
     const investigationReport = {
         timestamp: new Date().toISOString(),
@@ -5585,7 +5607,7 @@ async function investigateBug() {
             gameVersion: 'current',
         }
     };
-    
+
     // Display in console
     console.group('🔍 BUG INVESTIGATION REPORT');
     console.log('Timestamp:', investigationReport.timestamp);
@@ -5599,19 +5621,19 @@ async function investigateBug() {
     console.log('\n--- Full Report (JSON) ---');
     console.log(JSON.stringify(investigationReport, null, 2));
     console.groupEnd();
-    
+
     // Copy to clipboard
     try {
         await navigator.clipboard.writeText(JSON.stringify(investigationReport, null, 2));
         alert('✅ Investigation report copied to clipboard!\n\n' +
-              'The full report has also been logged to the console.\n' +
-              'You can now paste it wherever you need to report the bug.');
+            'The full report has also been logged to the console.\n' +
+            'You can now paste it wherever you need to report the bug.');
     } catch (err) {
         console.warn('Could not copy to clipboard:', err);
         alert('✅ Investigation report logged to console!\n\n' +
-              'Please copy the JSON from the console manually.');
+            'Please copy the JSON from the console manually.');
     }
-    
+
     hideDebugPanel();
 }
 
@@ -5650,9 +5672,9 @@ let lightsManuallyControlled = false;
 // Light controls setup
 function setupLightControls() {
     if (!window.lights) return;
-    
+
     const { ambientLight, keyLight, fillLight } = window.lights;
-    
+
     // Helper function to force immediate shadow map update and render
     const forceShadowUpdate = () => {
         if (renderer && renderer.shadowMap) {
@@ -5671,10 +5693,10 @@ function setupLightControls() {
             renderer.render(scene, camera);
         }
     };
-    
+
     // Set flag to disable automatic light updates when user manually controls lights
     lightsManuallyControlled = true;
-    
+
     // Ambient Light Intensity
     const ambientIntensitySlider = document.getElementById('ambient-intensity-slider');
     const ambientIntensityValue = document.getElementById('ambient-intensity-value');
@@ -5689,7 +5711,7 @@ function setupLightControls() {
             }
         });
     }
-    
+
     // Key Light Intensity
     const keyIntensitySlider = document.getElementById('key-intensity-slider');
     const keyIntensityValue = document.getElementById('key-intensity-value');
@@ -5701,7 +5723,7 @@ function setupLightControls() {
             forceShadowUpdate();
         });
     }
-    
+
     // Key Light Position X
     const keyXSlider = document.getElementById('key-x-slider');
     const keyXValue = document.getElementById('key-x-value');
@@ -5713,7 +5735,7 @@ function setupLightControls() {
             forceShadowUpdate();
         });
     }
-    
+
     // Key Light Position Y
     const keyYSlider = document.getElementById('key-y-slider');
     const keyYValue = document.getElementById('key-y-value');
@@ -5725,7 +5747,7 @@ function setupLightControls() {
             forceShadowUpdate();
         });
     }
-    
+
     // Key Light Position Z
     const keyZSlider = document.getElementById('key-z-slider');
     const keyZValue = document.getElementById('key-z-value');
@@ -5737,7 +5759,7 @@ function setupLightControls() {
             forceShadowUpdate();
         });
     }
-    
+
     // Fill Light Intensity
     const fillIntensitySlider = document.getElementById('fill-intensity-slider');
     const fillIntensityValue = document.getElementById('fill-intensity-value');
@@ -5752,7 +5774,7 @@ function setupLightControls() {
             }
         });
     }
-    
+
     // Fill Light Position X
     const fillXSlider = document.getElementById('fill-x-slider');
     const fillXValue = document.getElementById('fill-x-value');
@@ -5767,7 +5789,7 @@ function setupLightControls() {
             }
         });
     }
-    
+
     // Fill Light Position Y
     const fillYSlider = document.getElementById('fill-y-slider');
     const fillYValue = document.getElementById('fill-y-value');
@@ -5782,7 +5804,7 @@ function setupLightControls() {
             }
         });
     }
-    
+
     // Fill Light Position Z
     const fillZSlider = document.getElementById('fill-z-slider');
     const fillZValue = document.getElementById('fill-z-value');
@@ -5816,7 +5838,7 @@ if (lightControlsHeader && lightControlsContent && lightControlsArrow) {
         const isCollapsed = lightControlsContent.style.display === 'none';
         lightControlsContent.style.display = isCollapsed ? 'block' : 'none';
         lightControlsArrow.textContent = isCollapsed ? '▼' : '▶';
-        
+
         // Re-initialize light controls when section is expanded (in case setupLightControls was called before DOM was ready)
         if (isCollapsed && window.lights) {
             setupLightControls();
@@ -5832,23 +5854,23 @@ if (debugLoadLightsButton) {
             alert('Lights not available');
             return;
         }
-        
+
         const input = document.getElementById('debug-light-values-input');
         if (!input) {
             alert('Input field not found');
             return;
         }
-        
+
         const jsonText = input.value.trim();
         if (!jsonText) {
             alert('Please paste JSON light values first');
             return;
         }
-        
+
         try {
             const lightValues = JSON.parse(jsonText);
             const { ambientLight, keyLight, fillLight } = window.lights;
-            
+
             // Apply ambient light
             if (lightValues.ambient && typeof lightValues.ambient.intensity === 'number') {
                 ambientLight.intensity = lightValues.ambient.intensity;
@@ -5857,7 +5879,7 @@ if (debugLoadLightsButton) {
                 if (slider) slider.value = lightValues.ambient.intensity;
                 if (valueDisplay) valueDisplay.textContent = lightValues.ambient.intensity.toFixed(2);
             }
-            
+
             // Apply key light
             if (lightValues.key) {
                 if (typeof lightValues.key.intensity === 'number') {
@@ -5891,7 +5913,7 @@ if (debugLoadLightsButton) {
                     }
                 }
             }
-            
+
             // Apply fill light
             if (lightValues.fill) {
                 if (typeof lightValues.fill.intensity === 'number') {
@@ -5925,7 +5947,7 @@ if (debugLoadLightsButton) {
                     }
                 }
             }
-            
+
             // Force shadow update after loading
             if (renderer && renderer.shadowMap) {
                 if (keyLight.shadow && keyLight.shadow.camera) {
@@ -5936,7 +5958,7 @@ if (debugLoadLightsButton) {
                 }
                 renderer.shadowMap.needsUpdate = true;
             }
-            
+
             alert('✅ Light values loaded successfully!');
         } catch (err) {
             alert('❌ Error parsing JSON: ' + err.message);
@@ -5953,9 +5975,9 @@ if (debugCaptureLightsButton) {
             alert('Lights not available');
             return;
         }
-        
+
         const { ambientLight, keyLight, fillLight } = window.lights;
-        
+
         const lightValues = {
             ambient: {
                 intensity: ambientLight.intensity
@@ -5977,13 +5999,13 @@ if (debugCaptureLightsButton) {
                 }
             }
         };
-        
+
         const jsonString = JSON.stringify(lightValues, null, 2);
-        
+
         // Log to console
         console.log('=== Light Values ===');
         console.log(jsonString);
-        
+
         // Copy to clipboard
         try {
             navigator.clipboard.writeText(jsonString);
@@ -6199,7 +6221,7 @@ if (undoButton) {
 // Update spin counter display
 function updateSpinCounterDisplay() {
     // #region agent log
-    debugTelemetry({location:'main.js:updateSpinCounterDisplay:entry',message:'updateSpinCounterDisplay called',data:{isTimeBasedMode:isTimeBasedMode(),remainingSpins:remainingSpins},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'});
+    debugTelemetry({ location: 'main.js:updateSpinCounterDisplay:entry', message: 'updateSpinCounterDisplay called', data: { isTimeBasedMode: isTimeBasedMode(), remainingSpins: remainingSpins }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H2' });
     // #endregion
     const spinCounter = document.getElementById('spin-counter');
     if (spinCounter) {
@@ -6221,14 +6243,14 @@ function updateSpinCounterDisplay() {
             diceButton.style.opacity = '0.5';
             diceButton.style.cursor = 'not-allowed';
             // #region agent log
-            debugTelemetry({location:'main.js:updateSpinCounterDisplay:disabled',message:'Dice button disabled',data:{wasDisabled:wasDisabled,nowDisabled:true,remainingSpins:remainingSpins},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'});
+            debugTelemetry({ location: 'main.js:updateSpinCounterDisplay:disabled', message: 'Dice button disabled', data: { wasDisabled: wasDisabled, nowDisabled: true, remainingSpins: remainingSpins }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H2' });
             // #endregion
         } else {
             diceButton.disabled = false;
             diceButton.style.opacity = '1';
             diceButton.style.cursor = 'pointer';
             // #region agent log
-            debugTelemetry({location:'main.js:updateSpinCounterDisplay:enabled',message:'Dice button enabled',data:{wasDisabled:wasDisabled,nowDisabled:false,remainingSpins:remainingSpins},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'});
+            debugTelemetry({ location: 'main.js:updateSpinCounterDisplay:enabled', message: 'Dice button enabled', data: { wasDisabled: wasDisabled, nowDisabled: false, remainingSpins: remainingSpins }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H2' });
             // #endregion
         }
     }
@@ -6237,20 +6259,20 @@ function updateSpinCounterDisplay() {
 // Auto spin after spawn (doesn't count toward 3 spins)
 function autoSpinAfterSpawn() {
     console.log('Auto spinning blocks after spawn (does not count toward spin limit)');
-    
+
     // Filter for eligible blocks: vertical OR single-cell blocks OR horizontal multi-cell blocks
-    const eligibleBlocks = blocks.filter(block => 
+    const eligibleBlocks = blocks.filter(block =>
         (block.isVertical || block.length === 1 || (!block.isVertical && block.length > 1)) &&
         !block.isFalling &&
         !block.isRemoved &&
         !block.removalStartTime &&
         !block.isAnimating
     );
-    
+
     if (eligibleBlocks.length === 0) {
         return; // No eligible blocks to spin
     }
-    
+
     // Spin each block with slight duration randomization for visual variety
     // Note: This does NOT decrement remainingSpins
     eligibleBlocks.forEach((block, index) => {
@@ -6258,10 +6280,10 @@ function autoSpinAfterSpawn() {
         const baseDuration = 1800; // 1.8 seconds base
         const durationVariation = 200; // ±200ms variation
         const duration = baseDuration + (Math.random() * 2 - 1) * durationVariation;
-        
+
         // Small delay for staggered start (optional, creates wave effect)
         const delay = index * 20; // 20ms delay between each block
-        
+
         setTimeout(() => {
             try {
                 if (typeof block.animateRandomSpin === 'function') {
@@ -6279,11 +6301,11 @@ function autoSpinAfterSpawn() {
 // Spin random blocks (vertical and single-cell blocks) to break interlock situations
 function spinRandomBlocks() {
     // #region agent log
-    debugTelemetry({location:'main.js:spinRandomBlocks:entry',message:'spinRandomBlocks function called',data:{timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'});
+    debugTelemetry({ location: 'main.js:spinRandomBlocks:entry', message: 'spinRandomBlocks function called', data: { timestamp: Date.now() }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H1' });
     // #endregion
     console.log('[Spin] ===== spinRandomBlocks FUNCTION CALLED =====');
     console.log('[Spin] Function entry - timestamp:', new Date().toISOString());
-    
+
     // Log all state immediately
     console.log('[Spin] Mode checks:', {
         isTimeBasedMode: isTimeBasedMode(),
@@ -6306,7 +6328,7 @@ function spinRandomBlocks() {
         totalBlocks: blocks ? blocks.length : 'blocks is null/undefined',
         blocksDefined: typeof blocks !== 'undefined'
     });
-    
+
     // Disallow spin while user-paused or in modal freezes (prevents weird UX and free actions)
     // BUT: Allow spin during level_complete freeze in Inferno mode (same as Time Challenge behavior)
     if (isTimeBasedMode() && isTimeFrozen()) {
@@ -6315,58 +6337,58 @@ function spinRandomBlocks() {
         // (the level complete modal doesn't prevent spinning)
         if (freezeReasons.includes('level_complete')) {
             // #region agent log
-            debugTelemetry({location:'main.js:spinRandomBlocks:allowedDuringLevelComplete',message:'Spin allowed during level_complete freeze (Time Challenge behavior)',data:{reasons:freezeReasons},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H2'});
+            debugTelemetry({ location: 'main.js:spinRandomBlocks:allowedDuringLevelComplete', message: 'Spin allowed during level_complete freeze (Time Challenge behavior)', data: { reasons: freezeReasons }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run2', hypothesisId: 'H2' });
             // #endregion
             console.log('[Spin] ✅ Allowing spin during level_complete freeze (Time Challenge behavior)');
             // Continue execution - don't return
         } else {
             // #region agent log
-            debugTelemetry({location:'main.js:spinRandomBlocks:blockedFrozen',message:'Spin blocked: time frozen (non-level_complete reason)',data:{reasons:freezeReasons},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H2'});
+            debugTelemetry({ location: 'main.js:spinRandomBlocks:blockedFrozen', message: 'Spin blocked: time frozen (non-level_complete reason)', data: { reasons: freezeReasons }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run2', hypothesisId: 'H2' });
             // #endregion
             console.log('[Spin] ❌ BLOCKED: Time is frozen, reasons:', freezeReasons);
             return;
         }
     }
-    
+
     // Check button state at function entry
     const diceButtonCheck = document.getElementById('dice-button');
     if (diceButtonCheck) {
         // #region agent log
-        debugTelemetry({location:'main.js:spinRandomBlocks:buttonCheck',message:'Button state at spinRandomBlocks entry',data:{disabled:diceButtonCheck.disabled,hasHandler:diceButtonCheck.dataset.handlerAttached==='true',handlerExists:!!diceButtonClickHandler},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H1'});
+        debugTelemetry({ location: 'main.js:spinRandomBlocks:buttonCheck', message: 'Button state at spinRandomBlocks entry', data: { disabled: diceButtonCheck.disabled, hasHandler: diceButtonCheck.dataset.handlerAttached === 'true', handlerExists: !!diceButtonClickHandler }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run2', hypothesisId: 'H1' });
         // #endregion
     }
 
     // Check if spins are available
     if (!isTimeBasedMode() && remainingSpins <= 0) {
         // #region agent log
-        debugTelemetry({location:'main.js:spinRandomBlocks:blockedNoSpins',message:'Spin blocked: no spins remaining',data:{remainingSpins:remainingSpins},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'});
+        debugTelemetry({ location: 'main.js:spinRandomBlocks:blockedNoSpins', message: 'Spin blocked: no spins remaining', data: { remainingSpins: remainingSpins }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H2' });
         // #endregion
         console.log('[Spin] ❌ BLOCKED: No spins remaining (remainingSpins:', remainingSpins, ')');
         return;
     }
-    
+
     if (!blocks || blocks.length === 0) {
         // #region agent log
-        debugTelemetry({location:'main.js:spinRandomBlocks:blockedNoBlocks',message:'Spin blocked: no blocks',data:{blocksExists:!!blocks,blocksLength:blocks?blocks.length:0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'});
+        debugTelemetry({ location: 'main.js:spinRandomBlocks:blockedNoBlocks', message: 'Spin blocked: no blocks', data: { blocksExists: !!blocks, blocksLength: blocks ? blocks.length : 0 }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H2' });
         // #endregion
         console.log('[Spin] ❌ BLOCKED: No blocks array or empty blocks');
         return;
     }
-    
+
     console.log('[Spin] ✅ Passed initial checks, total blocks:', blocks.length);
-    
+
     // Filter for eligible blocks: vertical OR single-cell blocks OR horizontal multi-cell blocks
     // Horizontal multi-cell blocks can only rotate 180 degrees (flip direction)
-    const eligibleBlocks = blocks.filter(block => 
+    const eligibleBlocks = blocks.filter(block =>
         (block.isVertical || block.length === 1 || (!block.isVertical && block.length > 1)) &&
         !block.isFalling &&
         !block.isRemoved &&
         !block.removalStartTime &&
         !block.isAnimating
     );
-    
+
     console.log('[Spin] Eligible blocks found:', eligibleBlocks.length);
-    
+
     if (eligibleBlocks.length === 0) {
         console.log('[Spin] BLOCKED: No eligible blocks to spin');
         // Log why blocks are not eligible
@@ -6381,7 +6403,7 @@ function spinRandomBlocks() {
         console.log('[Spin] Block state breakdown:', reasons);
         return; // No eligible blocks to spin
     }
-    
+
     // Time-based modes: spin is a "purchase" that costs time (unlimited spins).
     console.log('[Spin] Applying spin cost...');
     if (isTimeBasedMode() && !timeUpShown) {
@@ -6400,7 +6422,7 @@ function spinRandomBlocks() {
         remainingSpins--;
         updateSpinCounterDisplay();
     }
-    
+
     // Track spin for stats
     console.log('[Spin] Tracking spin for stats...');
     try {
@@ -6408,7 +6430,7 @@ function spinRandomBlocks() {
     } catch (error) {
         console.error('[Spin] Error tracking spin:', error);
     }
-    
+
     // Spin each block with slight duration randomization for visual variety
     console.log('[Spin] Starting to spin', eligibleBlocks.length, 'blocks...');
     eligibleBlocks.forEach((block, index) => {
@@ -6416,10 +6438,10 @@ function spinRandomBlocks() {
         const baseDuration = 1800; // 1.8 seconds base
         const durationVariation = 200; // ±200ms variation
         const duration = baseDuration + (Math.random() * 2 - 1) * durationVariation;
-        
+
         // Small delay for staggered start (optional, creates wave effect)
         const delay = index * 20; // 20ms delay between each block
-        
+
         setTimeout(() => {
             try {
                 console.log('[Spin] Spinning block', index + 1, 'of', eligibleBlocks.length, ':', { isVertical: block.isVertical, length: block.length });
@@ -6435,14 +6457,14 @@ function spinRandomBlocks() {
             }
         }, delay);
     });
-    
+
     console.log('[Spin] ===== spinRandomBlocks FUNCTION COMPLETE =====');
-    
+
     // Check button state after function completes
     const diceButtonAfter = document.getElementById('dice-button');
     if (diceButtonAfter) {
         // #region agent log
-        debugTelemetry({location:'main.js:spinRandomBlocks:buttonAfter',message:'Button state after spinRandomBlocks completes',data:{disabled:diceButtonAfter.disabled,hasHandler:diceButtonAfter.dataset.handlerAttached==='true',handlerExists:!!diceButtonClickHandler},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H1'});
+        debugTelemetry({ location: 'main.js:spinRandomBlocks:buttonAfter', message: 'Button state after spinRandomBlocks completes', data: { disabled: diceButtonAfter.disabled, hasHandler: diceButtonAfter.dataset.handlerAttached === 'true', handlerExists: !!diceButtonClickHandler }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run2', hypothesisId: 'H1' });
         // #endregion
     }
 }
@@ -6492,94 +6514,94 @@ let diceButtonClickHandler = null;
 // Setup dice button handler - ensure DOM is ready
 function setupDiceButton() {
     // #region agent log
-    debugTelemetry({location:'main.js:setupDiceButton:entry',message:'setupDiceButton called',data:{timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'});
+    debugTelemetry({ location: 'main.js:setupDiceButton:entry', message: 'setupDiceButton called', data: { timestamp: Date.now() }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H1' });
     // #endregion
     const diceButton = document.getElementById('dice-button');
     if (diceButton) {
         // #region agent log
-        debugTelemetry({location:'main.js:setupDiceButton:buttonFound',message:'Dice button found in DOM',data:{hasHandler:diceButton.dataset.handlerAttached==='true',disabled:diceButton.disabled,hasListener:!!diceButtonClickHandler},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'});
+        debugTelemetry({ location: 'main.js:setupDiceButton:buttonFound', message: 'Dice button found in DOM', data: { hasHandler: diceButton.dataset.handlerAttached === 'true', disabled: diceButton.disabled, hasListener: !!diceButtonClickHandler }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H1' });
         // #endregion
         console.log('[Spin] Dice button found, attaching handler');
         // Check if handler already attached (avoid duplicates)
         if (diceButton.dataset.handlerAttached === 'true') {
             // #region agent log
-            debugTelemetry({location:'main.js:setupDiceButton:alreadyAttached',message:'Handler already attached, skipping',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'});
+            debugTelemetry({ location: 'main.js:setupDiceButton:alreadyAttached', message: 'Handler already attached, skipping', data: {}, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H1' });
             // #endregion
             console.log('[Spin] Handler already attached, skipping');
             return;
         }
         diceButton.dataset.handlerAttached = 'true';
-        
+
         // Initialize spin counter display
         updateSpinCounterDisplay();
-        
+
         // Store reference for debug
         window.debugDiceButton = diceButton;
-        
+
         // Create handler function if it doesn't exist
         if (!diceButtonClickHandler) {
             diceButtonClickHandler = (e) => {
-            // #region agent log
-            debugTelemetry({location:'main.js:setupDiceButton:clickHandler',message:'Dice button click event fired',data:{disabled:diceButton.disabled,timeChallengeActive:timeChallengeActive},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'});
-            // #endregion
-            e.preventDefault();
-            e.stopPropagation();
-            console.log('[Spin] ===== DICE BUTTON CLICKED =====');
-            console.log('[Spin] Button state - disabled:', diceButton.disabled, 'opacity:', diceButton.style.opacity, 'pointer-events:', window.getComputedStyle(diceButton).pointerEvents);
-            console.log('[Spin] Event details:', { type: e.type, target: e.target, currentTarget: e.currentTarget });
-            
-            // Check if button is actually enabled
-            if (diceButton.disabled) {
-                console.log('[Spin] ❌ BUTTON IS DISABLED - click ignored');
-                return;
-            }
-            
-            try {
-                spinRandomBlocks();
-            } catch (error) {
-                console.error('[Spin] ❌ ERROR in spinRandomBlocks:', error);
-                console.error('[Spin] Error name:', error.name);
-                console.error('[Spin] Error message:', error.message);
-                console.error('[Spin] Error stack:', error.stack);
-            }
+                // #region agent log
+                debugTelemetry({ location: 'main.js:setupDiceButton:clickHandler', message: 'Dice button click event fired', data: { disabled: diceButton.disabled, timeChallengeActive: timeChallengeActive }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H1' });
+                // #endregion
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('[Spin] ===== DICE BUTTON CLICKED =====');
+                console.log('[Spin] Button state - disabled:', diceButton.disabled, 'opacity:', diceButton.style.opacity, 'pointer-events:', window.getComputedStyle(diceButton).pointerEvents);
+                console.log('[Spin] Event details:', { type: e.type, target: e.target, currentTarget: e.currentTarget });
+
+                // Check if button is actually enabled
+                if (diceButton.disabled) {
+                    console.log('[Spin] ❌ BUTTON IS DISABLED - click ignored');
+                    return;
+                }
+
+                try {
+                    spinRandomBlocks();
+                } catch (error) {
+                    console.error('[Spin] ❌ ERROR in spinRandomBlocks:', error);
+                    console.error('[Spin] Error name:', error.name);
+                    console.error('[Spin] Error message:', error.message);
+                    console.error('[Spin] Error stack:', error.stack);
+                }
                 console.log('[Spin] ===== END DICE BUTTON CLICK =====');
             };
         }
-        
+
         // Attach the handler
         // Remove any existing listeners first to avoid duplicates
         if (diceButtonClickHandler) {
             diceButton.removeEventListener('click', diceButtonClickHandler);
         }
         diceButton.addEventListener('click', diceButtonClickHandler);
-        
+
         // Also add mousedown/touchstart listeners to catch if click isn't firing
         diceButton.addEventListener('mousedown', (e) => {
             // #region agent log
-            debugTelemetry({location:'main.js:setupDiceButton:mousedown',message:'mousedown event on dice button',data:{timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H1'});
+            debugTelemetry({ location: 'main.js:setupDiceButton:mousedown', message: 'mousedown event on dice button', data: { timestamp: Date.now() }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run2', hypothesisId: 'H1' });
             // #endregion
             console.log('[Spin] 🔍 mousedown event on dice button');
         });
         diceButton.addEventListener('touchstart', (e) => {
             // #region agent log
-            debugTelemetry({location:'main.js:setupDiceButton:touchstart',message:'touchstart event on dice button',data:{timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H1'});
+            debugTelemetry({ location: 'main.js:setupDiceButton:touchstart', message: 'touchstart event on dice button', data: { timestamp: Date.now() }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run2', hypothesisId: 'H1' });
             // #endregion
             console.log('[Spin] 🔍 touchstart event on dice button');
         }, { passive: true });
-        
+
         // Verify handler is actually attached
         // #region agent log
         const hasClickListeners = diceButton.onclick !== null || diceButton.getEventListeners ? diceButton.getEventListeners('click') : 'unknown';
-        debugTelemetry({location:'main.js:setupDiceButton:handlerAttached',message:'Handler attachment verified',data:{hasHandler:diceButton.dataset.handlerAttached==='true',handlerExists:!!diceButtonClickHandler,buttonId:diceButton.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H1'});
+        debugTelemetry({ location: 'main.js:setupDiceButton:handlerAttached', message: 'Handler attachment verified', data: { hasHandler: diceButton.dataset.handlerAttached === 'true', handlerExists: !!diceButtonClickHandler, buttonId: diceButton.id }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run2', hypothesisId: 'H1' });
         // #endregion
-        
+
         // #region agent log
-        debugTelemetry({location:'main.js:setupDiceButton:success',message:'Dice button handler attached successfully',data:{handlerExists:!!diceButtonClickHandler},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'});
+        debugTelemetry({ location: 'main.js:setupDiceButton:success', message: 'Dice button handler attached successfully', data: { handlerExists: !!diceButtonClickHandler }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H1' });
         // #endregion
         console.log('[Spin] ✅ Dice button handler attached successfully');
     } else {
         // #region agent log
-        debugTelemetry({location:'main.js:setupDiceButton:notFound',message:'Dice button not found in DOM',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H5'});
+        debugTelemetry({ location: 'main.js:setupDiceButton:notFound', message: 'Dice button not found in DOM', data: {}, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H5' });
         // #endregion
         console.error('[Spin] ❌ Dice button not found! Retrying...');
         // Retry after a short delay if button not found
@@ -6594,22 +6616,22 @@ function setupButtonWatcher() {
     const gameControls = document.getElementById('game-controls');
     if (!gameControls) {
         // #region agent log
-        debugTelemetry({location:'main.js:setupButtonWatcher:noContainer',message:'game-controls container not found',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H5'});
+        debugTelemetry({ location: 'main.js:setupButtonWatcher:noContainer', message: 'game-controls container not found', data: {}, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H5' });
         // #endregion
         return;
     }
-    
+
     const observer = new MutationObserver((mutations) => {
         mutations.forEach((mutation) => {
             if (mutation.type === 'childList') {
                 mutation.addedNodes.forEach((node) => {
                     if (node.nodeType === 1) { // Element node
                         // #region agent log
-                        debugTelemetry({location:'main.js:setupButtonWatcher:nodeAdded',message:'Node added to game-controls',data:{nodeId:node.id,nodeTag:node.tagName,isDiceButton:node.id==='dice-button',isDebugButton:node.id==='debug-button'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H5'});
+                        debugTelemetry({ location: 'main.js:setupButtonWatcher:nodeAdded', message: 'Node added to game-controls', data: { nodeId: node.id, nodeTag: node.tagName, isDiceButton: node.id === 'dice-button', isDebugButton: node.id === 'debug-button' }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H5' });
                         // #endregion
                         if (node.id === 'dice-button' || (node.id && node.id.includes('dice-button'))) {
                             // #region agent log
-                            debugTelemetry({location:'main.js:setupButtonWatcher:diceButtonRecreated',message:'Dice button recreated, reattaching handler',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H5'});
+                            debugTelemetry({ location: 'main.js:setupButtonWatcher:diceButtonRecreated', message: 'Dice button recreated, reattaching handler', data: {}, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H5' });
                             // #endregion
                             setTimeout(() => setupDiceButton(), 50);
                         }
@@ -6618,16 +6640,16 @@ function setupButtonWatcher() {
             }
         });
     });
-    
+
     observer.observe(gameControls, { childList: true, subtree: true });
     // #region agent log
-    debugTelemetry({location:'main.js:setupButtonWatcher:started',message:'Button watcher started',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H5'});
+    debugTelemetry({ location: 'main.js:setupButtonWatcher:started', message: 'Button watcher started', data: {}, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H5' });
     // #endregion
 }
 
 // Setup dice button when DOM is ready
 // #region agent log
-debugTelemetry({location:'main.js:buttonSetup:entry',message:'Button setup code executing',data:{readyState:document.readyState},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'});
+debugTelemetry({ location: 'main.js:buttonSetup:entry', message: 'Button setup code executing', data: { readyState: document.readyState }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H1' });
 // #endregion
 // Setup keyboard shortcut for debug panel (works regardless of DOM ready state)
 function setupDebugPanelShortcut() {
@@ -6645,19 +6667,19 @@ function setupUpdateModals() {
     // Update notification modal buttons
     const updateLaterButton = document.getElementById('update-later-button');
     const updateReloadButton = document.getElementById('update-reload-button');
-    
+
     if (updateLaterButton) {
         updateLaterButton.addEventListener('click', () => {
             hideUpdateNotification();
         });
     }
-    
+
     if (updateReloadButton) {
         updateReloadButton.addEventListener('click', () => {
             handleUpdateReload();
         });
     }
-    
+
     // Changelog modal button
     const changelogCloseButton = document.getElementById('changelog-close-button');
     if (changelogCloseButton) {
@@ -6670,7 +6692,7 @@ function setupUpdateModals() {
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
         // #region agent log
-        debugTelemetry({location:'main.js:buttonSetup:DOMContentLoaded',message:'DOMContentLoaded fired, setting up buttons',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'});
+        debugTelemetry({ location: 'main.js:buttonSetup:DOMContentLoaded', message: 'DOMContentLoaded fired, setting up buttons', data: {}, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H1' });
         // #endregion
         setupDiceButton();
         setupButtonWatcher();
@@ -6679,7 +6701,7 @@ if (document.readyState === 'loading') {
     });
 } else {
     // #region agent log
-    debugTelemetry({location:'main.js:buttonSetup:immediate',message:'DOM already ready, setting up buttons immediately',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'});
+    debugTelemetry({ location: 'main.js:buttonSetup:immediate', message: 'DOM already ready, setting up buttons immediately', data: {}, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H1' });
     // #endregion
     setupDiceButton();
     setupButtonWatcher();
@@ -6694,7 +6716,7 @@ function setupFramingSlider() {
     return;
     const controlPanel = document.getElementById('framing-control');
     const valueDisplay = document.getElementById('framing-value-display');
-    
+
     if (controlPanel && valueDisplay) {
         const BASE_SENSITIVITY = 0.02; // Base sensitivity per pixel
         const VELOCITY_MULTIPLIER = 0.5; // How much velocity affects sensitivity
@@ -6705,7 +6727,7 @@ function setupFramingSlider() {
         const DISTANCE_MULTIPLIER = 0.002; // How much push distance affects continuous speed
         const MAX_CONTINUOUS_SPEED = 0.3; // Maximum continuous motion speed
         const SPEED_SMOOTHING = 0.15; // Smoothing factor for speed acceleration (0-1, lower = smoother/slower)
-        
+
         let isDragging = false;
         let startY = 0;
         let lastY = 0;
@@ -6717,15 +6739,15 @@ function setupFramingSlider() {
         let targetSpeed = 0; // Target speed based on push distance
         let currentSpeed = 0; // Current smoothed speed
         let continuousMotionId = null; // Animation frame ID for continuous motion
-        
+
         const updateValueDisplay = (offset) => {
             valueDisplay.textContent = offset.toFixed(1);
         };
-        
+
         const clampValue = (value) => {
             return Math.max(MIN_FRAMING_OFFSET, Math.min(MAX_FRAMING_OFFSET, value));
         };
-        
+
         const updateFraming = (delta) => {
             const newOffset = clampValue(window.framingOffsetY + delta);
             if (newOffset !== window.framingOffsetY) {
@@ -6740,14 +6762,14 @@ function setupFramingSlider() {
                 }
             }
         };
-        
+
         const stopContinuousMotion = () => {
             if (continuousMotionId !== null) {
                 cancelAnimationFrame(continuousMotionId);
                 continuousMotionId = null;
             }
         };
-        
+
         const continueMotionWhileHeld = () => {
             if (!isDragging) {
                 stopContinuousMotion();
@@ -6755,25 +6777,25 @@ function setupFramingSlider() {
                 targetSpeed = 0;
                 return;
             }
-            
+
             // Calculate target speed based on push distance
             // Harder push (further distance) = faster continuous motion
             const distanceSpeed = Math.min(pushDistance * DISTANCE_MULTIPLIER, MAX_CONTINUOUS_SPEED);
             targetSpeed = CONTINUOUS_MOTION_BASE + distanceSpeed;
-            
+
             // Smoothly interpolate current speed towards target speed
             currentSpeed = currentSpeed + (targetSpeed - currentSpeed) * SPEED_SMOOTHING;
-            
+
             // Determine direction based on push direction
             const direction = pushDirection === 'up' ? -1 : 1;
-            
+
             // Update value continuously while held with smoothed speed
             updateFraming(currentSpeed * direction);
-            
+
             // Continue animation
             continuousMotionId = requestAnimationFrame(continueMotionWhileHeld);
         };
-        
+
         const setPushAnimation = (direction) => {
             controlPanel.classList.remove('pushing-up', 'pushing-down');
             if (direction === 'up') {
@@ -6782,11 +6804,11 @@ function setupFramingSlider() {
                 controlPanel.classList.add('pushing-down');
             }
         };
-        
+
         const clearPushAnimation = () => {
             controlPanel.classList.remove('pushing-up', 'pushing-down');
         };
-        
+
         // Load framing preference from localStorage if not already set
         if (window.framingOffsetY === undefined || window.framingOffsetY === null) {
             try {
@@ -6801,15 +6823,15 @@ function setupFramingSlider() {
                 console.warn('Failed to load framing preference:', e);
             }
         }
-        
+
         // Set initial value display
         updateValueDisplay(window.framingOffsetY);
-        
+
         // Mouse events
         controlPanel.addEventListener('mousedown', (e) => {
             // Stop any existing continuous motion
             stopContinuousMotion();
-            
+
             isDragging = true;
             startY = e.clientY;
             lastY = e.clientY;
@@ -6822,23 +6844,23 @@ function setupFramingSlider() {
             controlPanel.style.cursor = 'grabbing';
             e.preventDefault();
         });
-        
+
         document.addEventListener('mousemove', (e) => {
             if (!isDragging) return;
-            
+
             const now = performance.now();
             const deltaTime = Math.max(1, now - lastUpdateTime); // Prevent division by zero
             const deltaY = e.clientY - lastY;
             const totalDeltaY = e.clientY - startY;
-            
+
             // Calculate push distance (how far from start point)
             pushDistance = Math.abs(totalDeltaY);
-            
+
             // Calculate velocity (pixels per millisecond)
             const currentVelocity = Math.abs(deltaY) / deltaTime;
             // Smooth the velocity to avoid jitter
             smoothedVelocity = smoothedVelocity * VELOCITY_SMOOTHING + currentVelocity * (1 - VELOCITY_SMOOTHING);
-            
+
             // Determine push direction
             if (Math.abs(totalDeltaY) > MIN_PUSH_DISTANCE) {
                 const direction = totalDeltaY < 0 ? 'up' : 'down';
@@ -6851,20 +6873,20 @@ function setupFramingSlider() {
                     }
                 }
             }
-            
+
             // Calculate sensitivity based on velocity (faster push = higher sensitivity)
             // Velocity is in pixels/ms, so we scale it appropriately
             const velocityMultiplier = Math.min(1 + (smoothedVelocity * VELOCITY_MULTIPLIER), MAX_VELOCITY_MULTIPLIER);
             const dynamicSensitivity = BASE_SENSITIVITY * velocityMultiplier;
-            
+
             // Update value based on movement with velocity-based sensitivity
             const valueDelta = -deltaY * dynamicSensitivity; // Negative because up should increase
             updateFraming(valueDelta);
-            
+
             lastY = e.clientY;
             lastUpdateTime = now;
         });
-        
+
         document.addEventListener('mouseup', () => {
             if (isDragging) {
                 isDragging = false;
@@ -6879,17 +6901,17 @@ function setupFramingSlider() {
                 controlPanel.style.cursor = 'ns-resize';
             }
         });
-        
+
         // Touch events
         let touchStartY = 0;
         let touchLastY = 0;
         let touchLastTime = 0;
-        
+
         controlPanel.addEventListener('touchstart', (e) => {
             if (e.touches.length === 1) {
                 // Stop any existing continuous motion
                 stopContinuousMotion();
-                
+
                 isDragging = true;
                 touchStartY = e.touches[0].clientY;
                 touchLastY = e.touches[0].clientY;
@@ -6902,24 +6924,24 @@ function setupFramingSlider() {
                 e.preventDefault();
             }
         });
-        
+
         controlPanel.addEventListener('touchmove', (e) => {
             if (!isDragging || e.touches.length !== 1) return;
-            
+
             const touchY = e.touches[0].clientY;
             const now = performance.now();
             const deltaTime = Math.max(1, now - touchLastTime);
             const deltaY = touchY - touchLastY;
             const totalDeltaY = touchY - touchStartY;
-            
+
             // Calculate push distance (how far from start point)
             pushDistance = Math.abs(totalDeltaY);
-            
+
             // Calculate velocity (pixels per millisecond)
             const currentVelocity = Math.abs(deltaY) / deltaTime;
             // Smooth the velocity to avoid jitter
             smoothedVelocity = smoothedVelocity * VELOCITY_SMOOTHING + currentVelocity * (1 - VELOCITY_SMOOTHING);
-            
+
             // Determine push direction
             if (Math.abs(totalDeltaY) > MIN_PUSH_DISTANCE) {
                 const direction = totalDeltaY < 0 ? 'up' : 'down';
@@ -6932,20 +6954,20 @@ function setupFramingSlider() {
                     }
                 }
             }
-            
+
             // Calculate sensitivity based on velocity (faster push = higher sensitivity)
             const velocityMultiplier = Math.min(1 + (smoothedVelocity * VELOCITY_MULTIPLIER), MAX_VELOCITY_MULTIPLIER);
             const dynamicSensitivity = BASE_SENSITIVITY * velocityMultiplier;
-            
+
             // Update value based on movement with velocity-based sensitivity
             const valueDelta = -deltaY * dynamicSensitivity; // Negative because up should increase
             updateFraming(valueDelta);
-            
+
             touchLastY = touchY;
             touchLastTime = now;
             e.preventDefault();
         });
-        
+
         controlPanel.addEventListener('touchend', () => {
             if (isDragging) {
                 isDragging = false;
@@ -6959,7 +6981,7 @@ function setupFramingSlider() {
                 currentSpeed = 0;
             }
         });
-        
+
         controlPanel.addEventListener('touchcancel', () => {
             if (isDragging) {
                 isDragging = false;
@@ -7010,7 +7032,7 @@ updateCameraPosition(); // Position camera immediately to avoid default (0,0,0) 
 (async function boot() {
     // Migrate all users to inferno mode (preserves their highest level from any previous mode)
     migrateToInfernoMode();
-    
+
     // Always use inferno mode (time-based)
     await ensureModeSelected({ forcePrompt: false });
 
@@ -7043,14 +7065,14 @@ function highlightNextBlock() {
             block.setHighlight(false);
         }
     }
-    
+
     if (!window.puzzleSolution || window.solutionStep >= window.puzzleSolution.length) {
         console.log('✓ Solution complete! All blocks cleared.');
         return;
     }
-    
+
     const nextBlockInSolution = window.puzzleSolution[window.solutionStep];
-    
+
     // Solution contains actual block objects, but they may have been removed
     // Check if block still exists in blocks array
     if (blocks.includes(nextBlockInSolution) && !nextBlockInSolution.isFalling && !nextBlockInSolution.isRemoved) {
@@ -7076,34 +7098,34 @@ function onMouseClick(event) {
         isCameraDragging = false; // Reset for next interaction
         return;
     }
-    
+
     mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
     mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-    
+
     // Update camera matrices to ensure raycasting is accurate
     camera.updateMatrixWorld();
     raycaster.setFromCamera(mouse, camera);
-    
+
     // Collect ALL intersections from ALL blocks first, then pick the closest one
     // This ensures we click on the block that's actually visible/on top, not just the first one found
     const allIntersections = [];
-    
+
     for (const block of blocks) {
         if (!block || block.isRemoved) continue;
         if (block.isAnimating || block.isFalling) continue;
         if (!block.group || !block.cubes || block.cubes.length === 0) continue;
-        
+
         // Update block's world matrix before raycasting
         block.group.updateMatrixWorld(true);
-        
+
         // Try both block.cubes and block.group for intersection
         let intersects = raycaster.intersectObjects(block.cubes, true);
-        
+
         // If no intersections with cubes, try the group itself
         if (intersects.length === 0) {
             intersects = raycaster.intersectObject(block.group, true);
         }
-        
+
         // Store intersections with block reference for later processing
         for (const intersection of intersects) {
             allIntersections.push({
@@ -7113,30 +7135,30 @@ function onMouseClick(event) {
             });
         }
     }
-    
+
     // If no intersections, nothing was clicked
     if (allIntersections.length === 0) {
         return;
     }
-    
+
     // Sort by distance (closest first) - this ensures we pick the block that's actually on top
     allIntersections.sort((a, b) => a.distance - b.distance);
-    
+
     // Get the closest intersection (the block the user actually clicked on)
     const closestHit = allIntersections[0];
     const block = closestHit.block;
-    
+
     // Prevent locked blocks from being moved
     if (block.isLocked) {
         showLockTimeRemaining(block);
         return;
     }
-    
+
     // Check if this matches the solution (if we're testing)
     if (window.puzzleSolution && window.solutionStep < window.puzzleSolution.length) {
         const expectedBlock = window.puzzleSolution[window.solutionStep];
         const isCorrect = (block === expectedBlock);
-        
+
         if (isCorrect) {
             console.log(`✓ Correct! Moving block at step ${window.solutionStep + 1}/${window.puzzleSolution.length}`);
         } else {
@@ -7144,19 +7166,19 @@ function onMouseClick(event) {
             console.warn('  You can still move it, but it may not match the solution path');
         }
     }
-    
+
     // Validate structure before move
     const structureCheck = validateStructure(blocks, gridSize);
     if (!structureCheck.valid) {
         console.warn('Puzzle structure invalid before move, skipping:', structureCheck.reason);
         return;
     }
-    
+
     // Store if this block will fall (to update solution tracking)
     const willFall = block.canMove(blocks) === 'fall';
-    
+
     block.move(blocks, gridSize);
-    
+
     // If block will fall, it's being cleared - advance solution step
     if (willFall && window.puzzleSolution) {
         // Wait for animation to complete, then update
@@ -7182,30 +7204,30 @@ function blockHasSupport(block, allBlocks) {
     if (block.yOffset === 0) {
         return true;
     }
-    
+
     // Get all cells this block occupies
     const blockCells = getBlockCells(block);
-    
+
     // For a block to have support, at least one of its cells must have support
     // (This allows horizontal blocks to be supported by just one cell)
     for (const cell of blockCells) {
         let cellHasSupport = false;
-        
+
         // Look for blocks below this cell
         for (const other of allBlocks) {
             if (other === block || other.isFalling || other.isRemoved) continue;
-            
+
             // Block must be at a lower Y level than the current block's bottom
             if (other.yOffset >= block.yOffset) continue;
-            
+
             // Calculate the top of the supporting block
             const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
             const otherTop = other.yOffset + otherHeight;
-            
+
             // Support block's top must be at or above this block's bottom
             // (with a small tolerance for floating point precision)
             if (otherTop < block.yOffset - 0.01) continue;
-            
+
             // Check if the supporting block occupies this cell
             const otherCells = getBlockCells(other);
             for (const otherCell of otherCells) {
@@ -7214,16 +7236,16 @@ function blockHasSupport(block, allBlocks) {
                     break;
                 }
             }
-            
+
             if (cellHasSupport) break;
         }
-        
+
         // If this cell has support, the block has support (at least one cell is enough)
         if (cellHasSupport) {
             return true;
         }
     }
-    
+
     return false; // No support found for any cell
 }
 
@@ -7238,7 +7260,7 @@ function checkAndTriggerFalling(blocks) {
     if (isGeneratingLevel || window.supportCheckingEnabled === false) {
         return;
     }
-    
+
     // IMPORTANT: Batch detect unsupported blocks so chain reactions happen simultaneously.
     // Without batching, the simulation becomes "stepped" (lower blocks fall first, then above),
     // because support evaluation is done against the current state and only discovers the next
@@ -7378,34 +7400,34 @@ function computeSupportFallTargets(allBlocks, toFall) {
  */
 function startBlockFalling(block) {
     if (block.isFalling || block.isRemoved || block.isAnimating) return;
-    
+
     // For blocks losing support, we want them to fall down in discrete Y steps
     // until they land on the base or another block
     // This is different from blocks falling off the edge which use physics
-    
+
     // Check if block is already on the ground
     if (block.yOffset === 0) {
         // Already on ground, shouldn't fall
         return;
     }
-    
+
     // Find the lowest Y level where this block can land (has support or is at base)
     let targetYOffset = 0; // Start at base
-    
+
     // Get all cells this block occupies
     const blockCells = getBlockCells(block);
-    
+
     // For each cell, find the highest supporting block below
     for (const cell of blockCells) {
         let highestSupportY = 0; // Base level
-        
+
         // Look for blocks below this cell
         for (const other of blocks) {
             if (other === block || other.isFalling || other.isRemoved) continue;
-            
+
             // Block must be at a lower Y level than current block
             if (other.yOffset >= block.yOffset) continue;
-            
+
             // Check if this block occupies the cell
             const otherCells = getBlockCells(other);
             for (const otherCell of otherCells) {
@@ -7413,7 +7435,7 @@ function startBlockFalling(block) {
                     // Calculate the top of the supporting block
                     const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
                     const otherTop = other.yOffset + otherHeight;
-                    
+
                     // Update highest support if this is higher
                     if (otherTop > highestSupportY) {
                         highestSupportY = otherTop;
@@ -7422,18 +7444,18 @@ function startBlockFalling(block) {
                 }
             }
         }
-        
+
         // Target Y offset is the highest support found across all cells
         if (highestSupportY > targetYOffset) {
             targetYOffset = highestSupportY;
         }
     }
-    
+
     // If target is same as current, block already has support
     if (targetYOffset >= block.yOffset) {
         return; // Block already has support
     }
-    
+
     // Use the generic animation helper for consistency.
     startBlockFallingToTarget(block, targetYOffset);
 }
@@ -7510,12 +7532,12 @@ let touchState = {
 // Touch start handler
 renderer.domElement.addEventListener('touchstart', (event) => {
     event.preventDefault(); // Always prevent default to enable proper touch handling
-    
+
     touchState.touches = Array.from(event.touches);
     touchState.isActive = true;
-    
+
     touchState.hadDoubleTouch = false;
-    
+
     if (touchState.touches.length === 1) {
         // Single touch - orbit mode
         // CRITICAL: Sync current values to target values when user starts dragging
@@ -7523,10 +7545,10 @@ renderer.domElement.addEventListener('touchstart', (event) => {
         currentAzimuth = targetAzimuth;
         currentElevation = targetElevation;
         currentRadius = targetRadius;
-        
+
         const touch = touchState.touches[0];
         touchState.lastCenter = { x: touch.clientX, y: touch.clientY };
-        
+
         // Track for block tap detection - simple version (matches mouse handler)
         touchStartPos = { x: touch.clientX, y: touch.clientY };
         touchStartTime = performance.now();
@@ -7534,14 +7556,14 @@ renderer.domElement.addEventListener('touchstart', (event) => {
     } else if (touchState.touches.length === 2) {
         // Dual touch - detect pinch vs drag
         touchState.hadDoubleTouch = true; // Mark that we had a double touch gesture
-        
+
         const touch1 = touchState.touches[0];
         const touch2 = touchState.touches[1];
-        
+
         const dx = touch2.clientX - touch1.clientX;
         const dy = touch2.clientY - touch1.clientY;
         touchState.startDistance = Math.sqrt(dx * dx + dy * dy);
-        
+
         touchState.startCenter = {
             x: (touch1.clientX + touch2.clientX) / 2,
             y: (touch1.clientY + touch2.clientY) / 2
@@ -7554,26 +7576,26 @@ renderer.domElement.addEventListener('touchstart', (event) => {
 // Touch move handler
 renderer.domElement.addEventListener('touchmove', (event) => {
     event.preventDefault(); // Always prevent default to enable proper touch handling
-    
+
     if (!touchState.isActive) return;
-    
+
     const currentTouches = Array.from(event.touches);
-    
+
     if (currentTouches.length === 1 && touchState.touches.length === 1) {
         // Single touch orbit
         const touch = currentTouches[0];
         const lastTouch = touchState.touches[0];
-        
+
         const dx = touch.clientX - lastTouch.clientX;
         const dy = touch.clientY - lastTouch.clientY;
-        
+
         // Update azimuth and elevation (use higher sensitivity for mobile touch)
         targetAzimuth += dx * TOUCH_DRAG_SENSITIVITY;
         targetElevation -= dy * TOUCH_DRAG_SENSITIVITY;
         targetElevation = Math.max(MIN_ELEVATION, Math.min(MAX_ELEVATION, targetElevation));
-        
+
         touchState.touches = currentTouches;
-        
+
         // Mark as camera drag - calculate total distance from touchStartPos
         if (touchStartPos) {
             const totalDx = touch.clientX - touchStartPos.x;
@@ -7586,21 +7608,21 @@ renderer.domElement.addEventListener('touchmove', (event) => {
     } else if (currentTouches.length === 2 && touchState.touches.length === 2) {
         // Dual touch - pinch to zoom OR (non-pinch) framing tilt
         touchState.hadDoubleTouch = true; // Ensure flag is set if we're in a double touch gesture
-        
+
         const touch1 = currentTouches[0];
         const touch2 = currentTouches[1];
-        
+
         const dx = touch2.clientX - touch1.clientX;
         const dy = touch2.clientY - touch1.clientY;
         const currentDistance = Math.sqrt(dx * dx + dy * dy);
-        
+
         const distanceChange = Math.abs(currentDistance - touchState.startDistance) / touchState.startDistance;
-        
+
         const currentCenter = {
             x: (touch1.clientX + touch2.clientX) / 2,
             y: (touch1.clientY + touch2.clientY) / 2
         };
-        
+
         const PINCH_THRESHOLD = 0.05;
         // Determine gesture: pinch (distance change)
         if (distanceChange > PINCH_THRESHOLD) {
@@ -7617,7 +7639,7 @@ renderer.domElement.addEventListener('touchmove', (event) => {
             // Sync smoothed auto-zoom radius to manual zoom so auto-zoom doesn't fight when it re-enables
             smoothedAutoZoomRadius = targetRadius;
             touchState.startDistance = currentDistance;
-            
+
             // Disable auto-zoom when user manually zooms
             autoZoomDisabledUntilMs = performance.now() + AUTO_ZOOM_DISABLE_DURATION_MS;
         } else {
@@ -7642,7 +7664,7 @@ renderer.domElement.addEventListener('touchmove', (event) => {
         }
 
         touchState.lastCenter = currentCenter;
-        
+
         touchState.touches = currentTouches;
     }
 }, { passive: false });
@@ -7651,13 +7673,13 @@ renderer.domElement.addEventListener('touchmove', (event) => {
 renderer.domElement.addEventListener('touchend', (event) => {
     // Don't preventDefault here - let window handler process block taps first
     // event.preventDefault();
-    
+
     // Call onTouchEnd to handle block taps (pass through)
     // This ensures it runs even if window handler doesn't catch it
     onTouchEnd(event);
-    
+
     const remainingTouches = Array.from(event.touches);
-    
+
     if (remainingTouches.length === 0) {
         // All touches ended - hadDoubleTouch will be cleared in onTouchEnd after check
         touchState.isActive = false;
@@ -7688,14 +7710,14 @@ function onTouchEnd(event) {
         return;
     }
     lastProcessedTouchEndTime = now;
-    
+
     // Don't process block taps if camera was being dragged (same as mouse handler)
     if (isCameraDragging) {
         isCameraDragging = false; // Reset for next interaction
         touchStartPos = null;
         return;
     }
-    
+
     // Don't process block taps if any modal is visible
     // Check computed display style, not just style attribute (modals have display:flex by default in CSS)
     const modalOverlays = document.querySelectorAll('.extended-stats-modal-overlay');
@@ -7710,7 +7732,7 @@ function onTouchEnd(event) {
     if (hasVisibleModal) {
         return; // Modal is open, don't process block taps
     }
-    
+
     // Prevent block selection if we had a double touch gesture (pinch or framing control)
     // This ensures no blocks are selected after completing double touch gestures
     if (touchState.hadDoubleTouch) {
@@ -7721,59 +7743,59 @@ function onTouchEnd(event) {
         touchStartPos = null;
         return; // Don't process as block tap
     }
-    
+
     // Only process single touch (not multi-touch)
     if (event.touches.length > 0 || event.changedTouches.length !== 1) {
         touchStartPos = null;
         return;
     }
-    
+
     const touch = event.changedTouches[0];
-    
+
     // Check if this was actually a drag by checking touch movement
     if (touchStartPos) {
         const dx = touch.clientX - touchStartPos.x;
         const dy = touch.clientY - touchStartPos.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
         const timeElapsed = performance.now() - touchStartTime;
-        
+
         // If distance exceeds threshold or time is too long, it was a drag, not a tap
         if (distance > TOUCH_DRAG_THRESHOLD || timeElapsed > 300) {
             touchStartPos = null;
             return; // Don't process as block tap
         }
     }
-    
+
     // Reset drag tracking
     touchStartPos = null;
-    
+
     // Convert touch to normalized device coordinates
     mouse.x = (touch.clientX / window.innerWidth) * 2 - 1;
     mouse.y = -(touch.clientY / window.innerHeight) * 2 + 1;
-    
+
     // Update camera matrices to ensure raycasting is accurate
     camera.updateMatrixWorld();
     raycaster.setFromCamera(mouse, camera);
-    
+
     // Collect ALL intersections from ALL blocks first, then pick the closest one
     const allIntersections = [];
-    
+
     for (const block of blocks) {
         if (!block || block.isRemoved) continue;
         if (block.isAnimating || block.isFalling) continue;
         if (!block.group || !block.cubes || block.cubes.length === 0) continue; // Ensure block has valid geometry
-        
+
         // Update block's world matrix before raycasting
         block.group.updateMatrixWorld(true);
-        
+
         // Try both block.cubes and block.group for intersection
         let intersects = raycaster.intersectObjects(block.cubes, true);
-        
+
         // If no intersections with cubes, try the group itself
         if (intersects.length === 0) {
             intersects = raycaster.intersectObject(block.group, true);
         }
-        
+
         for (const intersection of intersects) {
             allIntersections.push({
                 intersection,
@@ -7782,33 +7804,33 @@ function onTouchEnd(event) {
             });
         }
     }
-    
+
     // If no intersections, nothing was tapped
     if (allIntersections.length === 0) {
         return;
     }
-    
-    
+
+
     // Sort by distance (closest first)
     allIntersections.sort((a, b) => a.distance - b.distance);
-    
+
     // Get the closest intersection
     const closestHit = allIntersections[0];
     const block = closestHit.block;
-    
+
     // Prevent locked blocks from being moved (they can still intercept taps)
     if (block.isLocked) {
         // Show remaining lock time when user taps on locked block
         showLockTimeRemaining(block);
         return; // Block intercepts tap but doesn't move
     }
-    
+
     // Close settings menu when user clicks on a block (returns to game)
     const settingsMenu = document.getElementById('settings-menu');
     if (settingsMenu) {
         settingsMenu.classList.remove('show');
     }
-    
+
     // If remove mode is active, remove the block instead of moving it
     if (removeModeActive) {
         removeBlockWithAnimation(block);
@@ -7816,7 +7838,7 @@ function onTouchEnd(event) {
         updateUndoButtonState();
         return;
     }
-    
+
     // Validate structure before move
     const structureCheck = validateStructure(blocks, gridSize);
     if (!structureCheck.valid) {
@@ -7826,12 +7848,12 @@ function onTouchEnd(event) {
         // The validation might be too strict or detecting a transient state
         // return;
     }
-    
+
     // Store if this block will fall
     const willFall = block.canMove(blocks) === 'fall';
-    
+
     block.move(blocks, gridSize);
-    
+
     // After a block moves, validate structure and fix any overlaps
     setTimeout(() => {
         const structureCheck = validateStructure(blocks, gridSize);
@@ -7857,7 +7879,7 @@ function onTouchEnd(event) {
             }
         }
     }, 100);
-    
+
     // After a block moves, check if any other blocks lost support
     setTimeout(() => {
         checkAndTriggerFalling(blocks);
@@ -7865,10 +7887,10 @@ function onTouchEnd(event) {
             checkAndTriggerFalling(blocks);
         }, 500);
     }, 400);
-    
+
     // Update button states after move
     updateUndoButtonState();
-    
+
     // If block will fall, advance solution step
     if (willFall && window.puzzleSolution) {
         setTimeout(() => {
@@ -7891,7 +7913,7 @@ window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
-    
+
     // Recalculate initial camera position if needed
     if (!isGeneratingLevel && blocks.length === 0) {
         calculateInitialCameraPosition();
@@ -7916,7 +7938,7 @@ if (typeof window !== 'undefined') {
         get: () => fpsEnabled,
         set: (value) => { fpsEnabled = value; }
     });
-    
+
     // Load FPS preference from localStorage on initialization
     try {
         const savedFpsEnabled = localStorage.getItem('jarrows_fps_enabled');
@@ -8048,7 +8070,7 @@ function scheduleNextFrame() {
 
 function animate() {
     scheduleNextFrame();
-    
+
     const currentTime = performance.now();
     // Extra guard for non-iOS browsers: skip work if called too quickly.
     if (!isIOS && (currentTime - lastFrameTick) < (nextFrameDelayMs - 0.5)) {
@@ -8058,7 +8080,7 @@ function animate() {
 
     const deltaTime = (currentTime - lastTime) / 1000;
     lastTime = currentTime;
-    
+
     // Update FPS counter if enabled
     if (fpsEnabled) {
         fpsFrameCount++;
@@ -8099,7 +8121,7 @@ function animate() {
             }
         }
     }
-    
+
     // Pulsing finish animation - tense effects in last 30 seconds
     // Check if we're in the final countdown (last 30 seconds)
     const isInFinalCountdown = isTimeBasedMode() && timeChallengeActive && !timeUpShown && timeLeftSec > 0 && timeLeftSec <= 30;
@@ -8109,7 +8131,7 @@ function animate() {
         // Reset pulsing effects when not in countdown
         resetPulsingFinishAnimation();
     }
-    
+
     // Update countdown timer display (only in time-based modes, only during last 30 seconds)
     const shouldShowCountdown = isTimeBasedMode() && timeChallengeActive && !timeUpShown && timeLeftSec > 0 && timeLeftSec <= 30;
     if (shouldShowCountdown) {
@@ -8123,72 +8145,147 @@ function animate() {
     } else {
         setCountdownTimerVisible(false);
     }
-    
+
     // Update block lock states (unlock blocks when lock duration expires)
     for (const block of blocks) {
         if (block && typeof block.updateLockState === 'function') {
             block.updateLockState();
         }
     }
-    
+
     // Auto-unlock all blocks if 5 or fewer blocks remain
     autoUnlockIfFewBlocksRemaining();
-    
+
     // Note: Block unlocking is now handled by updateLockState() which respects
     // the full lock duration (1/3 of timer in timer modes, or level-based in Free Flow)
     // Auto-unlock also triggers when 5 or fewer blocks remain
-    
+
     // Update tower group position
     _towerGroupWorldCenter.copy(towerCenter).add(towerPositionOffset);
     towerGroup.position.copy(_towerGroupWorldCenter);
     towerGroup.rotation.set(0, 0, 0); // Always locked to zero
-    
+
     // Dynamic zoom during spawn - uses unified calculation with auto-zoom
     if (isGeneratingLevel && blocks.length > 0) {
         // For first blocks or when enough time has passed, update zoom immediately
         const timeSinceLastUpdate = currentTime - lastSpawnZoomUpdateMs;
         const shouldUpdateNow = lastSpawnZoomUpdateMs === 0 || timeSinceLastUpdate > SPAWN_ZOOM_UPDATE_INTERVAL_MS;
-        
+
         if (shouldUpdateNow) {
             lastSpawnZoomUpdateMs = currentTime;
 
             _spawnZoomBox.makeEmpty();
+            let hasNonCatapultedBlocks = false;
             // Ensure all blocks have updated world matrices before calculating bounding box
+            // Exclude catapulted blocks from spawn zoom calculation (same as gameplay auto-zoom)
             for (const block of blocks) {
-                if (!block || !block.group) continue;
+                if (!block || !block.group || block.isRemoved) continue;
+                // Exclude catapulted blocks from auto-zoom calculation
+                if (block.wasCatapulted) continue;
+
                 block.group.updateMatrixWorld(true);
                 _spawnZoomBox.expandByObject(block.group);
+                hasNonCatapultedBlocks = true;
             }
 
             const size = _spawnZoomBox.getSize(_spawnZoomSize);
-            
-            // If bounding box is empty or invalid, skip this update
-            if (_spawnZoomBox.isEmpty() || size.x === 0 || size.y === 0 || size.z === 0) {
-                // Skip invalid bounding box
-            } else {
+
+            // Only update zoom if we have non-catapulted blocks to frame (same as gameplay auto-zoom)
+            if (hasNonCatapultedBlocks && !_spawnZoomBox.isEmpty() && size.x !== 0 && size.y !== 0 && size.z !== 0) {
                 // Ensure minimum bounding box size to prevent zooming in too much
                 if (size.x < AUTO_ZOOM_MIN_BOUNDING_SIZE) size.x = AUTO_ZOOM_MIN_BOUNDING_SIZE;
                 if (size.y < AUTO_ZOOM_MIN_BOUNDING_SIZE) size.y = AUTO_ZOOM_MIN_BOUNDING_SIZE;
                 if (size.z < AUTO_ZOOM_MIN_BOUNDING_SIZE) size.z = AUTO_ZOOM_MIN_BOUNDING_SIZE;
 
-                // Use unified zoom calculation (same as auto-zoom)
+                // Calculate effective tower center and look-at target
+                _effectiveTowerCenter.copy(towerCenter).add(towerPositionOffset);
+                _lookAtTarget.copy(_effectiveTowerCenter).add(new THREE.Vector3(0, framingOffsetY, 0));
+
+                // Calculate Camera Vectors for Projection (Perspective-Correct Fit)
+                // We use current angles but need to estimate radius-dependent Forward vector
+                // Use currentRadius as a reasonable approximation for orientation
+                const cx = currentRadius * Math.sin(currentElevation) * Math.cos(currentAzimuth);
+                const cy = currentRadius * Math.cos(currentElevation);
+                const cz = currentRadius * Math.sin(currentElevation) * Math.sin(currentAzimuth);
+
+                // Forward vector: from Camera (at cx,cy,cz relative to tower) to LookAt (at 0,framingOffsetY,0 relative to tower)
+                const fwdX = -cx;
+                const fwdY = framingOffsetY - cy;
+                const fwdZ = -cz;
+                const len = Math.sqrt(fwdX * fwdX + fwdY * fwdY + fwdZ * fwdZ);
+                // Normalized Forward
+                const nFwdX = fwdX / len;
+                const nFwdY = fwdY / len;
+                const nFwdZ = fwdZ / len;
+
+                // Right Vector: WorldUp (0,1,0) cross Forward
+                const rX = nFwdZ;
+                const rY = 0;
+                const rZ = -nFwdX;
+                const rLen = Math.sqrt(rX * rX + rZ * rZ);
+                const nRightX = rX / rLen;
+                const nRightZ = rZ / rLen; // rY is 0
+
+                // Up Vector: Forward cross Right
+                const nUpX = nFwdY * nRightZ;
+                const nUpY = nFwdZ * nRightX - nFwdX * nRightZ;
+                const nUpZ = -nFwdY * nRightX;
+
+                // Project Bounding Box Corners onto Camera Up Vector to find Vertical Extent
+                const boxMin = _spawnZoomBox.min;
+                const boxMax = _spawnZoomBox.max;
+
+                // 8 Corners relative to LookAtTarget
+                const corners = [
+                    new THREE.Vector3(boxMin.x, boxMin.y, boxMin.z),
+                    new THREE.Vector3(boxMin.x, boxMin.y, boxMax.z),
+                    new THREE.Vector3(boxMin.x, boxMax.y, boxMin.z),
+                    new THREE.Vector3(boxMin.x, boxMax.y, boxMax.z),
+                    new THREE.Vector3(boxMax.x, boxMin.y, boxMin.z),
+                    new THREE.Vector3(boxMax.x, boxMin.y, boxMax.z),
+                    new THREE.Vector3(boxMax.x, boxMax.y, boxMin.z),
+                    new THREE.Vector3(boxMax.x, boxMax.y, boxMax.z)
+                ];
+
+                let maxProjY = 0;
+                let maxProjX = 0;
+
+                for (const p of corners) {
+                    // Vector from LookAtTarget to Corner
+                    const relX = p.x - _lookAtTarget.x;
+                    const relY = p.y - _lookAtTarget.y;
+                    const relZ = p.z - _lookAtTarget.z;
+
+                    // Project onto Camera Up (Vertical Distance on Screen)
+                    const projY = Math.abs(relX * nUpX + relY * nUpY + relZ * nUpZ);
+                    if (projY > maxProjY) maxProjY = projY;
+
+                    // Project onto Camera Right (Horizontal Distance on Screen)
+                    const projX = Math.abs(relX * nRightX + relZ * nRightZ);
+                    if (projX > maxProjX) maxProjX = projX;
+                }
+
+                const effectiveHeight = maxProjY * 2;
+
+                // For width, we combine the projected width and the XZ-diagonal heuristic for stability
+                const diagXZ = Math.sqrt(
+                    Math.pow(Math.max(Math.abs(boxMax.x - _lookAtTarget.x), Math.abs(boxMin.x - _lookAtTarget.x)), 2) +
+                    Math.pow(Math.max(Math.abs(boxMax.z - _lookAtTarget.z), Math.abs(boxMin.z - _lookAtTarget.z)), 2)
+                ) * 2;
+                const effectiveWidth = Math.max(maxProjX * 2, diagXZ);
+
                 const fov = camera.fov * (Math.PI / 180);
                 const aspect = camera.aspect;
-                // Use mobile-specific padding for mobile devices to reduce side padding
+
+                // Use mobile-specific padding
                 const effectivePadding = isMobileLike ? ZOOM_PADDING_MOBILE : ZOOM_PADDING;
 
-                // Calculate distance needed for height (vertical FOV) with proper padding
-                const minVerticalPadding = isMobileLike ? ZOOM_PADDING_MOBILE : ZOOM_PADDING;
-                const heightDistance = (size.y + minVerticalPadding * 2) / (2 * Math.tan(fov / 2));
+                // Height check
+                const heightDistance = (effectiveHeight + effectivePadding * 2) / (2 * Math.tan(fov / 2));
 
-                // Calculate distance needed for width/depth (horizontal FOV) with proper padding
-                const minHorizontalPadding = isMobileLike ? ZOOM_PADDING_MOBILE : ZOOM_PADDING;
-                const horizontalDiagonal = Math.sqrt(size.x * size.x + size.z * size.z);
-                const widthDistance = (horizontalDiagonal + minHorizontalPadding * 2) / (2 * Math.tan(fov / 2) * aspect);
+                // Width check
+                const widthDistance = (effectiveWidth + effectivePadding * 2) / (2 * Math.tan(fov / 2) * aspect);
 
-                // Use the larger distance with platform-aware multiplier to ensure all blocks stay visible
-                // This matches auto-zoom calculation for smooth transition
-                // Mobile uses smaller multiplier (0.75) for less padding, desktop uses larger (1.4) for safety margin
                 const autoZoomMultiplier = isMobileLike ? AUTO_ZOOM_MULTIPLIER_MOBILE : AUTO_ZOOM_MULTIPLIER_DESKTOP;
                 const requiredDistance = Math.max(heightDistance, widthDistance) * autoZoomMultiplier;
                 const clampedRequiredDistance = Math.max(MIN_RADIUS, Math.min(MAX_RADIUS, requiredDistance));
@@ -8205,14 +8302,14 @@ function animate() {
             }
         }
     }
-    
+
     // Auto-zoom during gameplay (smoothly frame all blocks except catapulted ones)
     // Skip if user has manually zoomed recently (allow override) or if auto-zoom is disabled in settings
     const isAutoZoomDisabled = currentTime < autoZoomDisabledUntilMs;
-    const isAutoZoomEnabled = (typeof window !== 'undefined' && window.autoZoomEnabled !== undefined) 
-        ? window.autoZoomEnabled 
+    const isAutoZoomEnabled = (typeof window !== 'undefined' && window.autoZoomEnabled !== undefined)
+        ? window.autoZoomEnabled
         : true; // Default to enabled if not set
-    
+
     // #region agent log
     // Removed per-frame telemetry call to prevent ERR_INSUFFICIENT_RESOURCES
     // Use debugTelemetry() instead if debug telemetry is needed (it has proper throttling/guards)
@@ -8220,7 +8317,7 @@ function animate() {
     //     debugTelemetry({location:'main.js:animate:autoZoom:beforeThrottle',message:'Auto-zoom before throttle check',data:{isAutoZoomDisabled:isAutoZoomDisabled,isAutoZoomEnabled:isAutoZoomEnabled,timeSinceLastUpdate:currentTime-lastAutoZoomUpdateMs,willRun:(currentTime-lastAutoZoomUpdateMs)>AUTO_ZOOM_UPDATE_INTERVAL_MS,targetRadius:targetRadius.toFixed(2),currentRadius:currentRadius.toFixed(2)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'});
     // }
     // #endregion
-    
+
     if (!isGeneratingLevel && blocks.length > 0 && !isAutoZoomDisabled && isAutoZoomEnabled) {
         // Throttle expensive bounding-box calculation to avoid long rAF frames
         if ((currentTime - lastAutoZoomUpdateMs) > AUTO_ZOOM_UPDATE_INTERVAL_MS) {
@@ -8228,15 +8325,15 @@ function animate() {
 
             _autoZoomBox.makeEmpty();
             let hasNonCatapultedBlocks = false;
-            
+
             // Calculate effective tower center (with offset) for bounding box calculation
             _effectiveTowerCenter.copy(towerCenter).add(towerPositionOffset);
-            
+
             for (const block of blocks) {
                 if (!block || !block.group || block.isRemoved) continue;
                 // Exclude catapulted blocks from auto-zoom calculation
                 if (block.wasCatapulted) continue;
-                
+
                 block.group.updateMatrixWorld(true);
                 _autoZoomBox.expandByObject(block.group);
                 hasNonCatapultedBlocks = true;
@@ -8252,7 +8349,7 @@ function animate() {
                 // Get bounding box size - this is in world space, which is correct
                 // because the camera position is also in world space relative to effective tower center
                 let size = _autoZoomBox.getSize(_autoZoomSize);
-                
+
                 // #region agent log
                 // Replaced with debugTelemetry to prevent ERR_INSUFFICIENT_RESOURCES
                 // const boxMin = _autoZoomBox.min;
@@ -8266,28 +8363,108 @@ function animate() {
                 if (size.y < AUTO_ZOOM_MIN_BOUNDING_SIZE) size.y = AUTO_ZOOM_MIN_BOUNDING_SIZE;
                 if (size.z < AUTO_ZOOM_MIN_BOUNDING_SIZE) size.z = AUTO_ZOOM_MIN_BOUNDING_SIZE;
 
-                // Calculate required distance to fit all non-catapulted blocks
-                // Use unified calculation (same as spawn zoom) for smooth transition
+                // Calculate effective tower center and look-at target
+                _effectiveTowerCenter.copy(towerCenter).add(towerPositionOffset);
+                _lookAtTarget.copy(_effectiveTowerCenter).add(new THREE.Vector3(0, framingOffsetY, 0));
+
+                // Calculate Camera Vectors for Projection (Perspective-Correct Fit)
+                // We use current angles but need to estimate radius-dependent Forward vector
+                // Use currentRadius as a reasonable approximation for orientation
+                const cx = currentRadius * Math.sin(currentElevation) * Math.cos(currentAzimuth);
+                const cy = currentRadius * Math.cos(currentElevation);
+                const cz = currentRadius * Math.sin(currentElevation) * Math.sin(currentAzimuth);
+
+                // Forward vector: from Camera (at cx,cy,cz relative to tower) to LookAt (at 0,framingOffsetY,0 relative to tower)
+                const fwdX = -cx;
+                const fwdY = framingOffsetY - cy;
+                const fwdZ = -cz;
+                const len = Math.sqrt(fwdX * fwdX + fwdY * fwdY + fwdZ * fwdZ);
+                // Normalized Forward
+                const nFwdX = fwdX / len;
+                const nFwdY = fwdY / len;
+                const nFwdZ = fwdZ / len;
+
+                // Right Vector: WorldUp (0,1,0) cross Forward
+                // Rx = Uy*Fz - Uz*Fy = 1*Fz - 0 = Fz
+                // Ry = Uz*Fx - Ux*Fz = 0
+                // Rz = Ux*Fy - Uy*Fx = -Fx
+                const rX = nFwdZ;
+                const rY = 0;
+                const rZ = -nFwdX;
+                const rLen = Math.sqrt(rX * rX + rZ * rZ);
+                const nRightX = rX / rLen;
+                const nRightZ = rZ / rLen; // rY is 0
+
+                // Up Vector: Forward cross Right
+                // Ux = Fy*Rz - Fz*Ry = Fy*Rz
+                // Uy = Fz*Rx - Fx*Rz
+                // Uz = Fx*Ry - Fy*Rx = -Fy*Rx
+                const nUpX = nFwdY * nRightZ;
+                const nUpY = nFwdZ * nRightX - nFwdX * nRightZ;
+                const nUpZ = -nFwdY * nRightX;
+
+                // Project Bounding Box Corners onto Camera Up Vector to find Vertical Extent
+                const boxMin = _autoZoomBox.min;
+                const boxMax = _autoZoomBox.max;
+
+                // 8 Corners relative to LookAtTarget
+                const corners = [
+                    new THREE.Vector3(boxMin.x, boxMin.y, boxMin.z),
+                    new THREE.Vector3(boxMin.x, boxMin.y, boxMax.z),
+                    new THREE.Vector3(boxMin.x, boxMax.y, boxMin.z),
+                    new THREE.Vector3(boxMin.x, boxMax.y, boxMax.z),
+                    new THREE.Vector3(boxMax.x, boxMin.y, boxMin.z),
+                    new THREE.Vector3(boxMax.x, boxMin.y, boxMax.z),
+                    new THREE.Vector3(boxMax.x, boxMax.y, boxMin.z),
+                    new THREE.Vector3(boxMax.x, boxMax.y, boxMax.z)
+                ];
+
+                let maxProjY = 0;
+                let maxProjX = 0;
+
+                for (const p of corners) {
+                    // Vector from LookAtTarget to Corner
+                    const relX = p.x - _lookAtTarget.x;
+                    const relY = p.y - _lookAtTarget.y;
+                    const relZ = p.z - _lookAtTarget.z;
+
+                    // Project onto Camera Up (Vertical Distance on Screen)
+                    const projY = Math.abs(relX * nUpX + relY * nUpY + relZ * nUpZ);
+                    if (projY > maxProjY) maxProjY = projY;
+
+                    // Project onto Camera Right (Horizontal Distance on Screen) - mostly for check
+                    // For width, we previously used XZ diagonal which is rotation-safe.
+                    // But checking actual projected width is good for extreme aspects.
+                    const projX = Math.abs(relX * nRightX + relZ * nRightZ); // Right vector has 0 Y component
+                    if (projX > maxProjX) maxProjX = projX;
+                }
+
+                const effectiveHeight = maxProjY * 2;
+
+                // For width, we combine the projected width and the XZ-diagonal heuristic for stability
+                // The XZ diagonal (circle fit) ensures rotation doesn't clip corners
+                const diagXZ = Math.sqrt(
+                    Math.pow(Math.max(Math.abs(boxMax.x - _lookAtTarget.x), Math.abs(boxMin.x - _lookAtTarget.x)), 2) +
+                    Math.pow(Math.max(Math.abs(boxMax.z - _lookAtTarget.z), Math.abs(boxMin.z - _lookAtTarget.z)), 2)
+                ) * 2;
+                const effectiveWidth = Math.max(maxProjX * 2, diagXZ);
+
+                // Calculate required distance
                 const fov = camera.fov * (Math.PI / 180);
                 const aspect = camera.aspect;
-                // Use mobile-specific padding for mobile devices to reduce side padding
+
+                // Use mobile-specific padding
+                // Reverting generic padding to be tight since our vector math is now precise
                 const effectivePadding = isMobileLike ? ZOOM_PADDING_MOBILE : ZOOM_PADDING;
 
-                // Calculate distance needed for height (vertical FOV) with proper padding
-                // Ensure minimum padding at top and bottom
-                const minVerticalPadding = isMobileLike ? ZOOM_PADDING_MOBILE : ZOOM_PADDING;
-                const heightDistance = (size.y + minVerticalPadding * 2) / (2 * Math.tan(fov / 2));
+                // Height check
+                const heightDistance = (effectiveHeight + effectivePadding * 2) / (2 * Math.tan(fov / 2));
 
-                // Calculate distance needed for width/depth (horizontal FOV) with proper padding
-                // Ensure minimum padding at left and right - use mobile-specific padding to reduce side padding
-                const minHorizontalPadding = isMobileLike ? ZOOM_PADDING_MOBILE : ZOOM_PADDING;
-                const horizontalDiagonal = Math.sqrt(size.x * size.x + size.z * size.z);
-                const widthDistance = (horizontalDiagonal + minHorizontalPadding * 2) / (2 * Math.tan(fov / 2) * aspect);
+                // Width check
+                const widthDistance = (effectiveWidth + effectivePadding * 2) / (2 * Math.tan(fov / 2) * aspect);
 
-                // Use the larger distance with platform-aware multiplier to ensure all blocks stay visible
-                // This accounts for perspective distortion, camera lookAt offset, and edge cases
-                // The camera looks at tower center + framingOffsetY, which may be offset from bounding box center
-                // Mobile uses smaller multiplier (0.75) for less padding, desktop uses larger (1.4) for safety margin
+                // Desktop 1.5 multiplier was a patch for the bad math. Now that math is good, we can reduce it.
+                // Keeping a slight buffer (1.1) for UI elements.
                 const autoZoomMultiplier = isMobileLike ? AUTO_ZOOM_MULTIPLIER_MOBILE : AUTO_ZOOM_MULTIPLIER_DESKTOP;
                 const requiredDistance = Math.max(heightDistance, widthDistance) * autoZoomMultiplier;
                 const clampedRequiredDistance = Math.max(MIN_RADIUS, Math.min(MAX_RADIUS, requiredDistance));
@@ -8303,7 +8480,7 @@ function animate() {
                 // Replaced with debugTelemetry to prevent ERR_INSUFFICIENT_RESOURCES
                 // debugTelemetry({location:'main.js:animate:autoZoom',message:'Auto-zoom update',data:{blocksCount:blocks.length,sizeX:size.x.toFixed(2),sizeY:size.y.toFixed(2),sizeZ:size.z.toFixed(2),heightDistance:heightDistance.toFixed(2),widthDistance:widthDistance.toFixed(2),requiredDistance:requiredDistance.toFixed(2),oldTargetRadius:oldTargetRadius.toFixed(2),newTargetRadius:targetRadius.toFixed(2),currentRadius:currentRadius.toFixed(2),currentElevation:(currentElevation*180/Math.PI).toFixed(2)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'});
                 // #endregion
-                
+
                 // Debug: log auto-zoom calculation (can be removed later)
                 if (typeof window !== 'undefined' && window.jarrows_debug === '1') {
                     console.log('[Auto-zoom]', {
@@ -8315,7 +8492,7 @@ function animate() {
             }
         }
     }
-    
+
     // Smooth interpolation - balanced for responsive yet smooth movement
     // Higher smoothing = faster response = smoother feel
     const smoothing = isGeneratingLevel ? 0.25 : 0.15; // Increased from 0.04 to 0.15 for smoother, more responsive camera
@@ -8326,7 +8503,7 @@ function animate() {
     currentRadius += (targetRadius - currentRadius) * smoothing;
     currentAzimuth += (targetAzimuth - currentAzimuth) * smoothing;
     currentElevation += (targetElevation - currentElevation) * smoothing;
-    
+
     // Smooth interpolation of tower position offset to prevent camera jumps
     // Use faster smoothing during level generation for responsive feel
     const towerOffsetSmoothing = isGeneratingLevel ? 0.3 : 0.2;
@@ -8348,31 +8525,31 @@ function animate() {
     if (dr < SNAP_EPS) currentRadius = targetRadius;
     if (da < SNAP_EPS) currentAzimuth = targetAzimuth;
     if (de < SNAP_EPS) currentElevation = targetElevation;
-    
+
     // Only update camera if it's actually moving
     // This saves CPU when camera is stationary
     const cameraStillMoving = (dr >= SNAP_EPS) || (da >= SNAP_EPS) || (de >= SNAP_EPS);
-    if (cameraStillMoving || 
+    if (cameraStillMoving ||
         dr > SNAP_EPS ||
         da > SNAP_EPS ||
         de > SNAP_EPS) {
         updateCameraPosition();
     }
-    
+
     // Determine if we need expensive shadow updates this frame
     const isBatteryQuality = qualityPreset === 'battery';
     const interacting = isDraggingCamera || (touchState && touchState.isActive);
-    
+
     // Cache block state flags to avoid full iteration every frame
     // In battery mode when idle, only check block state periodically (every 100ms)
     // First check if we need to iterate based on simple conditions
     const BLOCK_STATE_CHECK_INTERVAL = isBatteryQuality ? 100 : 16;
-    const needsFullIteration = interacting || 
-                              cameraStillMoving ||
-                              isGeneratingLevel ||
-                              !isBatteryQuality ||
-                              (isBatteryQuality && (currentTime - lastBlockStateCheckTime > BLOCK_STATE_CHECK_INTERVAL));
-    
+    const needsFullIteration = interacting ||
+        cameraStillMoving ||
+        isGeneratingLevel ||
+        !isBatteryQuality ||
+        (isBatteryQuality && (currentTime - lastBlockStateCheckTime > BLOCK_STATE_CHECK_INTERVAL));
+
     if (needsFullIteration) {
         cachedHasFallingBlocks = false;
         cachedHasActiveAnimations = false;
@@ -8390,14 +8567,14 @@ function animate() {
         }
         lastBlockStateCheckTime = currentTime;
     }
-    
+
     // Use cached values
     const hasFallingBlocks = cachedHasFallingBlocks;
     const hasActiveAnimations = cachedHasActiveAnimations;
     const hasPhysicsBlocks = cachedHasPhysicsBlocks;
     const isActiveFrame = interacting || hasFallingBlocks || cameraStillMoving || hasActiveAnimations || isGeneratingLevel;
     nextFrameDelayMs = isActiveFrame ? ACTIVE_FRAME_MS : IDLE_FRAME_MS;
-    
+
     // Keep shadow updates "warm" while the camera is settling (smoothing) and for a short cooldown after interaction.
     // This prevents noticeable shadow direction/strength jumps when updates are gated too aggressively.
     // Battery preset: don't burn battery refreshing shadow maps during block motion/catapult/melt;
@@ -8411,7 +8588,7 @@ function animate() {
     // Calculate shadow cooldown based on battery mode and camera state
     // Extended cooldown when idle in battery mode to save battery
     const isCameraIdle = !cameraStillMoving && !interacting;
-    const shadowCooldownMs = (isBatteryQuality && isCameraIdle) 
+    const shadowCooldownMs = (isBatteryQuality && isCameraIdle)
         ? 1200  // Extended cooldown when idle in battery mode
         : (isIOS ? 600 : 350);  // Normal cooldown
 
@@ -8428,28 +8605,28 @@ function animate() {
         updateLightsForCamera(lights, currentAzimuth, currentElevation, _towerGroupWorldCenter);
         if (renderer.shadowMap) renderer.shadowMap.needsUpdate = true;
     }
-    
+
     // Smoothly interpolate light positions every frame to prevent jitter (especially in battery mode)
     // This allows lights to follow the smoothly moving camera without discrete jumps
     // Only interpolate when position difference is significant to save battery
     // Skip interpolation if user is manually controlling lights via debug panel
     if (!lightsManuallyControlled && lights && targetKeyLightPosition) {
         const keyLightDistanceSq = lights.keyLight.position.distanceToSquared(targetKeyLightPosition);
-        const fillLightDistanceSq = lights.fillLight && targetFillLightPosition 
-            ? lights.fillLight.position.distanceToSquared(targetFillLightPosition) 
+        const fillLightDistanceSq = lights.fillLight && targetFillLightPosition
+            ? lights.fillLight.position.distanceToSquared(targetFillLightPosition)
             : 0;
-        
+
         // Only interpolate if position difference is significant (> 0.001 units)
         if (keyLightDistanceSq > 0.001) {
             // Use faster interpolation in battery mode to reduce visible lag, but still smooth
             const lightSmoothing = isBatteryQuality ? 0.15 : 0.3;
             lights.keyLight.position.lerp(targetKeyLightPosition, lightSmoothing);
-            
+
             // Update shadow camera to match interpolated light position
             if (lights.keyLight.shadow && lights.keyLight.shadow.camera) {
                 lights.keyLight.shadow.camera.position.copy(lights.keyLight.position);
                 lights.keyLight.shadow.camera.lookAt(_towerGroupWorldCenter);
-                
+
                 // Adjust shadow camera bounds to follow tower vertical position
                 // This prevents shadow jitter when tower moves up/down
                 const towerY = _towerGroupWorldCenter.y;
@@ -8457,11 +8634,11 @@ function animate() {
                 const verticalOffset = Math.max(0, towerY); // Only adjust for upward movement
                 lights.keyLight.shadow.camera.top = shadowBounds + verticalOffset;
                 lights.keyLight.shadow.camera.bottom = -shadowBounds + verticalOffset;
-                
+
                 lights.keyLight.shadow.camera.updateMatrixWorld();
             }
         }
-        
+
         if (lights.fillLight && targetFillLightPosition && fillLightDistanceSq > 0.001) {
             const lightSmoothing = isBatteryQuality ? 0.15 : 0.3;
             lights.fillLight.position.lerp(targetFillLightPosition, lightSmoothing);
@@ -8471,29 +8648,29 @@ function animate() {
     // Keep shadow maps in manual-update mode, but refresh periodically while motion/interaction is happening.
     // This avoids abrupt shadow pops from toggling autoUpdate on/off.
     // In battery mode, increase update frequency when tower is moving to reduce jitter
-    const towerIsMoving = Math.abs(towerPositionOffset.y - targetTowerPositionOffset.y) > 0.01 || 
-                          Math.abs(towerPositionOffset.x - targetTowerPositionOffset.x) > 0.01 ||
-                          Math.abs(towerPositionOffset.z - targetTowerPositionOffset.z) > 0.01;
-    const effectiveShadowInterval = (isBatteryQuality && towerIsMoving) 
+    const towerIsMoving = Math.abs(towerPositionOffset.y - targetTowerPositionOffset.y) > 0.01 ||
+        Math.abs(towerPositionOffset.x - targetTowerPositionOffset.x) > 0.01 ||
+        Math.abs(towerPositionOffset.z - targetTowerPositionOffset.z) > 0.01;
+    const effectiveShadowInterval = (isBatteryQuality && towerIsMoving)
         ? Math.min(SHADOW_MAP_UPDATE_INTERVAL_MS, 50) // Cap at 20Hz when moving in battery mode
         : SHADOW_MAP_UPDATE_INTERVAL_MS;
-    
+
     if (renderer.shadowMap && needShadowsThisFrame && (currentTime - lastShadowMapUpdateMs) > effectiveShadowInterval) {
         lastShadowMapUpdateMs = currentTime;
         renderer.shadowMap.needsUpdate = true;
     }
-    
+
     // Update timer display (throttled; per-frame DOM updates cost battery on mobile)
     if (currentTime - lastTimerUiMs > TIMER_UI_INTERVAL_MS) {
         lastTimerUiMs = currentTime;
         updateTimerDisplay();
     }
-    
+
     // Update particle system
     if (particleSystem) {
         particleSystem.updateParticles(deltaTime);
     }
-    
+
     // Update debris pieces
     if (debrisManager) {
         debrisManager.update();
@@ -8502,30 +8679,30 @@ function animate() {
             debrisManager.cleanupSettled(-0.5, 10);
         }
     }
-    
+
     // Update block count (FPS tracking moved to animate function)
     const blockValueElement = document.getElementById('block-value');
     if (blockValueElement) {
         blockValueElement.textContent = blocks.length;
     }
-    
+
     // Reset frame flag
     physicsUpdatedThisFrame = false;
-    
+
     // CRITICAL: Only call updatePhysics ONCE per frame, before any reads
     // Process operations and step physics
     // In battery mode, skip physics when truly idle to save CPU
     // Also check for debris pieces - they need physics to fall
     const hasDebris = debrisManager && debrisManager.getPieceCount() > 0;
-    const shouldUpdatePhysics = !physicsUpdatedThisFrame && 
-                               (hasPhysicsBlocks || hasPendingOperations() || hasFallingBlocks || hasDebris) &&
-                               !(isBatteryQuality && !isActiveFrame && !hasFallingBlocks && !hasDebris);
-    
+    const shouldUpdatePhysics = !physicsUpdatedThisFrame &&
+        (hasPhysicsBlocks || hasPendingOperations() || hasFallingBlocks || hasDebris) &&
+        !(isBatteryQuality && !isActiveFrame && !hasFallingBlocks && !hasDebris);
+
     if (shouldUpdatePhysics) {
         updatePhysics(physics, deltaTime);
         physicsUpdatedThisFrame = true;
     }
-    
+
     // Update block visuals from physics AFTER step completes
     // This is the read phase - modifications queued here will be processed NEXT frame
     if (!isPhysicsStepping() && !isPhysicsProcessing()) {
@@ -8535,14 +8712,14 @@ function animate() {
             if (!block || block.isRemoved || !block.isFalling) continue;
             block.updateFromPhysics();
         }
-        
+
         // Update highlight animations
         for (const block of blocks) {
             if (block.updateHighlightAnimation) {
                 block.updateHighlightAnimation(deltaTime);
             }
         }
-        
+
         // Update melt animations (for blocks being removed)
         // Check ALL blocks, not just non-removed ones
         // Update melt animations (for blocks being removed)
@@ -8556,7 +8733,7 @@ function animate() {
                 }
             }
         }
-        
+
         // Periodically check for blocks that lost support (continuous monitoring)
         // In battery mode, check less frequently to save battery (400ms vs 200ms)
         const supportCheckInterval = isBatteryQuality ? 400 : 200;
@@ -8564,37 +8741,37 @@ function animate() {
             lastSupportCheckTime = currentTime;
             checkAndTriggerFalling(blocks);
         }
-        
+
         // Clean up removed blocks and update solution tracking
         for (let i = blocks.length - 1; i >= 0; i--) {
             const block = blocks[i];
-            
+
             // Melt animation cleanup is handled in updateMeltAnimation function
-            
+
             if (block.isRemoved) {
                 // Distinguish between manual removal (has removalStartTime) and natural fall-off
                 // Manual removals already handled stats/time in the melt animation completion callback
                 // Natural fall-offs need stats/time tracking here
                 const isNaturalFall = !block.removalStartTime;
-                
+
                 if (isNaturalFall) {
                     // Block fell off naturally - track stats and award time
                     trackBlockRemoved();
                     timeChallengeAwardForBlockRemoved(block.length);
                 }
-                
+
                 // Ensure block is removed from towerGroup (in case remove() didn't work)
                 if (block.group.parent) {
                     block.group.parent.remove(block.group);
                 }
-                
+
                 // Clean up physics body if it exists
                 if (block.physicsBody && block.physicsBody.body) {
                     import('./physics.js').then(({ removePhysicsBody }) => {
                         removePhysicsBody(physics, block.physicsBody.body);
                     });
                 }
-                
+
                 // Block was removed (fell off) - advance solution if we're tracking
                 if (window.puzzleSolution && window.solutionStep < window.puzzleSolution.length) {
                     window.solutionStep++;
@@ -8603,14 +8780,14 @@ function animate() {
                         highlightNextBlock();
                     }, 100);
                 }
-                
+
                 // Keep move history entries even if a block is removed.
                 // Undo can resurrect the last-removed block back onto the board.
-                
+
                 blocks.splice(i, 1);
             }
         }
-        
+
         // Check for level completion (all blocks cleared)
         // Only check if not generating a new level and level complete hasn't been shown yet
         // Don't show level complete if time ran out (user failed)
@@ -8639,10 +8816,10 @@ function animate() {
             if (isTimerRunning && timerStartTime !== null) {
                 elapsedSeconds += (performance.now() / 1000) - timerStartTime;
             }
-            
+
             // Show level complete modal immediately
             showLevelCompleteModal(currentLevel);
-            
+
             // Complete level and get stats (non-blocking)
             (async () => {
                 try {
@@ -8661,8 +8838,8 @@ function animate() {
                         userStats.timeLostLevel = timeChallengeSpinCost;
                         // Include carried over history for graph - ensure it's a proper array
                         // Create a defensive copy to prevent issues if the array is modified
-                        userStats.carriedOverHistory = Array.isArray(timeChallengeCarriedOverHistory) 
-                            ? [...timeChallengeCarriedOverHistory] 
+                        userStats.carriedOverHistory = Array.isArray(timeChallengeCarriedOverHistory)
+                            ? [...timeChallengeCarriedOverHistory]
                             : [];
                     }
                     const comparison = await getLevelComparison(userStats);
@@ -8673,42 +8850,42 @@ function animate() {
                 }
             })();
         }
-        
+
     }
-    
+
     // Only render when something is actually changing
     // In battery mode, skip rendering when truly idle to save GPU power
-    const shouldRender = isActiveFrame || 
-                       cameraStillMoving || 
-                       hasFallingBlocks || 
-                       hasActiveAnimations ||
-                       !isBatteryQuality; // Always render in balanced/performance modes
-    
+    const shouldRender = isActiveFrame ||
+        cameraStillMoving ||
+        hasFallingBlocks ||
+        hasActiveAnimations ||
+        !isBatteryQuality; // Always render in balanced/performance modes
+
     if (shouldRender) {
         renderer.render(scene, camera);
     }
 }
 
 // Test function to verify block counts across levels
-window.testBlockCounts = async function(maxLevel = 5) {
+window.testBlockCounts = async function (maxLevel = 5) {
     console.log('🧪 Testing block counts for levels 0-' + maxLevel);
     console.log('='.repeat(60));
-    
+
     const results = [];
-    
+
     for (let level = 0; level <= maxLevel; level++) {
         const targetCount = getBlocksForLevel(level);
         console.log(`\n📊 Level ${level}: Target = ${targetCount}`);
-        
+
         // Generate the level
         await generateSolvablePuzzle(level);
-        
+
         // Wait a bit for placement to complete
         await new Promise(resolve => setTimeout(resolve, 500));
-        
+
         const actualCount = blocks.length;
         const match = actualCount === targetCount;
-        
+
         results.push({
             level,
             target: targetCount,
@@ -8716,28 +8893,28 @@ window.testBlockCounts = async function(maxLevel = 5) {
             match,
             difference: targetCount - actualCount
         });
-        
+
         if (match) {
             console.log(`✅ Level ${level}: PASS (${actualCount} blocks)`);
         } else {
             console.error(`❌ Level ${level}: FAIL - Expected ${targetCount}, got ${actualCount} (difference: ${targetCount - actualCount})`);
         }
     }
-    
+
     console.log('\n' + '='.repeat(60));
     console.log('📋 SUMMARY:');
     const passed = results.filter(r => r.match).length;
     const failed = results.filter(r => !r.match).length;
     console.log(`✅ Passed: ${passed}/${results.length}`);
     console.log(`❌ Failed: ${failed}/${results.length}`);
-    
+
     if (failed > 0) {
         console.log('\n❌ Failed levels:');
         results.filter(r => !r.match).forEach(r => {
             console.log(`  Level ${r.level}: Expected ${r.target}, got ${r.actual} (diff: ${r.difference})`);
         });
     }
-    
+
     return results;
 };
 
@@ -8765,16 +8942,14 @@ document.addEventListener('visibilitychange', () => {
 let pulsingFinishActive = false;
 let pulsingFinishStartTime = 0;
 let beaconRotation = 0;
-let heartbeatPhase = 0;
-let lastHeartbeatCycle = -1; // Track which cycle we last played sound for (prevents multiple plays per cycle)
-let currentHeartbeatSource = null; // Track current heartbeat audio source to stop it if needed
+// Heartbeat variables removed
 
 // Update pulsing finish animation (beacon light + heartbeat pulse)
 async function updatePulsingFinishAnimation(timeLeft, deltaTime) {
     if (!pulsingFinishActive) {
         pulsingFinishActive = true;
         pulsingFinishStartTime = performance.now();
-        
+
         // Initialize random phase offsets for each block (only once when animation starts)
         // Small offsets (-0.05 to +0.05) create subtle timing variations while keeping overall pattern
         if (blocks && blocks.length > 0) {
@@ -8786,76 +8961,40 @@ async function updatePulsingFinishAnimation(timeLeft, deltaTime) {
             }
         }
     }
-    
+
     // Calculate intensity (ramps up as time approaches zero)
     // At 30s: intensity = 0, at 0s: intensity = 1
     const intensity = 1 - (timeLeft / 30);
     const clampedIntensity = Math.min(1, Math.max(0, intensity));
-    
+
     // Update beacon rotation (rotating red/blue lights)
     const BEACON_ROTATION_SPEED = 0.003; // radians per ms
     beaconRotation += deltaTime * BEACON_ROTATION_SPEED;
     if (beaconRotation > Math.PI * 2) beaconRotation -= Math.PI * 2;
-    
-    // Update heartbeat phase (sine wave for pulse)
-    const HEARTBEAT_CYCLE_MS = 1200; // 1.2 second cycle
-    const currentTime = performance.now() - pulsingFinishStartTime;
-    heartbeatPhase = (currentTime % HEARTBEAT_CYCLE_MS) / HEARTBEAT_CYCLE_MS;
-    const currentCycle = Math.floor(currentTime / HEARTBEAT_CYCLE_MS);
-    
-    // Play heartbeat sound ONCE per animation cycle (not per block, not multiple times per cycle)
-    // Only trigger at the very start of a new cycle (phase 0-0.01) and only if we haven't played for this cycle
-    // If sound file is longer than cycle, stop previous sound before starting new one
-    if (heartbeatPhase >= 0.0 && heartbeatPhase < 0.01 && currentCycle !== lastHeartbeatCycle) {
-        // Stop previous heartbeat sound if it's still playing (in case sound file is longer than cycle)
-        if (currentHeartbeatSource) {
-            try {
-                currentHeartbeatSource.stop();
-            } catch (e) {
-                // Source may have already finished, ignore error
-            }
-            currentHeartbeatSource = null;
-        }
-        
-        // Play new heartbeat sound (fire and forget, but track source)
-        playSound('heartbeat', 0.4 * clampedIntensity).then(source => {
-            currentHeartbeatSource = source;
-        });
-        lastHeartbeatCycle = currentCycle; // Mark this cycle as having played the sound
-    }
-    
+
+    // Heartbeat sound logic removed
+
     // Apply police beacon light effect (CSS overlay)
     applyBeaconLightEffect(beaconRotation, clampedIntensity);
-    
+
     // Apply heartbeat pulse to blocks
-    applyHeartbeatPulse(heartbeatPhase, clampedIntensity);
+    // Heartbeat pulse animation removed
 }
 
 // Reset pulsing finish animation
 function resetPulsingFinishAnimation() {
     if (!pulsingFinishActive) return;
-    
+
     pulsingFinishActive = false;
     beaconRotation = 0;
-    heartbeatPhase = 0;
-    lastHeartbeatCycle = -1; // Reset heartbeat sound tracking
-    
-    // Stop any playing heartbeat sound
-    if (currentHeartbeatSource) {
-        try {
-            currentHeartbeatSource.stop();
-        } catch (e) {
-            // Source may have already finished, ignore error
-        }
-        currentHeartbeatSource = null;
-    }
-    
+    // Heartbeat cleanup removed
+
     // Remove beacon overlay
     const beaconOverlay = document.getElementById('pulsing-beacon-overlay');
     if (beaconOverlay) {
         beaconOverlay.remove();
     }
-    
+
     // Reset block scales and clear phase offsets (will be regenerated on next activation)
     if (blocks && blocks.length > 0) {
         for (const block of blocks) {
@@ -8873,7 +9012,7 @@ function resetPulsingFinishAnimation() {
 // Apply police beacon light effect (rotating red/blue lights)
 function applyBeaconLightEffect(rotation, intensity) {
     let beaconOverlay = document.getElementById('pulsing-beacon-overlay');
-    
+
     if (!beaconOverlay) {
         // Create beacon overlay element
         beaconOverlay = document.createElement('div');
@@ -8887,25 +9026,25 @@ function applyBeaconLightEffect(rotation, intensity) {
         `;
         document.body.appendChild(beaconOverlay);
     }
-    
+
     // Create rotating red/blue gradient
     const redAngle = rotation;
     const blueAngle = rotation + Math.PI;
-    
+
     // Calculate positions for rotating lights
     const centerX = window.innerWidth / 2;
     const centerY = window.innerHeight / 2;
     const radius = Math.max(window.innerWidth, window.innerHeight) * 0.8;
-    
+
     const redX = centerX + Math.cos(redAngle) * radius;
     const redY = centerY + Math.sin(redAngle) * radius;
     const blueX = centerX + Math.cos(blueAngle) * radius;
     const blueY = centerY + Math.sin(blueAngle) * radius;
-    
+
     // Create radial gradients for rotating lights
     const redIntensity = Math.max(0, Math.sin(rotation) * 0.5 + 0.5) * intensity * 0.4;
     const blueIntensity = Math.max(0, Math.sin(rotation + Math.PI) * 0.5 + 0.5) * intensity * 0.4;
-    
+
     beaconOverlay.style.background = `
         radial-gradient(circle 300px at ${redX}px ${redY}px, rgba(255, 0, 0, ${redIntensity}) 0%, transparent 50%),
         radial-gradient(circle 300px at ${blueX}px ${blueY}px, rgba(0, 100, 255, ${blueIntensity}) 0%, transparent 50%),
@@ -8913,61 +9052,26 @@ function applyBeaconLightEffect(rotation, intensity) {
     `;
 }
 
-// Apply heartbeat pulse to all blocks
-function applyHeartbeatPulse(phase, intensity) {
-    if (!blocks || blocks.length === 0) return;
-    
-    // Heartbeat pattern: quick beat, pause, quick beat, longer pause
-    // Use sine wave with phase adjustment for heartbeat rhythm
-    
-    // Apply pulse scale to each block with individual phase offset
-    for (const block of blocks) {
-        if (block && block.group && !block.isRemoved && !block.isFalling) {
-            // Apply block's individual phase offset (creates subtle timing variations)
-            const blockPhaseOffset = block.pulsePhaseOffset || 0;
-            const blockPhase = (phase + blockPhaseOffset + 1) % 1; // Wrap around if needed
-            
-            let pulseScale = 1.0;
-            
-            if (blockPhase < 0.15) {
-                // First beat (quick)
-                const t = blockPhase / 0.15;
-                pulseScale = 1.0 + Math.sin(t * Math.PI) * 0.08 * intensity;
-            } else if (blockPhase < 0.25) {
-                // Pause after first beat
-                pulseScale = 1.0;
-            } else if (blockPhase < 0.4) {
-                // Second beat (quick)
-                const t = (blockPhase - 0.25) / 0.15;
-                pulseScale = 1.0 + Math.sin(t * Math.PI) * 0.08 * intensity;
-            } else {
-                // Longer pause
-                pulseScale = 1.0;
-            }
-            
-            block.group.scale.set(pulseScale, pulseScale, pulseScale);
-        }
-    }
-}
+
 
 // Test function for pulsing finish animation
 // Usage: testPulsingFinishAnimation(seconds) - e.g., testPulsingFinishAnimation(25) to test with 25 seconds left
-window.testPulsingFinishAnimation = function(seconds = 25) {
+window.testPulsingFinishAnimation = function (seconds = 25) {
     if (!isTimeBasedMode()) {
         console.warn('[Test] Not in time-based mode. Animation requires time-based mode.');
         return;
     }
-    
+
     // Ensure time challenge is active
     if (!timeChallengeActive) {
         timeChallengeActive = true;
         console.log('[Test] Activated time challenge mode');
     }
-    
+
     // Set timer to specified seconds
     setTimeLeftSec(Math.max(0, Math.min(30, seconds)));
     console.log(`[Test] Set timer to ${timeLeftSec} seconds. Animation should be active.`);
-    
+
     // Force update the animation immediately
     if (timeLeftSec > 0 && timeLeftSec <= 30) {
         const deltaTime = 16; // Approximate frame time

@@ -7,24 +7,24 @@ async function loadRapier() {
     if (rapierLoadPromise) {
         return rapierLoadPromise;
     }
-    
+
     rapierLoadPromise = (async () => {
         if (!RAPIER) {
             console.log('Loading Rapier physics engine...');
-            
+
             // ROOT CAUSE FIX: Use rapier3d-compat which embeds WASM, avoiding base path issues
             // The standard @dimforge/rapier3d package imports WASM from "./rapier_wasm3d_bg.wasm"
             // With base: '/Jarrows/', the WASM file path doesn't resolve correctly after build
             // rapier3d-compat embeds the WASM in the JS bundle, eliminating path issues
             const rapierModule = await import('@dimforge/rapier3d-compat');
             RAPIER = rapierModule.default || rapierModule;
-            
+
             // CRITICAL: rapier3d-compat requires explicit init() call to initialize WASM
             // Even though WASM is embedded, it still needs to be initialized asynchronously
             // The init() function is exported from the init module (see exports.d.ts: export * from "./init")
             // Try multiple ways to access init() since module structure can vary
             let initFn = null;
-            
+
             if (typeof RAPIER.init === 'function') {
                 initFn = RAPIER.init;
             } else if (typeof rapierModule.init === 'function') {
@@ -32,7 +32,7 @@ async function loadRapier() {
             } else if (rapierModule.default && typeof rapierModule.default.init === 'function') {
                 initFn = rapierModule.default.init;
             }
-            
+
             if (initFn) {
                 console.log('Initializing Rapier WASM...');
                 // New API: init() can be called without parameters or with an options object
@@ -50,7 +50,7 @@ async function loadRapier() {
                 });
                 throw new Error('Rapier init() function not found. rapier3d-compat requires explicit initialization. Check console for module structure.');
             }
-            
+
             // Verify WASM is ready by testing World creation (which requires WASM)
             // Vector3 might work without WASM, so we need to test something that definitely requires it
             try {
@@ -62,19 +62,19 @@ async function loadRapier() {
             } catch (e) {
                 throw new Error(`Rapier WASM verification failed: ${e.message}. World creation requires WASM to be fully initialized.`);
             }
-            
+
             console.log('Rapier physics engine loaded successfully');
         }
         return RAPIER;
     })();
-    
+
     return rapierLoadPromise;
 }
 
 export async function initPhysics() {
     // Load Rapier with dynamic import to ensure WASM is ready
     const RAPIER = await loadRapier();
-    
+
     // Double-check WASM is ready before creating World
     // Creating a World accesses internal WASM functions immediately
     try {
@@ -87,17 +87,17 @@ export async function initPhysics() {
         console.error('Rapier WASM verification failed:', e);
         throw new Error('Cannot initialize physics: WASM module not ready. ' + e.message);
     }
-    
+
     // Main world (currently unused but kept for future)
     // CRITICAL: World constructor immediately accesses WASM functions
     // If WASM isn't ready, this will throw the rawintegrationparameters_new error
     // New API: World constructor takes an options object with gravity property
     let world, eventQueue, fallingWorld, fallingEventQueue;
-    
+
     try {
         world = new RAPIER.World({ x: 0.0, y: -9.81, z: 0.0 });
         eventQueue = new RAPIER.EventQueue(true);
-        
+
         // Separate world for falling blocks to avoid conflicts
         fallingWorld = new RAPIER.World({ x: 0.0, y: -9.81, z: 0.0 });
         fallingEventQueue = new RAPIER.EventQueue(true);
@@ -105,7 +105,7 @@ export async function initPhysics() {
         console.error('Failed to create Rapier World - WASM not initialized:', e);
         throw new Error('Failed to create physics world. WASM module may not be loaded correctly. ' + e.message);
     }
-    
+
     // Create ground plane in falling world (for sliding and falling)
     // Extended base plate is 21x21 units, centered at towerGroup origin (0,0,0 in towerGroup space)
     // towerGroup is positioned at (3.5, 0, 3.5) in world space
@@ -116,89 +116,103 @@ export async function initPhysics() {
     const towerGroupWorldZ = 3.5; // towerGroup Z position in world space
     const baseCenterX = towerGroupWorldX; // Center of extended base in world X
     const baseCenterZ = towerGroupWorldZ; // Center of extended base in world Z
-    
+
     const groundColliderDesc = RAPIER.ColliderDesc.cuboid(extendedBaseSize, 0.1, extendedBaseSize)
         .setTranslation(baseCenterX, -0.1, baseCenterZ)
-        .setFriction(0.7) // Friction for sliding blocks
-        .setRestitution(0.1);
+        .setFriction(0.5) // Friction for sliding blocks (normalized to match blocks)
+        .setRestitution(0.3); // Restitution (normalized to match blocks)
     fallingWorld.createCollider(groundColliderDesc);
-    
+
     // Create invisible walls around extended base plate to keep debris from falling off
     // Walls positioned in world space to match extended base plate boundaries
     const wallHeight = 5.0; // Tall enough to catch debris
     const wallThickness = 0.2;
-    
+
     // North wall (z = baseCenterZ - extendedBaseSize = 3.5 - 10.5 = -7)
     const northWall = RAPIER.ColliderDesc.cuboid(extendedBaseSize, wallHeight, wallThickness)
         .setTranslation(baseCenterX, wallHeight, baseCenterZ - extendedBaseSize - wallThickness)
         .setFriction(0.5)
         .setRestitution(0.3);
     fallingWorld.createCollider(northWall);
-    
+
     // South wall (z = baseCenterZ + extendedBaseSize = 3.5 + 10.5 = 14)
     const southWall = RAPIER.ColliderDesc.cuboid(extendedBaseSize, wallHeight, wallThickness)
         .setTranslation(baseCenterX, wallHeight, baseCenterZ + extendedBaseSize + wallThickness)
         .setFriction(0.5)
         .setRestitution(0.3);
     fallingWorld.createCollider(southWall);
-    
+
     // West wall (x = baseCenterX - extendedBaseSize = 3.5 - 10.5 = -7)
     const westWall = RAPIER.ColliderDesc.cuboid(wallThickness, wallHeight, extendedBaseSize)
         .setTranslation(baseCenterX - extendedBaseSize - wallThickness, wallHeight, baseCenterZ)
         .setFriction(0.5)
         .setRestitution(0.3);
     fallingWorld.createCollider(westWall);
-    
+
     // East wall (x = baseCenterX + extendedBaseSize = 3.5 + 10.5 = 14)
     const eastWall = RAPIER.ColliderDesc.cuboid(wallThickness, wallHeight, extendedBaseSize)
         .setTranslation(baseCenterX + extendedBaseSize + wallThickness, wallHeight, baseCenterZ)
         .setFriction(0.5)
         .setRestitution(0.3);
     fallingWorld.createCollider(eastWall);
-    
+
     return { world, eventQueue, fallingWorld, fallingEventQueue, RAPIER };
 }
 
 // Export loadRapier for use in other modules if needed
 export { loadRapier };
 
-export function createPhysicsBlock(physics, position, size, isDynamic = true, useFallingWorld = true) {
+export function createPhysicsBlock(physics, position, size, isDynamic = true, useFallingWorld = true, roundingRadius = 0) {
     // CRITICAL: This function must ONLY be called when:
     // 1. NOT stepping (isSteppingFalling = false)
     // 2. During updatePhysics processing (isProcessingPhysics = true)
     // 3. Before the step() call
-    
+
     // Use falling world for falling blocks to avoid conflicts
     const world = useFallingWorld ? physics.fallingWorld : physics.world;
     if (!world) {
         throw new Error('Physics world not available');
     }
-    
+
     // Safety check - never create during step
     if (isSteppingFalling) {
         throw new Error('Cannot create physics body during step');
     }
-    
+
     const RAPIER = physics.RAPIER;
-    
+
     // Create body description
-    const bodyDesc = isDynamic 
+    const bodyDesc = isDynamic
         ? RAPIER.RigidBodyDesc.dynamic()
         : RAPIER.RigidBodyDesc.fixed();
-    
+
     bodyDesc.setTranslation(position.x, position.y, position.z);
-    
+
     // Create body - must be called when NOT stepping
     const body = world.createRigidBody(bodyDesc);
-    
+
     // Create collider
-    const colliderDesc = RAPIER.ColliderDesc.cuboid(size.x / 2, size.y / 2, size.z / 2)
-        .setDensity(1.0)
+    let colliderDesc;
+
+    if (roundingRadius > 0) {
+        // Use roundCuboid for smoother edge interactions
+        // roundCuboid adds the radius to the dimensions, so we need to subtract it from half-extents
+        // to maintain the exact same bounding box size
+        const hx = Math.max(0.001, (size.x / 2) - roundingRadius);
+        const hy = Math.max(0.001, (size.y / 2) - roundingRadius);
+        const hz = Math.max(0.001, (size.z / 2) - roundingRadius);
+
+        colliderDesc = RAPIER.ColliderDesc.roundCuboid(hx, hy, hz, roundingRadius);
+    } else {
+        colliderDesc = RAPIER.ColliderDesc.cuboid(size.x / 2, size.y / 2, size.z / 2);
+    }
+
+    colliderDesc.setDensity(1.0)
         .setFriction(0.5)
         .setRestitution(0.3);
-    
+
     const collider = world.createCollider(colliderDesc, body);
-    
+
     return { body, collider };
 }
 
@@ -214,21 +228,21 @@ export function hasPendingOperations() {
 
 export function updatePhysics(physics, deltaTime) {
     if (!physics || !physics.fallingWorld) return;
-    
+
     // Prevent concurrent calls to updatePhysics
     if (isProcessingPhysics || isSteppingFalling) return;
-    
+
     isProcessingPhysics = true;
-    
+
     try {
         // CRITICAL: Process all modifications BEFORE stepping
         // This ensures no world access conflicts
-        
+
         // Execute any pending body creations FIRST
         if (pendingBodyCreations.length > 0) {
             const creationsToProcess = [...pendingBodyCreations];
             pendingBodyCreations = [];
-            
+
             for (const createFn of creationsToProcess) {
                 try {
                     // Double-check we're not stepping before each creation
@@ -240,12 +254,12 @@ export function updatePhysics(physics, deltaTime) {
                 }
             }
         }
-        
+
         // Execute any pending body modifications SECOND
         if (pendingBodyModifications.length > 0) {
             const modificationsToProcess = [...pendingBodyModifications];
             pendingBodyModifications = [];
-            
+
             for (const modifyFn of modificationsToProcess) {
                 try {
                     // Double-check we're not stepping before each modification
@@ -257,12 +271,12 @@ export function updatePhysics(physics, deltaTime) {
                 }
             }
         }
-        
+
         // Execute any pending body removals THIRD (before stepping)
         if (pendingBodyRemovals.length > 0) {
             const removalsToProcess = [...pendingBodyRemovals];
             pendingBodyRemovals = [];
-            
+
             for (const removeFn of removalsToProcess) {
                 try {
                     // Double-check we're not stepping before each removal
@@ -274,7 +288,7 @@ export function updatePhysics(physics, deltaTime) {
                 }
             }
         }
-        
+
         // Step physics simulation LAST - only step if we have bodies
         // CRITICAL: The step itself is where the error occurs
         // We need to ensure the world is in a valid state before stepping
@@ -291,7 +305,7 @@ export function updatePhysics(physics, deltaTime) {
                 console.warn('World state invalid, skipping step:', e);
                 return;
             }
-            
+
             if (hasBodies || pendingBodyCreations.length === 0) {
                 isSteppingFalling = true;
                 try {
@@ -341,7 +355,7 @@ export function removePhysicsBody(physics, body, useFallingWorld = true) {
     if (!physics || !body) return;
     const world = useFallingWorld ? physics.fallingWorld : physics.world;
     if (!world) return;
-    
+
     // Defer removal to avoid conflicts during step
     deferBodyRemoval(() => {
         try {

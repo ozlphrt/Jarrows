@@ -47,7 +47,7 @@ async function loadSound(name, path) {
 // Returns the audio source so it can be stopped if needed
 async function playSound(name, volume = 0.5) {
     if (!audioEnabled) return null;
-    
+
     // Initialize AudioContext on first user interaction
     if (!audioContext) {
         if (!initAudioContext()) {
@@ -64,7 +64,7 @@ async function playSound(name, volume = 0.5) {
             }
         }
     }
-    
+
     // Resume audio context if suspended (required for autoplay policy)
     if (audioContext.state === 'suspended') {
         try {
@@ -74,7 +74,7 @@ async function playSound(name, volume = 0.5) {
             return null;
         }
     }
-    
+
     const audioBuffer = sounds[name];
     if (!audioBuffer) {
         // Try to decode if we have the raw buffer
@@ -88,17 +88,17 @@ async function playSound(name, volume = 0.5) {
             return null; // Sound not loaded
         }
     }
-    
+
     try {
         const source = audioContext.createBufferSource();
         const gainNode = audioContext.createGain();
-        
+
         source.buffer = sounds[name];
         gainNode.gain.value = volume;
-        
+
         source.connect(gainNode);
         gainNode.connect(audioContext.destination);
-        
+
         source.start(0);
         return source; // Return source so it can be stopped
     } catch (e) {
@@ -117,10 +117,10 @@ async function initAudio() {
     } catch (e) {
         audioEnabled = true;
     }
-    
+
     // Don't create AudioContext immediately - wait for user interaction
     // This avoids autoplay policy warnings
-    
+
     // Load sound files (will be decoded when AudioContext is ready)
     // Use relative paths that work with Vite's base path configuration
     const basePath = import.meta.env.BASE_URL || '/';
@@ -128,9 +128,8 @@ async function initAudio() {
         loadSound('timeAdded', `${basePath}sound/time added.wav`),
         loadSound('timeRemoved', `${basePath}sound/time removed.wav`),
         loadSound('levelComplete', `${basePath}sound/level.wav`),
-        loadSound('heartbeat', `${basePath}sound/heartbeat.mp3`)
     ]);
-    
+
     console.log('Audio system initialized', { audioEnabled, soundsLoaded: Object.keys(sounds).length });
 }
 
