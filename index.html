@@ -66,19 +66,19 @@
             z-index: 1000;
             pointer-events: none;
             color: white;
-            background: rgba(0, 0, 0, 0.4);
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-            padding: 12px 24px;
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(20px) saturate(140%);
+            -webkit-backdrop-filter: blur(20px) saturate(140%);
+            padding: 16px 80px;
             border-radius: 50px;
             /* Pill shape */
-            border: 1px solid rgba(255, 255, 255, 0.25);
+            border: 1px solid rgba(255, 255, 255, 0.12);
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             display: none;
             /* Hidden initially, shown after game initialization */
             align-items: center;
-            gap: 20px;
+            gap: 60px;
             line-height: 1;
             box-sizing: border-box;
         }
@@ -119,12 +119,12 @@
         }
 
         .stats-label {
-            font-size: 10px;
+            font-size: 11px;
             font-weight: 600;
-            opacity: 0.6;
+            opacity: 0.85;
             text-transform: uppercase;
             letter-spacing: 0.8px;
-            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
         }
 
         .stats-value {
@@ -137,7 +137,7 @@
         .stats-separator {
             height: 40px;
             width: 1px;
-            background: rgba(255, 255, 255, 0.3);
+            background: rgba(255, 255, 255, 0.15);
             margin: 0;
         }
 
@@ -161,7 +161,7 @@
             display: flex !important;
             flex-direction: row;
             align-items: center;
-            gap: 20px;
+            gap: 60px;
         }
 
         /* Hide the "Timer:" and "Level:" text labels */
@@ -190,25 +190,27 @@
         #timer-level::before {
             content: 'LEVEL';
             display: block;
-            font-size: 10px;
+            font-size: 11px;
             font-weight: 600;
-            opacity: 0.6;
+            opacity: 0.85;
             text-transform: uppercase;
             letter-spacing: 0.8px;
             margin-bottom: 4px;
             text-align: center;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
         }
 
         #timer-value::before {
             content: 'TIME';
             display: block;
-            font-size: 10px;
+            font-size: 11px;
             font-weight: 600;
-            opacity: 0.6;
+            opacity: 0.85;
             text-transform: uppercase;
             letter-spacing: 0.8px;
             margin-bottom: 4px;
             text-align: center;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
         }
 
         /* Separator between level and timer */
@@ -216,7 +218,7 @@
             display: block !important;
             height: 40px;
             width: 1px;
-            background: rgba(255, 255, 255, 0.3);
+            background: rgba(255, 255, 255, 0.15);
             margin: 0;
         }
 
@@ -817,8 +819,8 @@
                 transform: translateX(-50%);
                 right: auto;
                 width: auto;
-                padding: 10px 16px;
-                gap: 4px;
+                padding: 14px 40px;
+                gap: 20px;
                 justify-content: center;
                 overflow: hidden;
                 max-width: min(85vw, 600px);
@@ -849,7 +851,7 @@
             body.mode-time-challenge #timer-item,
             body.mode-inferno #timer-item,
             body.mode-free-flow #timer-item {
-                gap: 6px;
+                gap: 24px;
             }
         }
 
@@ -889,8 +891,8 @@
                 transform: translateX(-50%);
                 right: auto;
                 width: auto;
-                padding: 8px 14px;
-                gap: 4px;
+                padding: 12px 32px;
+                gap: 16px;
                 overflow: hidden;
                 max-width: min(85vw, 500px);
                 justify-content: center;
@@ -921,7 +923,7 @@
             body.mode-time-challenge #timer-item,
             body.mode-inferno #timer-item,
             body.mode-free-flow #timer-item {
-                gap: 5px;
+                gap: 20px;
             }
         }
 

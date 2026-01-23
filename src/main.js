@@ -855,16 +855,16 @@ const MIN_RADIUS = 5;
 const MAX_RADIUS = 50;
 const MIN_ELEVATION = -Math.PI / 2 + 0.1;
 const MAX_ELEVATION = Math.PI / 2 - 0.1;
-const ZOOM_PADDING = 2.5; // Padding for desktop (increased to 2.5 to provide significant bottom clearance)
-const ZOOM_PADDING_MOBILE = 0.5; // Minimal padding for mobile
+const ZOOM_PADDING = 1.5; // Padding for desktop
+const ZOOM_PADDING_MOBILE = 0.2; // Minimal padding for mobile
 const AUTO_ZOOM_MIN_BOUNDING_SIZE = 3; // Minimum bounding box size to prevent zooming in too much with few blocks
 const SPAWN_ZOOM_PADDING = 1; // Minimal extra padding during spawn
 const SPAWN_ZOOM_MULTIPLIER = 1.05; // Minimal additional multiplier for spawn zoom
 // Auto-zoom multiplier: platform-aware - larger on desktop (zoom out more), smaller on mobile (zoom in more)
 // Desktop needs more zoom-out to prevent blocks going out of frame
 // Mobile can zoom in more to reduce wasted space on sides
-const AUTO_ZOOM_MULTIPLIER_DESKTOP = 1.25; // Desktop: 1.25 for comfortable fit above UI
-const AUTO_ZOOM_MULTIPLIER_MOBILE = 1.05; // Mobile: very tight fit (5% margin)
+const AUTO_ZOOM_MULTIPLIER_DESKTOP = 1.12; // Desktop: 1.12 for comfortable fit above UI
+const AUTO_ZOOM_MULTIPLIER_MOBILE = 1.02; // Mobile: very tight fit (2% margin)
 // Desktop-specific padding multiplier to ensure all blocks stay visible
 const DESKTOP_ZOOM_PADDING_MULTIPLIER = 1.0; // No extra multiplier needed
 // During generation, computing a world-space bounding box by expanding each block object
@@ -970,9 +970,9 @@ let smoothedAutoZoomRadius = cameraRadius;
 // - towerCenter/towerPositionOffset: world
 // - lookAt target: world
 // - Matrix trace: vec_ndc = projection * view * model * vec_local
-const DEFAULT_FRAMING_OFFSET_Y = 6.5;
-const MIN_FRAMING_OFFSET_Y = 2.5;
-const MAX_FRAMING_OFFSET_Y = 10.5;
+const DEFAULT_FRAMING_OFFSET_Y = 4.8;
+const MIN_FRAMING_OFFSET_Y = 2.0;
+const MAX_FRAMING_OFFSET_Y = 10.0;
 // Two-finger drag (non-pinch): pixels → world-Y offset mapping:
 // value_next = clamp(value_prev + sensitivity * delta_pixels, min, max)
 const TWO_FINGER_FRAMING_SENSITIVITY = 0.02; // world-units per pixel
@@ -6226,10 +6226,12 @@ function updateSpinCounterDisplay() {
     const spinCounter = document.getElementById('spin-counter');
     if (spinCounter) {
         if (isTimeBasedMode()) {
-            // Unlimited spins in time-based modes
+            // Unlimited spins in time-based modes - hide the badge as requested
+            spinCounter.style.display = 'none';
             spinCounter.textContent = '∞';
             spinCounter.setAttribute('data-infinity', 'true');
         } else {
+            spinCounter.style.display = 'flex'; // Restore visibility for non-time modes
             spinCounter.textContent = remainingSpins.toString();
             spinCounter.removeAttribute('data-infinity');
         }
