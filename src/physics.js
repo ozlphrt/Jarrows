@@ -119,43 +119,13 @@ export async function initPhysics() {
 
     const groundColliderDesc = RAPIER.ColliderDesc.cuboid(extendedBaseSize, 0.1, extendedBaseSize)
         .setTranslation(baseCenterX, -0.1, baseCenterZ)
-        .setFriction(0.5) // Friction for sliding blocks (normalized to match blocks)
-        .setRestitution(0.3); // Restitution (normalized to match blocks)
-    fallingWorld.createCollider(groundColliderDesc);
+        .setFriction(0.0) // Zero friction so blocks slide forever
+        .setRestitution(0.0);
+    const groundCollider = fallingWorld.createCollider(groundColliderDesc);
+    // Explicitly set friction combine rule to Min to ensure effective friction is 0 regardless of block friction
+    groundCollider.setFrictionCombineRule(RAPIER.CoefficientCombineRule.Min);
 
-    // Create invisible walls around extended base plate to keep debris from falling off
-    // Walls positioned in world space to match extended base plate boundaries
-    const wallHeight = 5.0; // Tall enough to catch debris
-    const wallThickness = 0.2;
-
-    // North wall (z = baseCenterZ - extendedBaseSize = 3.5 - 10.5 = -7)
-    const northWall = RAPIER.ColliderDesc.cuboid(extendedBaseSize, wallHeight, wallThickness)
-        .setTranslation(baseCenterX, wallHeight, baseCenterZ - extendedBaseSize - wallThickness)
-        .setFriction(0.5)
-        .setRestitution(0.3);
-    fallingWorld.createCollider(northWall);
-
-    // South wall (z = baseCenterZ + extendedBaseSize = 3.5 + 10.5 = 14)
-    const southWall = RAPIER.ColliderDesc.cuboid(extendedBaseSize, wallHeight, wallThickness)
-        .setTranslation(baseCenterX, wallHeight, baseCenterZ + extendedBaseSize + wallThickness)
-        .setFriction(0.5)
-        .setRestitution(0.3);
-    fallingWorld.createCollider(southWall);
-
-    // West wall (x = baseCenterX - extendedBaseSize = 3.5 - 10.5 = -7)
-    const westWall = RAPIER.ColliderDesc.cuboid(wallThickness, wallHeight, extendedBaseSize)
-        .setTranslation(baseCenterX - extendedBaseSize - wallThickness, wallHeight, baseCenterZ)
-        .setFriction(0.5)
-        .setRestitution(0.3);
-    fallingWorld.createCollider(westWall);
-
-    // East wall (x = baseCenterX + extendedBaseSize = 3.5 + 10.5 = 14)
-    const eastWall = RAPIER.ColliderDesc.cuboid(wallThickness, wallHeight, extendedBaseSize)
-        .setTranslation(baseCenterX + extendedBaseSize + wallThickness, wallHeight, baseCenterZ)
-        .setFriction(0.5)
-        .setRestitution(0.3);
-    fallingWorld.createCollider(eastWall);
-
+    // Walls around the base plate removed to allow catapulted blocks to leave the scene.
     return { world, eventQueue, fallingWorld, fallingEventQueue, RAPIER };
 }
 
@@ -250,7 +220,7 @@ export function updatePhysics(physics, deltaTime) {
                         createFn();
                     }
                 } catch (e) {
-                    console.warn('Failed to create physics body:', e);
+                    console.warn('Failed to create physics body:', e.message, e.stack, e);
                 }
             }
         }

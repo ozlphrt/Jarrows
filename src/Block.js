@@ -310,53 +310,96 @@ export class Block {
     }
 
     createPhysicsBody() {
-        // Calculate block dimensions
-        let sizeX, sizeY, sizeZ;
+        try {
+            // Calculate block dimensions
+            let sizeX, sizeY, sizeZ;
 
-        if (this.isVertical) {
-            sizeX = this.cubeSize;
-            sizeY = this.length * this.cubeSize;
-            sizeZ = this.cubeSize;
-        } else {
-            const isXAligned = Math.abs(this.direction.x) > 0;
-            if (isXAligned) {
-                sizeX = this.length * this.cubeSize;
-                sizeY = this.cubeSize;
+            if (this.isVertical) {
+                sizeX = this.cubeSize;
+                sizeY = this.length * this.cubeSize;
                 sizeZ = this.cubeSize;
             } else {
-                sizeX = this.cubeSize;
-                sizeY = this.cubeSize;
-                sizeZ = this.length * this.cubeSize;
+                const isXAligned = Math.abs(this.direction.x) > 0;
+                if (isXAligned) {
+                    sizeX = this.length * this.cubeSize;
+                    sizeY = this.cubeSize;
+                    sizeZ = this.cubeSize;
+                } else {
+                    sizeX = this.cubeSize;
+                    sizeY = this.cubeSize;
+                    sizeZ = this.length * this.cubeSize;
+                }
             }
+
+            // Get world position (accounting for towerGroup position)
+            const worldPos = new THREE.Vector3();
+            this.group.getWorldPosition(worldPos);
+            const bodyPos = { x: worldPos.x, y: worldPos.y + sizeY / 2, z: worldPos.z };
+
+            // Calculate towerGroup's world Y position from the difference between world and local positions
+            // worldPos.y = towerGroup.worldY + group.position.y
+            // Therefore: towerGroup.worldY = worldPos.y - group.position.y
+            const calculatedTowerGroupWorldY = worldPos.y - this.group.position.y;
+
+            // Store this for use in updateFromPhysics
+            this._towerGroupWorldY = calculatedTowerGroupWorldY;
+
+            // #region agent log
+            safeTelemetry({ location: 'Block.instrumented:347', message: 'Attempting createPhysicsBlock', data: { bodyPos, size: { x: sizeX, y: sizeY, z: sizeZ }, wasCatapulted: this.wasCatapulted }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'DEBUG' });
+            // #endregion
+
+            const result = createPhysicsBlock(
+                this.physics,
+                bodyPos,
+                { x: sizeX, y: sizeY, z: sizeZ },
+                true, // dynamic
+                true, // use falling world
+                0.08  // rounding radius (matches visual geometry) for smooth edge sliding
+            );
+
+            if (!result || !result.body || !result.collider) {
+                throw new Error(`createPhysicsBlock returned invalid result: ${JSON.stringify(result)}`);
+            }
+
+            this.physicsBody = result.body;
+            this.physicsCollider = result.collider;
+
+            // #region agent log
+            safeTelemetry({ location: 'Block.instrumented:361', message: 'Physics body/collider set', data: { wasCatapulted: this.wasCatapulted }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'DEBUG' });
+            // #endregion
+
+            // Catapulted blocks should slide freely on the base plate without friction damping.
+            // This ensures that blocks redirected by collisions (which may land on the plate)
+            // maintain their momentum, matching the behavior of blocks soaring purely through the air.
+            if (this.wasCatapulted) {
+                if (this.physicsCollider) {
+                    this.physicsCollider.setFriction(0.0);
+                    // Force friction to 0 (Min of 0.0 and ground's 0.5 is 0.0)
+                    if (this.physics && this.physics.RAPIER) {
+                        try {
+                            this.physicsCollider.setFrictionCombineRule(this.physics.RAPIER.CoefficientCombineRule.Min);
+                        } catch (enumError) {
+                            console.warn('Failed to set friction combine rule:', enumError.message);
+                            safeTelemetry({ location: 'Block.instrumented:372', message: 'Enum error', data: { error: enumError.message }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'DEBUG' });
+                        }
+                    }
+                    this.physicsCollider.setRestitution(0.0); // No bouncing
+                }
+                if (this.physicsBody) {
+                    this.physicsBody.setLinearDamping(0.0);
+                    this.physicsBody.setAngularDamping(0.0);
+                    this.physicsBody.enableCcd(true); // Prevent ground penetration at high speeds
+                    // Prevent flipping: only allow Y-axis yaw rotation
+                    this.physicsBody.setEnabledRotations(false, true, false, true);
+                }
+            }
+        } catch (e) {
+            console.error(`ERROR in createPhysicsBody for block:`, e);
+            // #region agent log
+            safeTelemetry({ location: 'Block.instrumented:catch', message: 'createPhysicsBody failed', data: { error: e.message, stack: e.stack }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'DEBUG' });
+            // #endregion
+            throw e; // Rethrow to let the outer loop handle it
         }
-
-        // Get world position (accounting for towerGroup position)
-        const worldPos = new THREE.Vector3();
-        this.group.getWorldPosition(worldPos);
-        const bodyPos = { x: worldPos.x, y: worldPos.y + sizeY / 2, z: worldPos.z };
-
-        // Calculate towerGroup's world Y position from the difference between world and local positions
-        // worldPos.y = towerGroup.worldY + group.position.y
-        // Therefore: towerGroup.worldY = worldPos.y - group.position.y
-        const calculatedTowerGroupWorldY = worldPos.y - this.group.position.y;
-
-        // Store this for use in updateFromPhysics
-        this._towerGroupWorldY = calculatedTowerGroupWorldY;
-
-        // #region agent log
-        safeTelemetry({ location: 'Block.js:268', message: 'Creating physics body', data: { bodyPos, worldPos: { x: worldPos.x, y: worldPos.y, z: worldPos.z }, sizeY, groupPos: { x: this.group.position.x, y: this.group.position.y, z: this.group.position.z }, calculatedTowerGroupWorldY, pendingLinearVel: this.pendingLinearVel, wasCatapulted: this.wasCatapulted }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'C' });
-        // #endregion
-        const physicsBody = createPhysicsBlock(
-            this.physics,
-            bodyPos,
-            { x: sizeX, y: sizeY, z: sizeZ },
-            true, // dynamic
-            true, // use falling world
-            0.08  // rounding radius (matches visual geometry) for smooth edge sliding
-        );
-
-        this.physicsBody = physicsBody.body;
-        this.physicsCollider = physicsBody.collider;
 
         // Don't lock anything here - physics body is only created when falling
         // Initial state will be set in updateFromPhysics after creation
@@ -2284,39 +2327,37 @@ export class Block {
 
                 // Apply stored velocities after creation
                 if (this.physicsBody && this.pendingAngularVel) {
-                    const RAPIER = this.physics.RAPIER;
-
                     this.physicsBody.setAngvel(
-                        new RAPIER.Vector3(
-                            this.pendingAngularVel.x,
-                            this.pendingAngularVel.y,
-                            this.pendingAngularVel.z
-                        ),
+                        {
+                            x: this.pendingAngularVel.x,
+                            y: this.pendingAngularVel.y,
+                            z: this.pendingAngularVel.z
+                        },
                         true
                     );
 
                     this.physicsBody.setEnabledRotations(true, true, true, true);
 
                     if (this.pendingLinearVel) {
-                        const vel = new RAPIER.Vector3(
-                            this.pendingLinearVel.x,
-                            this.pendingLinearVel.y,
-                            this.pendingLinearVel.z
-                        );
+                        const vel = {
+                            x: this.pendingLinearVel.x,
+                            y: this.pendingLinearVel.y,
+                            z: this.pendingLinearVel.z
+                        };
                         // Debug: log catapult velocity application
                         if (this.wasCatapulted) {
-                            console.log('[Catapult] Applying velocity to physics body:', { x: vel.x, y: vel.y, z: vel.z });
+                            console.log('[Catapult] Applying velocity to physics body:', vel);
                         }
                         // #region agent log
-                        safeTelemetry({ location: 'Block.js:2007', message: 'setLinvel called', data: { vel: { x: vel.x, y: vel.y, z: vel.z }, pendingLinearVel: this.pendingLinearVel, wasCatapulted: this.wasCatapulted }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' });
+                        safeTelemetry({ location: 'Block.js:2335', message: 'setLinvel called', data: { vel, pendingLinearVel: this.pendingLinearVel, wasCatapulted: this.wasCatapulted }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' });
                         // #endregion
                         this.physicsBody.setLinvel(vel, true);
                         // #region agent log
                         try {
                             const readBack = this.physicsBody.linvel();
-                            safeTelemetry({ location: 'Block.js:2010', message: 'Velocity read back after setLinvel', data: { readBack: { x: readBack.x, y: readBack.y, z: readBack.z }, wasSet: { x: vel.x, y: vel.y, z: vel.z }, wasCatapulted: this.wasCatapulted }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' });
+                            safeTelemetry({ location: 'Block.js:2341', message: 'Velocity read back after setLinvel', data: { readBack: { x: readBack.x, y: readBack.y, z: readBack.z }, wasSet: vel, wasCatapulted: this.wasCatapulted }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' });
                         } catch (e) {
-                            safeTelemetry({ location: 'Block.js:2012', message: 'Failed to read back velocity', data: { error: String(e) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' });
+                            safeTelemetry({ location: 'Block.js:2343', message: 'Failed to read back velocity', data: { error: String(e) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' });
                         }
                         // #endregion
                     }
@@ -2485,7 +2526,7 @@ export class Block {
             // Note: x, y, z are world coordinates from physics body
             // Grid center in world coordinates is at (3.5, 0, 3.5) due to towerGroup position
             const gridCenterWorld = (this.gridSize * this.cubeSize) / 2; // 3.5 for 7x7 grid
-            const maxDistanceFromGrid = this.gridSize * this.cubeSize * 1.5; // 1.5x grid size = 10.5
+            const maxDistanceFromGrid = 30.0; // Extend boundary to allow for high-speed flight
             const distanceFromCenter = Math.sqrt(
                 Math.pow(x - gridCenterWorld, 2) + Math.pow(z - gridCenterWorld, 2)
             );
@@ -2503,6 +2544,13 @@ export class Block {
                 this.needsTransitionToFalling = false;
                 deferBodyModification(() => {
                     if (this.physicsBody) {
+                        if (this.wasCatapulted) {
+                            // Catapulted blocks should NOT flip or tumble.
+                            // Only allow Y (yaw) rotation to stay upright.
+                            this.physicsBody.setEnabledRotations(false, true, false, true);
+                            this.physicsBody.setAngvel({ x: 0, y: 0, z: 0 }, true);
+                            return;
+                        }
                         this.physicsBody.setEnabledRotations(true, true, true, true);
 
                         // Add natural tumbling rotation
@@ -3356,9 +3404,9 @@ export class Block {
                 directionZ = directionZ / directionLength;
             }
 
-            // Extend final position by at least 2x the board size to ensure complete disappearance
-            // Use block's maximum dimension (length * cubeSize) to ensure it's fully off screen
-            const extensionDistance = Math.max(gridSize * this.cubeSize * 2, this.length * this.cubeSize * 3);
+            // Extend final position slightly to ensure it's at the very edge when physics takes over.
+            // With Rapier physics handling the flight, we only need animation to reach the hand-off point.
+            const extensionDistance = 0.5; // Small buffer to ensure it's clearly off-grid
             finalX = finalX + directionX * extensionDistance;
             finalZ = finalZ + directionZ * extensionDistance;
         }
@@ -3649,12 +3697,12 @@ export class Block {
                     if (isCatapult) {
                         // CATAPULT: explosive launch with high horizontal velocity
                         // Negative velocity to ensure immediate falling (gravity will accelerate it)
-                        const catapultSpeed = 8.0; // Much faster horizontal speed
+                        const catapultSpeed = 45.0; // Synchronized with animation speed (0.05px/ms)
 
                         // Apply velocity in the direction of the arrow
                         velX = dirX * catapultSpeed;
                         velZ = dirZ * catapultSpeed;
-                        velY = -3.0; // Strong downward velocity to start falling immediately (was 1.4 upward)
+                        velY = -1.0; // Gentle downward velocity for flatter trajectory
 
                         console.warn('[Catapult] Launching block with velocity:', { velX, velY, velZ }, 'Direction:', { dirX, dirZ });
                         // #region agent log
@@ -3663,7 +3711,7 @@ export class Block {
                         this.fall(velX, velZ, velY);
                     } else {
                         // Normal fall: use direction with moderate speed
-                        const fallSpeed = 3.5; // Moderate speed for natural continuation
+                        const fallSpeed = 20.0; // Increased for natural continuation
 
                         // Apply velocity in the direction of the arrow
                         velX = dirX * fallSpeed;
@@ -3917,7 +3965,11 @@ export class Block {
         }
 
         // Store velocities to apply after body creation
-        this.pendingAngularVel = { x: angularVelX, y: angularVelY, z: angularVelZ };
+        if (this.wasCatapulted) {
+            this.pendingAngularVel = { x: 0, y: 0, z: 0 };
+        } else {
+            this.pendingAngularVel = { x: angularVelX, y: angularVelY, z: angularVelZ };
+        }
 
         // Use provided velocities if available (from animation), otherwise use direction-based default
         if (horizontalVelX !== null && horizontalVelZ !== null) {
