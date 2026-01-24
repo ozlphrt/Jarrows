@@ -64,6 +64,16 @@ npm run build
 
 ## Releases
 
+### v7.2.4 - Camera & Zoom Plan (Phases 4–8)
+- **Tree**: https://github.com/ozlphrt/Jarrows/tree/v7.2.4
+- **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v7.2.4
+- **Live**: https://ozlphrt.github.io/Jarrows/
+- Phase 4: Aspect clamp in spawn/gameplay zoom and initial camera
+- Phase 5: Level-based initial camera height, aspect-aware safety margin
+- Phase 6: Radius vs orbit smoothing, snap-only-when-idle, tower offset from config
+- Phase 7: Vertical centering at end of spawn (unchanged)
+- Phase 8: Unified `computeZoomRadiusForBox` for spawn and gameplay zoom; `MIN_RADIUS_SPAWN` during spawn
+
 ### v7.2.3 - Audio Fix and UI Refinements
 - **Tree**: https://github.com/ozlphrt/Jarrows/tree/v7.2.3
 - **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v7.2.3

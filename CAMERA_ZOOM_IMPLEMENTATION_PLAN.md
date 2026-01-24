@@ -126,7 +126,7 @@ function getPlayableViewport() {
 - Resize handler updates `camera.aspect` and `renderer.setSize`. `getPlayableViewport()` uses current dimensions.
 
 ### 2.4 Acceptance criteria
-- [ ] All blocks visible; bottom buttons never overlap (early/late, desktop/mobile).
+- [x] All blocks visible; bottom buttons never overlap (early/late, desktop/mobile). *(Done 2026-01-24)*
 
 ---
 
@@ -151,7 +151,7 @@ function getPlayableViewport() {
 Replace all `effectivePadding` / `initialPadding` with `getEffectivePadding(getPlatformTier())`.
 
 ### 3.5 Acceptance criteria
-- [ ] Padding in `[MIN, MAX]`; no excessive padding; comfort margin applied.
+- [x] Padding in `[MIN, MAX]`; no excessive padding; comfort margin applied. *(Done 2026-01-24)*
 
 ---
 
@@ -186,7 +186,7 @@ Replace all `effectivePadding` / `initialPadding` with `getEffectivePadding(getP
 - Same `horizontalDistance` / `verticalDistance` structure as zoom (playable aspect, `getEffectivePadding`).
 
 ### 5.4 Acceptance criteria
-- [ ] First frame good for early and late levels; fewer post-spawn corrections.
+- [x] First frame good for early and late levels; fewer post-spawn corrections. *(Done 2026-01-24)*
 
 ---
 
@@ -223,7 +223,7 @@ Replace all `effectivePadding` / `initialPadding` with `getEffectivePadding(getP
 - Low-frequency vertical-center update during gameplay (e.g. on block remove).
 
 ### 7.3 Acceptance criteria
-- [ ] Tower vertically centered after spawn; smooth transition.
+- [x] Tower vertically centered after spawn; smooth transition. *(Done 2026-01-24)*
 
 ---
 
@@ -244,7 +244,7 @@ Replace all `effectivePadding` / `initialPadding` with `getEffectivePadding(getP
 - When `isGeneratingLevel` → false, don't reset `smoothedAutoZoomRadius` / `targetRadius`; let gameplay zoom adjust from last spawn value.
 
 ### 8.4 Acceptance criteria
-- [ ] Single source of truth; no spawn→gameplay zoom jump.
+- [x] Single source of truth; no spawn→gameplay zoom jump. *(Done 2026-01-24)*
 
 ---
 

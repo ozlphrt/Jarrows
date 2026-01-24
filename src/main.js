@@ -854,19 +854,19 @@ function centerTowerVertically() {
 // Padding semantics: "half per axis"; we use effectivePadding * 2 in height/width distance formulas.
 const cameraConfig = {
     MIN_RADIUS: 5,
-    MAX_RADIUS: 50,
+    MAX_RADIUS: 75,
     MIN_RADIUS_SPAWN: 8,
     MIN_ELEVATION: -Math.PI / 2 + 0.1,
     MAX_ELEVATION: Math.PI / 2 - 0.1,
     PADDING_DESKTOP: 1.5,
-    PADDING_MOBILE: 0.2,
+    PADDING_MOBILE: 0.45,
     PADDING_TABLET: 0.8,
     PADDING_MIN: 0.15,
     PADDING_MAX: 2.0,
     COMFORT_HEIGHT_DESKTOP: 0.5,
-    COMFORT_HEIGHT_MOBILE: 0,
+    COMFORT_HEIGHT_MOBILE: 0.2,
     MULTIPLIER_DESKTOP: 1.12,
-    MULTIPLIER_MOBILE: 1.02,
+    MULTIPLIER_MOBILE: 1.06,
     MULTIPLIER_TABLET: 1.05,
     STATS_BAR_TOP: 20,
     STATS_BAR_HEIGHT: 52,
@@ -912,6 +912,51 @@ const DRAG_SENSITIVITY = cameraConfig.DRAG_SENSITIVITY;
 const TOUCH_DRAG_SENSITIVITY = cameraConfig.TOUCH_DRAG_SENSITIVITY;
 const SNAP_EPS = cameraConfig.SNAP_EPS;
 
+// Phase 2: UI-aware viewport — fit blocks to visible region between stats bar and game controls.
+function getPlayableViewport() {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    const isNarrow = w <= cameraConfig.PLAYABLE_BREAKPOINT_PX;
+    const bottom = isNarrow ? cameraConfig.GAME_CONTROLS_BOTTOM_MOBILE : cameraConfig.GAME_CONTROLS_BOTTOM_DESKTOP;
+    const ctrlH = isNarrow ? cameraConfig.GAME_CONTROLS_HEIGHT_MOBILE : cameraConfig.GAME_CONTROLS_HEIGHT_DESKTOP;
+    const bottomReserved = bottom + ctrlH;
+    const topReserved = cameraConfig.STATS_BAR_TOP + cameraConfig.STATS_BAR_HEIGHT;
+    const playableHeight = Math.max(1, h - topReserved - bottomReserved);
+    return {
+        fullWidth: w,
+        fullHeight: h,
+        playableY: topReserved,
+        playableHeight,
+        playableAspect: w / playableHeight,
+        topReserved,
+        bottomReserved,
+    };
+}
+
+// Phase 3: Platform tier and explicit padding (min/max, aspect scale).
+function getPlatformTier() {
+    try {
+        const w = window.innerWidth;
+        const coarse = matchMedia('(pointer: coarse)').matches;
+        const isTablet = coarse && w >= 600 && w <= 1024;
+        if (isTablet) return 'tablet';
+        return isMobileLike ? 'mobile' : 'desktop';
+    } catch {
+        return isMobileLike ? 'mobile' : 'desktop';
+    }
+}
+
+function getEffectivePadding(tier) {
+    const base = tier === 'mobile' ? cameraConfig.PADDING_MOBILE
+        : tier === 'tablet' ? cameraConfig.PADDING_TABLET
+            : cameraConfig.PADDING_DESKTOP;
+    const vp = getPlayableViewport();
+    let scale = 1;
+    if (vp.playableAspect > 1.8 || vp.playableAspect < 0.6) scale = 0.9;
+    const padding = base * scale;
+    return Math.max(cameraConfig.PADDING_MIN, Math.min(cameraConfig.PADDING_MAX, padding));
+}
+
 // Spherical coordinates (target values - set by user input)
 let cameraRadius = 10;
 let cameraAzimuth = Math.PI / 4; // 45° (diagonal view)
@@ -941,22 +986,25 @@ function calculateInitialCameraPosition() {
     const basePlateDiagonal = Math.sqrt(basePlateSize * basePlateSize * 2);
 
     // Calculate required distance to fit base plate in view
-    // Account for both horizontal and vertical FOV
+    // Account for both horizontal and vertical FOV. Use playable aspect so we fit to visible region (Phase 2).
     const fov = camera.fov * (Math.PI / 180); // Convert to radians
-    const aspect = camera.aspect;
+    const vp = getPlayableViewport();
+    let aspect = vp.playableAspect;
+    aspect = Math.max(cameraConfig.ASPECT_CLAMP_MIN, Math.min(cameraConfig.ASPECT_CLAMP_MAX, aspect));
 
-    // Calculate for horizontal (width/depth) - use diagonal and aspect ratio
-    // Use mobile-specific padding for mobile devices to reduce side padding
-    const initialPadding = isMobileLike ? ZOOM_PADDING_MOBILE : ZOOM_PADDING;
+    // Calculate for horizontal (width/depth) - use diagonal and aspect ratio (Phase 3: getEffectivePadding).
+    const tier = getPlatformTier();
+    const initialPadding = getEffectivePadding(tier);
     const horizontalDistance = (basePlateDiagonal + initialPadding) / (2 * Math.tan(fov / 2) * aspect);
 
-    // Calculate for vertical (height) - use more accurate initial estimate
-    // Start with a smaller estimate since auto-zoom will adjust immediately after spawn
-    const estimatedTowerHeight = 6; // Reduced from 10 - auto-zoom will fine-tune after spawn
-    const verticalDistance = (estimatedTowerHeight + initialPadding) / (2 * Math.tan(fov / 2));
+    // Calculate for vertical (height) - Phase 5.1: level-based estimate, reuse zoom FOV structure
+    const estimatedTowerHeight = Math.max(4, Math.min(14, 2 + (currentLevel || 1) * 0.2));
+    const comfortHeight = (tier === 'desktop' || tier === 'tablet') ? cameraConfig.COMFORT_HEIGHT_DESKTOP : cameraConfig.COMFORT_HEIGHT_MOBILE;
+    const verticalDistance = (estimatedTowerHeight + initialPadding * 2 + comfortHeight) / (2 * Math.tan(fov / 2));
 
-    // Use the larger distance with reduced safety margin since auto-zoom handles fine-tuning
-    const requiredDistance = Math.max(horizontalDistance, verticalDistance) * 1.05; // 5% safety margin (minimal padding)
+    // Phase 5.2: aspect-aware safety — 1.08 when extreme aspect, else 1.05
+    const safety = (aspect > 1.8 || aspect < 0.6) ? 1.08 : 1.05;
+    const requiredDistance = Math.max(horizontalDistance, verticalDistance) * safety;
 
     // Set initial values
     cameraRadius = Math.max(MIN_RADIUS, Math.min(MAX_RADIUS, requiredDistance));
@@ -994,6 +1042,7 @@ let lastSpawnZoomUpdateMs = 0;
 // Auto-zoom bounding box and timing (for gameplay, excluding catapulted blocks)
 const _autoZoomBox = new THREE.Box3();
 const _autoZoomSize = new THREE.Vector3();
+const _zoomSize = new THREE.Vector3(); // shared temp for computeZoomRadiusForBox
 let lastAutoZoomUpdateMs = 0;
 let autoZoomDisabledUntilMs = 0; // Timestamp when auto-zoom should re-enable
 // Smoothed auto-zoom target: auto-zoom calculates desired radius, we smooth it before setting targetRadius
@@ -1030,6 +1079,82 @@ let framingOffsetY = loadFramingOffsetY();
 // Expose for debugging and any legacy consumers.
 if (typeof window !== 'undefined') {
     window.framingOffsetY = framingOffsetY;
+}
+
+// Phase 8: single zoom-to-radius helper for spawn and gameplay.
+function computeZoomRadiusForBox(box, isSpawn) {
+    if (!box || box.isEmpty()) return null;
+    const size = box.getSize(_zoomSize);
+    if (size.x === 0 || size.y === 0 || size.z === 0) return null;
+    if (size.x < AUTO_ZOOM_MIN_BOUNDING_SIZE) size.x = AUTO_ZOOM_MIN_BOUNDING_SIZE;
+    if (size.y < AUTO_ZOOM_MIN_BOUNDING_SIZE) size.y = AUTO_ZOOM_MIN_BOUNDING_SIZE;
+    if (size.z < AUTO_ZOOM_MIN_BOUNDING_SIZE) size.z = AUTO_ZOOM_MIN_BOUNDING_SIZE;
+
+    _effectiveTowerCenter.copy(towerCenter).add(towerPositionOffset);
+    _lookAtTarget.copy(_effectiveTowerCenter).add(new THREE.Vector3(0, framingOffsetY, 0));
+
+    const cx = currentRadius * Math.sin(currentElevation) * Math.cos(currentAzimuth);
+    const cy = currentRadius * Math.cos(currentElevation);
+    const cz = currentRadius * Math.sin(currentElevation) * Math.sin(currentAzimuth);
+    const fwdX = -cx;
+    const fwdY = framingOffsetY - cy;
+    const fwdZ = -cz;
+    const len = Math.sqrt(fwdX * fwdX + fwdY * fwdY + fwdZ * fwdZ);
+    const nFwdX = fwdX / len;
+    const nFwdY = fwdY / len;
+    const nFwdZ = fwdZ / len;
+    const rX = nFwdZ;
+    const rZ = -nFwdX;
+    const rLen = Math.sqrt(rX * rX + rZ * rZ);
+    const nRightX = rX / rLen;
+    const nRightZ = rZ / rLen;
+    const nUpX = nFwdY * nRightZ;
+    const nUpY = nFwdZ * nRightX - nFwdX * nRightZ;
+    const nUpZ = -nFwdY * nRightX;
+
+    const boxMin = box.min;
+    const boxMax = box.max;
+    const corners = [
+        new THREE.Vector3(boxMin.x, boxMin.y, boxMin.z),
+        new THREE.Vector3(boxMin.x, boxMin.y, boxMax.z),
+        new THREE.Vector3(boxMin.x, boxMax.y, boxMin.z),
+        new THREE.Vector3(boxMin.x, boxMax.y, boxMax.z),
+        new THREE.Vector3(boxMax.x, boxMin.y, boxMin.z),
+        new THREE.Vector3(boxMax.x, boxMin.y, boxMax.z),
+        new THREE.Vector3(boxMax.x, boxMax.y, boxMin.z),
+        new THREE.Vector3(boxMax.x, boxMax.y, boxMax.z)
+    ];
+    let maxProjY = 0;
+    let maxProjX = 0;
+    for (const p of corners) {
+        const relX = p.x - _lookAtTarget.x;
+        const relY = p.y - _lookAtTarget.y;
+        const relZ = p.z - _lookAtTarget.z;
+        const projY = Math.abs(relX * nUpX + relY * nUpY + relZ * nUpZ);
+        if (projY > maxProjY) maxProjY = projY;
+        const projX = Math.abs(relX * nRightX + relZ * nRightZ);
+        if (projX > maxProjX) maxProjX = projX;
+    }
+    const effectiveHeight = maxProjY * 2;
+    const diagXZ = Math.sqrt(
+        Math.pow(Math.max(Math.abs(boxMax.x - _lookAtTarget.x), Math.abs(boxMin.x - _lookAtTarget.x)), 2) +
+        Math.pow(Math.max(Math.abs(boxMax.z - _lookAtTarget.z), Math.abs(boxMin.z - _lookAtTarget.z)), 2)
+    ) * 2;
+    const effectiveWidth = Math.max(maxProjX * 2, diagXZ);
+
+    const fov = camera.fov * (Math.PI / 180);
+    let aspect = getPlayableViewport().playableAspect;
+    aspect = Math.max(cameraConfig.ASPECT_CLAMP_MIN, Math.min(cameraConfig.ASPECT_CLAMP_MAX, aspect));
+    const tier = getPlatformTier();
+    const effectivePadding = getEffectivePadding(tier);
+    const comfortHeight = (tier === 'desktop' || tier === 'tablet') ? cameraConfig.COMFORT_HEIGHT_DESKTOP : cameraConfig.COMFORT_HEIGHT_MOBILE;
+    const heightDistance = (effectiveHeight + effectivePadding * 2 + comfortHeight) / (2 * Math.tan(fov / 2));
+    const widthDistance = (effectiveWidth + effectivePadding * 2) / (2 * Math.tan(fov / 2) * aspect);
+    const multi = tier === 'mobile' ? AUTO_ZOOM_MULTIPLIER_MOBILE : (tier === 'tablet' ? cameraConfig.MULTIPLIER_TABLET : AUTO_ZOOM_MULTIPLIER_DESKTOP);
+    const requiredDistance = Math.max(heightDistance, widthDistance) * multi;
+    const minR = isSpawn ? cameraConfig.MIN_RADIUS_SPAWN : MIN_RADIUS;
+    const clampedRequiredDistance = Math.max(minR, Math.min(MAX_RADIUS, requiredDistance));
+    return { requiredDistance, heightDistance, widthDistance, clampedRequiredDistance };
 }
 
 function updateCameraPosition() {
@@ -4320,8 +4445,7 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
         } catch (e) {
             // best-effort
         }
-        // Removed centerTowerVertically() call - blocks are already positioned correctly,
-        // and auto-zoom handles framing. The artificial push-down was causing a visual jump.
+        centerTowerVertically();
     }, 1500); // 1.5 seconds to ensure all blocks are initialized
 
     // Start timer for new level
@@ -8291,117 +8415,11 @@ function animate() {
                 hasNonCatapultedBlocks = true;
             }
 
-            const size = _spawnZoomBox.getSize(_spawnZoomSize);
-
-            // Only update zoom if we have non-catapulted blocks to frame (same as gameplay auto-zoom)
-            if (hasNonCatapultedBlocks && !_spawnZoomBox.isEmpty() && size.x !== 0 && size.y !== 0 && size.z !== 0) {
-                // Ensure minimum bounding box size to prevent zooming in too much
-                if (size.x < AUTO_ZOOM_MIN_BOUNDING_SIZE) size.x = AUTO_ZOOM_MIN_BOUNDING_SIZE;
-                if (size.y < AUTO_ZOOM_MIN_BOUNDING_SIZE) size.y = AUTO_ZOOM_MIN_BOUNDING_SIZE;
-                if (size.z < AUTO_ZOOM_MIN_BOUNDING_SIZE) size.z = AUTO_ZOOM_MIN_BOUNDING_SIZE;
-
-                // Calculate effective tower center and look-at target
-                _effectiveTowerCenter.copy(towerCenter).add(towerPositionOffset);
-                _lookAtTarget.copy(_effectiveTowerCenter).add(new THREE.Vector3(0, framingOffsetY, 0));
-
-                // Calculate Camera Vectors for Projection (Perspective-Correct Fit)
-                // We use current angles but need to estimate radius-dependent Forward vector
-                // Use currentRadius as a reasonable approximation for orientation
-                const cx = currentRadius * Math.sin(currentElevation) * Math.cos(currentAzimuth);
-                const cy = currentRadius * Math.cos(currentElevation);
-                const cz = currentRadius * Math.sin(currentElevation) * Math.sin(currentAzimuth);
-
-                // Forward vector: from Camera (at cx,cy,cz relative to tower) to LookAt (at 0,framingOffsetY,0 relative to tower)
-                const fwdX = -cx;
-                const fwdY = framingOffsetY - cy;
-                const fwdZ = -cz;
-                const len = Math.sqrt(fwdX * fwdX + fwdY * fwdY + fwdZ * fwdZ);
-                // Normalized Forward
-                const nFwdX = fwdX / len;
-                const nFwdY = fwdY / len;
-                const nFwdZ = fwdZ / len;
-
-                // Right Vector: WorldUp (0,1,0) cross Forward
-                const rX = nFwdZ;
-                const rY = 0;
-                const rZ = -nFwdX;
-                const rLen = Math.sqrt(rX * rX + rZ * rZ);
-                const nRightX = rX / rLen;
-                const nRightZ = rZ / rLen; // rY is 0
-
-                // Up Vector: Forward cross Right
-                const nUpX = nFwdY * nRightZ;
-                const nUpY = nFwdZ * nRightX - nFwdX * nRightZ;
-                const nUpZ = -nFwdY * nRightX;
-
-                // Project Bounding Box Corners onto Camera Up Vector to find Vertical Extent
-                const boxMin = _spawnZoomBox.min;
-                const boxMax = _spawnZoomBox.max;
-
-                // 8 Corners relative to LookAtTarget
-                const corners = [
-                    new THREE.Vector3(boxMin.x, boxMin.y, boxMin.z),
-                    new THREE.Vector3(boxMin.x, boxMin.y, boxMax.z),
-                    new THREE.Vector3(boxMin.x, boxMax.y, boxMin.z),
-                    new THREE.Vector3(boxMin.x, boxMax.y, boxMax.z),
-                    new THREE.Vector3(boxMax.x, boxMin.y, boxMin.z),
-                    new THREE.Vector3(boxMax.x, boxMin.y, boxMax.z),
-                    new THREE.Vector3(boxMax.x, boxMax.y, boxMin.z),
-                    new THREE.Vector3(boxMax.x, boxMax.y, boxMax.z)
-                ];
-
-                let maxProjY = 0;
-                let maxProjX = 0;
-
-                for (const p of corners) {
-                    // Vector from LookAtTarget to Corner
-                    const relX = p.x - _lookAtTarget.x;
-                    const relY = p.y - _lookAtTarget.y;
-                    const relZ = p.z - _lookAtTarget.z;
-
-                    // Project onto Camera Up (Vertical Distance on Screen)
-                    const projY = Math.abs(relX * nUpX + relY * nUpY + relZ * nUpZ);
-                    if (projY > maxProjY) maxProjY = projY;
-
-                    // Project onto Camera Right (Horizontal Distance on Screen)
-                    const projX = Math.abs(relX * nRightX + relZ * nRightZ);
-                    if (projX > maxProjX) maxProjX = projX;
-                }
-
-                const effectiveHeight = maxProjY * 2;
-
-                // For width, we combine the projected width and the XZ-diagonal heuristic for stability
-                const diagXZ = Math.sqrt(
-                    Math.pow(Math.max(Math.abs(boxMax.x - _lookAtTarget.x), Math.abs(boxMin.x - _lookAtTarget.x)), 2) +
-                    Math.pow(Math.max(Math.abs(boxMax.z - _lookAtTarget.z), Math.abs(boxMin.z - _lookAtTarget.z)), 2)
-                ) * 2;
-                const effectiveWidth = Math.max(maxProjX * 2, diagXZ);
-
-                const fov = camera.fov * (Math.PI / 180);
-                const aspect = camera.aspect;
-
-                // Use mobile-specific padding
-                const effectivePadding = isMobileLike ? ZOOM_PADDING_MOBILE : ZOOM_PADDING;
-
-                // Height check
-                const heightDistance = (effectiveHeight + effectivePadding * 2) / (2 * Math.tan(fov / 2));
-
-                // Width check
-                const widthDistance = (effectiveWidth + effectivePadding * 2) / (2 * Math.tan(fov / 2) * aspect);
-
-                const autoZoomMultiplier = isMobileLike ? AUTO_ZOOM_MULTIPLIER_MOBILE : AUTO_ZOOM_MULTIPLIER_DESKTOP;
-                const requiredDistance = Math.max(heightDistance, widthDistance) * autoZoomMultiplier;
-                const clampedRequiredDistance = Math.max(MIN_RADIUS, Math.min(MAX_RADIUS, requiredDistance));
-                // During spawn, update smoothed auto-zoom immediately for responsive feel
-                smoothedAutoZoomRadius = clampedRequiredDistance;
-                // #region agent log
-                const oldTargetRadius = targetRadius;
-                // #endregion
+            // Only update zoom if we have non-catapulted blocks to frame (Phase 8: computeZoomRadiusForBox)
+            const spawnResult = computeZoomRadiusForBox(_spawnZoomBox, true);
+            if (spawnResult) {
+                smoothedAutoZoomRadius = spawnResult.clampedRequiredDistance;
                 targetRadius = smoothedAutoZoomRadius;
-                // #region agent log
-                // Replaced with debugTelemetry to prevent ERR_INSUFFICIENT_RESOURCES
-                // debugTelemetry({location:'main.js:animate:spawnZoom',message:'Spawn zoom update',data:{blocksCount:blocks.length,sizeX:size.x.toFixed(2),sizeY:size.y.toFixed(2),sizeZ:size.z.toFixed(2),heightDistance:heightDistance.toFixed(2),widthDistance:widthDistance.toFixed(2),requiredDistance:requiredDistance.toFixed(2),oldTargetRadius:oldTargetRadius.toFixed(2),newTargetRadius:targetRadius.toFixed(2),currentRadius:currentRadius.toFixed(2)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'});
-                // #endregion
             }
         }
     }
@@ -8427,189 +8445,39 @@ function animate() {
             lastAutoZoomUpdateMs = currentTime;
 
             _autoZoomBox.makeEmpty();
-            let hasNonCatapultedBlocks = false;
-
-            // Calculate effective tower center (with offset) for bounding box calculation
-            _effectiveTowerCenter.copy(towerCenter).add(towerPositionOffset);
-
             for (const block of blocks) {
                 if (!block || !block.group || block.isRemoved) continue;
-                // Exclude catapulted blocks from auto-zoom calculation
                 if (block.wasCatapulted) continue;
-
                 block.group.updateMatrixWorld(true);
                 _autoZoomBox.expandByObject(block.group);
-                hasNonCatapultedBlocks = true;
             }
 
-            // #region agent log
-            // Replaced with debugTelemetry to prevent ERR_INSUFFICIENT_RESOURCES
-            // debugTelemetry({location:'main.js:animate:autoZoom:beforeCheck',message:'Auto-zoom before condition check',data:{hasNonCatapultedBlocks:hasNonCatapultedBlocks,isEmpty:_autoZoomBox.isEmpty(),blocksCount:blocks.length,towerOffsetY:towerPositionOffset.y.toFixed(2)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'});
-            // #endregion
-
-            // Only update zoom if we have non-catapulted blocks to frame
-            if (hasNonCatapultedBlocks && !_autoZoomBox.isEmpty()) {
-                // Get bounding box size - this is in world space, which is correct
-                // because the camera position is also in world space relative to effective tower center
-                let size = _autoZoomBox.getSize(_autoZoomSize);
-
-                // #region agent log
-                // Replaced with debugTelemetry to prevent ERR_INSUFFICIENT_RESOURCES
-                // const boxMin = _autoZoomBox.min;
-                // const boxMax = _autoZoomBox.max;
-                // debugTelemetry({location:'main.js:animate:autoZoom:boundingBox',message:'Auto-zoom bounding box',data:{sizeX:size.x.toFixed(2),sizeY:size.y.toFixed(2),sizeZ:size.z.toFixed(2),minX:boxMin.x.toFixed(2),minY:boxMin.y.toFixed(2),minZ:boxMin.z.toFixed(2),maxX:boxMax.x.toFixed(2),maxY:boxMax.y.toFixed(2),maxZ:boxMax.z.toFixed(2),towerOffsetY:towerPositionOffset.y.toFixed(2)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'});
-                // #endregion
-
-                // Ensure minimum bounding box size to prevent zooming in too much with few blocks
-                // This ensures all blocks stay in frame even when there are very few blocks
-                if (size.x < AUTO_ZOOM_MIN_BOUNDING_SIZE) size.x = AUTO_ZOOM_MIN_BOUNDING_SIZE;
-                if (size.y < AUTO_ZOOM_MIN_BOUNDING_SIZE) size.y = AUTO_ZOOM_MIN_BOUNDING_SIZE;
-                if (size.z < AUTO_ZOOM_MIN_BOUNDING_SIZE) size.z = AUTO_ZOOM_MIN_BOUNDING_SIZE;
-
-                // Calculate effective tower center and look-at target
-                _effectiveTowerCenter.copy(towerCenter).add(towerPositionOffset);
-                _lookAtTarget.copy(_effectiveTowerCenter).add(new THREE.Vector3(0, framingOffsetY, 0));
-
-                // Calculate Camera Vectors for Projection (Perspective-Correct Fit)
-                // We use current angles but need to estimate radius-dependent Forward vector
-                // Use currentRadius as a reasonable approximation for orientation
-                const cx = currentRadius * Math.sin(currentElevation) * Math.cos(currentAzimuth);
-                const cy = currentRadius * Math.cos(currentElevation);
-                const cz = currentRadius * Math.sin(currentElevation) * Math.sin(currentAzimuth);
-
-                // Forward vector: from Camera (at cx,cy,cz relative to tower) to LookAt (at 0,framingOffsetY,0 relative to tower)
-                const fwdX = -cx;
-                const fwdY = framingOffsetY - cy;
-                const fwdZ = -cz;
-                const len = Math.sqrt(fwdX * fwdX + fwdY * fwdY + fwdZ * fwdZ);
-                // Normalized Forward
-                const nFwdX = fwdX / len;
-                const nFwdY = fwdY / len;
-                const nFwdZ = fwdZ / len;
-
-                // Right Vector: WorldUp (0,1,0) cross Forward
-                // Rx = Uy*Fz - Uz*Fy = 1*Fz - 0 = Fz
-                // Ry = Uz*Fx - Ux*Fz = 0
-                // Rz = Ux*Fy - Uy*Fx = -Fx
-                const rX = nFwdZ;
-                const rY = 0;
-                const rZ = -nFwdX;
-                const rLen = Math.sqrt(rX * rX + rZ * rZ);
-                const nRightX = rX / rLen;
-                const nRightZ = rZ / rLen; // rY is 0
-
-                // Up Vector: Forward cross Right
-                // Ux = Fy*Rz - Fz*Ry = Fy*Rz
-                // Uy = Fz*Rx - Fx*Rz
-                // Uz = Fx*Ry - Fy*Rx = -Fy*Rx
-                const nUpX = nFwdY * nRightZ;
-                const nUpY = nFwdZ * nRightX - nFwdX * nRightZ;
-                const nUpZ = -nFwdY * nRightX;
-
-                // Project Bounding Box Corners onto Camera Up Vector to find Vertical Extent
-                const boxMin = _autoZoomBox.min;
-                const boxMax = _autoZoomBox.max;
-
-                // 8 Corners relative to LookAtTarget
-                const corners = [
-                    new THREE.Vector3(boxMin.x, boxMin.y, boxMin.z),
-                    new THREE.Vector3(boxMin.x, boxMin.y, boxMax.z),
-                    new THREE.Vector3(boxMin.x, boxMax.y, boxMin.z),
-                    new THREE.Vector3(boxMin.x, boxMax.y, boxMax.z),
-                    new THREE.Vector3(boxMax.x, boxMin.y, boxMin.z),
-                    new THREE.Vector3(boxMax.x, boxMin.y, boxMax.z),
-                    new THREE.Vector3(boxMax.x, boxMax.y, boxMin.z),
-                    new THREE.Vector3(boxMax.x, boxMax.y, boxMax.z)
-                ];
-
-                let maxProjY = 0;
-                let maxProjX = 0;
-
-                for (const p of corners) {
-                    // Vector from LookAtTarget to Corner
-                    const relX = p.x - _lookAtTarget.x;
-                    const relY = p.y - _lookAtTarget.y;
-                    const relZ = p.z - _lookAtTarget.z;
-
-                    // Project onto Camera Up (Vertical Distance on Screen)
-                    const projY = Math.abs(relX * nUpX + relY * nUpY + relZ * nUpZ);
-                    if (projY > maxProjY) maxProjY = projY;
-
-                    // Project onto Camera Right (Horizontal Distance on Screen) - mostly for check
-                    // For width, we previously used XZ diagonal which is rotation-safe.
-                    // But checking actual projected width is good for extreme aspects.
-                    const projX = Math.abs(relX * nRightX + relZ * nRightZ); // Right vector has 0 Y component
-                    if (projX > maxProjX) maxProjX = projX;
-                }
-
-                const effectiveHeight = maxProjY * 2;
-
-                // For width, we combine the projected width and the XZ-diagonal heuristic for stability
-                // The XZ diagonal (circle fit) ensures rotation doesn't clip corners
-                const diagXZ = Math.sqrt(
-                    Math.pow(Math.max(Math.abs(boxMax.x - _lookAtTarget.x), Math.abs(boxMin.x - _lookAtTarget.x)), 2) +
-                    Math.pow(Math.max(Math.abs(boxMax.z - _lookAtTarget.z), Math.abs(boxMin.z - _lookAtTarget.z)), 2)
-                ) * 2;
-                const effectiveWidth = Math.max(maxProjX * 2, diagXZ);
-
-                // Calculate required distance
-                const fov = camera.fov * (Math.PI / 180);
-                const aspect = camera.aspect;
-
-                // Use mobile-specific padding
-                // Reverting generic padding to be tight since our vector math is now precise
-                const effectivePadding = isMobileLike ? ZOOM_PADDING_MOBILE : ZOOM_PADDING;
-
-                // Height check
-                const heightDistance = (effectiveHeight + effectivePadding * 2) / (2 * Math.tan(fov / 2));
-
-                // Width check
-                const widthDistance = (effectiveWidth + effectivePadding * 2) / (2 * Math.tan(fov / 2) * aspect);
-
-                // Desktop 1.5 multiplier was a patch for the bad math. Now that math is good, we can reduce it.
-                // Keeping a slight buffer (1.1) for UI elements.
-                const autoZoomMultiplier = isMobileLike ? AUTO_ZOOM_MULTIPLIER_MOBILE : AUTO_ZOOM_MULTIPLIER_DESKTOP;
-                const requiredDistance = Math.max(heightDistance, widthDistance) * autoZoomMultiplier;
-                const clampedRequiredDistance = Math.max(MIN_RADIUS, Math.min(MAX_RADIUS, requiredDistance));
-                // Smooth the auto-zoom target to prevent jerky movement when bounding box changes
-                // This creates a stable target that gradually approaches the desired distance
-                const AUTO_ZOOM_SMOOTHING = 0.3; // Smooth auto-zoom target updates
-                smoothedAutoZoomRadius += (clampedRequiredDistance - smoothedAutoZoomRadius) * AUTO_ZOOM_SMOOTHING;
-                // #region agent log
-                const oldTargetRadius = targetRadius;
-                // #endregion
+            const gameResult = computeZoomRadiusForBox(_autoZoomBox, false);
+            if (gameResult) {
+                const AUTO_ZOOM_SMOOTHING = 0.3;
+                smoothedAutoZoomRadius += (gameResult.clampedRequiredDistance - smoothedAutoZoomRadius) * AUTO_ZOOM_SMOOTHING;
                 targetRadius = smoothedAutoZoomRadius;
-                // #region agent log
-                // Replaced with debugTelemetry to prevent ERR_INSUFFICIENT_RESOURCES
-                // debugTelemetry({location:'main.js:animate:autoZoom',message:'Auto-zoom update',data:{blocksCount:blocks.length,sizeX:size.x.toFixed(2),sizeY:size.y.toFixed(2),sizeZ:size.z.toFixed(2),heightDistance:heightDistance.toFixed(2),widthDistance:widthDistance.toFixed(2),requiredDistance:requiredDistance.toFixed(2),oldTargetRadius:oldTargetRadius.toFixed(2),newTargetRadius:targetRadius.toFixed(2),currentRadius:currentRadius.toFixed(2),currentElevation:(currentElevation*180/Math.PI).toFixed(2)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'});
-                // #endregion
-
-                // Debug: log auto-zoom calculation (can be removed later)
                 if (typeof window !== 'undefined' && window.jarrows_debug === '1') {
+                    const sz = _autoZoomBox.getSize(_autoZoomSize);
                     console.log('[Auto-zoom]', {
-                        requiredDistance: requiredDistance.toFixed(2),
+                        requiredDistance: gameResult.requiredDistance.toFixed(2),
                         targetRadius: targetRadius.toFixed(2),
-                        size: { x: size.x.toFixed(2), y: size.y.toFixed(2), z: size.z.toFixed(2) }
+                        size: { x: sz.x.toFixed(2), y: sz.y.toFixed(2), z: sz.z.toFixed(2) }
                     });
                 }
             }
         }
     }
 
-    // Smooth interpolation - balanced for responsive yet smooth movement
-    // Higher smoothing = faster response = smoother feel
-    const smoothing = isGeneratingLevel ? 0.25 : 0.15; // Increased from 0.04 to 0.15 for smoother, more responsive camera
-    // #region agent log
-    const oldCurrentRadius = currentRadius;
-    const oldTargetRadius = targetRadius;
-    // #endregion
-    currentRadius += (targetRadius - currentRadius) * smoothing;
-    currentAzimuth += (targetAzimuth - currentAzimuth) * smoothing;
-    currentElevation += (targetElevation - currentElevation) * smoothing;
+    // Phase 6.1: radius vs orbit — radius uses SMOOTHING_RADIUS/SMOOTHING_SPAWN, azimuth/elevation use SMOOTHING_ORBIT
+    const radiusSmoothing = isGeneratingLevel ? cameraConfig.SMOOTHING_SPAWN : cameraConfig.SMOOTHING_RADIUS;
+    const orbitSmoothing = cameraConfig.SMOOTHING_ORBIT;
+    currentRadius += (targetRadius - currentRadius) * radiusSmoothing;
+    currentAzimuth += (targetAzimuth - currentAzimuth) * orbitSmoothing;
+    currentElevation += (targetElevation - currentElevation) * orbitSmoothing;
 
-    // Smooth interpolation of tower position offset to prevent camera jumps
-    // Use faster smoothing during level generation for responsive feel
-    const towerOffsetSmoothing = isGeneratingLevel ? 0.3 : 0.2;
+    // Phase 6.3: tower offset smoothing from config
+    const towerOffsetSmoothing = isGeneratingLevel ? cameraConfig.SMOOTHING_TOWER_OFFSET_SPAWN : cameraConfig.SMOOTHING_TOWER_OFFSET;
     towerPositionOffset.x += (targetTowerPositionOffset.x - towerPositionOffset.x) * towerOffsetSmoothing;
     towerPositionOffset.y += (targetTowerPositionOffset.y - towerPositionOffset.y) * towerOffsetSmoothing;
     towerPositionOffset.z += (targetTowerPositionOffset.z - towerPositionOffset.z) * towerOffsetSmoothing;
@@ -8620,13 +8488,14 @@ function animate() {
     // }
     // #endregion
 
-    // Snap to target when close to avoid endless micro-updates (saves battery, stabilizes idle frames)
+    // Phase 6.2: snap only when idle (not dragging, not zooming)
     const dr = Math.abs(targetRadius - currentRadius);
     const da = Math.abs(targetAzimuth - currentAzimuth);
     const de = Math.abs(targetElevation - currentElevation);
-    if (dr < SNAP_EPS) currentRadius = targetRadius;
-    if (da < SNAP_EPS) currentAzimuth = targetAzimuth;
-    if (de < SNAP_EPS) currentElevation = targetElevation;
+    const idle = !isDraggingCamera && !isZooming;
+    if (idle && dr < SNAP_EPS) currentRadius = targetRadius;
+    if (idle && da < SNAP_EPS) currentAzimuth = targetAzimuth;
+    if (idle && de < SNAP_EPS) currentElevation = targetElevation;
 
     // Only update camera if it's actually moving
     // This saves CPU when camera is stationary
