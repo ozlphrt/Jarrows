@@ -64,6 +64,15 @@ npm run build
 
 ## Releases
 
+### v7.2.3 - Audio Fix and UI Refinements
+- **Tree**: https://github.com/ozlphrt/Jarrows/tree/v7.2.3
+- **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v7.2.3
+- **Live**: https://ozlphrt.github.io/Jarrows/
+- Fixed spin sound to stop after envelope completes
+- UI improvements: widened stats bar, applied Frosted Glass style, removed spin icon badge
+- Camera zoom logic fixes (perspective-correct)
+- Physics and block logic updates
+
 ### v7.2.2 - Game Mechanics and UI Improvements
 - **Tree**: https://github.com/ozlphrt/Jarrows/tree/v7.2.2
 - **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v7.2.2
