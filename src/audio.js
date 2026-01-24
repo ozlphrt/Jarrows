@@ -41,6 +41,7 @@ const syntheticSounds = {
         filter.connect(env);
         env.connect(destination);
         noise.start();
+        noise.stop(ctx.currentTime + 0.7); // Stop shortly after envelope ends at 0.6s
 
         return noise;
     }
