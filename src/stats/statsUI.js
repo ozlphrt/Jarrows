@@ -808,13 +808,15 @@ export function updateLevelCompleteModal(userStats, comparison) {
 
     if (!comparisonSection) {
         comparisonSection = createComparisonSection();
-        const modalContent = document.querySelector('.modal-content');
-        const statsGrid = document.querySelector('.modal-stats-grid');
+        // Look for the modal panel (standard modal style) or fallback to modal-content
+        const modalContent = document.querySelector('#level-complete-modal .extended-stats-modal-panel') || 
+                             document.querySelector('#level-complete-modal .modal-content');
+        const statsGrid = document.querySelector('#level-complete-modal .modal-stats-grid');
 
         if (modalContent && statsGrid) {
             // Insert after stats grid, before the modal actions container.
             // NOTE: insertBefore() requires the reference node to be a *direct child* of modalContent.
-            const actions = document.querySelector('.modal-actions');
+            const actions = modalContent.querySelector('.modal-actions');
             if (actions && actions.parentElement === modalContent) {
                 modalContent.insertBefore(comparisonSection, actions);
             } else {
@@ -841,13 +843,36 @@ function createComparisonSection() {
     section.id = 'stats-comparison-section';
     section.className = 'modal-comparison-section';
     section.style.cssText = `
-        margin: 24px 0;
-        padding: 20px;
+        margin: 16px 0;
+        padding: 16px;
         background: rgba(255, 255, 255, 0.04);
-        border-radius: 20px;
+        border-radius: 16px;
         border: 1px solid rgba(255, 255, 255, 0.12);
         box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+        max-height: 40vh;
+        overflow-y: auto;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
     `;
+    
+    // Add webkit scrollbar styles
+    const style = document.createElement('style');
+    style.textContent = `
+        .modal-comparison-section::-webkit-scrollbar {
+            width: 4px;
+        }
+        .modal-comparison-section::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .modal-comparison-section::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 2px;
+        }
+    `;
+    if (!document.getElementById('comparison-section-scrollbar-style')) {
+        style.id = 'comparison-section-scrollbar-style';
+        document.head.appendChild(style);
+    }
 
     const title = document.createElement('div');
     title.className = 'comparison-title';

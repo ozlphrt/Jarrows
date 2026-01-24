@@ -3413,14 +3413,22 @@ export class Block {
 
         // Smooth easing function (ease-out cubic for smooth deceleration)
         const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
-        // Catapult easing: fast acceleration then maintain speed
+        // Catapult easing: dramatic ease-out-back for explosive launch feel
         const easeInQuad = (t) => t * t;
+        const easeOutBack = (t) => {
+            const c1 = 1.70158;
+            const c3 = c1 + 1;
+            return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+        };
         const catapultEase = (t) => {
-            // Quick wind-up (0-15%), then explosive launch (15-100%)
+            // Quick wind-up (0-15%), then explosive launch with overshoot (15-100%)
             if (t < 0.15) {
                 return easeInQuad(t / 0.15) * 0.05; // Compress/wind-up phase
             }
-            return 0.05 + (t - 0.15) / 0.85 * 0.95; // Linear launch phase
+            // Use ease-out-back for dramatic launch with slight overshoot
+            const launchProgress = (t - 0.15) / 0.85;
+            const eased = easeOutBack(launchProgress);
+            return 0.05 + eased * 0.95; // Launch phase with overshoot effect
         };
 
         // Animation parameters
@@ -3655,13 +3663,26 @@ export class Block {
                     }
                 }
             } else if (isCatapult) {
-                // Blocks going off board: constant speed (linear interpolation) - no easing
-                // Use linear progress for constant speed throughout
-                this.group.position.x = startX + (finalX - startX) * progress;
-                this.group.position.z = startZ + (finalZ - startZ) * progress;
+                // Blocks going off board: use dramatic easing for explosive launch (Option 6)
+                // Apply catapult easing for more dramatic acceleration
+                const easedProgress = catapultEase(progress);
+                this.group.position.x = startX + (finalX - startX) * easedProgress;
+                this.group.position.z = startZ + (finalZ - startZ) * easedProgress;
 
-                // Keep scale normal (no compression/stretch effects)
-                this.group.scale.set(1, 1, 1);
+                // Subtle scale effect: stretch during launch (Option 6: 1.05x max)
+                // Compress slightly during wind-up (0-15%), then stretch during launch
+                let scaleFactor = 1.0;
+                if (progress < 0.15) {
+                    // Wind-up phase: slight compression
+                    const windUpProgress = progress / 0.15;
+                    scaleFactor = 1.0 - (windUpProgress * 0.05); // Compress to 0.95x
+                } else {
+                    // Launch phase: stretch effect
+                    const launchProgress = (progress - 0.15) / 0.85;
+                    // Stretch to 1.05x with ease-out
+                    scaleFactor = 0.95 + (launchProgress * launchProgress * 0.1); // Ease-out to 1.05x
+                }
+                this.group.scale.set(scaleFactor, scaleFactor, scaleFactor);
             } else {
                 // Normal movement: use linear interpolation (constant speed)
                 this.group.position.x = startX + (finalX - startX) * progress;
@@ -3696,13 +3717,13 @@ export class Block {
 
                     if (isCatapult) {
                         // CATAPULT: explosive launch with high horizontal velocity
-                        // Negative velocity to ensure immediate falling (gravity will accelerate it)
-                        const catapultSpeed = 45.0; // Synchronized with animation speed (0.05px/ms)
+                        // Enhanced for more dramatic motion (Option 6: Balanced combination)
+                        const catapultSpeed = 65.0; // Increased from 45.0 for more impact
 
                         // Apply velocity in the direction of the arrow
                         velX = dirX * catapultSpeed;
                         velZ = dirZ * catapultSpeed;
-                        velY = -1.0; // Gentle downward velocity for flatter trajectory
+                        velY = -5.0; // Moderate downward velocity for visible arc (increased from -1.0)
 
                         console.warn('[Catapult] Launching block with velocity:', { velX, velY, velZ }, 'Direction:', { dirX, dirZ });
                         // #region agent log
@@ -3938,29 +3959,31 @@ export class Block {
         let angularVelY = 0;
         let angularVelZ = 0;
 
-        // Catapult gets more dramatic spin
-        const spinMultiplier = isCatapult ? 1.8 : 1.0;
+        // Catapult gets more dramatic spin (Option 6: Enhanced from 1.8x to 2.5x)
+        const spinMultiplier = isCatapult ? 2.5 : 1.0;
 
         if (this.isVertical) {
             // Vertical blocks: tumble around horizontal axis in direction of movement
+            // Enhanced angular velocities for more dramatic motion (Option 6)
             if (isXAligned) {
-                angularVelZ = moveDir * 3.5 * spinMultiplier;
-                angularVelX = (Math.random() - 0.5) * 2.5 * spinMultiplier;
+                angularVelZ = moveDir * 5.0 * spinMultiplier; // Increased from 3.5
+                angularVelX = (Math.random() - 0.5) * 3.5 * spinMultiplier; // Increased from 2.5
             } else {
-                angularVelX = -moveDir * 3.5 * spinMultiplier;
-                angularVelZ = (Math.random() - 0.5) * 2.5 * spinMultiplier;
+                angularVelX = -moveDir * 5.0 * spinMultiplier; // Increased from 3.5
+                angularVelZ = (Math.random() - 0.5) * 3.5 * spinMultiplier; // Increased from 2.5
             }
-            angularVelY = (Math.random() - 0.5) * 1.5 * spinMultiplier;
+            angularVelY = (Math.random() - 0.5) * 2.2 * spinMultiplier; // Increased from 1.5
         } else {
             // Horizontal blocks: tumble around axis perpendicular to movement
+            // Enhanced angular velocities for more dramatic motion (Option 6)
             if (isXAligned) {
-                angularVelZ = moveDir * 4.5 * spinMultiplier;
-                angularVelY = (Math.random() - 0.5) * 2.0 * spinMultiplier;
-                angularVelX = (Math.random() - 0.5) * 1.5 * spinMultiplier;
+                angularVelZ = moveDir * 6.0 * spinMultiplier; // Increased from 4.5
+                angularVelY = (Math.random() - 0.5) * 3.0 * spinMultiplier; // Increased from 2.0
+                angularVelX = (Math.random() - 0.5) * 2.2 * spinMultiplier; // Increased from 1.5
             } else {
-                angularVelX = -moveDir * 4.5 * spinMultiplier;
-                angularVelY = (Math.random() - 0.5) * 2.0 * spinMultiplier;
-                angularVelZ = (Math.random() - 0.5) * 1.5 * spinMultiplier;
+                angularVelX = -moveDir * 6.0 * spinMultiplier; // Increased from 4.5
+                angularVelY = (Math.random() - 0.5) * 3.0 * spinMultiplier; // Increased from 2.0
+                angularVelZ = (Math.random() - 0.5) * 2.2 * spinMultiplier; // Increased from 1.5
             }
         }
 

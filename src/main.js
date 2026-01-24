@@ -5458,7 +5458,10 @@ function showLevelCompleteModal(completedLevel) {
         }
 
         // Play level complete sound effect
-        playSound('levelComplete', 0.25);
+        playSound('levelComplete', 0.1);
+
+        // Prevent body scrolling when modal is open
+        document.body.style.overflow = 'hidden';
 
         modal.style.display = 'flex';
     }
@@ -5468,6 +5471,8 @@ function hideLevelCompleteModal() {
     const modal = document.getElementById('level-complete-modal');
     if (modal) {
         modal.style.display = 'none';
+        // Restore body scrolling when modal is closed
+        document.body.style.overflow = '';
     }
     if (isTimeBasedMode() && timeChallengeActive) {
         setTimeFrozen('level_complete', false);
