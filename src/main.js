@@ -7,7 +7,7 @@ import { initStats, startLevelStats, trackMove, trackSpin, trackBlockRemoved, co
 import { updateLevelCompleteModal, showOfflineIndicator, hideOfflineIndicator, showPersonalHistoryModal, showProfileModal } from './stats/statsUI.js';
 import { isOnline, isLocalOnlyMode } from './stats/statsAPI.js';
 import { initAudio, playSound, toggleAudio, isAudioEnabled } from './audio.js';
-import { getInfernoDifficultyConfig, getBigSpinCostMultiplier } from './inferno_difficulty.js';
+import { getInfernoDifficultyConfig, getBigSpinCostMultiplier, getSpinCostMultiplier } from './inferno_difficulty.js';
 import { showMilestoneModal, showFeatureModal, showLevelUpdateModal } from './inferno_modals.js';
 import { getChangelogForVersion } from './changelog.js';
 import { createParticleSystem } from './particles.js';
@@ -1751,7 +1751,7 @@ function timeChallengeAwardForBlockRemoved(blockLength) {
     setTimeLeftSec(timeLeftSec + gained);
 
     // Play time added sound effect
-    playSound('timeAdded', 0.6);
+    playSound('timeAdded', 0.8);
 
     // Show flash animation (same as spin)
     flashTimerDelta(gained);
@@ -1780,8 +1780,8 @@ function timeChallengeApplySpinCost() {
     // Track total spin cost for this level
     timeChallengeSpinCost += spent;
 
-    // Play time removed sound effect
-    playSound('timeRemoved', 0.5);
+    // Play synthetic spin sound effect
+    playSound('syntheticSpin', 0.12);
 
     flashTimerDelta(-spent);
     updateTimerDisplay();
@@ -1812,8 +1812,8 @@ function timeChallengeApplyBigSpinCost() {
     // Track total spin cost for this level
     timeChallengeSpinCost += spent;
 
-    // Play time removed sound effect (louder for big spin)
-    playSound('timeRemoved', 0.7);
+    // Play synthetic spin sound effect (louder for big spin)
+    playSound('syntheticSpin', 0.2);
 
     flashTimerDelta(-spent);
     updateTimerDisplay();
@@ -4446,14 +4446,38 @@ function updateTimerDisplay() {
         timerLevelElement.textContent = String(currentLevel);
     }
 
-    if (isTimeBasedMode() && timeChallengeActive) {
-        // During animation, show precise value for smooth visual feedback
-        // Otherwise, show ceil so players don't feel robbed at 0.1s remaining
-        const displaySeconds = timeAnimationActive
-            ? Math.max(0, Math.round(timeLeftSec * 10) / 10) // Show 1 decimal during animation
-            : Math.max(0, Math.ceil(timeLeftSec));
-        timerValueElement.textContent = formatTime(displaySeconds);
-        return;
+    const spinCostValueElement = document.getElementById('spin-cost-value');
+    const spinCostSeparator = document.getElementById('spin-cost-separator');
+
+    if (isTimeBasedMode()) {
+        if (spinCostValueElement && spinCostSeparator) {
+            spinCostValueElement.style.display = 'block';
+            spinCostSeparator.style.display = 'block';
+
+            let multiplier = 1 / 3;
+            if (isInfernoMode()) {
+                multiplier = getSpinCostMultiplier(currentLevel);
+            }
+            const cost = Math.max(1, Math.ceil(timeLeftSec * multiplier));
+            const costMins = Math.floor(cost / 60);
+            const costSecs = Math.floor(cost % 60);
+            spinCostValueElement.textContent = `-${String(costMins).padStart(2, '0')}:${String(costSecs).padStart(2, '0')}`;
+        }
+
+        if (timeChallengeActive) {
+            // During animation, show precise value for smooth visual feedback
+            // Otherwise, show ceil so players don't feel robbed at 0.1s remaining
+            const displaySeconds = timeAnimationActive
+                ? Math.max(0, Math.round(timeLeftSec * 10) / 10) // Show 1 decimal during animation
+                : Math.max(0, Math.ceil(timeLeftSec));
+            timerValueElement.textContent = formatTime(displaySeconds);
+            return;
+        }
+    } else {
+        if (spinCostValueElement && spinCostSeparator) {
+            spinCostValueElement.style.display = 'none';
+            spinCostSeparator.style.display = 'none';
+        }
     }
 
     let elapsedSeconds = timerPausedTime;
@@ -5434,7 +5458,7 @@ function showLevelCompleteModal(completedLevel) {
         }
 
         // Play level complete sound effect
-        playSound('levelComplete', 0.03);
+        playSound('levelComplete', 0.25);
 
         modal.style.display = 'flex';
     }
@@ -5447,6 +5471,29 @@ function hideLevelCompleteModal() {
     }
     if (isTimeBasedMode() && timeChallengeActive) {
         setTimeFrozen('level_complete', false);
+    }
+}
+
+// New Game confirmation modal functions
+function showNewGameModal() {
+    const modal = document.getElementById('new-game-modal');
+    if (modal) {
+        modal.style.display = 'flex';
+        // Pause game if it's running
+        if (isTimeBasedMode()) {
+            setTimeFrozen('new_game_confirm', true);
+        }
+    }
+}
+
+function hideNewGameModal() {
+    const modal = document.getElementById('new-game-modal');
+    if (modal) {
+        modal.style.display = 'none';
+        // Resume game timer if it was frozen
+        if (isTimeBasedMode()) {
+            setTimeFrozen('new_game_confirm', false);
+        }
     }
 }
 
@@ -6195,7 +6242,15 @@ if (restartLevelButton) {
 
 const newGameButton = document.getElementById('new-game-button');
 if (newGameButton) {
-    newGameButton.addEventListener('click', async () => {
+    newGameButton.addEventListener('click', () => {
+        showNewGameModal();
+    });
+}
+
+const newGameConfirm = document.getElementById('new-game-confirm');
+if (newGameConfirm) {
+    newGameConfirm.addEventListener('click', async () => {
+        hideNewGameModal();
         // Always in inferno mode (time-based) - no mode selection needed
         timeChallengeResetRun();
         remainingSpins = Number.POSITIVE_INFINITY;
@@ -6203,6 +6258,13 @@ if (newGameButton) {
         updateTimerDisplay();
         await startNewGame();
         updateUndoButtonState();
+    });
+}
+
+const newGameCancel = document.getElementById('new-game-cancel');
+if (newGameCancel) {
+    newGameCancel.addEventListener('click', () => {
+        hideNewGameModal();
     });
 }
 

@@ -15,7 +15,7 @@
 function getMilestoneTransition(level, milestoneLevel, transitionLength = 4) {
     if (level < milestoneLevel) return 0.0;
     if (level >= milestoneLevel + transitionLength) return 1.0;
-    
+
     const progress = (level - milestoneLevel) / transitionLength;
     return Math.min(1.0, Math.max(0.0, progress));
 }
@@ -82,7 +82,7 @@ function getDirectionalComplexity(level) {
         // Continue decreasing, but at 50% rate (minimum 5%)
         baseValue = Math.max(0.05, baseAt50 - ((level - 50) * 0.01 * (scaling - 1.0)));
     }
-    
+
     return Math.max(0.05, Math.min(0.70, baseValue));
 }
 
@@ -92,7 +92,7 @@ function getDirectionalComplexity(level) {
  */
 function getBlockLengthDistribution(level) {
     let length1, length2, length3;
-    
+
     if (level <= 5) {
         length1 = 0.40;
         length2 = 0.40;
@@ -141,7 +141,7 @@ function getBlockLengthDistribution(level) {
         length2 = Math.max(0.20, base2 - shift * 0.5);
         length3 = Math.min(0.78, base3 + shift * 1.5);
     }
-    
+
     // Normalize to ensure they sum to 1.0
     const sum = length1 + length2 + length3;
     return {
@@ -157,7 +157,7 @@ function getBlockLengthDistribution(level) {
  */
 function getVerticalBlockFrequency(level) {
     let baseValue;
-    
+
     if (level <= 5) {
         baseValue = 0.30; // 30% vertical
     } else if (level <= 10) {
@@ -189,7 +189,7 @@ function getVerticalBlockFrequency(level) {
         const scaling = getPost50Scaling(level);
         baseValue = Math.max(0.01, baseAt50 - ((level - 50) * 0.001 * (scaling - 1.0)));
     }
-    
+
     return Math.max(0.01, Math.min(0.30, baseValue));
 }
 
@@ -198,7 +198,7 @@ function getVerticalBlockFrequency(level) {
  */
 function getMultilayerComplexity(level) {
     let baseValue;
-    
+
     if (level <= 10) {
         baseValue = 0.0; // No special dependencies
     } else if (level <= 25) {
@@ -227,7 +227,7 @@ function getMultilayerComplexity(level) {
         const scaling = getPost50Scaling(level);
         baseValue = Math.min(0.80, baseAt50 + ((level - 50) * 0.01 * (scaling - 1.0)));
     }
-    
+
     return Math.max(0.0, Math.min(0.80, baseValue));
 }
 
@@ -235,42 +235,42 @@ function getMultilayerComplexity(level) {
  * Get spin cost multiplier (fraction of remaining time to charge)
  * Higher multiplier = more expensive spins = harder
  */
-function getSpinCostMultiplier(level) {
+export function getSpinCostMultiplier(level) {
     let baseValue;
-    
+
     if (level <= 5) {
-        baseValue = 1/3; // 33.3%
+        baseValue = 1 / 3; // 33.3%
     } else if (level <= 10) {
         // Transition from 1/3 to 1/2
         const t = (level - 5) / 5;
-        baseValue = lerp(1/3, 1/2, t);
+        baseValue = lerp(1 / 3, 1 / 2, t);
     } else if (level <= 25) {
         // Transition from 1/2 to 2/3
         const t10 = getMilestoneTransition(level, 10, 4);
         const t25 = getMilestoneTransition(level, 25, 4);
         if (level < 14) {
-            baseValue = lerp(1/2, 2/3, t10);
+            baseValue = lerp(1 / 2, 2 / 3, t10);
         } else {
-            baseValue = lerp(2/3, 3/4, t25);
+            baseValue = lerp(2 / 3, 3 / 4, t25);
         }
     } else if (level <= 50) {
         // Transition from 2/3 to 3/4
         const t25 = getMilestoneTransition(level, 25, 4);
         const t50 = getMilestoneTransition(level, 50, 4);
         if (level < 29) {
-            baseValue = lerp(2/3, 3/4, t25);
+            baseValue = lerp(2 / 3, 3 / 4, t25);
         } else {
-            baseValue = lerp(3/4, 0.85, t50);
+            baseValue = lerp(3 / 4, 0.85, t50);
         }
     } else {
         // Post-50: continue increasing at 50% rate (maximum 90%)
         const t50 = getMilestoneTransition(50, 50, 4);
-        const baseAt50 = lerp(3/4, 0.85, t50);
+        const baseAt50 = lerp(3 / 4, 0.85, t50);
         const scaling = getPost50Scaling(level);
         baseValue = Math.min(0.90, baseAt50 + ((level - 50) * 0.005 * (scaling - 1.0)));
     }
-    
-    return Math.max(1/3, Math.min(0.90, baseValue));
+
+    return Math.max(1 / 3, Math.min(0.90, baseValue));
 }
 
 /**
@@ -283,7 +283,7 @@ export function getBigSpinCostMultiplier(level) {
     // Big spin costs 1.5x the regular spin cost
     const bigSpinMultiplier = regularMultiplier * 1.5;
     // Cap at 95% (slightly higher than regular spin's 90% cap)
-    return Math.max(1/3, Math.min(0.95, bigSpinMultiplier));
+    return Math.max(1 / 3, Math.min(0.95, bigSpinMultiplier));
 }
 
 /**
@@ -291,7 +291,7 @@ export function getBigSpinCostMultiplier(level) {
  */
 function getDifficultyThreshold(level) {
     let baseValue;
-    
+
     if (level <= 10) {
         baseValue = 50; // Easy-medium
     } else if (level <= 25) {
@@ -319,7 +319,7 @@ function getDifficultyThreshold(level) {
         const scaling = getPost50Scaling(level);
         baseValue = baseAt50 + ((level - 50) * 20 * (scaling - 1.0));
     }
-    
+
     return Math.max(50, baseValue);
 }
 
@@ -330,29 +330,29 @@ function getDifficultyThreshold(level) {
  */
 export function getInfernoDifficultyConfig(level) {
     const lengthDist = getBlockLengthDistribution(level);
-    
+
     return {
         // Directional complexity: percentage of blocks pointing outward
         outwardPercentage: getDirectionalComplexity(level),
-        
+
         // Block length distribution
         lengthDistribution: lengthDist,
-        
+
         // Vertical block frequency: percentage of vertical blocks
         verticalPercentage: getVerticalBlockFrequency(level),
-        
+
         // Multi-layer complexity: percentage of upper blocks that block lower exits
         multilayerBlockingPercentage: getMultilayerComplexity(level),
-        
+
         // Spin cost multiplier: fraction of remaining time
         spinCostMultiplier: getSpinCostMultiplier(level),
-        
+
         // Difficulty threshold: minimum difficulty score
         difficultyThreshold: getDifficultyThreshold(level),
-        
+
         // Helper: check if level is a milestone
         isMilestone: level === 10 || level === 25 || level === 50,
-        
+
         // Helper: get milestone number if applicable
         milestoneNumber: level === 10 ? 10 : level === 25 ? 25 : level === 50 ? 50 : null
     };

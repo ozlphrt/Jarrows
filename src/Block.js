@@ -1390,7 +1390,7 @@ export class Block {
         if (typeof isAudioEnabled === 'function' && isAudioEnabled()) {
             // Use timeAdded sound as a subtle unlock indicator (can be replaced with dedicated sound later)
             if (typeof playSound === 'function') {
-                playSound('timeAdded', 0.35).catch(() => {
+                playSound('timeAdded', 0.6).catch(() => {
                     // Silently fail if sound can't play
                 });
             }

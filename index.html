@@ -69,7 +69,7 @@
             background: rgba(255, 255, 255, 0.05);
             backdrop-filter: blur(20px) saturate(140%);
             -webkit-backdrop-filter: blur(20px) saturate(140%);
-            padding: 16px 80px;
+            padding: 8px 24px;
             border-radius: 50px;
             /* Pill shape */
             border: 1px solid rgba(255, 255, 255, 0.12);
@@ -78,9 +78,15 @@
             display: none;
             /* Hidden initially, shown after game initialization */
             align-items: center;
-            gap: 60px;
-            line-height: 1;
+            gap: 10px;
+            line-height: 1.1;
             box-sizing: border-box;
+            min-height: 52px;
+            max-width: 95vw;
+            justify-content: center;
+            flex-direction: row !important;
+            flex-wrap: nowrap !important;
+            overflow: hidden;
         }
 
         /* FPS Display - top right */
@@ -141,9 +147,14 @@
             margin: 0;
         }
 
-        /* Hide all separators that are direct children of stats-bar */
-        #stats-bar>.stats-separator {
-            display: none !important;
+        /* Show separators between items */
+        #stats-bar .stats-separator {
+            display: block !important;
+            height: 32px;
+            width: 1px;
+            background: rgba(255, 255, 255, 0.15);
+            margin: 0;
+            opacity: 0.6;
         }
 
         /* Hide game mode display - no longer needed */
@@ -151,17 +162,27 @@
             display: none !important;
         }
 
-        /* Hide blocks count - not shown in minimalist design */
-        #stats-bar .stats-item:not(#timer-item) {
-            display: none !important;
+        /* Unified item styling for Time, Level, and Cost */
+        .stats-item {
+            display: flex !important;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 0px;
+            min-width: 70px;
+            text-align: center;
+            position: relative;
         }
 
-        /* Show only timer item with level and time */
-        #timer-item {
-            display: flex !important;
-            flex-direction: row;
-            align-items: center;
-            gap: 60px;
+        .stats-label {
+            font-size: 10px;
+            font-weight: 800;
+            opacity: 0.6;
+            text-transform: uppercase;
+            letter-spacing: 1.2px;
+            color: white;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+            margin-bottom: 2px;
         }
 
         /* Hide the "Timer:" and "Level:" text labels */
@@ -172,54 +193,33 @@
 
         /* Level value styling */
         #timer-level {
-            font-size: 34px;
+            font-size: 22px;
             font-weight: 900;
             letter-spacing: 0.5px;
             font-variant-numeric: tabular-nums;
+            color: white;
+            line-height: 1;
         }
 
         /* Timer value styling */
         #timer-value {
-            font-size: 34px;
+            font-size: 22px;
             font-weight: 900;
             letter-spacing: 0.5px;
             font-variant-numeric: tabular-nums;
+            color: white;
+            line-height: 1;
         }
 
-        /* Create visual structure with pseudo-elements for labels */
-        #timer-level::before {
-            content: 'LEVEL';
-            display: block;
-            font-size: 11px;
-            font-weight: 600;
-            opacity: 0.85;
-            text-transform: uppercase;
-            letter-spacing: 0.8px;
-            margin-bottom: 4px;
-            text-align: center;
+        /* Spin cost value styling */
+        #spin-cost-value {
+            font-size: 22px;
+            font-weight: 900;
+            letter-spacing: 0.5px;
+            font-variant-numeric: tabular-nums;
+            color: #FF7C7C;
             text-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
-        }
-
-        #timer-value::before {
-            content: 'TIME';
-            display: block;
-            font-size: 11px;
-            font-weight: 600;
-            opacity: 0.85;
-            text-transform: uppercase;
-            letter-spacing: 0.8px;
-            margin-bottom: 4px;
-            text-align: center;
-            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
-        }
-
-        /* Separator between level and timer */
-        #timer-item .stats-separator {
-            display: block !important;
-            height: 40px;
-            width: 1px;
-            background: rgba(255, 255, 255, 0.15);
-            margin: 0;
+            line-height: 1;
         }
 
 
@@ -336,28 +336,29 @@
         }
 
         .extended-stats-modal-panel {
-            width: calc(100vw - 24px);
-            max-width: calc(100vw - 24px);
+            width: calc(100vw - 32px);
+            max-width: 420px;
             /* Portrait-first: use full height efficiently */
             min-height: auto;
-            max-height: calc(100vh - 24px - max(12px, env(safe-area-inset-top, 0)) - max(12px, env(safe-area-inset-bottom, 0)));
+            max-height: calc(100vh - 40px - max(12px, env(safe-area-inset-top, 0)) - max(12px, env(safe-area-inset-bottom, 0)));
             margin: 0;
-            padding: calc(16px + env(safe-area-inset-top)) calc(14px + env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) calc(14px + env(safe-area-inset-left));
+            padding: calc(24px + env(safe-area-inset-top)) calc(20px + env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom)) calc(20px + env(safe-area-inset-left));
             box-sizing: border-box;
-            background: rgba(255, 255, 255, 0.03);
-            backdrop-filter: blur(20px) saturate(140%);
-            -webkit-backdrop-filter: blur(20px) saturate(140%);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-            border-radius: 20px;
+            background: rgba(255, 255, 255, 0.04);
+            backdrop-filter: blur(35px) saturate(160%);
+            -webkit-backdrop-filter: blur(35px) saturate(160%);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+            border-radius: 24px;
             overflow-y: auto;
             overflow-x: hidden;
             -webkit-overflow-scrolling: touch;
-            color: rgba(255, 255, 255, 0.92);
-            font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            color: rgba(255, 255, 255, 0.95);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
             position: relative;
             display: flex;
             flex-direction: column;
+            gap: 16px;
         }
 
         /* Landscape mode adjustments (secondary) */
@@ -468,34 +469,61 @@
         }
 
         .game-button {
-            background: rgba(255, 255, 255, 0.15);
+            background: rgba(255, 255, 255, 0.08);
             backdrop-filter: blur(10px);
             -webkit-backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            color: white;
-            padding: 12px 20px;
-            border-radius: 12px;
-            font-family: 'Fredoka', sans-serif;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: #fff;
+            padding: 12px 24px;
+            border-radius: 14px;
+            font-family: 'Fredoka', 'Inter', sans-serif;
             font-weight: 600;
             cursor: pointer;
-            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
             display: inline-flex;
             align-items: center;
             justify-content: center;
             gap: 8px;
             outline: none;
             -webkit-tap-highlight-color: transparent;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
         }
 
         .game-button:hover {
-            background: rgba(255, 255, 255, 0.22);
+            background: rgba(255, 255, 255, 0.15);
             border-color: rgba(255, 255, 255, 0.3);
-            transform: translateY(-1px);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
         }
 
         .game-button:active {
-            background: rgba(255, 255, 255, 0.12);
-            transform: translateY(0);
+            background: rgba(255, 255, 255, 0.05);
+            transform: translateY(0) scale(0.98);
+        }
+
+        .game-button.secondary {
+            background: rgba(255, 255, 255, 0.03);
+            border-color: rgba(255, 255, 255, 0.1);
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        .game-button.secondary:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: #fff;
+        }
+
+        .game-button.alert-ghost {
+            background: rgba(255, 100, 100, 0.06);
+            border-color: rgba(255, 100, 100, 0.15);
+            color: #ff9d9d;
+        }
+
+        .game-button.alert-ghost:hover {
+            background: rgba(255, 100, 100, 0.12);
+            border-color: rgba(255, 100, 100, 0.3);
+            box-shadow: 0 6px 20px rgba(255, 100, 100, 0.15);
+            transform: translateY(-2px);
         }
 
         .extended-stats-modal-panel .modal-actions .game-button {
@@ -516,42 +544,12 @@
             }
         }
 
-        /* Inferno modals: Minimal Frosted design */
-        /* Ultra-clean with heavy blur and subtle glass effect */
+        /* Inferno modals: Unified with Ghost design */
         div#inferno-milestone-modal.extended-stats-modal-overlay,
         div#inferno-feature-modal.extended-stats-modal-overlay {
             background: rgba(0, 0, 0, 0.5) !important;
             backdrop-filter: blur(15px) !important;
             -webkit-backdrop-filter: blur(15px) !important;
-        }
-
-        div#inferno-milestone-modal .extended-stats-modal-panel,
-        div#inferno-feature-modal .extended-stats-modal-panel,
-        div#inferno-milestone-modal.extended-stats-modal-overlay .extended-stats-modal-panel,
-        div#inferno-feature-modal.extended-stats-modal-overlay .extended-stats-modal-panel {
-            background: rgba(255, 255, 255, 0.04) !important;
-            backdrop-filter: blur(30px) saturate(150%) !important;
-            -webkit-backdrop-filter: blur(30px) saturate(150%) !important;
-            border: 1px solid rgba(255, 255, 255, 0.1) !important;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4) !important;
-            border-radius: 24px !important;
-        }
-
-        /* Minimal Frosted button styling */
-        div#inferno-milestone-modal .game-button,
-        div#inferno-feature-modal .game-button {
-            background: rgba(255, 255, 255, 0.12) !important;
-            border: 1px solid rgba(255, 255, 255, 0.2) !important;
-            backdrop-filter: blur(10px) !important;
-            -webkit-backdrop-filter: blur(10px) !important;
-            transition: all 0.2s ease !important;
-        }
-
-        div#inferno-milestone-modal .game-button:hover,
-        div#inferno-feature-modal .game-button:hover {
-            background: rgba(255, 255, 255, 0.18) !important;
-            box-shadow: 0 4px 12px rgba(255, 255, 255, 0.1) !important;
-            transform: translateY(-1px) !important;
         }
 
 
@@ -997,10 +995,10 @@
         }
 
         .modal-content {
-            /* v2.0 - Pure Glass Design */
-            background: rgba(255, 255, 255, 0.03) !important;
-            backdrop-filter: blur(20px) saturate(140%) !important;
-            -webkit-backdrop-filter: blur(20px) saturate(140%) !important;
+            /* v2.1 - Unified Ghost Design */
+            background: rgba(255, 255, 255, 0.04) !important;
+            backdrop-filter: blur(35px) saturate(160%) !important;
+            -webkit-backdrop-filter: blur(35px) saturate(160%) !important;
             /* Full-screen panel - use 100% to avoid scrollbar issues */
             width: 100%;
             height: 100%;
@@ -1008,13 +1006,12 @@
             max-height: none;
             box-sizing: border-box;
             /* Use mobile padding for consistent aspect ratio across all devices */
-            padding:
-                calc(22px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) calc(18px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
+            padding: calc(32px + env(safe-area-inset-top)) calc(24px + env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom)) calc(24px + env(safe-area-inset-left));
             border-radius: 0;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
             text-align: center;
-            animation: modalFadeIn 0.3s ease-out;
+            animation: modalFadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
             position: relative;
             /* Allow scrolling but hide scrollbar for clean appearance */
             overflow-y: auto;
@@ -1029,6 +1026,7 @@
             display: flex;
             flex-direction: column;
             min-height: 0;
+            gap: 20px;
         }
 
         /* Hide scrollbar for modal content */
@@ -1054,9 +1052,9 @@
             display: grid;
             place-items: center;
             position: relative;
-            background: rgba(255, 255, 255, 0.12);
-            border: 1px solid rgba(255, 255, 255, 0.22);
-            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25);
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
         }
 
         .modal-icon-glow {
@@ -1209,16 +1207,22 @@
         }
 
         .modal-stat-card {
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 16px;
-            padding: 10px 8px 9px;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 18px;
+            padding: 12px 10px;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            gap: 4px;
-            min-height: 66px;
+            gap: 6px;
+            min-height: 70px;
+            transition: transform 0.2s ease, background 0.2s ease;
+        }
+
+        .modal-stat-card:hover {
+            background: rgba(255, 255, 255, 0.08);
+            transform: translateY(-2px);
         }
 
         .modal-stat-icon {
@@ -1260,27 +1264,26 @@
         }
 
         .modal-button {
-            background: rgba(255, 255, 255, 0.15);
+            background: rgba(255, 255, 255, 0.08);
             backdrop-filter: blur(10px);
             -webkit-backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            color: white;
-            padding: 16px 20px;
-            /* Slightly more padding since border is gone */
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: #fff;
+            padding: 16px 24px;
             border-radius: 16px;
             font-size: 20px;
             font-weight: 700;
             cursor: pointer;
-            transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
-            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
             display: inline-flex;
             align-items: center;
             justify-content: center;
             gap: 10px;
             width: 100%;
             letter-spacing: 0.5px;
-            /* Match mobile full width */
+            font-family: 'Fredoka', sans-serif;
         }
 
         .modal-actions {
@@ -1294,11 +1297,6 @@
 
         .modal-actions .modal-button {
             flex: 1 1 0;
-        }
-
-        .modal-button.secondary {
-            background: rgba(255, 255, 255, 0.10);
-            border-color: rgba(255, 255, 255, 0.18);
         }
 
         .modal-button .modal-button-arrow {
@@ -1581,33 +1579,21 @@
 
 <body>
     <div id="stats-bar" class="stats-bar">
-        <span class="stats-item" id="game-mode-display">
-            <span class="mode-value" id="game-mode-value">FREE FLOW</span>
+        <span class="stats-item" id="timer-container">
+            <span class="stats-label">TIME</span>
+            <span class="stats-value" id="timer-value">0m:00s</span>
+            <span id="timer-delta" aria-hidden="true"
+                style="position: absolute; right: -20px; top: 50%; transform: translateY(-50%);"></span>
         </span>
         <span class="stats-separator">|</span>
-        <span class="stats-item">
-            <span class="stats-label">Level:</span>
-            <span class="stats-value" id="level-value">0</span>
-        </span>
-        <span class="stats-separator">|</span>
-        <span class="stats-item">
-            <span class="stats-label">Blocks:</span>
-            <span class="stats-value" id="block-value">0</span>
-        </span>
-        <span class="stats-separator">|</span>
-        <span class="stats-item" id="timer-item">
-            <span class="stats-label" id="timer-label">Timer:</span>
-            <span class="stats-value" id="timer-value">00:00</span>
-            <span id="timer-delta" aria-hidden="true"></span>
-            <span class="stats-separator" style="margin: 0 8px;">|</span>
-            <span class="stats-label" id="timer-level-label">Level:</span>
+        <span class="stats-item" id="level-container">
+            <span class="stats-label">LEVEL</span>
             <span class="stats-value" id="timer-level">0</span>
         </span>
-        <!-- Legacy spin time cost display (kept for compatibility) -->
-        <span class="stats-item" id="spin-time-cost-item" style="display: none; margin-left: 12px;">
-            <span class="stats-label" style="color: #ff6b6b; font-weight: 700;">Time Lost:</span>
-            <span class="stats-value"
-                style="color: #ff6b6b; font-size: 20px; font-weight: 900; text-shadow: 0 2px 4px rgba(255, 107, 107, 0.5);">-00:00</span>
+        <span id="spin-cost-separator" class="stats-separator" style="display: none;">|</span>
+        <span class="stats-item" id="spin-cost-container" style="display: none;">
+            <span class="stats-label">COST</span>
+            <span class="stats-value" id="spin-cost-value">-0m:00s</span>
         </span>
     </div>
 
@@ -2017,6 +2003,25 @@
             </div>
             <div class="modal-actions time-up-actions">
                 <button id="time-up-restart-level" class="game-button" style="padding: 10px 14px;">Restart Game</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- New Game Confirmation Modal -->
+    <div id="new-game-modal" class="extended-stats-modal-overlay" style="display:none; z-index: 3600;">
+        <div class="extended-stats-modal-panel">
+            <div style="display:flex; align-items:center; gap: 10px; margin-bottom: 12px;">
+                <span style="font-size: 24px;">🔄</span>
+                <div class="modal-title">New Game?</div>
+            </div>
+            <div style="margin-bottom: 16px; line-height: 1.6; opacity: 0.9;">
+                <p style="margin: 0;">Are you sure you want to start a <strong>New Game</strong>?</p>
+                <p style="margin: 4px 0 0 0; opacity: 0.8; font-size: 14px;">Your current level progress will be reset
+                    to 0.</p>
+            </div>
+            <div class="modal-actions">
+                <button id="new-game-cancel" class="game-button secondary">Cancel</button>
+                <button id="new-game-confirm" class="game-button alert-ghost">Start New Game</button>
             </div>
         </div>
     </div>

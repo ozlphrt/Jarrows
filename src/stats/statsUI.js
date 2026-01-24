@@ -105,39 +105,16 @@ export function showProfileModal() {
     `;
 
     const panel = document.createElement('div');
+    panel.classList.add('extended-stats-modal-panel');
     panel.style.cssText = `
-        width: calc(100vw - 24px);
-        max-width: calc(100vw - 24px);
-        min-height: auto;
-        max-height: calc(100vh - 24px - max(12px, env(safe-area-inset-top, 0)) - max(12px, env(safe-area-inset-bottom, 0)));
-        margin: 0;
-        box-sizing: border-box;
-        padding: calc(16px + env(safe-area-inset-top)) calc(14px + env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) calc(14px + env(safe-area-inset-left));
-        background: rgba(17, 24, 39, 0.55);
-        border: 1px solid rgba(255,255,255,0.18);
-        box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), 0 20px 60px rgba(0,0,0,0.35);
-        border-radius: 14px;
-        overflow-y: auto;
-        overflow-x: hidden;
-        -webkit-overflow-scrolling: touch;
-        color: rgba(255,255,255,0.92);
-        font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-        position: relative;
-        display: flex;
-        flex-direction: column;
-    `;
-    
-    // Add colored top accent
-    const accent = document.createElement('div');
-    accent.style.cssText = `
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 6px;
-        background: linear-gradient(90deg, rgba(96, 165, 250, 0.9), rgba(168, 85, 247, 0.9), rgba(236, 72, 153, 0.9));
-        opacity: 0.9;
-        border-radius: 14px 14px 0 0;
+        background: rgba(255, 255, 255, 0.04);
+        backdrop-filter: blur(35px) saturate(160%);
+        -webkit-backdrop-filter: blur(35px) saturate(160%);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+        border-radius: 24px;
+        color: rgba(255, 255, 255, 0.95);
+        font-family: 'Inter', -apple-system, system-ui, sans-serif;
     `;
     panel.appendChild(accent);
 
@@ -154,33 +131,23 @@ export function showProfileModal() {
 
     const titleWrap = document.createElement('div');
     titleWrap.style.cssText = `display: flex; align-items: center; gap: 10px;`;
-    
+
     const icon = document.createElement('span');
     icon.textContent = '👤';
     icon.style.cssText = `font-size: 24px;`;
-    
+
     const title = document.createElement('div');
     title.textContent = 'Profile';
     title.style.cssText = `font-size: 16px; font-weight: 900; letter-spacing: 0.4px;`;
-    
+
     titleWrap.appendChild(icon);
     titleWrap.appendChild(title);
 
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';
+    closeBtn.classList.add('game-button');
     closeBtn.textContent = 'Close';
-    closeBtn.style.cssText = `
-        border: 1px solid rgba(255,255,255,0.18);
-        background: rgba(255,255,255,0.10);
-        color: rgba(255,255,255,0.9);
-        border-radius: 10px;
-        padding: 12px 16px;
-        font-size: 14px;
-        font-weight: 800;
-        cursor: pointer;
-        min-height: 44px;
-        flex: 1 1 auto;
-    `;
+    closeBtn.style.cssText = `padding: 10px 16px; flex: 1 1 auto;`;
     closeBtn.addEventListener('click', () => overlay.remove());
 
     header.appendChild(titleWrap);
@@ -278,31 +245,15 @@ export function showPersonalHistoryModal({ focusLevel = null } = {}) {
     `;
 
     const panel = document.createElement('div');
+    panel.classList.add('modal-content');
     panel.style.cssText = `
-        width: 100vw;
-        height: 100vh;
-        box-sizing: border-box;
-        padding: calc(18px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) calc(18px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
-        background: rgba(17, 24, 39, 0.55);
-        border: 1px solid rgba(255,255,255,0.18);
-        box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), 0 20px 60px rgba(0,0,0,0.35);
-        overflow: auto;
-        -webkit-overflow-scrolling: touch;
-        color: rgba(255,255,255,0.92);
-        font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-        position: relative;
-    `;
-    
-    // Add colored top accent
-    const accent = document.createElement('div');
-    accent.style.cssText = `
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 6px;
-        background: linear-gradient(90deg, rgba(96, 165, 250, 0.9), rgba(168, 85, 247, 0.9), rgba(236, 72, 153, 0.9));
-        opacity: 0.9;
+        background: rgba(255, 255, 255, 0.04);
+        backdrop-filter: blur(35px) saturate(160%);
+        -webkit-backdrop-filter: blur(35px) saturate(160%);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+        color: rgba(255, 255, 255, 0.95);
+        font-family: 'Inter', -apple-system, system-ui, sans-serif;
     `;
     panel.appendChild(accent);
 
@@ -318,11 +269,11 @@ export function showPersonalHistoryModal({ focusLevel = null } = {}) {
 
     const titleWrap = document.createElement('div');
     titleWrap.style.cssText = `display: flex; align-items: center; gap: 10px;`;
-    
+
     const icon = document.createElement('span');
     icon.textContent = '📊';
     icon.style.cssText = `font-size: 24px;`;
-    
+
     const title = document.createElement('div');
     title.textContent = 'History';
     title.style.cssText = `
@@ -330,7 +281,7 @@ export function showPersonalHistoryModal({ focusLevel = null } = {}) {
         font-weight: 900;
         letter-spacing: 0.4px;
     `;
-    
+
     titleWrap.appendChild(icon);
     titleWrap.appendChild(title);
 
@@ -385,35 +336,15 @@ export function showPersonalHistoryModal({ focusLevel = null } = {}) {
 
     const clearBtn = document.createElement('button');
     clearBtn.type = 'button';
+    clearBtn.classList.add('game-button', 'alert-ghost');
     clearBtn.textContent = 'Clear';
-    clearBtn.style.cssText = `
-        border: 1px solid rgba(255,255,255,0.18);
-        background: rgba(255,255,255,0.08);
-        color: rgba(255,255,255,0.9);
-        border-radius: 10px;
-        padding: 12px 16px;
-        font-size: 14px;
-        font-weight: 800;
-        cursor: pointer;
-        min-height: 44px;
-        flex: 1 1 auto;
-    `;
+    clearBtn.style.cssText = `padding: 10px 16px; flex: 1 1 auto;`;
 
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';
+    closeBtn.classList.add('game-button');
     closeBtn.textContent = 'Close';
-    closeBtn.style.cssText = `
-        border: 1px solid rgba(255,255,255,0.18);
-        background: rgba(255,255,255,0.10);
-        color: rgba(255,255,255,0.9);
-        border-radius: 10px;
-        padding: 12px 16px;
-        font-size: 14px;
-        font-weight: 800;
-        cursor: pointer;
-        min-height: 44px;
-        flex: 1 1 auto;
-    `;
+    closeBtn.style.cssText = `padding: 10px 16px; flex: 1 1 auto;`;
     closeBtn.addEventListener('click', closeHistoryModal);
 
     controls.appendChild(filterSelect);
@@ -748,23 +679,16 @@ function showMetricInfoModal({ label, currentValue, baselineValue, scope = null,
     `;
 
     const panel = document.createElement('div');
+    panel.classList.add('extended-stats-modal-panel');
     panel.style.cssText = `
-        width: calc(100vw - 24px);
-        max-width: calc(100vw - 24px);
-        max-height: calc(100vh - 24px - max(12px, env(safe-area-inset-top, 0)) - max(12px, env(safe-area-inset-bottom, 0)));
-        margin: 0;
-        background: rgba(17, 24, 39, 0.55);
-        border: 1px solid rgba(255,255,255,0.18);
-        border-radius: 14px;
-        box-shadow: 0 20px 60px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.14);
-        padding: calc(16px + env(safe-area-inset-top)) calc(14px + env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) calc(14px + env(safe-area-inset-left));
-        color: rgba(255,255,255,0.92);
-        font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-        box-sizing: border-box;
-        display: flex;
-        flex-direction: column;
-        overflow-y: auto;
-        -webkit-overflow-scrolling: touch;
+        background: rgba(255, 255, 255, 0.04);
+        backdrop-filter: blur(35px) saturate(160%);
+        -webkit-backdrop-filter: blur(35px) saturate(160%);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+        border-radius: 24px;
+        color: rgba(255, 255, 255, 0.95);
+        font-family: 'Inter', -apple-system, system-ui, sans-serif;
     `;
 
     const header = document.createElement('div');
@@ -773,69 +697,33 @@ function showMetricInfoModal({ label, currentValue, baselineValue, scope = null,
         align-items: flex-start;
         justify-content: space-between;
         gap: 12px;
-        margin-bottom: 10px;
+        margin-bottom: 20px;
     `;
 
     const titleWrap = document.createElement('div');
+    titleWrap.style.cssText = `display: flex; flex-direction: column; gap: 4px;`;
 
     const title = document.createElement('div');
     title.textContent = `${meta.title} — ${meta.name}`;
     title.style.cssText = `
         font-weight: 800;
-        font-size: 14px;
+        font-size: 16px;
         letter-spacing: 0.3px;
-        margin-bottom: 6px;
     `;
 
     const subtitle = document.createElement('div');
     subtitle.textContent = `${meta.description} (${meta.better} is better)`;
     subtitle.style.cssText = `
-        font-size: 12px;
-        color: rgba(255,255,255,0.75);
-        line-height: 1.35;
+        font-size: 13px;
+        color: rgba(255, 255, 255, 0.6);
+        line-height: 1.4;
     `;
-
-    const formula = document.createElement('div');
-    formula.textContent = `Formula: ${meta.formula}`;
-    formula.style.cssText = `
-        margin-top: 8px;
-        font-size: 11px;
-        color: rgba(255,255,255,0.65);
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-    `;
-
-    if (scope === 'all') {
-        const scopeLine = document.createElement('div');
-        const n = typeof sampleSize === 'number' ? sampleSize : null;
-        scopeLine.textContent = n ? `Baseline: all levels (normalized) • ${n} runs` : 'Baseline: all levels (normalized)';
-        scopeLine.style.cssText = `
-            margin-top: 8px;
-            font-size: 11px;
-            color: rgba(255,255,255,0.70);
-        `;
-        titleWrap.appendChild(scopeLine);
-    }
-
-    titleWrap.appendChild(title);
-    titleWrap.appendChild(subtitle);
-    titleWrap.appendChild(formula);
 
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';
+    closeBtn.classList.add('game-button');
     closeBtn.textContent = 'Close';
-    closeBtn.style.cssText = `
-        border: 1px solid rgba(255,255,255,0.18);
-        background: rgba(255,255,255,0.10);
-        color: rgba(255,255,255,0.9);
-        border-radius: 10px;
-        padding: 12px 16px;
-        font-size: 14px;
-        font-weight: 700;
-        cursor: pointer;
-        min-height: 44px;
-        width: 100%;
-        margin-top: 12px;
-    `;
+    closeBtn.style.cssText = `padding: 10px 16px; min-width: 100px;`;
     closeBtn.addEventListener('click', closeMetricInfoModal);
 
     header.appendChild(titleWrap);
@@ -917,12 +805,12 @@ function showMetricInfoModal({ label, currentValue, baselineValue, scope = null,
 export function updateLevelCompleteModal(userStats, comparison) {
     // Add comparison section to modal if it doesn't exist
     let comparisonSection = document.getElementById('stats-comparison-section');
-    
+
     if (!comparisonSection) {
         comparisonSection = createComparisonSection();
         const modalContent = document.querySelector('.modal-content');
         const statsGrid = document.querySelector('.modal-stats-grid');
-        
+
         if (modalContent && statsGrid) {
             // Insert after stats grid, before the modal actions container.
             // NOTE: insertBefore() requires the reference node to be a *direct child* of modalContent.
@@ -953,11 +841,12 @@ function createComparisonSection() {
     section.id = 'stats-comparison-section';
     section.className = 'modal-comparison-section';
     section.style.cssText = `
-        margin: 20px 0;
-        padding: 16px;
-        background: rgba(255, 255, 255, 0.06);
-        border-radius: 16px;
+        margin: 24px 0;
+        padding: 20px;
+        background: rgba(255, 255, 255, 0.04);
+        border-radius: 20px;
         border: 1px solid rgba(255, 255, 255, 0.12);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
     `;
 
     const title = document.createElement('div');
@@ -1008,7 +897,7 @@ function updateComparisonDisplay(section, userStats, comparison) {
     const isInferno = checkInfernoMode();
     const isFreePlay = checkFreePlayMode();
     const isTimeChallenge = checkTimeChallengeMode();
-    
+
     // Time Challenge specific stats - show formula: unused + collected - lost = carried over (in mm:ss)
     // Only show for Time Challenge mode, not Inferno (Inferno has its own section below)
     if (isTimeChallenge && userStats.timeUnusedLevel !== undefined && userStats.timeCollectedLevel !== undefined && userStats.timeCarriedOverLevel !== undefined) {
@@ -1023,14 +912,14 @@ function updateComparisonDisplay(section, userStats, comparison) {
             box-sizing: border-box;
             max-width: 100%;
         `;
-        
+
         const timeUnused = userStats.timeUnusedLevel || 0;
         const timeCollected = userStats.timeCollectedLevel || 0;
         const timeLost = userStats.timeLostLevel || 0;
         // Calculate carried over from the formula to ensure math is correct
         // Carried over = unused + collected - spin
         const timeCarriedOver = timeUnused + timeCollected - timeLost;
-        
+
         grid.appendChild(createTimeChallengeCard(
             `unused + collected - spin = carried over`,
             timeUnused,
@@ -1038,13 +927,13 @@ function updateComparisonDisplay(section, userStats, comparison) {
             timeLost,
             timeCarriedOver
         ));
-        
+
         // Add graph showing carried over progress over time
         if (userStats.carriedOverHistory && userStats.carriedOverHistory.length > 0) {
             grid.appendChild(createCarriedOverGraph(userStats.carriedOverHistory));
         }
     }
-    
+
     // Inferno mode: show bar chart of recent level carried over times
     // Use the same code and calculation as Time Challenge mode
     if (isInferno) {
@@ -1062,14 +951,14 @@ function updateComparisonDisplay(section, userStats, comparison) {
                 max-width: 100%;
             `;
         }
-        
+
         // Use carried over history if available - same as Time Challenge mode
         if (userStats.carriedOverHistory && userStats.carriedOverHistory.length > 0) {
             // Use the same createCarriedOverGraph function as Time Challenge mode
             grid.appendChild(createCarriedOverGraph(userStats.carriedOverHistory));
         }
     }
-    
+
     // Free play mode: show bar chart of recent level completion times
     // Use the same chart as Time Challenge and Inferno modes
     if (isFreePlay) {
@@ -1087,7 +976,7 @@ function updateComparisonDisplay(section, userStats, comparison) {
                 max-width: 100%;
             `;
         }
-        
+
         // Get recent level stats and convert to chart format
         const recentStats = getRecentFreePlayLevelStats(userStats.level, userStats);
         if (recentStats && recentStats.length > 0) {
@@ -1100,7 +989,7 @@ function updateComparisonDisplay(section, userStats, comparison) {
                 collected: 0,
                 spin: 0
             }));
-            
+
             // Use the same createCarriedOverGraph function as Time Challenge and Inferno modes
             grid.appendChild(createCarriedOverGraph(chartHistory));
         }
@@ -1124,7 +1013,7 @@ function createTimeChallengeCard(label, timeUnused, timeCollected, timeLost, tim
         overflow-y: hidden;
         max-width: 100%;
     `;
-    
+
     // Create formula display with labels above numbers, all in one horizontal line
     const formulaContainer = document.createElement('div');
     formulaContainer.className = 'time-challenge-formula-container';
@@ -1141,7 +1030,7 @@ function createTimeChallengeCard(label, timeUnused, timeCollected, timeLost, tim
         min-width: 0;
         box-sizing: border-box;
     `;
-    
+
     // Add style to hide scrollbars if not already added
     if (!document.getElementById('hide-scrollbar-style')) {
         const style = document.createElement('style');
@@ -1161,7 +1050,7 @@ function createTimeChallengeCard(label, timeUnused, timeCollected, timeLost, tim
         `;
         document.head.appendChild(style);
     }
-    
+
     // Helper function to create label + value pair (vertical: label above number)
     function createLabelValuePair(labelText, value, color, isOperator = false) {
         const container = document.createElement('div');
@@ -1172,7 +1061,7 @@ function createTimeChallengeCard(label, timeUnused, timeCollected, timeLost, tim
             gap: 2px;
             flex-shrink: 0;
         `;
-        
+
         if (!isOperator) {
             const labelEl = document.createElement('div');
             labelEl.textContent = labelText;
@@ -1191,46 +1080,42 @@ function createTimeChallengeCard(label, timeUnused, timeCollected, timeLost, tim
             spacer.style.cssText = `height: 12px;`;
             container.appendChild(spacer);
         }
-        
+
         const valueEl = document.createElement('div');
         valueEl.textContent = isOperator ? value : formatTime(value);
         valueEl.style.cssText = `
             font-size: 18px; /* Increased from 14px */
             font-weight: 900;
             color: ${color};
-            text-shadow: 0 0 8px ${color === '#FBBF24' ? 'rgba(251, 191, 36, 0.4)' : 
-                                    color === '#4ADE80' ? 'rgba(74, 222, 128, 0.4)' : 
-                                    color === '#FF6B6B' ? 'rgba(255, 107, 107, 0.4)' : 'transparent'};
+            text-shadow: 0 0 8px ${color === '#FBBF24' ? 'rgba(251, 191, 36, 0.4)' :
+                color === '#4ADE80' ? 'rgba(74, 222, 128, 0.4)' :
+                    color === '#FF6B6B' ? 'rgba(255, 107, 107, 0.4)' : 'transparent'};
             line-height: 1;
             white-space: nowrap;
         `;
         container.appendChild(valueEl);
-        
+
         return container;
     }
-    
+
     // unused (orange/golden - same as level number)
     formulaContainer.appendChild(createLabelValuePair('unused', timeUnused, '#FBBF24')); // rgba(251, 191, 36, 0.95)
-    
+
     // plus sign (white)
     formulaContainer.appendChild(createLabelValuePair('', '+', 'rgba(255, 255, 255, 0.8)', true));
-    
+
     // collected (green - same as blocks icon)
     formulaContainer.appendChild(createLabelValuePair('collected', timeCollected, '#4ADE80')); // rgba(74, 222, 128, 0.95)
-    
-    // minus sign (white)
-    formulaContainer.appendChild(createLabelValuePair('', '-', 'rgba(255, 255, 255, 0.8)', true));
-    
-    // spin (red)
-    formulaContainer.appendChild(createLabelValuePair('spin', timeLost, '#FF6B6B'));
-    
+
+    // spin part removed per request
+
     // equals sign (white)
     formulaContainer.appendChild(createLabelValuePair('', '=', 'rgba(255, 255, 255, 0.8)', true));
-    
+
     // carried over (green if positive, red if negative/zero - use same green as blocks icon)
     const carriedOverColor = timeCarriedOver > 0 ? '#4ADE80' : '#FF6B6B';
     formulaContainer.appendChild(createLabelValuePair('carried over', timeCarriedOver, carriedOverColor));
-    
+
     card.appendChild(formulaContainer);
     return card;
 }
@@ -1245,9 +1130,9 @@ function createCarriedOverGraph(history) {
         width: 100%;
         box-sizing: border-box;
     `;
-    
+
     // Title removed per request
-    
+
     const canvas = document.createElement('canvas');
     // Use high DPI resolution for crisp rendering on all displays
     const dpr = window.devicePixelRatio || 1;
@@ -1259,15 +1144,15 @@ function createCarriedOverGraph(history) {
         max-width: 100%;
         display: block;
     `;
-    
+
     graphContainer.appendChild(canvas);
-    
+
     // Get actual rendered width after appending to DOM
     const actualWidth = canvas.offsetWidth || 400;
     const baseWidth = actualWidth;
     canvas.width = baseWidth * dpr;
     canvas.height = (baseHeight + labelAreaHeight) * dpr;
-    
+
     // Draw stacked bar chart
     const ctx = canvas.getContext('2d');
     // Scale context for high DPI
@@ -1275,7 +1160,7 @@ function createCarriedOverGraph(history) {
     const padding = 15; // Reduced padding for more chart space
     const graphWidth = baseWidth - padding * 2;
     const graphHeight = baseHeight - padding; // Reduced bottom padding to leave space for labels
-    
+
     // Find max values for scaling - use unified scale for all individual components
     const maxUnused = Math.max(...history.map(h => h.unused || 0), 0);
     const maxCollected = Math.max(...history.map(h => h.collected || 0), 0);
@@ -1289,7 +1174,7 @@ function createCarriedOverGraph(history) {
     // Use unified scale: maximum of any individual component (not the sum)
     // This ensures collected (1:44) and spin (3:10) are visually proportional
     const maxIndividual = Math.max(maxUnused, maxCollected, maxSpin, 1);
-    
+
     // Find maximum and minimum carried over values to determine baseline position
     const carriedOverValues = history.map(h => {
         const unused = h.unused || 0;
@@ -1299,11 +1184,11 @@ function createCarriedOverGraph(history) {
     });
     const maxCarriedOver = Math.max(...carriedOverValues, 0);
     const minCarriedOver = Math.min(...carriedOverValues, 0);
-    
+
     // Clear canvas
     ctx.fillStyle = 'rgba(0, 0, 0, 0)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    
+
     // Calculate baseline position based on whether we have negative values
     // If all values are positive, baseline at bottom. If mixed, baseline in middle. If all negative, baseline at top.
     let baselineY;
@@ -1317,7 +1202,7 @@ function createCarriedOverGraph(history) {
         // Mixed positive and negative - baseline in middle
         baselineY = padding + graphHeight / 2;
     }
-    
+
     // Draw grid lines (horizontal)
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
     ctx.lineWidth = 1;
@@ -1328,7 +1213,7 @@ function createCarriedOverGraph(history) {
         ctx.lineTo(padding + graphWidth, y);
         ctx.stroke();
     }
-    
+
     // Draw zero baseline (thicker line)
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
     ctx.lineWidth = 2;
@@ -1336,7 +1221,7 @@ function createCarriedOverGraph(history) {
     ctx.moveTo(padding, baselineY);
     ctx.lineTo(padding + graphWidth, baselineY);
     ctx.stroke();
-    
+
     // Draw vertical axis only (horizontal line is the baseline)
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
     ctx.lineWidth = 2;
@@ -1344,27 +1229,27 @@ function createCarriedOverGraph(history) {
     ctx.moveTo(padding, padding);
     ctx.lineTo(padding, padding + graphHeight);
     ctx.stroke();
-    
+
     // Draw stacked bars
     if (history.length > 0) {
         const barWidth = (graphWidth / history.length) * 0.92; // 92% of available space for bars
         const barSpacing = (graphWidth / history.length) * 0.08; // 8% for spacing (minimal gap)
-        
+
         history.forEach((point, index) => {
             const x = padding + (graphWidth / history.length) * index + barSpacing / 2;
             const unused = point.unused || 0;
             const collected = point.collected || 0;
             const spin = point.spin || 0;
             const carriedOver = point.carriedOver || 0;
-            
+
             // Simple: bar height = carried over value (scaled)
             // Longest bar = max carried over value
-            
+
             // Calculate the bar height based on carried over value
-            const barHeight = maxCarriedOver > 0 
-                ? (carriedOver / maxCarriedOver) * graphHeight 
+            const barHeight = maxCarriedOver > 0
+                ? (carriedOver / maxCarriedOver) * graphHeight
                 : 0;
-            
+
             // Draw single bar representing carried over value
             // Positive values go above baseline, negative values go below
             if (carriedOver >= 0) {
@@ -1387,28 +1272,28 @@ function createCarriedOverGraph(history) {
                 ctx.fillStyle = '#FF6B6B'; // Red
                 ctx.fillRect(x, baselineY, barWidth, Math.abs(barHeight));
             }
-            
+
             // Store for label positioning
             const currentY = carriedOver >= 0 ? baselineY - barHeight : baselineY + Math.abs(barHeight);
-            
+
             // Draw level label below bar
             ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
             ctx.font = '10px sans-serif';
             ctx.textAlign = 'center';
             ctx.fillText(point.level.toString(), x + barWidth / 2, padding + graphHeight + 18);
-            
+
             // Draw carried over value label at the top of the bar (if positive) or bottom (if negative)
             if (Math.abs(carriedOver) > 0) {
                 ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
                 ctx.font = '9px sans-serif';
-                const labelY = carriedOver >= 0 
+                const labelY = carriedOver >= 0
                     ? currentY - 6  // Above the bar
                     : currentY + 14; // Below the bar
                 ctx.fillText(formatTime(carriedOver), x + barWidth / 2, labelY);
             }
         });
     }
-    
+
     return graphContainer;
 }
 
@@ -1456,10 +1341,12 @@ function createComparisonCard(label, userValue, medianValue, comparison, icon) {
     const card = document.createElement('div');
     card.className = 'comparison-card';
     card.style.cssText = `
-        background: rgba(255, 255, 255, 0.05);
-        border-radius: 12px;
-        padding: 10px;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 16px;
+        padding: 14px 10px;
         text-align: center;
+        transition: transform 0.2s ease, background 0.2s ease;
     `;
 
     const iconEl = document.createElement('div');
@@ -1661,19 +1548,19 @@ function getRecentFreePlayLevelStats(currentLevel, currentStats = null) {
         const stats = [];
         const maxLevels = 10;
         const startLevel = Math.max(1, currentLevel - maxLevels + 1);
-        
+
         // Build a map to ensure we use currentStats for the current level if provided
         const levelStatsMap = new Map();
-        
+
         // First, get all stats from localStorage
         for (let level = startLevel; level <= currentLevel; level++) {
             const key = `jarrows_level_${level}_stats`;
             const raw = localStorage.getItem(key);
             if (!raw) continue;
-            
+
             const runs = JSON.parse(raw);
             if (!Array.isArray(runs) || runs.length === 0) continue;
-            
+
             // Get the most recent run for this level
             const mostRecent = runs[runs.length - 1];
             if (mostRecent) {
@@ -1685,7 +1572,7 @@ function getRecentFreePlayLevelStats(currentLevel, currentStats = null) {
                 });
             }
         }
-        
+
         // Override with currentStats if provided (for the current level)
         if (currentStats && currentStats.level) {
             levelStatsMap.set(currentStats.level, {
@@ -1695,7 +1582,7 @@ function getRecentFreePlayLevelStats(currentLevel, currentStats = null) {
                 blocksRemoved: Number(currentStats.blocksRemoved || 0)
             });
         }
-        
+
         // Convert map to array and sort by level
         const result = Array.from(levelStatsMap.values());
         result.sort((a, b) => a.level - b.level);
@@ -1716,19 +1603,19 @@ function getRecentInfernoLevelStats(currentLevel, currentStats = null) {
         const stats = [];
         const maxLevels = 10;
         const startLevel = Math.max(1, currentLevel - maxLevels + 1);
-        
+
         // Build a map to ensure we use currentStats for the current level if provided
         const levelStatsMap = new Map();
-        
+
         // First, get all stats from localStorage
         for (let level = startLevel; level <= currentLevel; level++) {
             const key = `jarrows_level_${level}_stats`;
             const raw = localStorage.getItem(key);
             if (!raw) continue;
-            
+
             const runs = JSON.parse(raw);
             if (!Array.isArray(runs) || runs.length === 0) continue;
-            
+
             // Get the most recent run for this level
             const mostRecent = runs[runs.length - 1];
             if (mostRecent) {
@@ -1740,7 +1627,7 @@ function getRecentInfernoLevelStats(currentLevel, currentStats = null) {
                 });
             }
         }
-        
+
         // Override with currentStats if provided (for the current level)
         if (currentStats && currentStats.level) {
             levelStatsMap.set(currentStats.level, {
@@ -1750,7 +1637,7 @@ function getRecentInfernoLevelStats(currentLevel, currentStats = null) {
                 blocksRemoved: Number(currentStats.blocksRemoved || 0)
             });
         }
-        
+
         // Convert map to array and sort by level
         const result = Array.from(levelStatsMap.values());
         result.sort((a, b) => a.level - b.level);
@@ -1769,21 +1656,21 @@ function getRecentInfernoLevelStats(currentLevel, currentStats = null) {
 function determineLabelsToShow(levelStats, barWidth, graphWidth) {
     const labelsToShow = new Set();
     const numBars = levelStats.length;
-    
+
     if (numBars === 0) return labelsToShow;
-    
+
     // Estimate minimum spacing needed for labels (in pixels)
     // Level numbers are typically 1-3 digits, estimate ~25-30px per label to avoid overlap
     const minLabelSpacing = 30;
     const availableWidth = graphWidth;
     const maxLabels = Math.max(2, Math.floor(availableWidth / minLabelSpacing));
-    
+
     // Find min and max time indices
     let minIndex = 0;
     let maxIndex = 0;
     let minTime = levelStats[0].time || Infinity;
     let maxTime = levelStats[0].time || 0;
-    
+
     levelStats.forEach((stat, index) => {
         const time = stat.time || 0;
         if (time < minTime) {
@@ -1795,7 +1682,7 @@ function determineLabelsToShow(levelStats, barWidth, graphWidth) {
             maxIndex = index;
         }
     });
-    
+
     // Always show first, last, min, and max
     labelsToShow.add(0);
     labelsToShow.add(numBars - 1);
@@ -1803,7 +1690,7 @@ function determineLabelsToShow(levelStats, barWidth, graphWidth) {
     if (maxIndex !== minIndex) {
         labelsToShow.add(maxIndex);
     }
-    
+
     // If we have more room, add labels at regular intervals
     if (numBars <= maxLabels) {
         // Plenty of space - show all labels
@@ -1817,12 +1704,12 @@ function determineLabelsToShow(levelStats, barWidth, graphWidth) {
         if (remainingSlots > 0) {
             // Calculate interval to show approximately remainingSlots labels
             const interval = Math.max(1, Math.floor(numBars / remainingSlots));
-            
+
             // Add labels at regular intervals (but don't re-add ones we already have)
             for (let i = 0; i < numBars; i += interval) {
                 labelsToShow.add(i);
             }
-            
+
             // Also add some labels around min/max if they're not already included
             for (let offset = 1; offset <= 2 && labelsToShow.size < maxLabels; offset++) {
                 if (minIndex + offset < numBars && !labelsToShow.has(minIndex + offset)) {
@@ -1840,7 +1727,7 @@ function determineLabelsToShow(levelStats, barWidth, graphWidth) {
             }
         }
     }
-    
+
     return labelsToShow;
 }
 
@@ -1857,7 +1744,7 @@ function createInfernoBarChart(levelStats) {
         width: 100%;
         box-sizing: border-box;
     `;
-    
+
     const canvas = document.createElement('canvas');
     // Use high DPI resolution for crisp rendering on all displays
     const dpr = window.devicePixelRatio || 1;
@@ -1869,20 +1756,20 @@ function createInfernoBarChart(levelStats) {
         max-width: 100%;
         display: block;
     `;
-    
+
     graphContainer.appendChild(canvas);
-    
+
     // Use requestAnimationFrame to ensure container is in DOM and laid out
     // This ensures we can get the correct width for high-DPI rendering
     requestAnimationFrame(() => {
         // Get actual rendered width after appending to DOM
         const actualWidth = canvas.offsetWidth || 400;
         const baseWidth = actualWidth;
-        
+
         // Set canvas internal dimensions (high DPI)
         canvas.width = baseWidth * dpr;
         canvas.height = (baseHeight + labelAreaHeight) * dpr;
-        
+
         // Draw bar chart
         const ctx = canvas.getContext('2d');
         // Scale context for high DPI
@@ -1890,16 +1777,16 @@ function createInfernoBarChart(levelStats) {
         const padding = 15;
         const graphWidth = baseWidth - padding * 2;
         const graphHeight = baseHeight - padding;
-        
+
         // Find max time for scaling
         const maxTime = Math.max(...levelStats.map(s => s.time || 0), 1);
-        
+
         // Clear canvas with transparent background
         ctx.clearRect(0, 0, baseWidth, baseHeight + labelAreaHeight);
-        
+
         // Baseline at bottom (all values are positive)
         const baselineY = padding + graphHeight;
-        
+
         // Draw grid lines (horizontal)
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
         ctx.lineWidth = 1;
@@ -1910,7 +1797,7 @@ function createInfernoBarChart(levelStats) {
             ctx.lineTo(padding + graphWidth, y);
             ctx.stroke();
         }
-        
+
         // Draw vertical axis
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
         ctx.lineWidth = 2;
@@ -1918,7 +1805,7 @@ function createInfernoBarChart(levelStats) {
         ctx.moveTo(padding, padding);
         ctx.lineTo(padding, padding + graphHeight);
         ctx.stroke();
-        
+
         // Draw horizontal baseline
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
         ctx.lineWidth = 2;
@@ -1926,21 +1813,21 @@ function createInfernoBarChart(levelStats) {
         ctx.moveTo(padding, baselineY);
         ctx.lineTo(padding + graphWidth, baselineY);
         ctx.stroke();
-        
+
         // Draw bars
         if (levelStats.length > 0) {
             const barWidth = (graphWidth / levelStats.length) * 0.75; // 75% of available space for bars
             const barSpacing = (graphWidth / levelStats.length) * 0.25; // 25% for spacing
-            
+
             // Determine which labels to show (smart skipping to avoid overlap)
             const labelsToShow = determineLabelsToShow(levelStats, barWidth, graphWidth);
-            
+
             // Find min and max indices for time label prioritization
             let minTimeIndex = 0;
             let maxTimeIndex = 0;
             let minTimeValue = levelStats[0].time || Infinity;
             let maxTimeValue = levelStats[0].time || 0;
-            
+
             levelStats.forEach((stat, idx) => {
                 const t = stat.time || 0;
                 if (t < minTimeValue) {
@@ -1952,23 +1839,23 @@ function createInfernoBarChart(levelStats) {
                     maxTimeIndex = idx;
                 }
             });
-            
+
             levelStats.forEach((stat, index) => {
                 const x = padding + (graphWidth / levelStats.length) * index + barSpacing / 2;
                 const time = stat.time || 0;
-                
+
                 // Calculate bar height
-                const barHeight = maxTime > 0 
-                    ? (time / maxTime) * graphHeight 
+                const barHeight = maxTime > 0
+                    ? (time / maxTime) * graphHeight
                     : 0;
-                
+
                 // Draw bar (using inferno-themed color - orange/red gradient)
                 const gradient = ctx.createLinearGradient(x, baselineY - barHeight, x, baselineY);
                 gradient.addColorStop(0, '#FF6B35'); // Orange-red at top
                 gradient.addColorStop(1, '#F7931E'); // Orange at bottom
                 ctx.fillStyle = gradient;
                 ctx.fillRect(x, baselineY - barHeight, barWidth, barHeight);
-                
+
                 // Draw level label below bar (only if in labelsToShow)
                 if (labelsToShow.has(index)) {
                     ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
@@ -1976,13 +1863,13 @@ function createInfernoBarChart(levelStats) {
                     ctx.textAlign = 'center';
                     ctx.fillText(stat.level.toString(), x + barWidth / 2, padding + graphHeight + 18);
                 }
-                
+
                 // Draw time label at the top of the bar
                 // Show for: labels that are selected AND (bar is tall enough OR it's min/max)
                 if (time > 0 && labelsToShow.has(index)) {
                     const isMinOrMax = index === minTimeIndex || index === maxTimeIndex;
                     const hasEnoughSpace = barHeight > 20;
-                    
+
                     if (hasEnoughSpace || isMinOrMax) {
                         ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
                         ctx.font = '9px sans-serif';
@@ -1995,7 +1882,7 @@ function createInfernoBarChart(levelStats) {
             });
         }
     });
-    
+
     return graphContainer;
 }
 
@@ -2018,7 +1905,7 @@ function formatRatio(value) {
  */
 export function showOfflineIndicator() {
     let indicator = document.getElementById('stats-offline-indicator');
-    
+
     if (!indicator) {
         indicator = document.createElement('div');
         indicator.id = 'stats-offline-indicator';

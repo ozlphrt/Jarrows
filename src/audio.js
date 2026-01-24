@@ -8,6 +8,43 @@ let audioEnabled = true;
 let audioContext = null;
 let sounds = {};
 let soundBuffers = {}; // Store raw ArrayBuffers until AudioContext is ready
+let lastPlayTimes = {}; // Track last play time for debounce
+
+// Synthetic sound generators (Web Audio API)
+const syntheticSounds = {
+    /**
+     * "Liquid Satin": A soft, filtered white-noise sweep.
+     * Evokes air moving over smooth glass.
+     */
+    'syntheticSpin': (ctx, destination, volume) => {
+        const noise = ctx.createBufferSource();
+        const bufferSize = ctx.sampleRate * 2;
+        const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+        noise.buffer = buffer;
+
+        const filter = ctx.createBiquadFilter();
+        filter.type = "highpass";
+        filter.frequency.setValueAtTime(8000, ctx.currentTime);
+        filter.frequency.exponentialRampToValueAtTime(1000, ctx.currentTime + 0.5);
+
+        const env = ctx.createGain();
+        // The tester used 0.3 as base, we multiply by the passed volume
+        const peakGain = 0.3 * (volume / 0.5); // Normalize relative to default 0.5
+
+        env.gain.setValueAtTime(0, ctx.currentTime);
+        env.gain.linearRampToValueAtTime(peakGain, ctx.currentTime + 0.05);
+        env.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
+
+        noise.connect(filter);
+        filter.connect(env);
+        env.connect(destination);
+        noise.start();
+
+        return noise;
+    }
+};
 
 // Initialize audio context (required for playing sounds in modern browsers)
 // Deferred until first user interaction to avoid autoplay policy warnings
@@ -71,6 +108,25 @@ async function playSound(name, volume = 0.5) {
             await audioContext.resume();
         } catch (e) {
             // Silently fail - will retry next time
+            return null;
+        }
+    }
+
+    // Debounce check: Prevent playing the same sound multiple times within 100ms
+    const now = Date.now();
+    const lastTime = lastPlayTimes[name] || 0;
+    if (now - lastTime < 100) {
+        // Debounced - skip playing
+        return null;
+    }
+    lastPlayTimes[name] = now;
+
+    // Check for synthetic sound first
+    if (syntheticSounds[name]) {
+        try {
+            return syntheticSounds[name](audioContext, audioContext.destination, volume);
+        } catch (e) {
+            console.warn(`Failed to play synthetic sound ${name}:`, e);
             return null;
         }
     }
