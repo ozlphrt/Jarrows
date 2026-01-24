@@ -850,30 +850,67 @@ function centerTowerVertically() {
     console.log(`Tower vertically centered: minY=${minY.toFixed(2)}, maxY=${maxY.toFixed(2)}, centerY=${centerY.toFixed(2)}, targetOffsetY=${targetTowerPositionOffset.y.toFixed(2)}, currentOffsetY=${towerPositionOffset.y.toFixed(2)}`);
 }
 
-// Camera system constants
-const MIN_RADIUS = 5;
-const MAX_RADIUS = 50;
-const MIN_ELEVATION = -Math.PI / 2 + 0.1;
-const MAX_ELEVATION = Math.PI / 2 - 0.1;
-const ZOOM_PADDING = 1.5; // Padding for desktop
-const ZOOM_PADDING_MOBILE = 0.2; // Minimal padding for mobile
-const AUTO_ZOOM_MIN_BOUNDING_SIZE = 3; // Minimum bounding box size to prevent zooming in too much with few blocks
-const SPAWN_ZOOM_PADDING = 1; // Minimal extra padding during spawn
-const SPAWN_ZOOM_MULTIPLIER = 1.05; // Minimal additional multiplier for spawn zoom
-// Auto-zoom multiplier: platform-aware - larger on desktop (zoom out more), smaller on mobile (zoom in more)
-// Desktop needs more zoom-out to prevent blocks going out of frame
-// Mobile can zoom in more to reduce wasted space on sides
-const AUTO_ZOOM_MULTIPLIER_DESKTOP = 1.12; // Desktop: 1.12 for comfortable fit above UI
-const AUTO_ZOOM_MULTIPLIER_MOBILE = 1.02; // Mobile: very tight fit (2% margin)
-// Desktop-specific padding multiplier to ensure all blocks stay visible
-const DESKTOP_ZOOM_PADDING_MULTIPLIER = 1.0; // No extra multiplier needed
-// During generation, computing a world-space bounding box by expanding each block object
-// (updateMatrixWorld + expandByObject) is expensive. Throttle it to avoid long rAF frames.
-const SPAWN_ZOOM_UPDATE_INTERVAL_MS = 120;
-const DRAG_SENSITIVITY = 0.0025; // Slightly increased for more responsive rotation
+// Camera system constants (Phase 1: centralized config — CAMERA_ZOOM_IMPLEMENTATION_PLAN.md)
+// Padding semantics: "half per axis"; we use effectivePadding * 2 in height/width distance formulas.
+const cameraConfig = {
+    MIN_RADIUS: 5,
+    MAX_RADIUS: 50,
+    MIN_RADIUS_SPAWN: 8,
+    MIN_ELEVATION: -Math.PI / 2 + 0.1,
+    MAX_ELEVATION: Math.PI / 2 - 0.1,
+    PADDING_DESKTOP: 1.5,
+    PADDING_MOBILE: 0.2,
+    PADDING_TABLET: 0.8,
+    PADDING_MIN: 0.15,
+    PADDING_MAX: 2.0,
+    COMFORT_HEIGHT_DESKTOP: 0.5,
+    COMFORT_HEIGHT_MOBILE: 0,
+    MULTIPLIER_DESKTOP: 1.12,
+    MULTIPLIER_MOBILE: 1.02,
+    MULTIPLIER_TABLET: 1.05,
+    STATS_BAR_TOP: 20,
+    STATS_BAR_HEIGHT: 52,
+    GAME_CONTROLS_BOTTOM_DESKTOP: 20,
+    GAME_CONTROLS_BOTTOM_MOBILE: 12,
+    GAME_CONTROLS_HEIGHT_DESKTOP: 88,
+    GAME_CONTROLS_HEIGHT_MOBILE: 80,
+    PLAYABLE_BREAKPOINT_PX: 600,
+    ASPECT_CLAMP_MIN: 0.5,
+    ASPECT_CLAMP_MAX: 2.0,
+    AUTO_ZOOM_MIN_BOUNDING_SIZE: 3,
+    SPAWN_ZOOM_PADDING: 1,
+    SPAWN_ZOOM_MULTIPLIER: 1.05,
+    SPAWN_ZOOM_UPDATE_INTERVAL_MS: 120,
+    AUTO_ZOOM_UPDATE_INTERVAL_MS: 200,
+    AUTO_ZOOM_DISABLE_DURATION_MS: 5000,
+    DRAG_SENSITIVITY: 0.0025,
+    TOUCH_DRAG_SENSITIVITY: 0.004,
+    SMOOTHING_RADIUS: 0.1,
+    SMOOTHING_ORBIT: 0.15,
+    SMOOTHING_SPAWN: 0.25,
+    SMOOTHING_TOWER_OFFSET: 0.2,
+    SMOOTHING_TOWER_OFFSET_SPAWN: 0.3,
+    SNAP_EPS: 1e-4,
+};
 
-// Mobile touch rotation sensitivity (higher for faster rotation on mobile)
-const TOUCH_DRAG_SENSITIVITY = 0.004; // 60% faster than desktop for better mobile experience
+// Aliases for existing usages (source of truth: cameraConfig)
+const MIN_RADIUS = cameraConfig.MIN_RADIUS;
+const MAX_RADIUS = cameraConfig.MAX_RADIUS;
+const MIN_ELEVATION = cameraConfig.MIN_ELEVATION;
+const MAX_ELEVATION = cameraConfig.MAX_ELEVATION;
+const ZOOM_PADDING = cameraConfig.PADDING_DESKTOP;
+const ZOOM_PADDING_MOBILE = cameraConfig.PADDING_MOBILE;
+const AUTO_ZOOM_MIN_BOUNDING_SIZE = cameraConfig.AUTO_ZOOM_MIN_BOUNDING_SIZE;
+const SPAWN_ZOOM_PADDING = cameraConfig.SPAWN_ZOOM_PADDING;
+const SPAWN_ZOOM_MULTIPLIER = cameraConfig.SPAWN_ZOOM_MULTIPLIER;
+const AUTO_ZOOM_MULTIPLIER_DESKTOP = cameraConfig.MULTIPLIER_DESKTOP;
+const AUTO_ZOOM_MULTIPLIER_MOBILE = cameraConfig.MULTIPLIER_MOBILE;
+const SPAWN_ZOOM_UPDATE_INTERVAL_MS = cameraConfig.SPAWN_ZOOM_UPDATE_INTERVAL_MS;
+const AUTO_ZOOM_UPDATE_INTERVAL_MS = cameraConfig.AUTO_ZOOM_UPDATE_INTERVAL_MS;
+const AUTO_ZOOM_DISABLE_DURATION_MS = cameraConfig.AUTO_ZOOM_DISABLE_DURATION_MS;
+const DRAG_SENSITIVITY = cameraConfig.DRAG_SENSITIVITY;
+const TOUCH_DRAG_SENSITIVITY = cameraConfig.TOUCH_DRAG_SENSITIVITY;
+const SNAP_EPS = cameraConfig.SNAP_EPS;
 
 // Spherical coordinates (target values - set by user input)
 let cameraRadius = 10;
@@ -957,10 +994,7 @@ let lastSpawnZoomUpdateMs = 0;
 // Auto-zoom bounding box and timing (for gameplay, excluding catapulted blocks)
 const _autoZoomBox = new THREE.Box3();
 const _autoZoomSize = new THREE.Vector3();
-const AUTO_ZOOM_UPDATE_INTERVAL_MS = 200; // Throttle expensive bounding box calculations
 let lastAutoZoomUpdateMs = 0;
-// User override: disable auto-zoom after manual zoom for this duration
-const AUTO_ZOOM_DISABLE_DURATION_MS = 5000; // 5 seconds
 let autoZoomDisabledUntilMs = 0; // Timestamp when auto-zoom should re-enable
 // Smoothed auto-zoom target: auto-zoom calculates desired radius, we smooth it before setting targetRadius
 let smoothedAutoZoomRadius = cameraRadius;
@@ -8587,7 +8621,6 @@ function animate() {
     // #endregion
 
     // Snap to target when close to avoid endless micro-updates (saves battery, stabilizes idle frames)
-    const SNAP_EPS = 1e-4;
     const dr = Math.abs(targetRadius - currentRadius);
     const da = Math.abs(targetAzimuth - currentAzimuth);
     const de = Math.abs(targetElevation - currentElevation);
