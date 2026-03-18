@@ -56,6 +56,92 @@ function compareVersions(v1, v2) {
 let swRegistration = null;
 let updateCheckInterval = null;
 
+// -------------------------------------------------------------------
+
+// --- CRITICAL GAME STATE AND CONFIGURATION (Moved to top to prevent TDZ errors) ---
+// Constants
+const directions = [
+    { x: 1, z: 0 },   // East
+    { x: -1, z: 0 },  // West
+    { x: 0, z: 1 },   // South
+    { x: 0, z: -1 }   // North
+];
+
+const MODE_FREE_FLOW = 'free_flow';
+const MODE_TIME_CHALLENGE = 'time_challenge';
+const MODE_INFERNO = 'inferno';
+
+const GAME_MODE_KEY = 'jarrows_game_mode';
+const TIME_RULES_SEEN_KEY = 'jarrows_time_rules_seen';
+const INFERNO_RULES_SEEN_KEY = 'jarrows_inferno_rules_seen';
+const STORAGE_KEY = 'jarrows_progress';
+const STORAGE_KEY_TIME_CHALLENGE = 'jarrows_progress_time_challenge';
+const STORAGE_KEY_INFERNO = 'jarrows_progress_inferno';
+
+function getStorageKey() {
+    if (typeof gameMode !== 'undefined') {
+        if (gameMode === MODE_FREE_FLOW) return STORAGE_KEY;
+        if (gameMode === MODE_TIME_CHALLENGE) return STORAGE_KEY_TIME_CHALLENGE;
+    }
+    return STORAGE_KEY_INFERNO;
+}
+
+const STORAGE_HIGHEST_LEVEL_KEY = 'jarrows_highest_level';
+const STORAGE_VERSION_KEY = 'jarrows_storage_version';
+const RESET_FLAG_KEY = 'jarrows_reset_completed';
+const MIGRATION_TO_INFERNO_KEY = 'jarrows_migrated_to_inferno';
+const CURRENT_STORAGE_VERSION = '2.0';
+const TIME_CHALLENGE_START_SECONDS = 30;
+
+// State Variables
+let gridSize = 7;
+const BASE_PLATE_MARGIN = 2; // Extra margin on each side of the grid
+const cubeSize = 1;
+const towerCenter = new THREE.Vector3(3.5, 0, 3.5);
+let blocks = [];
+window.gameBlocks = blocks; // Expose globally
+let base, gridHelper;
+
+let currentLevel = 0;
+function setCurrentLevel(val) {
+    currentLevel = val;
+    const levelValueElement = document.getElementById('level-value');
+    if (levelValueElement) levelValueElement.textContent = val;
+}
+let isGeneratingLevel = false;
+let levelCompleteShown = false;
+let remainingSpins = 3;
+
+let gameMode = 'inferno';
+let timeLeftSec = 30;
+function setTimeLeftSec(val) { timeLeftSec = val; }
+let timeChallengeActive = false;
+
+let towerPositionOffset = new THREE.Vector3(0, 0, 0);
+let targetTowerPositionOffset = new THREE.Vector3(0, 0, 0);
+
+let countdownTimerPlane = null;
+let countdownTimerCanvas = null;
+let countdownTimerTexture = null;
+let countdownTimerMaterial = null;
+let countdownDisplayedValue = 30;
+let countdownTransitionProgress = 0;
+
+let timeChallengeRemovals = 0;
+let timeChallengeResidualSec = 0;
+let timeChallengeInitialTime = 0;
+let timeChallengeTimeCollected = 0;
+let timeChallengeTimeCollectedAllTime = 0;
+let timeChallengeTimeCarriedOverAllTime = 0;
+let timeChallengeSpinCost = 0;
+let timeChallengeCarriedOverHistory = [];
+let timeFreezeReasons = new Set();
+let timeUpShown = false;
+
+let _isStartingNewGame = false;
+let removeModeActive = false;
+// -------------------------------------------------------------------
+
 // Show update notification modal
 function showUpdateNotification() {
     const modal = document.getElementById('update-notification-modal');
@@ -253,6 +339,7 @@ const isMobileLike = (() => {
         return false;
     }
 })();
+window.isMobileLike = isMobileLike; // Expose for global access (e.g. Block.js)
 
 // Quality presets (Battery / Balanced / Performance)
 function loadQualityPreset() {
@@ -518,46 +605,80 @@ const lights = createLights(scene);
 if (typeof window !== 'undefined') {
     window.lights = lights;
 }
-const { base, gridHelper } = createGrid(scene);
-const gridSize = 7;
-const cubeSize = 1;
+// Create grid and base plate
+const gridData = createGrid(scene);
+base = gridData.base;
+gridHelper = gridData.gridHelper;
 
 // Mystical view state
 let isMysticalView = false;
-
-// Calculate tower center (center of the 7x7 grid)
-const towerCenter = new THREE.Vector3(3.5, 0, 3.5);
 
 // Create tower group - contains base, grid, and all blocks
 const towerGroup = new THREE.Group();
 towerGroup.name = 'towerGroup';
 scene.add(towerGroup);
 
-// Move base and gridHelper into towerGroup
+/**
+ * Update grid size based on level
+ * Level 1-29: 7x7
+ * Level 30-39: 8x8
+ * Level 40-49: 9x9
+ * ... Level 150+: 20x20
+ */
+function updateGridSize(level) {
+    const oldSize = gridSize;
+    // Formula: level 1-29: 7, level 30+: 7 + floor((level-20)/10)
+    gridSize = Math.min(20, (level < 30) ? 7 : (7 + Math.floor((level - 20) / 10)));
+    
+    if (gridSize !== oldSize || level === 0) { // Also update for level 0 to ensure initial state
+        console.log(`Grid size updated: ${oldSize} -> ${gridSize} for level ${level}`);
+        
+        // Update tower center (center of the gridSize x gridSize grid)
+        if (towerCenter) towerCenter.set(gridSize / 2, 0, gridSize / 2);
+        
+        // Update visual base plate and grid helper
+        // They were created with size 21 in scene.js
+        const visualBaseSize = 21;
+        
+        // Base plate is larger than the grid by BASE_PLATE_MARGIN on each side
+        const basePlateVisualSize = gridSize + (BASE_PLATE_MARGIN * 2);
+        const baseScale = basePlateVisualSize / visualBaseSize;
+        if (base) base.scale.set(baseScale, 1, baseScale);
+        
+        // Recreate grid helper for the new size to ensure 1x1 alignment and full coverage
+        if (gridHelper) {
+            if (gridHelper.parent) gridHelper.parent.remove(gridHelper);
+            if (gridHelper.geometry) gridHelper.geometry.dispose();
+            if (gridHelper.material) gridHelper.material.dispose();
+        }
+        
+        // Create new grid helper with basePlateVisualSize size and divisions for 1x1 alignment
+        gridHelper = new THREE.GridHelper(basePlateVisualSize, basePlateVisualSize, 0x888888, 0x666666);
+        gridHelper.position.set(0, 0.01, 0);
+        if (gridHelper.material) {
+            gridHelper.material.transparent = true;
+            gridHelper.material.opacity = 0.8;
+        }
+        towerGroup.add(gridHelper);
+        
+        // Update countdown timer plane to match the larger base plate
+        if (countdownTimerPlane) {
+            countdownTimerPlane.scale.set(baseScale, baseScale, 1);
+        }
+    }
+}
+
+// Move base and initial gridHelper into towerGroup
 // Reset their positions to be relative to towerGroup origin (0,0,0)
-// They were positioned at (3.5, y, 3.5) in world space, but now need to be relative to towerGroup
 scene.remove(base);
 scene.remove(gridHelper);
 
 // Reset positions relative to towerGroup origin
 base.position.set(0, -0.1, 0); // Base at origin, slightly below ground
-// GridHelper creates lines centered at its position
-// With size=21 and divisions=21, lines are at: -10.5, -9.5, ..., -0.5, 0.5, ..., 9.5, 10.5 (relative to grid center)
-// Blocks are at: -3.0, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0 (centers, relative to towerGroup)
-// Cell boundaries should be at: -3.5, -2.5, -1.5, -0.5, 0.5, 1.5, 2.5, 3.5 (relative to towerGroup)
-// GridHelper lines at half-integers already match cell boundaries when centered at (0, 0.01, 0)
 gridHelper.position.set(0, 0.01, 0);
 
 towerGroup.add(base);
 towerGroup.add(gridHelper);
-
-// Countdown timer display (only shown in time-based modes)
-let countdownTimerPlane = null;
-let countdownTimerCanvas = null;
-let countdownTimerTexture = null;
-let countdownTimerMaterial = null;
-let countdownDisplayedValue = 30; // Current displayed value (for smooth transitions)
-let countdownTransitionProgress = 0; // Transition progress between values (0-1)
 
 // Countdown bounce animation state
 let lastCountdownValue = 30; // Track number changes for bounce effect
@@ -794,11 +915,6 @@ function toggleMysticalView(enabled) {
 // Expose toggle function globally
 window.toggleMysticalView = toggleMysticalView;
 
-// Tower position offset (for panning/reframing)
-let towerPositionOffset = new THREE.Vector3(0, 0, 0);
-// Target tower position offset for smooth interpolation (prevents camera jumps)
-let targetTowerPositionOffset = new THREE.Vector3(0, 0, 0);
-
 // Function to center the tower (reset pan offset)
 function centerTower() {
     towerPositionOffset.set(0, 0, 0);
@@ -899,8 +1015,8 @@ function calculateInitialCameraPosition() {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
 
-    // Base plate dimensions
-    const basePlateSize = gridSize * cubeSize; // 7 units
+    // Base plate dimensions including margin
+    const basePlateSize = gridSize * cubeSize + (BASE_PLATE_MARGIN * 2);
     const basePlateDiagonal = Math.sqrt(basePlateSize * basePlateSize * 2);
 
     // Calculate required distance to fit base plate in view
@@ -1159,12 +1275,6 @@ if (profileToggle) {
     });
 }
 
-// Create random blocks
-const blocks = [];
-
-// Expose blocks array for toggle handlers
-window.gameBlocks = blocks;
-
 // Expose overlap fixing function for debugging
 window.fixOverlaps = () => {
     const result = checkAndFixAllOverlaps(blocks, gridSize);
@@ -1187,102 +1297,6 @@ window.debugJumpToLevel = async (level) => {
     saveProgress();
     await generateSolvablePuzzle(level, false);
 };
-
-const directions = [
-    { x: 1, z: 0 },   // East
-    { x: -1, z: 0 },  // West
-    { x: 0, z: 1 },   // South
-    { x: 0, z: -1 }   // North
-];
-
-// Leveling system
-let currentLevel = 0;
-let _isStartingNewGame = false; // Flag to allow setting currentLevel to 0 only when starting new game
-
-// Safeguard function to set currentLevel - prevents accidental reset to 0
-// Always use inferno storage key (all modes have been migrated to inferno)
-function getStorageKey() {
-    return STORAGE_KEY_INFERNO;
-}
-
-function setCurrentLevel(newLevel, allowZero = false) {
-    if (newLevel === 0 && !allowZero && !_isStartingNewGame) {
-        const stack = new Error().stack;
-        console.error(`🚨 BLOCKED: Attempted to set currentLevel to 0!`);
-        console.error(`  Current level: ${currentLevel}`);
-        console.error(`  New level: ${newLevel}`);
-        console.error(`  Stack trace:`, stack);
-        // Try to recover from localStorage
-        const storageKey = getStorageKey();
-        const savedLevel = parseInt(localStorage.getItem(storageKey) || '0', 10);
-        if (savedLevel > 0) {
-            console.warn(`🚨 Recovery: Using saved level ${savedLevel} instead of 0`);
-            currentLevel = savedLevel;
-            return;
-        }
-        console.error(`🚨 Cannot recover - all sources invalid. Blocking set to 0.`);
-        return; // Block the assignment
-    }
-    currentLevel = newLevel;
-}
-let isGeneratingLevel = false; // Prevent multiple simultaneous level generations
-let levelCompleteShown = false; // Prevent showing level complete modal multiple times
-
-// Remove mode state
-let removeModeActive = false;
-
-// Random spin counter (3 spins per game)
-let remainingSpins = 3;
-
-// Game mode (persisted)
-const GAME_MODE_KEY = 'jarrows_game_mode'; // 'free_flow' | 'time_challenge' | 'inferno'
-const TIME_RULES_SEEN_KEY = 'jarrows_time_rules_seen';
-const INFERNO_RULES_SEEN_KEY = 'jarrows_inferno_rules_seen';
-// Mode constants (kept for backward compatibility, but only inferno is used)
-const MODE_FREE_FLOW = 'free_flow'; // Deprecated - all users migrated to inferno
-const MODE_TIME_CHALLENGE = 'time_challenge'; // Deprecated - all users migrated to inferno
-const MODE_INFERNO = 'inferno';
-
-// Always start with inferno mode (migration will preserve user's level)
-let gameMode = MODE_INFERNO;
-
-// Time Challenge (survival) state
-const TIME_CHALLENGE_START_SECONDS = 30;
-let timeLeftSec = TIME_CHALLENGE_START_SECONDS; // carryover across levels in this mode
-
-// Helper function to update timeLeftSec and keep window.timeLeftSec in sync
-function setTimeLeftSec(value) {
-    timeLeftSec = value;
-    if (typeof window !== 'undefined') {
-        window.timeLeftSec = timeLeftSec;
-    }
-}
-
-// Initialize window.timeLeftSec
-if (typeof window !== 'undefined') {
-    window.timeLeftSec = timeLeftSec;
-}
-let timeChallengeActive = false;
-let timeChallengeRemovals = 0; // blocks removed in current run
-let timeChallengeResidualSec = 0; // Time left from previous level (carries over to next level)
-let timeChallengeInitialTime = 0; // Initial time when level started (for calculating time collected)
-let timeChallengeTimeCollected = 0; // Total time collected from block removals this level
-let timeChallengeTimeCollectedAllTime = 0; // Cumulative time collected across all levels in this run
-let timeChallengeTimeCarriedOverAllTime = 0; // Cumulative time carried over across all levels in this run
-let timeChallengeSpinCost = 0; // Total time spent on spins this level
-let timeChallengeCarriedOverHistory = []; // Array of { level, carriedOver, unused, collected, spin } for graph
-let timeFreezeReasons = new Set();
-let timeUpShown = false;
-
-// Progress persistence using localStorage
-const STORAGE_KEY = 'jarrows_progress';
-const STORAGE_KEY_TIME_CHALLENGE = 'jarrows_progress_time_challenge'; // Separate key for Time Challenge
-const STORAGE_KEY_INFERNO = 'jarrows_progress_inferno'; // Separate key for Inferno
-const STORAGE_HIGHEST_LEVEL_KEY = 'jarrows_highest_level';
-const STORAGE_VERSION_KEY = 'jarrows_storage_version';
-const RESET_FLAG_KEY = 'jarrows_reset_completed';
-const MIGRATION_TO_INFERNO_KEY = 'jarrows_migrated_to_inferno';
-const CURRENT_STORAGE_VERSION = '2.0'; // Increment to reset all users
 
 // Migrate all users to inferno mode, preserving their highest level from any previous mode
 function migrateToInfernoMode() {
@@ -1664,7 +1678,7 @@ async function ensureModeSelected({ forcePrompt = false } = {}) {
 function timeChallengeResetRun() {
     // This is called when starting a NEW RUN (level 1, fresh start)
     // For new levels within a run, use timeChallengeStartNewLevel() instead
-    setTimeLeftSec(TIME_CHALLENGE_START_SECONDS);
+    timeLeftSec = TIME_CHALLENGE_START_SECONDS;
     timeChallengeInitialTime = TIME_CHALLENGE_START_SECONDS;
     timeChallengeTimeCollected = 0;
     timeChallengeTimeCollectedAllTime = 0;
@@ -2525,16 +2539,26 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                 // Prioritize blocks that face outward (toward edges) for easier gameplay
                 // Use difficulty config if available (Inferno mode), otherwise default to 70%
                 let randomDir;
-                const outwardPercentage = difficultyConfig ? difficultyConfig.outwardPercentage : 0.7;
+                const outwardPercentage = difficultyConfig ? difficultyConfig.outwardPercentage : getInfernoDifficultyConfig(level).outwardPercentage;
                 const preferOutward = Math.random() < outwardPercentage;
+                const bestOutwardDir = getBestOutwardDirection(cell.x, cell.z, gridSize);
+
                 if (preferOutward) {
-                    // Try to get a direction pointing toward the nearest edge
-                    const bestDir = getBestOutwardDirection(cell.x, cell.z, gridSize);
-                    // 80% chance to use best direction, 20% chance to use random
-                    randomDir = Math.random() < 0.8 ? bestDir : directions[Math.floor(Math.random() * directions.length)];
+                    // 80% chance to use best outward direction, 20% chance to use random
+                    randomDir = Math.random() < 0.8 ? bestOutwardDir : directions[Math.floor(Math.random() * directions.length)];
                 } else {
-                    randomDir = directions[Math.floor(Math.random() * directions.length)];
+                    // Prefer INWARD direction (opposite of outward)
+                    // If bestOutwardDir is undefined/null (e.g. center cell), fallback to random
+                    if (bestOutwardDir) {
+                        // Find the exact inverse direction object from the directions array
+                        const inwardDir = directions.find(d => d.x === -bestOutwardDir.x && d.z === -bestOutwardDir.z) || directions[Math.floor(Math.random() * directions.length)];
+                        // 80% chance to use inward direction, 20% chance to use random
+                        randomDir = Math.random() < 0.8 ? inwardDir : directions[Math.floor(Math.random() * directions.length)];
+                    } else {
+                        randomDir = directions[Math.floor(Math.random() * directions.length)];
+                    }
                 }
+
 
                 // Use difficulty config for vertical percentage if available (Inferno mode), otherwise 50%
                 const verticalPercentage = difficultyConfig ? difficultyConfig.verticalPercentage : 0.5;
@@ -3543,6 +3567,10 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
         return;
     }
 
+    // Update grid size before generation
+    updateGridSize(level);
+
+
     // ABSOLUTE HARD STOP: If isRestart and level is 0, reject immediately
     // This is the last line of defense - should never be reached if restartCurrentLevel works correctly
     if (isRestart && level <= 0) {
@@ -4063,19 +4091,34 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
                                     // Check if new position doesn't overlap with other blocks
                                     let canMove = true;
                                     const upperCells = getBlockCells(upperBlock);
+                                    
+                                    const upperCubeSize = upperBlock.cubeSize || 1;
+                                    const upperHeight = upperBlock.isVertical ? upperBlock.length * upperCubeSize : upperCubeSize;
+                                    const upperYBottom = upperBlock.yOffset || 0;
+                                    const upperYTop = upperYBottom + upperHeight;
+
                                     for (const otherBlock of allBlocks) {
-                                        if (otherBlock === upperBlock || otherBlock.yOffset !== upperBlock.yOffset) continue;
-                                        const otherCells = getBlockCells(otherBlock);
-                                        for (const upperCell of upperCells) {
-                                            const actualX = newX + (upperCell.x - upperBlock.gridX);
-                                            const actualZ = newZ + (upperCell.z - upperBlock.gridZ);
-                                            for (const otherCell of otherCells) {
-                                                if (actualX === otherCell.x && actualZ === otherCell.z) {
-                                                    canMove = false;
-                                                    break;
+                                        if (otherBlock === upperBlock) continue;
+                                        
+                                        const otherCubeSize = otherBlock.cubeSize || 1;
+                                        const otherHeight = otherBlock.isVertical ? otherBlock.length * otherCubeSize : otherCubeSize;
+                                        const otherYBottom = otherBlock.yOffset || 0;
+                                        const otherYTop = otherYBottom + otherHeight;
+                                        
+                                        const Y_OVERLAP_EPS = 0.001;
+                                        if ((upperYTop - otherYBottom > Y_OVERLAP_EPS) && (otherYTop - upperYBottom > Y_OVERLAP_EPS)) {
+                                            const otherCells = getBlockCells(otherBlock);
+                                            for (const upperCell of upperCells) {
+                                                const actualX = newX + (upperCell.x - upperBlock.gridX);
+                                                const actualZ = newZ + (upperCell.z - upperBlock.gridZ);
+                                                for (const otherCell of otherCells) {
+                                                    if (actualX === otherCell.x && actualZ === otherCell.z) {
+                                                        canMove = false;
+                                                        break;
+                                                    }
                                                 }
+                                                if (!canMove) break;
                                             }
-                                            if (!canMove) break;
                                         }
                                         if (!canMove) break;
                                     }
@@ -4314,6 +4357,51 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
 // Move history for undo functionality
 let moveHistory = [];
 let totalMoves = 0; // Track total moves for the current level
+
+// Idle timers
+let lastInteractionTime = performance.now();
+let lastIdleDropTime = performance.now();
+
+function updateIdleTimers() {
+    const now = performance.now();
+    lastInteractionTime = now;
+    lastIdleDropTime = now;
+}
+
+function dropPenaltyTile() {
+    if (!blocks || blocks.length === 0) return;
+    const yOffset = Math.max(...blocks.map(b => b.yOffset)) + 1.2;
+    const directions = [{ x: 1, z: 0 }, { x: -1, z: 0 }, { x: 0, z: 1 }, { x: 0, z: -1 }];
+    const dir = directions[Math.floor(Math.random() * directions.length)];
+    const isVertical = dir.z !== 0;
+    
+    // Pick a random grid position near the center if possible, or just random
+    const targetX = Math.floor(Math.random() * gridSize);
+    const targetZ = Math.floor(Math.random() * gridSize);
+    
+    // Random length 1-3 for variety
+    const length = Math.floor(Math.random() * 3) + 1;
+    const block = new Block(
+        length,            // length
+        targetX,           // gridX
+        targetZ,           // gridZ
+        dir,               // direction
+        isVertical,        // isVertical
+        currentArrowStyle, // arrowStyle
+        scene,             // scene
+        physics,           // physics
+        gridSize,          // gridSize
+        cubeSize,          // cubeSize
+        yOffset,           // yOffset
+        currentLevel       // level
+    );
+    
+    scene.remove(block.group);
+
+    towerGroup.add(block.group);
+    blocks.push(block);
+    console.log('[Idle] Dropped penalty tile at', targetX, targetZ, yOffset);
+}
 
 // Debug investigation system: console log buffer and enhanced move history
 const DEBUG_MOVE_HISTORY_SIZE = 5; // Store last 5 moves for investigation
@@ -4579,6 +4667,7 @@ function recordMoveState(block, preMoveState) {
 
     // Track move for stats
     trackMove();
+    updateIdleTimers(); // Reset idle timers on move
 
     updateUndoButtonState();
 }
@@ -6227,25 +6316,9 @@ function recordNonMovingReport(report) {
     downloadJson(report, `jarrows_non_moving_${ts}.json`);
 }
 
-const restartLevelButton = document.getElementById('restart-level-button');
-if (restartLevelButton) {
-    restartLevelButton.addEventListener('click', async () => {
-        try {
-            await restartCurrentLevel();
-            updateUndoButtonState();
-        } catch (error) {
-            console.error('Error in restartCurrentLevel:', error);
-            alert(`Error restarting level: ${error.message}`);
-        }
-    });
-}
+// Removed restart-level-button listener - button deleted
 
-const newGameButton = document.getElementById('new-game-button');
-if (newGameButton) {
-    newGameButton.addEventListener('click', () => {
-        showNewGameModal();
-    });
-}
+// Removed new-game-button listener - button deleted
 
 const newGameConfirm = document.getElementById('new-game-confirm');
 if (newGameConfirm) {
@@ -6268,18 +6341,7 @@ if (newGameCancel) {
     });
 }
 
-const undoButton = document.getElementById('undo-button');
-if (undoButton) {
-    undoButton.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const didUndo = undoLastMove();
-        if (didUndo) {
-            updateUndoButtonState();
-        }
-    });
-}
-
+// Removed undo-button listener - button deleted
 // Update spin counter display
 function updateSpinCounterDisplay() {
     // #region agent log
@@ -6487,6 +6549,8 @@ function spinRandomBlocks() {
         updateSpinCounterDisplay();
     }
 
+    updateIdleTimers(); // Reset idle timers on spin
+
     // Track spin for stats
     console.log('[Spin] Tracking spin for stats...');
     try {
@@ -6534,13 +6598,9 @@ function spinRandomBlocks() {
 }
 
 // Pause button + pause modal (applies to both modes; timer freezes in Time Challenge)
-const pauseButton = document.getElementById('pause-button');
-if (pauseButton) {
-    pauseButton.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        showPauseModal();
-    });
+// Removed pause-button listener - button deleted
+function updatePauseButtonState() {
+    // No-op
 }
 
 const pauseResumeButton = document.getElementById('pause-resume');
@@ -8210,6 +8270,8 @@ function animate() {
         setCountdownTimerVisible(false);
     }
 
+
+
     // Update block lock states (unlock blocks when lock duration expires)
     for (const block of blocks) {
         if (block && typeof block.updateLockState === 'function') {
@@ -8638,6 +8700,37 @@ function animate() {
     const hasPhysicsBlocks = cachedHasPhysicsBlocks;
     const isActiveFrame = interacting || hasFallingBlocks || cameraStillMoving || hasActiveAnimations || isGeneratingLevel;
     nextFrameDelayMs = isActiveFrame ? ACTIVE_FRAME_MS : IDLE_FRAME_MS;
+
+    // Idle Checks (3s for spin button animation, 10s for penalty drop)
+    // Placed after hasFallingBlocks is declared to avoid ReferenceError
+    const canCheckIdle = !isTimeFrozen() && !isGeneratingLevel && !isPaused && blocks.length > 0;
+    if (canCheckIdle) {
+        const idleSeconds = (currentTime - lastInteractionTime) / 1000;
+        
+        // Spin Button idle animation
+        const diceBtn = document.getElementById('dice-button');
+        if (diceBtn) {
+            if (idleSeconds > 3 && !hasFallingBlocks && remainingSpins > 0) {
+                diceBtn.classList.add('spin-idle-anim');
+            } else {
+                diceBtn.classList.remove('spin-idle-anim');
+            }
+        }
+        
+        // 10-second idle tile drop (1 per second after 10s)
+        if (idleSeconds > 10) {
+            if (currentTime - lastIdleDropTime > 1000) {
+                lastIdleDropTime = currentTime;
+                dropPenaltyTile();
+            }
+        } else {
+            lastIdleDropTime = currentTime; // defer dropping until > 10s
+        }
+    } else {
+        // Reset timers so they don't trigger immediately when game unpauses
+        lastInteractionTime = currentTime;
+        lastIdleDropTime = currentTime;
+    }
 
     // Keep shadow updates "warm" while the camera is settling (smoothing) and for a short cooldown after interaction.
     // This prevents noticeable shadow direction/strength jumps when updates are gated too aggressively.

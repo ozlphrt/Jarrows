@@ -44,46 +44,16 @@ function lerp(start, end, t) {
  * Lower percentage = more inward blocks = harder
  */
 function getDirectionalComplexity(level) {
-    // Base values at different level ranges
-    let baseValue;
-    if (level <= 5) {
-        baseValue = 0.70; // 70% outward
-    } else if (level <= 10) {
-        // Transition from 70% to 50% over levels 6-10
-        const t = (level - 5) / 5;
-        baseValue = lerp(0.70, 0.50, t);
-    } else if (level <= 25) {
-        // Transition from 50% to 30% over levels 11-25
-        const t10 = getMilestoneTransition(level, 10, 4);
-        const t25 = getMilestoneTransition(level, 25, 4);
-        if (level < 14) {
-            // Still transitioning from 10 milestone
-            baseValue = lerp(0.50, 0.30, t10);
-        } else {
-            // Transitioning to 25 milestone
-            baseValue = lerp(0.30, 0.15, t25);
-        }
-    } else if (level <= 50) {
-        // Transition from 30% to 15% over levels 26-50
-        const t25 = getMilestoneTransition(level, 25, 4);
-        const t50 = getMilestoneTransition(level, 50, 4);
-        if (level < 29) {
-            // Still transitioning from 25 milestone
-            baseValue = lerp(0.30, 0.15, t25);
-        } else {
-            // Transitioning to 50 milestone
-            baseValue = lerp(0.15, 0.10, t50);
-        }
+    // User requested: Level 10 most are outer facing (90%), Level 50 most are inward (10% outward)
+    if (level <= 10) {
+        return 0.90;
+    } else if (level >= 50) {
+        return 0.10;
     } else {
-        // Post-50: continue decreasing at 50% rate
-        const t50 = getMilestoneTransition(50, 50, 4);
-        const baseAt50 = lerp(0.15, 0.10, t50);
-        const scaling = getPost50Scaling(level);
-        // Continue decreasing, but at 50% rate (minimum 5%)
-        baseValue = Math.max(0.05, baseAt50 - ((level - 50) * 0.01 * (scaling - 1.0)));
+        // Linear transition between level 11 and 49
+        const t = (level - 10) / (50 - 10);
+        return lerp(0.90, 0.10, t);
     }
-
-    return Math.max(0.05, Math.min(0.70, baseValue));
 }
 
 /**

@@ -17,30 +17,34 @@ const syntheticSounds = {
      * Evokes air moving over smooth glass.
      */
     'syntheticSpin': (ctx, destination, volume) => {
-        const noise = ctx.createBufferSource();
-        const bufferSize = ctx.sampleRate * 2;
+        // Noise burst - 0.75 seconds of audio data
+        const duration = 0.75;
+        const bufferSize = Math.ceil(ctx.sampleRate * duration);
         const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
         const data = buffer.getChannelData(0);
         for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+
+        const noise = ctx.createBufferSource();
         noise.buffer = buffer;
 
         const filter = ctx.createBiquadFilter();
         filter.type = "highpass";
-        filter.frequency.setValueAtTime(8000, ctx.currentTime);
-        filter.frequency.exponentialRampToValueAtTime(1000, ctx.currentTime + 0.5);
+        filter.frequency.setValueAtTime(6000, ctx.currentTime);
+        filter.frequency.exponentialRampToValueAtTime(800, ctx.currentTime + duration);
 
         const env = ctx.createGain();
-        // The tester used 0.3 as base, we multiply by the passed volume
-        const peakGain = 0.3 * (volume / 0.5); // Normalize relative to default 0.5
+        const peakGain = 0.12 * (volume / 0.5);
 
         env.gain.setValueAtTime(0, ctx.currentTime);
-        env.gain.linearRampToValueAtTime(peakGain, ctx.currentTime + 0.05);
-        env.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
+        env.gain.linearRampToValueAtTime(peakGain, ctx.currentTime + 0.02);
+        env.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
 
         noise.connect(filter);
         filter.connect(env);
         env.connect(destination);
         noise.start();
+        // Explicitly stop after duration to prevent continued playback
+        noise.stop(ctx.currentTime + duration);
 
         return noise;
     }

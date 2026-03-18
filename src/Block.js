@@ -3446,7 +3446,8 @@ export class Block {
 
         // Constant speed for all block movements (linear interpolation)
         // Speed: pixels per millisecond (adjust for desired speed)
-        const constantSpeed = 0.05; // pixels per ms (50 pixels per second) - slow, visible motion
+        // Catapult blocks move 2X faster (0.10) while regular moves stay at 0.05
+        const constantSpeed = isCatapult ? 0.10 : 0.05; 
 
         // Calculate collision position for head-on collision animation
         let collisionX, collisionZ, collisionProgress = 0;
@@ -3697,7 +3698,8 @@ export class Block {
                     if (isCatapult) {
                         // CATAPULT: explosive launch with high horizontal velocity
                         // Negative velocity to ensure immediate falling (gravity will accelerate it)
-                        const catapultSpeed = 45.0; // Synchronized with animation speed (0.05px/ms)
+                        const mobileBoost = (typeof window !== 'undefined' && window.isMobileLike) ? 1.5 : 1.0;
+                        const catapultSpeed = 65.0 * mobileBoost; // Increased from 45.0, with mobile boost
 
                         // Apply velocity in the direction of the arrow
                         velX = dirX * catapultSpeed;
@@ -3711,7 +3713,8 @@ export class Block {
                         this.fall(velX, velZ, velY);
                     } else {
                         // Normal fall: use direction with moderate speed
-                        const fallSpeed = 20.0; // Increased for natural continuation
+                        const mobileBoost = (typeof window !== 'undefined' && window.isMobileLike) ? 1.5 : 1.0;
+                        const fallSpeed = 35.0 * mobileBoost; // Increased from 20.0, with mobile boost
 
                         // Apply velocity in the direction of the arrow
                         velX = dirX * fallSpeed;

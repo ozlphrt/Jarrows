@@ -60,7 +60,6 @@
         /* Minimalist Stats Bar - Side by Side Design */
         #stats-bar {
             position: fixed;
-            top: 20px;
             left: 50%;
             transform: translateX(-50%);
             z-index: 1000;
@@ -811,18 +810,19 @@
             }
 
             /* Time Challenge & Inferno: maintain large timer on mobile */
+            /* Jarrows v2 - Maintain row layout at bottom */
             body.mode-time-challenge #stats-bar,
             body.mode-inferno #stats-bar {
                 left: 50%;
                 transform: translateX(-50%);
                 right: auto;
                 width: auto;
-                padding: 14px 40px;
-                gap: 20px;
+                padding: 8px 16px;
+                gap: 12px;
                 justify-content: center;
-                overflow: hidden;
-                max-width: min(85vw, 600px);
-                flex-direction: column;
+                overflow: visible;
+                max-width: 95vw;
+                flex-direction: row;
                 align-items: center;
             }
 
@@ -882,6 +882,7 @@
             }
 
             /* Time Challenge, Inferno & Free Flow: maintain large timer on small mobile */
+            /* Jarrows v2 - Maintain row layout on small devices */
             body.mode-time-challenge #stats-bar,
             body.mode-inferno #stats-bar,
             body.mode-free-flow #stats-bar {
@@ -889,12 +890,12 @@
                 transform: translateX(-50%);
                 right: auto;
                 width: auto;
-                padding: 12px 32px;
-                gap: 16px;
-                overflow: hidden;
-                max-width: min(85vw, 500px);
+                padding: 6px 12px;
+                gap: 8px;
+                overflow: visible;
+                max-width: 98vw;
                 justify-content: center;
-                flex-direction: column;
+                flex-direction: row;
                 align-items: center;
             }
 
@@ -1424,22 +1425,77 @@
             }
         }
 
-        /* Minimal Floating Design Styles */
-        #game-controls {
+        #stats-bar {
             position: fixed;
-            bottom: 20px;
-            left: 0;
-            right: 0;
-            display: flex;
-            gap: 20px;
-            z-index: 1000;
-            justify-content: center;
-            align-items: flex-end;
-            padding: 0 20px;
-            box-sizing: border-box;
+            bottom: calc(24px + env(safe-area-inset-bottom));
+            top: auto;
+            left: 50%;
+            transform: translateX(-50%);
+            /* glassmorphism - v2.1 refined */
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(25px) saturate(180%);
+            -webkit-backdrop-filter: blur(25px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 20px;
+            padding: 8px 16px;
+            display: none;
+            align-items: center;
+            gap: 16px;
+            z-index: 1500;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+            transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            pointer-events: auto;
+        }
+
+        /* Combined controls inside stats-bar */
+        .stats-control-btn {
             background: transparent;
-            pointer-events: none;
-            /* Let clicks pass through the container gaps */
+            border: none;
+            color: rgba(255, 255, 255, 0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            padding: 6px;
+            border-radius: 12px;
+            transition: all 0.2s;
+            position: relative;
+        }
+
+        .stats-control-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+        }
+
+        .stats-control-btn .btn-icon {
+            width: 24px;
+            height: 24px;
+            stroke: currentColor;
+            stroke-width: 2;
+            fill: none;
+        }
+
+        #dice-button.stats-control-btn {
+            background: rgba(255, 255, 255, 0.15);
+            padding: 10px;
+            border-radius: 16px;
+        }
+
+        #dice-button.stats-control-btn .btn-icon {
+            width: 32px;
+            height: 32px;
+        }
+
+        @keyframes spinIdleAlert {
+            0%, 100% { transform: scale(1) rotate(0deg); }
+            20% { transform: scale(1.15) rotate(10deg); }
+            40% { transform: scale(1.15) rotate(-10deg); }
+            60% { transform: scale(1.15) rotate(10deg); }
+            80% { transform: scale(1.15) rotate(-10deg); }
+        }
+
+        .spin-idle-anim {
+            animation: spinIdleAlert 1s ease-in-out infinite;
         }
 
         .game-btn-minimal {
@@ -1579,22 +1635,109 @@
 
 <body>
     <div id="stats-bar" class="stats-bar">
+        <!-- Spin/Dice (Moved from game-controls) -->
+        <button class="stats-control-btn" id="dice-button" title="Spin (Shuffle Blocks)">
+            <svg class="btn-icon" viewBox="0 0 24 24">
+                <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" stroke-linecap="round"
+                    stroke-linejoin="round"></path>
+                <path d="M3 21v-5h5" stroke-linecap="round" stroke-linejoin="round"></path>
+                <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" stroke-linecap="round"
+                    stroke-linejoin="round"></path>
+                <path d="M21 3v5h-5" stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
+            <div id="spin-counter" class="spin-counter-badge">3</div>
+        </button>
+
+        <span id="spin-cost-separator" class="stats-separator" style="display: none;">|</span>
+        <span class="stats-item" id="spin-cost-container" style="display: none;">
+            <span class="stats-label">COST</span>
+            <span class="stats-value" id="spin-cost-value">-0m:00s</span>
+        </span>
+
+        <span class="stats-separator">|</span>
+
         <span class="stats-item" id="timer-container">
             <span class="stats-label">TIME</span>
             <span class="stats-value" id="timer-value">0m:00s</span>
             <span id="timer-delta" aria-hidden="true"
                 style="position: absolute; right: -20px; top: 50%; transform: translateY(-50%);"></span>
         </span>
+
         <span class="stats-separator">|</span>
+
         <span class="stats-item" id="level-container">
             <span class="stats-label">LEVEL</span>
             <span class="stats-value" id="timer-level">0</span>
         </span>
-        <span id="spin-cost-separator" class="stats-separator" style="display: none;">|</span>
-        <span class="stats-item" id="spin-cost-container" style="display: none;">
-            <span class="stats-label">COST</span>
-            <span class="stats-value" id="spin-cost-value">-0m:00s</span>
-        </span>
+
+        <span class="stats-separator">|</span>
+
+        <!-- Settings (Moved from game-controls) -->
+        <div id="settings-container" style="position: relative;">
+            <button class="stats-control-btn" id="settings-toggle" title="Settings">
+                <svg class="btn-icon" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="3" stroke-linecap="round" stroke-linejoin="round"></circle>
+                    <path
+                        d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"
+                        stroke-linecap="round" stroke-linejoin="round"></path>
+                </svg>
+            </button>
+            <div id="settings-menu"
+                style="position: absolute; bottom: 100%; right: 0; margin-bottom: 20px; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; padding: 8px; display: none; flex-direction: column; gap: 6px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3); pointer-events: auto;">
+                <button class="toggle-icon active" id="theme-toggle" title="Dark/Light Theme">
+                    <svg id="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" fill="none"></path>
+                    </svg>
+                </button>
+                <button class="toggle-icon" id="colors-toggle" title="Colored/White Blocks">
+                    <svg id="colors-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="3" width="7" height="7" rx="1" fill="white"></rect>
+                        <rect x="14" y="3" width="7" height="7" rx="1" fill="white"></rect>
+                        <rect x="14" y="14" width="7" height="7" rx="1" fill="white"></rect>
+                        <rect x="3" y="14" width="7" height="7" rx="1" fill="white"></rect>
+                    </svg>
+                </button>
+                <button class="toggle-icon active" id="audio-toggle" title="Audio On/Off">
+                    <svg id="audio-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M11 5L6 9H2v6h4l5 4V5z"></path>
+                        <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                    </svg>
+                </button>
+                <button class="toggle-icon active" id="auto-zoom-toggle" title="Auto Zoom On/Off">
+                    <svg id="auto-zoom-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="11" cy="11" r="8" fill="none"></circle>
+                        <path d="m21 21-4.35-4.35" fill="none"></path>
+                        <text x="11" y="15" font-family="system-ui, -apple-system, sans-serif" font-size="8"
+                            font-weight="700" fill="currentColor" text-anchor="middle" dominant-baseline="central"
+                            style="pointer-events: none;">A</text>
+                    </svg>
+                </button>
+                <button class="toggle-icon" id="quality-toggle" title="Quality Preset">
+                    <span id="quality-label">BAL</span>
+                </button>
+                <button class="toggle-icon" id="mode-toggle" title="Game Mode" style="display: none;">
+                    <span style="font-size: 11px; font-weight: 900; letter-spacing: 0.8px;">MODE</span>
+                </button>
+                <button class="toggle-icon" id="ver-toggle" title="Show build version">
+                    <span id="ver-label">VER</span>
+                </button>
+                <button class="toggle-icon" id="share-toggle" title="Share & Install">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path>
+                        <polyline points="16 6 12 2 8 6"></polyline>
+                        <line x1="12" y1="2" x2="12" y2="15"></line>
+                    </svg>
+                </button>
+                <button class="toggle-icon" id="fps-toggle" title="Show FPS">
+                    <span style="font-size: 11px; font-weight: 900; letter-spacing: 0.8px;">FPS</span>
+                </button>
+            </div>
+        </div>
     </div>
 
     <!-- Spin Time Cost Display - centered overlay, big and bold (outside stats bar for true centering) -->
@@ -1682,139 +1825,7 @@
     </div>
 
     <!-- Game Control Buttons (Minimal Floating Design) -->
-    <div id="game-controls">
-        <!-- Undo -->
-        <button class="game-btn-minimal" id="undo-button" title="Undo Last Move">
-            <svg class="btn-icon" viewBox="0 0 24 24">
-                <path d="M9 14 4 9l5-5" stroke-linecap="round" stroke-linejoin="round"></path>
-                <path d="M4 9h10a6 6 0 0 1 0 12h-1" stroke-linecap="round" stroke-linejoin="round"></path>
-            </svg>
-            <span class="btn-label">Undo</span>
-        </button>
-
-        <!-- Restart Level -->
-        <button class="game-btn-minimal" id="restart-level-button" title="Restart Level">
-            <svg class="btn-icon" viewBox="0 0 24 24">
-                <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" stroke-linecap="round"
-                    stroke-linejoin="round"></path>
-                <path d="M21 3v5h-5" stroke-linecap="round" stroke-linejoin="round"></path>
-                <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" stroke-linecap="round"
-                    stroke-linejoin="round"></path>
-                <path d="M3 21v-5h5" stroke-linecap="round" stroke-linejoin="round"></path>
-            </svg>
-            <span class="btn-label">Restart</span>
-        </button>
-
-        <!-- Pause -->
-        <button class="game-btn-minimal primary" id="pause-button" title="Pause Game">
-            <svg class="btn-icon" viewBox="0 0 24 24">
-                <rect x="6" y="5" width="4" height="14" rx="1" fill="none" stroke="currentColor"></rect>
-                <rect x="14" y="5" width="4" height="14" rx="1" fill="none" stroke="currentColor"></rect>
-            </svg>
-            <span class="btn-label">Pause</span>
-        </button>
-
-        <!-- Spin/Dice -->
-        <button class="game-btn-minimal primary" id="dice-button" title="Spin (Shuffle Blocks)">
-            <svg class="btn-icon" viewBox="0 0 24 24">
-                <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" stroke-linecap="round"
-                    stroke-linejoin="round"></path>
-                <path d="M3 21v-5h5" stroke-linecap="round" stroke-linejoin="round"></path>
-                <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" stroke-linecap="round"
-                    stroke-linejoin="round"></path>
-                <path d="M21 3v5h-5" stroke-linecap="round" stroke-linejoin="round"></path>
-            </svg>
-            <span class="btn-label">Spin</span>
-            <div id="spin-counter" class="spin-counter-badge">3</div>
-        </button>
-
-        <!-- New Game -->
-        <button class="game-btn-minimal" id="new-game-button" title="New Game">
-            <svg class="btn-icon" viewBox="0 0 24 24">
-                <line x1="12" y1="5" x2="12" y2="19" stroke-linecap="round" stroke-linejoin="round"></line>
-                <line x1="5" y1="12" x2="19" y2="12" stroke-linecap="round" stroke-linejoin="round"></line>
-            </svg>
-            <span class="btn-label">New Game</span>
-        </button>
-
-        <!-- Settings Container (Wrapper for Toggle/Menu) -->
-        <div id="settings-container" style="position: relative;">
-            <button class="game-btn-minimal" id="settings-toggle" title="Settings">
-                <svg class="btn-icon" viewBox="0 0 24 24">
-                    <circle cx="12" cy="12" r="3" stroke-linecap="round" stroke-linejoin="round"></circle>
-                    <path
-                        d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"
-                        stroke-linecap="round" stroke-linejoin="round"></path>
-                </svg>
-                <span class="btn-label">Settings</span>
-            </button>
-            <div id="settings-menu"
-                style="position: absolute; bottom: 100%; right: 0; margin-bottom: 12px; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; padding: 8px; display: none; flex-direction: column; gap: 6px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3); pointer-events: auto;">
-                <button class="toggle-icon active" id="theme-toggle" title="Dark/Light Theme">
-                    <svg id="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                        stroke-linecap="round" stroke-linejoin="round">
-                        <!-- Minimalist outlined crescent moon -->
-                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" fill="none"></path>
-                    </svg>
-                </button>
-                <button class="toggle-icon" id="colors-toggle" title="Colored/White Blocks">
-                    <svg id="colors-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                        stroke-linecap="round" stroke-linejoin="round">
-                        <!-- White blocks icon (default) -->
-                        <rect x="3" y="3" width="7" height="7" rx="1" fill="white"></rect>
-                        <rect x="14" y="3" width="7" height="7" rx="1" fill="white"></rect>
-                        <rect x="14" y="14" width="7" height="7" rx="1" fill="white"></rect>
-                        <rect x="3" y="14" width="7" height="7" rx="1" fill="white"></rect>
-                    </svg>
-                </button>
-                <button class="toggle-icon active" id="audio-toggle" title="Audio On/Off">
-                    <svg id="audio-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                        stroke-linecap="round" stroke-linejoin="round">
-                        <!-- Speaker icon -->
-                        <path d="M11 5L6 9H2v6h4l5 4V5z"></path>
-                        <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
-                    </svg>
-                </button>
-                <button class="toggle-icon active" id="auto-zoom-toggle" title="Auto Zoom On/Off">
-                    <svg id="auto-zoom-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                        stroke-linecap="round" stroke-linejoin="round">
-                        <!-- Magnifying glass with A in the middle -->
-                        <circle cx="11" cy="11" r="8" fill="none"></circle>
-                        <path d="m21 21-4.35-4.35" fill="none"></path>
-                        <text x="11" y="15" font-family="system-ui, -apple-system, sans-serif" font-size="8"
-                            font-weight="700" fill="currentColor" text-anchor="middle" dominant-baseline="central"
-                            style="pointer-events: none;">A</text>
-                    </svg>
-                </button>
-                <!-- Quality preset: cycles Balanced → Performance → Battery -->
-                <button class="toggle-icon" id="quality-toggle" title="Quality Preset">
-                    <span id="quality-label">BAL</span>
-                </button>
-                <button class="toggle-icon" id="mode-toggle" title="Game Mode" style="display: none;">
-                    <span style="font-size: 11px; font-weight: 900; letter-spacing: 0.8px;">MODE</span>
-                </button>
-                <!-- Framing control removed -->
-                <button class="toggle-icon" id="ver-toggle" title="Show build version">
-                    <span id="ver-label">VER</span>
-                </button>
-                <button class="toggle-icon" id="share-toggle" title="Share & Install">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                        stroke-linejoin="round">
-                        <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path>
-                        <polyline points="16 6 12 2 8 6"></polyline>
-                        <line x1="12" y1="2" x2="12" y2="15"></line>
-                    </svg>
-                </button>
-                <button class="toggle-icon" id="fps-toggle" title="Show FPS">
-                    <span style="font-size: 11px; font-weight: 900; letter-spacing: 0.8px;">FPS</span>
-                </button>
-                <div id="settings-version"
-                    style="display:none; padding: 6px 10px; font-size: 11px; font-weight: 800; letter-spacing: 0.6px; opacity: 0.85; color: white; user-select: text;">
-                    v—
-                </div>
-            </div>
-        </div>
-    </div>
+    <!-- Removed game-controls container - buttons moved to stats-bar or deleted -->
 
     <!-- Share & PWA Modal -->
     <div id="share-pwa-modal" class="extended-stats-modal-overlay" style="display:none; z-index: 3600;">
