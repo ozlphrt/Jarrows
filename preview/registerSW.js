@@ -1,0 +1,1 @@
+if('serviceWorker' in navigator) {window.addEventListener('load', () => {navigator.serviceWorker.register('/Jarrows/preview/sw.js', { scope: '/Jarrows/preview/' })})}
