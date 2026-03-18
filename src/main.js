@@ -4375,12 +4375,18 @@ function dropPenaltyTile() {
     const dir = directions[Math.floor(Math.random() * directions.length)];
     const isVertical = dir.z !== 0;
     
-    // Pick a random grid position near the center if possible, or just random
-    const targetX = Math.floor(Math.random() * gridSize);
-    const targetZ = Math.floor(Math.random() * gridSize);
-    
     // Random length 1-3 for variety
     const length = Math.floor(Math.random() * 3) + 1;
+
+    // Clamp spawn position so the block stays within grid bounds
+    // For +x direction, block occupies gridX to gridX+(length-1) 
+    // For +z direction, block occupies gridZ to gridZ+(length-1)
+    const isXAligned = Math.abs(dir.x) > 0;
+    const maxX = isXAligned ? gridSize - length : gridSize - 1;
+    const maxZ = !isXAligned && !isVertical ? gridSize - length : gridSize - 1;
+    const targetX = Math.floor(Math.random() * (maxX + 1));
+    const targetZ = Math.floor(Math.random() * (maxZ + 1));
+
     const block = new Block(
         length,            // length
         targetX,           // gridX
