@@ -45,15 +45,15 @@ function lerp(start, end, t) {
  */
 function getDirectionalComplexity(level) {
     // User requested: Globally reduce outward-looking blocks by half
-    // Level 10: 90% -> 45% outward, Level 50: 10% -> 5% outward
+    // Level 10: 45% -> 22.5% outward, Level 50: 5% -> 2.5% outward
     if (level <= 10) {
-        return 0.45;
+        return 0.225;
     } else if (level >= 50) {
-        return 0.05;
+        return 0.025;
     } else {
         // Linear transition between level 11 and 49 (halved values)
         const t = (level - 10) / (50 - 10);
-        return lerp(0.45, 0.05, t);
+        return lerp(0.225, 0.025, t);
     }
 }
 

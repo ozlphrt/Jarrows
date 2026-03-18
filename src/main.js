@@ -2793,9 +2793,12 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
     for (let x = 0; x < gridSize; x++) {
         if (blocksToPlace.length >= targetBlockCount) break;
         if (!isCellOccupied(x, 0)) {
-            // 90% chance of length 2-3, only use 1 as last resort
-            const length = Math.random() < 0.9 ? (Math.floor(Math.random() * 2) + 2) : 1; // 90% chance of 2-3
-            const isVertical = length > 1 && Math.random() < 0.7; // Prefer vertical for multi-block
+            // Respect outwardPercentage for edge blocks - only some point outward
+            const config = difficultyConfig || getInfernoDifficultyConfig(level);
+            if (Math.random() > config.outwardPercentage) continue;
+
+            const length = Math.random() < 0.9 ? (Math.floor(Math.random() * 2) + 2) : 1;
+            const isVertical = length > 1 && Math.random() < 0.7;
             const direction = { x: 0, z: -1 }; // North
 
             // Only place vertical blocks or single blocks at edges
@@ -2828,6 +2831,10 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
     for (let x = 0; x < gridSize; x++) {
         if (blocksToPlace.length >= targetBlockCount) break;
         if (!isCellOccupied(x, gridSize - 1)) {
+            // Respect outwardPercentage for edge blocks
+            const config = difficultyConfig || getInfernoDifficultyConfig(level);
+            if (Math.random() > config.outwardPercentage) continue;
+
             const length = Math.random() < 0.9 ? (Math.floor(Math.random() * 2) + 2) : 1;
             const isVertical = length > 1 && Math.random() < 0.7;
             const direction = { x: 0, z: 1 }; // South
@@ -2861,6 +2868,10 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
     for (let z = 0; z < gridSize; z++) {
         if (blocksToPlace.length >= targetBlockCount) break;
         if (!isCellOccupied(0, z)) {
+            // Respect outwardPercentage for edge blocks
+            const config = difficultyConfig || getInfernoDifficultyConfig(level);
+            if (Math.random() > config.outwardPercentage) continue;
+
             const length = Math.random() < 0.9 ? (Math.floor(Math.random() * 2) + 2) : 1;
             const isVertical = length > 1 && Math.random() < 0.7;
             const direction = { x: -1, z: 0 }; // West
@@ -2894,6 +2905,10 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
     for (let z = 0; z < gridSize; z++) {
         if (blocksToPlace.length >= targetBlockCount) break;
         if (!isCellOccupied(gridSize - 1, z)) {
+            // Respect outwardPercentage for edge blocks
+            const config = difficultyConfig || getInfernoDifficultyConfig(level);
+            if (Math.random() > config.outwardPercentage) continue;
+
             const length = Math.random() < 0.9 ? (Math.floor(Math.random() * 2) + 2) : 1;
             const isVertical = length > 1 && Math.random() < 0.7;
             const direction = { x: 1, z: 0 }; // East
@@ -3045,14 +3060,27 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
             .map(([edge, _]) => edge);
 
         let chosenDirection = directions[0];
-        if (nearestEdges.includes('east')) {
-            chosenDirection = { x: 1, z: 0 };
-        } else if (nearestEdges.includes('west')) {
-            chosenDirection = { x: -1, z: 0 };
-        } else if (nearestEdges.includes('south')) {
-            chosenDirection = { x: 0, z: 1 };
-        } else if (nearestEdges.includes('north')) {
-            chosenDirection = { x: 0, z: -1 };
+        const config = difficultyConfig || getInfernoDifficultyConfig(level);
+        const preferOutward = Math.random() < config.outwardPercentage;
+
+        if (preferOutward) {
+            // Point toward nearest edge
+            if (nearestEdges.includes('east')) {
+                chosenDirection = { x: 1, z: 0 };
+            } else if (nearestEdges.includes('west')) {
+                chosenDirection = { x: -1, z: 0 };
+            } else if (nearestEdges.includes('south')) {
+                chosenDirection = { x: 0, z: 1 };
+            } else if (nearestEdges.includes('north')) {
+                chosenDirection = { x: 0, z: -1 };
+            }
+        } else {
+            // Point inward or random (not toward nearest edge ideally)
+            // Pick a random direction from the directions array
+            chosenDirection = directions[Math.floor(Math.random() * directions.length)];
+            
+            // If it happens to be an outward direction, and we really wanted inward,
+            // we could flip it, but random is usually enough given how low the percentage is.
         }
 
         // Try to create longer blocks (2-3) first, single blocks only as absolute last resort
