@@ -44,15 +44,16 @@ function lerp(start, end, t) {
  * Lower percentage = more inward blocks = harder
  */
 function getDirectionalComplexity(level) {
-    // User requested: Level 10 most are outer facing (90%), Level 50 most are inward (10% outward)
+    // User requested: Globally reduce outward-looking blocks by half
+    // Level 10: 90% -> 45% outward, Level 50: 10% -> 5% outward
     if (level <= 10) {
-        return 0.90;
+        return 0.45;
     } else if (level >= 50) {
-        return 0.10;
+        return 0.05;
     } else {
-        // Linear transition between level 11 and 49
+        // Linear transition between level 11 and 49 (halved values)
         const t = (level - 10) / (50 - 10);
-        return lerp(0.90, 0.10, t);
+        return lerp(0.45, 0.05, t);
     }
 }
 

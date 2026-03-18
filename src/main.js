@@ -8723,14 +8723,14 @@ function animate() {
             }
         }
         
-        // 10-second idle tile drop (1 per second after 10s)
-        if (idleSeconds > 10) {
+        // 30-second idle tile drop (1 per second after 30s)
+        if (idleSeconds > 30) {
             if (currentTime - lastIdleDropTime > 1000) {
                 lastIdleDropTime = currentTime;
                 dropPenaltyTile();
             }
         } else {
-            lastIdleDropTime = currentTime; // defer dropping until > 10s
+            lastIdleDropTime = currentTime; // defer dropping until > 30s
         }
     } else {
         // Reset timers so they don't trigger immediately when game unpauses
