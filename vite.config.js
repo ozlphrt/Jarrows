@@ -5,8 +5,9 @@ import { execSync } from 'node:child_process';
 
 export default ({ command }) => {
   // Determine base path and icon paths based on build mode
-  const base = command === 'build' ? '/Jarrows/' : '/';
-  const iconBase = command === 'build' ? '/Jarrows' : '';
+  // VITE_BASE_PATH env can override for preview deployments
+  const base = process.env.VITE_BASE_PATH || (command === 'build' ? '/Jarrows/' : '/');
+  const iconBase = command === 'build' ? base.replace(/\/$/, '') : '';
   const isDev = command === 'serve';
 
   // Build identifier for "VER" button (short git SHA when available).

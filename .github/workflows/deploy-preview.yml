@@ -1,0 +1,42 @@
+name: Deploy Preview to GitHub Pages
+
+on:
+  push:
+    branches:
+      - feature/v2-improvements
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build with preview base path
+        run: npm run build
+        env:
+          # Override the vite base so assets resolve under /Jarrows/preview/
+          VITE_BASE_PATH: /Jarrows/preview/
+
+      - name: Deploy to gh-pages-preview branch
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages-preview
+          publish_dir: ./dist
+          destination_dir: preview
