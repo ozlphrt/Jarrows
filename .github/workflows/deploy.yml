@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - master
+      - feature/v2-improvements
   workflow_dispatch:
 
 permissions:
@@ -20,8 +21,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout master
         uses: actions/checkout@v4
+        with:
+          ref: master
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -32,8 +35,28 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build
+      - name: Build main site (master)
         run: npm run build
+
+      - name: Checkout feature/v2-improvements for preview build
+        uses: actions/checkout@v4
+        with:
+          ref: feature/v2-improvements
+          path: preview-src
+          clean: false
+
+      - name: Install preview dependencies
+        run: npm ci
+        working-directory: preview-src
+
+      - name: Build preview site (feature/v2-improvements)
+        run: npm run build
+        working-directory: preview-src
+        env:
+          VITE_BASE_PATH: /Jarrows/preview/
+
+      - name: Copy preview build into main dist/preview/
+        run: cp -r preview-src/dist/. dist/preview/
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
@@ -53,4 +76,3 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
-
