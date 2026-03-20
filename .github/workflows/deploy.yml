@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - master
+      - feature/battery-optimization-test
   workflow_dispatch:
 
 permissions:
@@ -37,6 +38,29 @@ jobs:
       - name: Build main site (master)
         run: npm run build
 
+      # Checkout feature/battery-optimization-test for specialized battery test build
+      - name: Checkout feature/battery-optimization-test
+        uses: actions/checkout@v4
+        with:
+          ref: feature/battery-optimization-test
+          path: battery-test-src
+          clean: false
+
+      - name: Install battery-test dependencies
+        run: npm ci
+        working-directory: battery-test-src
+
+      - name: Build battery-test site
+        run: npm run build
+        working-directory: battery-test-src
+        env:
+          VITE_BASE_PATH: /Jarrows/battery-test/
+
+      - name: Copy battery-test build into main dist/battery-test/
+        run: |
+          mkdir -p dist/battery-test
+          cp -r battery-test-src/dist/. dist/battery-test/
+
       - name: Checkout feature/v2-improvements for preview build
         uses: actions/checkout@v4
         with:
@@ -55,7 +79,9 @@ jobs:
           VITE_BASE_PATH: /Jarrows/preview/
 
       - name: Copy preview build into main dist/preview/
-        run: cp -r preview-src/dist/. dist/preview/
+        run: |
+          mkdir -p dist/preview
+          cp -r preview-src/dist/. dist/preview/
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
