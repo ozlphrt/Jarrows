@@ -1,6 +1,6 @@
 {
   "name": "sliding-blocks-puzzle",
-  "version": "4.8.0",
+  "version": "7.3.0",
   "type": "module",
   "scripts": {
     "dev": "vite",

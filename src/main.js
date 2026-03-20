@@ -295,7 +295,7 @@ function hideChangelogModal() {
 // Check version and show changelog if needed
 function checkAndShowChangelog() {
     try {
-        const currentVersion = parseVersionString(atob('NC44LjA=')); // 4.8.0
+        const currentVersion = parseVersionString(atob('Ny4zLjA=')); // 7.3.0
         if (!currentVersion) return;
 
         const lastSeenVersion = localStorage.getItem('jarrows_last_seen_version') || '';

@@ -64,6 +64,14 @@ npm run build
 
 ## Releases
 
+### v7.3.0 - Performance & Battery Optimization ⭐ MAJOR UPDATE
+- **Tree**: https://github.com/ozlphrt/Jarrows/tree/v7.3.0 (once pushed)
+- **Live**: https://ozlphrt.github.io/Jarrows/
+- **Performance**: Reduced draw calls by ~98% using `InstancedMesh`
+- **Battery**: Aggressive physics throttling and static shadow gating when idle
+- **UX**: Fixed excessive desktop zoom (increased camera padding)
+- **Logic**: O(N) support checking via 3D grid infrastructure
+
 ### v7.2.4 - Catapult & Particle Fixes
 - **Tree**: https://github.com/ozlphrt/Jarrows/tree/v7.2.4 (once pushed)
 - **Live**: https://ozlphrt.github.io/Jarrows/
