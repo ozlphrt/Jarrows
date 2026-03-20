@@ -2300,6 +2300,61 @@ export class Block {
         // Don't sync physics during grid movement - physics only used when falling
     }
 
+    /**
+     * Calculate axis-aligned bounding box in towerGroup (parent) space.
+     * Uses arithmetic calculation instead of expensive THREE.js traversal.
+     * @param {THREE.Box3} targetBox - Box to store the result in
+     */
+    getTowerSpaceBounds(targetBox) {
+        if (!targetBox) targetBox = new THREE.Box3();
+
+        // Calculate block dimensions
+        let w, h, d;
+        if (this.isVertical) {
+            w = this.cubeSize;
+            h = this.length * this.cubeSize;
+            d = this.cubeSize;
+        } else {
+            const isXAligned = Math.abs(this.direction.x) > 0;
+            if (isXAligned) {
+                w = this.length * this.cubeSize;
+                h = this.cubeSize;
+                d = this.cubeSize;
+            } else {
+                w = this.cubeSize;
+                h = this.cubeSize;
+                d = this.length * this.cubeSize;
+            }
+        }
+
+        const pos = this.group.position;
+
+        if (this.isFalling && this.group.quaternion.length() > 0.1) {
+            // Rotating block: use conservative sphere-based AABB
+            // Center is at world Pos + half height along local Y? 
+            // No, the group is positioned at the BOTTOM center.
+            // Diagonal / 2 is the maximum radius from center of volume.
+            const diag = Math.sqrt(w * w + h * h + d * d);
+            const radius = diag / 2;
+            
+            // Center of block in tower space
+            const cx = pos.x;
+            const cy = pos.y + h / 2;
+            const cz = pos.z;
+            
+            targetBox.min.set(cx - radius, cy - radius, cz - radius);
+            targetBox.max.set(cx + radius, cy + radius, cz + radius);
+        } else {
+            // Static/Grid-aligned block (AABB is exact)
+            // group.position is bottom-center for horizontal and vertical blocks
+            // (Note: centerX/centerZ in updateWorldPosition is midpoint of footprint)
+            targetBox.min.set(pos.x - w / 2, pos.y, pos.z - d / 2);
+            targetBox.max.set(pos.x + w / 2, pos.y + h, pos.z + d / 2);
+        }
+
+        return targetBox;
+    }
+
     updateFromPhysics() {
         if (this.isRemoved) return; // Don't update if removed
 

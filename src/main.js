@@ -1081,6 +1081,8 @@ let lastSpawnZoomUpdateMs = 0;
 // Auto-zoom bounding box and timing (for gameplay, excluding catapulted blocks)
 const _autoZoomBox = new THREE.Box3();
 const _autoZoomSize = new THREE.Vector3();
+const _towerSpaceZoomBox = new THREE.Box3();
+const _tempBox = new THREE.Box3();
 const AUTO_ZOOM_UPDATE_INTERVAL_MS = 200; // Throttle expensive bounding box calculations
 let lastAutoZoomUpdateMs = 0;
 // User override: disable auto-zoom after manual zoom for this duration
@@ -8312,8 +8314,13 @@ function animate() {
     towerGroup.position.copy(_towerGroupWorldCenter);
     
     if (isAutoZoomEnabled && !isAutoZoomDisabled) {
-        if (isGeneratingLevel) _spawnZoomBox.makeEmpty();
-        else _autoZoomBox.makeEmpty();
+        const zoomUpdateInterval = isGeneratingLevel ? SPAWN_ZOOM_UPDATE_INTERVAL_MS : AUTO_ZOOM_UPDATE_INTERVAL_MS;
+        const lastUpdate = isGeneratingLevel ? lastSpawnZoomUpdateMs : lastAutoZoomUpdateMs;
+        if (currentTime - lastUpdate > zoomUpdateInterval) {
+            _towerSpaceZoomBox.makeEmpty();
+            // Update towerGroup matrix once per zoom update frame
+            towerGroup.updateMatrixWorld(true);
+        }
     }
     
     let hasNonCatapultedBlocksForZoom = false;
@@ -8347,9 +8354,8 @@ function animate() {
              const zoomUpdateInterval = isGeneratingLevel ? SPAWN_ZOOM_UPDATE_INTERVAL_MS : AUTO_ZOOM_UPDATE_INTERVAL_MS;
              const lastUpdate = isGeneratingLevel ? lastSpawnZoomUpdateMs : lastAutoZoomUpdateMs;
              if (currentTime - lastUpdate > zoomUpdateInterval) {
-                  block.group.updateMatrixWorld(true);
-                  if (isGeneratingLevel) _spawnZoomBox.expandByObject(block.group);
-                  else _autoZoomBox.expandByObject(block.group);
+                  block.getTowerSpaceBounds(_tempBox);
+                  _towerSpaceZoomBox.union(_tempBox);
                   hasNonCatapultedBlocksForZoom = true;
              }
         }
@@ -8365,6 +8371,8 @@ function animate() {
             else lastAutoZoomUpdateMs = currentTime;
 
             const activeBox = isGeneratingLevel ? _spawnZoomBox : _autoZoomBox;
+            // Transform the collected tower-space box into world-space
+            activeBox.copy(_towerSpaceZoomBox).applyMatrix4(towerGroup.matrixWorld);
             if (hasNonCatapultedBlocksForZoom && !activeBox.isEmpty()) {
                 const size = activeBox.getSize(_autoZoomSize);
                 if (size.x < AUTO_ZOOM_MIN_BOUNDING_SIZE) size.x = AUTO_ZOOM_MIN_BOUNDING_SIZE;
