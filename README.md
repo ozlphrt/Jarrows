@@ -64,6 +64,13 @@ npm run build
 
 ## Releases
 
+### v7.3.1 - Hotfix: Rendering Corruption Fix
+- **Tree**: https://github.com/ozlphrt/Jarrows/tree/v7.3.1 (once pushed)
+- **Live**: https://ozlphrt.github.io/Jarrows/
+- Reverted `InstancedMesh` implementation to fix "exploded" icons and coloring corruption
+- Restored standard mesh rendering with geometry pooling
+- Maintained O(N) grid-based support checking and physics optimizations
+
 ### v7.3.0 - Performance & Battery Optimization ⭐ MAJOR UPDATE
 - **Tree**: https://github.com/ozlphrt/Jarrows/tree/v7.3.0 (once pushed)
 - **Live**: https://ozlphrt.github.io/Jarrows/

@@ -12,7 +12,6 @@ import { showMilestoneModal, showFeatureModal, showLevelUpdateModal } from './in
 import { getChangelogForVersion } from './changelog.js';
 import { createParticleSystem } from './particles.js';
 import { DebrisManager } from './debris.js';
-import { BlockInstanceManager } from './BlockInstanceManager.js'; // New manager for InstancedMesh
 import appVersionRaw from '../VERSION?raw';
 
 // Build-time constant injected by Vite (see vite.config.js). Falls back to '' if not defined.
@@ -64,7 +63,6 @@ let isGeneratingLevel = false;
 let towerPositionOffset = new THREE.Vector3(0, 0, 0);
 
 // Initialize BlockInstanceManager (initialized after scene is created below)
-let blockInstanceManager = null;
 
 window.isMobileLike = false;
 window.autoZoomEnabled = true;
@@ -295,7 +293,7 @@ function hideChangelogModal() {
 // Check version and show changelog if needed
 function checkAndShowChangelog() {
     try {
-        const currentVersion = parseVersionString(atob('Ny4zLjA=')); // 7.3.0
+        const currentVersion = parseVersionString(atob('Ny4zLjE=')); // 7.3.1
         if (!currentVersion) return;
 
         const lastSeenVersion = localStorage.getItem('jarrows_last_seen_version') || '';
@@ -392,10 +390,6 @@ const initialQualityPreset = qualityPreset;
 const scene = new THREE.Scene();
 setGradientBackground(scene, 0x0f0f0f, 0x050505);
 setupFog(scene, true); // Fog enabled for dark theme
-
-// Initialize BlockInstanceManager
-blockInstanceManager = new BlockInstanceManager(scene);
-window.blockInstanceManager = blockInstanceManager;
 
 // Expose scene, blocks, THREE, and scene functions for toggle handlers
 window.gameScene = scene;
@@ -2244,6 +2238,8 @@ function getBlocksForLevel(level) {
  * @param {Set} lowerLayerCells - Cells occupied by blocks in lower layers (for level 2+ to prevent overlapping and floating)
  * @param {number} targetBlockCount - Target number of blocks to generate
  * @param {number} level - Current level number
+ * @param {boolean} preferLongBlocks - If true, prefer longer blocks (2-3 cells) over single blocks
+ * @param {Object} difficultyConfig - Optional Inferno mode difficulty configuration
  * @returns {Array} Array of blocks to be placed (not yet added to scene)
  */
 function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCount = 10, level = 1, preferLongBlocks = false, difficultyConfig = null) {
@@ -2600,7 +2596,7 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                 }
 
                 // Cells are now reserved - create the block
-                const block = new Block(length, cell.x, cell.z, randomDir, isVertical, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level, blockInstanceManager);
+                const block = new Block(length, cell.x, cell.z, randomDir, isVertical, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level);
 
                 // Move block from scene to towerGroup
                 scene.remove(block.group);
@@ -2808,7 +2804,7 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
 
     const edgeBlocks = [];
 
-    // Place blocks along each edge
+    // Place blocks at edges - STRICTLY prefer longer blocks (2-3), avoid single blocks
     // Helper: Check if horizontal block extends in X or Z direction
     function getBlockExtent(block) {
         if (block.isVertical) return null; // Vertical blocks don't extend horizontally
@@ -3627,9 +3623,6 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
     updateGridSize(level);
 
     // Clear old instances
-    if (blockInstanceManager) {
-        blockInstanceManager.clear();
-    }
 
 
     // ABSOLUTE HARD STOP: If isRestart and level is 0, reject immediately
@@ -4460,8 +4453,7 @@ function dropPenaltyTile() {
         gridSize,          // gridSize
         cubeSize,          // cubeSize
         yOffset,           // yOffset
-        currentLevel,      // level
-        blockInstanceManager // blockInstanceManager
+        currentLevel      // level
     );
     
     scene.remove(block.group);
@@ -8370,9 +8362,6 @@ function animate() {
     lastBlockStateCheckTime = currentTime;
 
     // Update InstancedMesh matrices
-    if (blockInstanceManager) {
-        blockInstanceManager.update();
-    }
 
     // 6. Camera & Zoom Logic
     if (isAutoZoomEnabled && !isAutoZoomDisabled) {

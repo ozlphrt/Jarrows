@@ -165,8 +165,8 @@ function isHeadOnCollision(movingBlock, otherBlock, collisionX, collisionZ, curr
 
 export class Block {
     constructor(length, gridX, gridZ, direction, isVertical, arrowStyle, scene, physics, gridSize, cubeSize, yOffset = 0, level = 1, blockInstanceManager = null) {
-        this.blockInstanceManager = blockInstanceManager;
-        this.isDirty = true; // Mark as dirty for initial matrix update
+        this.blockInstanceManager = null;
+        this.isDirty = false; // Mark as dirty for initial matrix update
         this.length = length;
         this.gridX = gridX;
         this.gridZ = gridZ;
@@ -295,12 +295,7 @@ export class Block {
         this.group.add(blockMesh);
 
         // Support for InstancedMesh optimization
-        if (this.blockInstanceManager) {
-            // Hide the individual mesh but keep it for raycasting
-            blockMesh.visible = false;
-            // Register with instancing manager
-            this.blockInstanceManager.registerBlock(this, blockGeometry, blockMaterial);
-        }
+        this.cubes[0].visible = true;
 
         // Store original material for highlighting
         this.originalMaterial = blockMaterial;
@@ -343,7 +338,6 @@ export class Block {
         this.gridZ = newZ;
         if (newElevation !== null) this.yOffset = newElevation;
         this.updateWorldPosition();
-        this.isDirty = true;
     }
 
     // Mark this block as a filler block and apply brighter blue glow styling
@@ -452,8 +446,7 @@ export class Block {
                     this.physicsBody.setLinearDamping(0.0);
                     this.physicsBody.setAngularDamping(0.0);
                     this.physicsBody.enableCcd(true); // Prevent ground penetration at high speeds
-                    // Prevent flipping: only allow Y-axis yaw rotation
-                    this.physicsBody.setEnabledRotations(false, true, false, true);
+                    this.physicsBody.setEnabledRotations(false, true, false, true); // Prevent flipping: only allow Y-axis yaw rotation
                 }
             }
         } catch (e) {
@@ -2193,8 +2186,6 @@ export class Block {
         }
     }
 
-    // Check if rotation is safe at a given position (no blocking blocks in new direction)
-    // Excludes the collidedBlock from the check since it's the one we're colliding with
     // Check if block is completely outside grid bounds
     isOffGrid(gridSize) {
         // Check if any part of the block is outside grid bounds
@@ -4481,12 +4472,7 @@ export class Block {
     }
 
     remove() {
-        // Mark as removed first to prevent any further physics reads
         this.isRemoved = true;
-
-        if (this.blockInstanceManager) {
-            this.blockInstanceManager.deregister(this);
-        }
 
         if (this.physicsBody) {
             removePhysicsBody(this.physics, this.physicsBody, true);
