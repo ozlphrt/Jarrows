@@ -293,7 +293,7 @@ function hideChangelogModal() {
 // Check version and show changelog if needed
 function checkAndShowChangelog() {
     try {
-        const currentVersion = parseVersionString(atob('Ny4zLjE=')); // 7.3.1
+        const currentVersion = parseVersionString(atob('Ny40LjA=')); // 7.4.0
         if (!currentVersion) return;
 
         const lastSeenVersion = localStorage.getItem('jarrows_last_seen_version') || '';
@@ -637,43 +637,49 @@ scene.add(towerGroup);
 function updateGridSize(level) {
     const oldSize = gridSize;
     // Formula: level 1-29: 7, level 30+: 7 + floor((level-20)/10)
-    gridSize = Math.min(20, (level < 30) ? 7 : (7 + Math.floor((level - 20) / 10)));
+    const newSize = Math.min(20, (level < 30) ? 7 : (7 + Math.floor((level - 20) / 10)));
+    applyGridSize(newSize);
+}
+
+/**
+ * Apply a specific grid size to the game state and visuals
+ * @param {number} newSize 
+ */
+function applyGridSize(newSize) {
+    const oldSize = gridSize;
+    gridSize = newSize;
     
-    if (gridSize !== oldSize || level === 0) { // Also update for level 0 to ensure initial state
-        console.log(`Grid size updated: ${oldSize} -> ${gridSize} for level ${level}`);
-        
-        // Update tower center (center of the gridSize x gridSize grid)
-        if (towerCenter) towerCenter.set(gridSize / 2, 0, gridSize / 2);
-        
-        // Update visual base plate and grid helper
-        // They were created with size 21 in scene.js
-        const visualBaseSize = 21;
-        
-        // Base plate is larger than the grid by BASE_PLATE_MARGIN on each side
-        const basePlateVisualSize = gridSize + (BASE_PLATE_MARGIN * 2);
-        const baseScale = basePlateVisualSize / visualBaseSize;
-        if (base) base.scale.set(baseScale, 1, baseScale);
-        
-        // Recreate grid helper for the new size to ensure 1x1 alignment and full coverage
-        if (gridHelper) {
-            if (gridHelper.parent) gridHelper.parent.remove(gridHelper);
-            if (gridHelper.geometry) gridHelper.geometry.dispose();
-            if (gridHelper.material) gridHelper.material.dispose();
-        }
-        
-        // Create new grid helper with basePlateVisualSize size and divisions for 1x1 alignment
-        gridHelper = new THREE.GridHelper(basePlateVisualSize, basePlateVisualSize, 0x888888, 0x666666);
-        gridHelper.position.set(0, 0.01, 0);
-        if (gridHelper.material) {
-            gridHelper.material.transparent = true;
-            gridHelper.material.opacity = 0.8;
-        }
-        towerGroup.add(gridHelper);
-        
-        // Update countdown timer plane to match the larger base plate
-        if (countdownTimerPlane) {
-            countdownTimerPlane.scale.set(baseScale, baseScale, 1);
-        }
+    // Update tower center (center of the gridSize x gridSize grid)
+    if (towerCenter) towerCenter.set(gridSize / 2, 0, gridSize / 2);
+    
+    // Update visual base plate and grid helper
+    // They were created with size 21 in scene.js
+    const visualBaseSize = 21;
+    
+    // Base plate is larger than the grid by BASE_PLATE_MARGIN on each side
+    const basePlateVisualSize = gridSize + (BASE_PLATE_MARGIN * 2);
+    const baseScale = basePlateVisualSize / visualBaseSize;
+    if (base) base.scale.set(baseScale, 1, baseScale);
+    
+    // Recreate grid helper for the new size to ensure 1x1 alignment and full coverage
+    if (gridHelper) {
+        if (gridHelper.parent) gridHelper.parent.remove(gridHelper);
+        if (gridHelper.geometry) gridHelper.geometry.dispose();
+        if (gridHelper.material) gridHelper.material.dispose();
+    }
+    
+    // Create new grid helper with basePlateVisualSize size and divisions for 1x1 alignment
+    gridHelper = new THREE.GridHelper(basePlateVisualSize, basePlateVisualSize, 0x888888, 0x666666);
+    gridHelper.position.set(0, 0.01, 0);
+    if (gridHelper.material) {
+        gridHelper.material.transparent = true;
+        gridHelper.material.opacity = 0.8;
+    }
+    towerGroup.add(gridHelper);
+    
+    // Update countdown timer plane to match the larger base plate
+    if (countdownTimerPlane) {
+        countdownTimerPlane.scale.set(baseScale, baseScale, 1);
     }
 }
 
@@ -3619,8 +3625,21 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
         return;
     }
 
-    // Update grid size before generation
-    updateGridSize(level);
+    // Get target block count for this level
+    const targetBlockCount = getBlocksForLevel(level);
+
+    // Calculate dynamic gridSize for cube-like tower shape
+    // estimatedVolume = targetBlockCount * avgBlockLength(1.8)
+    const estimatedVolume = targetBlockCount * 1.8;
+    const targetSide = Math.ceil(Math.pow(estimatedVolume, 1 / 3));
+    
+    // Ensure gridSize is at least 7 (standard size) and at most 20 (performance limit)
+    // Use Math.max(7, ...) to preserve the standard feel for early levels
+    const dynamicGridSize = Math.max(7, Math.min(20, targetSide));
+    
+    // Apply the dynamic grid size
+    console.log(`[Tower Gen] Level ${level}, Target blocks: ${targetBlockCount}, Dynamic Grid Size: ${dynamicGridSize}`);
+    applyGridSize(dynamicGridSize);
 
     // Clear old instances
 
@@ -3771,8 +3790,6 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
 
     // Framing control removed: no framing animation frames to cancel
 
-    // Get target block count for this level
-    const targetBlockCount = getBlocksForLevel(level);
 
     // Get Inferno mode difficulty configuration if applicable
     let difficultyConfig = null;

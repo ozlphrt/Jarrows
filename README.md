@@ -64,6 +64,14 @@ npm run build
 
 ## Releases
 
+### v7.4.0 - Dynamic Cube Towers ⭐ FEATURE UPDATE
+- **Tree**: https://github.com/ozlphrt/Jarrows/tree/v7.4.0 (once pushed)
+- **Live**: https://ozlphrt.github.io/Jarrows/
+- **Generation**: Towers are now generated as "cube-like" structures
+- **Dimensions**: Grid size now scales with total block count (cube root volume)
+- **Visuals**: Base plate and grid helper automatically resize for balanced proportions
+- **Performance**: Maintained all previous optimizations (O(N) grid, pooled geometry)
+
 ### v7.3.1 - Hotfix: Rendering Corruption Fix
 - **Tree**: https://github.com/ozlphrt/Jarrows/tree/v7.3.1 (once pushed)
 - **Live**: https://ozlphrt.github.io/Jarrows/
