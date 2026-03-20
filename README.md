@@ -64,7 +64,14 @@ npm run build
 
 ## Releases
 
-### v7.2.2 - Game Mechanics and UI Improvements
+### v7.2.4 - Catapult & Particle Fixes
+- **Tree**: https://github.com/ozlphrt/Jarrows/tree/v7.2.4 (once pushed)
+- **Live**: https://ozlphrt.github.io/Jarrows/
+- Fixed catapulted blocks stopping halfway
+- Improved particle disappearance (fall past base plate)
+- UI: Stats bar consistently at bottom on mobile
+- UI: Dim/Bright toggle styles
+
 - **Tree**: https://github.com/ozlphrt/Jarrows/tree/v7.2.2
 - **Release**: https://github.com/ozlphrt/Jarrows/releases/tag/v7.2.2
 - **Live**: https://ozlphrt.github.io/Jarrows/
