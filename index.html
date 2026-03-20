@@ -60,32 +60,31 @@
         /* Minimalist Stats Bar - Side by Side Design */
         #stats-bar {
             position: fixed;
+            bottom: calc(24px + env(safe-area-inset-bottom));
             left: 50%;
             transform: translateX(-50%);
-            z-index: 1000;
-            pointer-events: none;
+            z-index: 1500;
+            pointer-events: auto !important;
             color: white;
             background: rgba(255, 255, 255, 0.05);
-            backdrop-filter: blur(20px) saturate(140%);
-            -webkit-backdrop-filter: blur(20px) saturate(140%);
+            backdrop-filter: blur(25px) saturate(180%);
+            -webkit-backdrop-filter: blur(25px) saturate(180%);
             padding: 8px 24px;
-            border-radius: 50px;
-            /* Pill shape */
+            border-radius: 20px;
             border: 1px solid rgba(255, 255, 255, 0.12);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05);
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             display: none;
-            /* Hidden initially, shown after game initialization */
             align-items: center;
-            gap: 10px;
+            gap: 16px;
             line-height: 1.1;
             box-sizing: border-box;
             min-height: 52px;
             max-width: 95vw;
             justify-content: center;
-            flex-direction: row !important;
-            flex-wrap: nowrap !important;
-            overflow: hidden;
+            flex-direction: row;
+            flex-wrap: nowrap;
+            transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
         /* FPS Display - top right */
@@ -783,10 +782,12 @@
         /* Responsive adjustments for smaller screens */
         @media (max-width: 768px) {
             #stats-bar {
-                top: 8px;
-                left: 8px;
+                left: 50%;
+                transform: translateX(-50%);
                 padding: 6px 12px;
                 gap: 5px;
+                width: auto;
+                max-width: calc(100vw - 16px);
             }
 
             .stats-label {
@@ -855,8 +856,6 @@
 
         @media (max-width: 480px) {
             #stats-bar {
-                top: 6px;
-                left: 6px;
                 padding: 5px 10px;
                 gap: 4px;
             }
@@ -1425,27 +1424,7 @@
             }
         }
 
-        #stats-bar {
-            position: fixed;
-            bottom: calc(24px + env(safe-area-inset-bottom));
-            top: auto;
-            left: 50%;
-            transform: translateX(-50%);
-            /* glassmorphism - v2.1 refined */
-            background: rgba(255, 255, 255, 0.03);
-            backdrop-filter: blur(25px) saturate(180%);
-            -webkit-backdrop-filter: blur(25px) saturate(180%);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 20px;
-            padding: 8px 16px;
-            display: none;
-            align-items: center;
-            gap: 16px;
-            z-index: 1500;
-            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05);
-            transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-            pointer-events: auto;
-        }
+        /* Cleaned up duplicate stats-bar rule */
 
         /* Combined controls inside stats-bar */
         .stats-control-btn {
@@ -1460,6 +1439,7 @@
             border-radius: 12px;
             transition: all 0.2s;
             position: relative;
+            pointer-events: auto; /* Explicitly enable on desktop */
         }
 
         .stats-control-btn:hover {
@@ -1531,6 +1511,12 @@
             opacity: 0.8;
         }
 
+        .status-dot.active {
+            background: #4ecdc4 !important;
+            box-shadow: 0 0 6px rgba(78, 205, 196, 0.8);
+            border-color: rgba(78, 205, 196, 0.4) !important;
+        }
+
         .game-btn-minimal .btn-icon {
             width: 32px;
             height: 32px;
@@ -1563,6 +1549,52 @@
         /* Settings Menu Toggle State */
         #settings-menu.show {
             display: flex !important;
+        }
+
+        /* Settings toggle buttons - OFF is dim, ON (active) is bright */
+        .toggle-icon {
+            background: transparent;
+            border: none;
+            color: rgba(255, 255, 255, 0.35);
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            padding: 0;
+            font-size: 11px;
+            font-weight: 900;
+            letter-spacing: 0.8px;
+            transition: color 0.2s, background 0.2s, opacity 0.2s;
+            position: relative;
+            -webkit-tap-highlight-color: transparent;
+            outline: none;
+        }
+
+        /* ON state - bright */
+        .toggle-icon.active {
+            color: rgba(255, 255, 255, 0.95);
+        }
+
+        .toggle-icon svg {
+            width: 20px;
+            height: 20px;
+            pointer-events: none;
+        }
+
+        .toggle-icon span {
+            pointer-events: none;
+        }
+
+        .toggle-icon:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: rgba(255, 255, 255, 0.75);
+        }
+
+        .toggle-icon:active {
+            background: rgba(255, 255, 255, 0.15);
         }
 
         /* Large Primary Buttons (Spin, Pause) */
@@ -1736,6 +1768,14 @@
                 <button class="toggle-icon" id="fps-toggle" title="Show FPS">
                     <span style="font-size: 11px; font-weight: 900; letter-spacing: 0.8px;">FPS</span>
                 </button>
+                <button class="toggle-icon" id="autofall-toggle" title="Auto Fall (30s) On/Off" style="position: relative;">
+                    <span style="font-size: 11px; font-weight: 900; letter-spacing: 0.8px;">FALL</span>
+                    <div class="status-dot" style="position: absolute; top: 4px; right: 4px; width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.1);"></div>
+                </button>
+                <div style="height: 1px; background: rgba(255,255,255,0.1); margin: 4px 0;"></div>
+                <button class="toggle-icon" id="select-level-btn" title="Select Level">
+                    <span style="font-size: 11px; font-weight: 900; letter-spacing: 0.8px;">LVL</span>
+                </button>
             </div>
         </div>
     </div>
@@ -1820,6 +1860,33 @@
                     <span>Next Level</span>
                     <span class="modal-button-arrow" aria-hidden="true">→</span>
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Select Level Modal (Option B: Stylized Custom Modal) -->
+    <div id="select-level-modal" class="extended-stats-modal-overlay" style="display: none;">
+        <div class="extended-stats-modal-panel">
+            <h1>Select Level</h1>
+            <p>Enter the level number you want to jump to:</p>
+            <input type="number" id="select-level-input" min="1" max="999" step="1" 
+                style="width: 100%; padding: 12px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.2); border-radius: 12px; color: white; font-size: 24px; font-weight: 700; text-align: center; margin: 10px 0;">
+            <div class="modal-actions">
+                <button class="game-button" id="select-level-confirm">Go to Level</button>
+                <button class="game-button secondary" id="select-level-cancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Reset Game Confirmation Modal -->
+    <div id="reset-confirm-modal" class="extended-stats-modal-overlay" style="display: none;">
+        <div class="extended-stats-modal-panel">
+            <h1 style="color: #ff6b6b;">Reset Progress?</h1>
+            <p>This will wipe all your progress and bring the game back to <b>Level One</b>.</p>
+            <p style="font-size: 14px; opacity: 0.8;">This action cannot be undone.</p>
+            <div class="modal-actions">
+                <button class="game-button alert-ghost" id="reset-confirm-btn">Yes, Reset Everything</button>
+                <button class="game-button secondary" id="reset-cancel-btn">Keep My Progress</button>
             </div>
         </div>
     </div>
@@ -2468,6 +2535,7 @@
                 settingsToggle.addEventListener('click', function (e) {
                     e.preventDefault();
                     e.stopPropagation();
+                    if (window.updateIdleTimers) window.updateIdleTimers();
                     settingsMenu.classList.toggle('show');
                 });
             }
@@ -2499,6 +2567,7 @@
             themeToggle.addEventListener('click', function (e) {
                 e.preventDefault();
                 e.stopPropagation();
+                if (window.updateIdleTimers) window.updateIdleTimers();
                 console.log('Theme toggle clicked, current state:', isDarkTheme);
                 isDarkTheme = !isDarkTheme;
                 updateThemeIcon();
@@ -2509,6 +2578,7 @@
             colorsToggle.addEventListener('click', function (e) {
                 e.preventDefault();
                 e.stopPropagation();
+                if (window.updateIdleTimers) window.updateIdleTimers();
                 console.log('Colors toggle clicked, current state:', useColoredBlocks);
                 useColoredBlocks = !useColoredBlocks;
                 // Update global setting so new blocks use correct color
@@ -2543,6 +2613,7 @@
                 audioToggle.addEventListener('click', function (e) {
                     e.preventDefault();
                     e.stopPropagation();
+                    if (window.updateIdleTimers) window.updateIdleTimers();
                     if (window.toggleAudio) {
                         window.toggleAudio();
                         updateAudioIcon();
@@ -2578,6 +2649,7 @@
                 autoZoomToggle.addEventListener('click', function (e) {
                     e.preventDefault();
                     e.stopPropagation();
+                    if (window.updateIdleTimers) window.updateIdleTimers();
                     autoZoomEnabled = !autoZoomEnabled;
                     window.autoZoomEnabled = autoZoomEnabled;
                     updateAutoZoomIcon();
@@ -2620,6 +2692,7 @@
                 fpsToggle.addEventListener('click', function (e) {
                     e.preventDefault();
                     e.stopPropagation();
+                    if (window.updateIdleTimers) window.updateIdleTimers();
                     const currentState = window.fpsEnabled || false;
                     const newState = !currentState;
                     if (window.fpsEnabled !== undefined) {
@@ -2642,6 +2715,69 @@
                     }
                 });
             }
+
+            // Auto-fall toggle handler
+            const autofallToggle = document.getElementById('autofall-toggle');
+            if (autofallToggle) {
+                const statusDot = autofallToggle.querySelector('.status-dot');
+                // Initialize state
+                const currentAutoFall = localStorage.getItem('jarrows_autofall') === 'true';
+                if (currentAutoFall) {
+                    autofallToggle.classList.add('active');
+                    if (statusDot) statusDot.classList.add('active');
+                }
+                window.autoFallEnabled = currentAutoFall;
+
+                autofallToggle.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (window.updateIdleTimers) window.updateIdleTimers();
+                    const newState = !autofallToggle.classList.contains('active');
+                    autofallToggle.classList.toggle('active', newState);
+                    if (statusDot) statusDot.classList.toggle('active', newState);
+                    localStorage.setItem('jarrows_autofall', newState);
+                    window.autoFallEnabled = newState;
+                    console.log('Auto-fall enabled:', newState);
+                });
+            }
+
+            // Select Level handler
+            const selectLevelBtn = document.getElementById('select-level-btn');
+            const selectLevelModal = document.getElementById('select-level-modal');
+            const selectLevelInput = document.getElementById('select-level-input');
+            const selectLevelConfirm = document.getElementById('select-level-confirm');
+            const selectLevelCancel = document.getElementById('select-level-cancel');
+
+            if (selectLevelBtn && selectLevelModal) {
+                selectLevelBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (window.updateIdleTimers) window.updateIdleTimers();
+                    const currentLevel = parseInt(document.getElementById('timer-level')?.textContent || '1', 10);
+                    selectLevelInput.value = currentLevel;
+                    selectLevelModal.style.display = 'flex';
+                    settingsMenu.classList.remove('show');
+                });
+
+                selectLevelCancel.addEventListener('click', () => {
+                    selectLevelModal.style.display = 'none';
+                });
+
+                selectLevelConfirm.addEventListener('click', () => {
+                    const newLevel = parseInt(selectLevelInput.value, 10);
+                    if (!isNaN(newLevel) && newLevel >= 0) {
+                        selectLevelModal.style.display = 'none';
+                        if (window.jumpToLevel) {
+                            window.jumpToLevel(newLevel);
+                        } else {
+                            console.error('window.jumpToLevel not found');
+                            window.location.href = window.location.pathname + '?level=' + newLevel;
+                        }
+                    }
+                });
+            }
+
+
 
             // Quality preset toggle handler (cycles Balanced → Performance → Battery)
             function updateQualityUI() {
@@ -2674,6 +2810,7 @@
                 qualityToggle.addEventListener('click', function (e) {
                     e.preventDefault();
                     e.stopPropagation();
+                    if (window.updateIdleTimers) window.updateIdleTimers();
 
                     qualityPreset =
                         qualityPreset === 'balanced' ? 'performance' :
@@ -2698,6 +2835,7 @@
                 verToggle.addEventListener('click', function (e) {
                     e.preventDefault();
                     e.stopPropagation();
+                    if (window.updateIdleTimers) window.updateIdleTimers();
                     // Close settings dropdown (so modal overlays cleanly)
                     if (settingsMenu) settingsMenu.classList.remove('show');
                     // Open modal
@@ -2714,6 +2852,7 @@
                 shareToggle.addEventListener('click', function (e) {
                     e.preventDefault();
                     e.stopPropagation();
+                    if (window.updateIdleTimers) window.updateIdleTimers();
                     // Close settings dropdown
                     if (settingsMenu) settingsMenu.classList.remove('show');
                     // Open share/PWA modal

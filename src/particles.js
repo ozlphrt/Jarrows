@@ -73,6 +73,7 @@ export function createParticleSystem(maxParticles = 1000, scene) {
             particle.active = true;
             particle.lifetime = PARTICLE_LIFETIME;
             particle.age = 0;
+            particle.startSize = 0.08 + Math.random() * 0.15; // Track start size for linear shrink
             
             // Set position
             positions[index * 3] = position.x;
@@ -97,7 +98,7 @@ export function createParticleSystem(maxParticles = 1000, scene) {
             colors[index * 3 + 2] = color.b * colorVariation;
             
             // Size variation - slightly bigger particles for better visibility
-            sizes[index] = 0.08 + Math.random() * 0.15;
+            sizes[index] = particle.startSize;
         }
         
         // Update geometry attributes
@@ -111,7 +112,7 @@ export function createParticleSystem(maxParticles = 1000, scene) {
      * @param {number} deltaTime - Time delta in seconds
      */
     function updateParticles(deltaTime) {
-        const BASE_PLATE_Y = -0.1; // Base plate is at y = -0.1
+        const KILL_Y = -10.0; // Deep cleanup for particles falling into void
         const EXTENDED_BASE_SIZE = 10.5; // Half of 21 units (extended base plate)
         const TOWER_GROUP_X = 3.5; // towerGroup X position in world space
         const TOWER_GROUP_Z = 3.5; // towerGroup Z position in world space
@@ -126,59 +127,24 @@ export function createParticleSystem(maxParticles = 1000, scene) {
             const particle = particles[i];
             particle.age += deltaTime;
             
-            // Calculate new position
-            const newX = positions[i * 3] + particle.velocity.x * deltaTime;
-            const newY = positions[i * 3 + 1] + particle.velocity.y * deltaTime;
-            const newZ = positions[i * 3 + 2] + particle.velocity.z * deltaTime;
+            // Apply gravity
+            particle.velocity.y += GRAVITY * deltaTime;
             
-            // Stop particles at base plate level (don't let them fall below)
-            if (newY < BASE_PLATE_Y) {
-                // Particle hit base plate - stop vertical movement
-                positions[i * 3 + 1] = BASE_PLATE_Y;
-                particle.velocity.y = 0;
-                
-                // Apply horizontal friction when on ground
-                particle.velocity.x *= 0.95;
-                particle.velocity.z *= 0.95;
-            } else {
-                // Particle is above base plate - normal physics
-                positions[i * 3 + 1] = newY;
-                
-                // Apply gravity
-                particle.velocity.y += GRAVITY * deltaTime;
-            }
-            
-            // Keep particles within extended base plate bounds (bounce off walls)
-            if (newX < BASE_MIN_X) {
-                positions[i * 3] = BASE_MIN_X;
-                particle.velocity.x *= -0.5; // Bounce with energy loss
-            } else if (newX > BASE_MAX_X) {
-                positions[i * 3] = BASE_MAX_X;
-                particle.velocity.x *= -0.5; // Bounce with energy loss
-            } else {
-                positions[i * 3] = newX;
-            }
-            
-            if (newZ < BASE_MIN_Z) {
-                positions[i * 3 + 2] = BASE_MIN_Z;
-                particle.velocity.z *= -0.5; // Bounce with energy loss
-            } else if (newZ > BASE_MAX_Z) {
-                positions[i * 3 + 2] = BASE_MAX_Z;
-                particle.velocity.z *= -0.5; // Bounce with energy loss
-            } else {
-                positions[i * 3 + 2] = newZ;
-            }
+            // Update position
+            positions[i * 3] += particle.velocity.x * deltaTime;
+            positions[i * 3 + 1] += particle.velocity.y * deltaTime;
+            positions[i * 3 + 2] += particle.velocity.z * deltaTime;
             
             // Update lifetime and fade
             const lifetimeProgress = particle.age / particle.lifetime;
-            if (lifetimeProgress >= 1.0) {
-                // Particle expired
+            if (lifetimeProgress >= 1.0 || positions[i * 3 + 1] < KILL_Y) {
+                // Particle dissipated or fell deep into void
                 particle.active = false;
                 sizes[i] = 0;
             } else {
-                // Fade out over lifetime
+                // Fade out over lifetime (linear shrink)
                 const fade = 1.0 - lifetimeProgress;
-                sizes[i] *= fade; // Shrink over time
+                sizes[i] = particle.startSize * fade; // Shrink linearly over time
                 
                 // Update color alpha (via material opacity per particle would require custom shader)
                 // For now, we'll use size as a proxy for visibility

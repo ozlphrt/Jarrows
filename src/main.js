@@ -59,6 +59,16 @@ let updateCheckInterval = null;
 // -------------------------------------------------------------------
 
 // --- CRITICAL GAME STATE AND CONFIGURATION (Moved to top to prevent TDZ errors) ---
+let isGeneratingLevel = false;
+let towerPositionOffset = new THREE.Vector3(0, 0, 0);
+
+window.isMobileLike = false;
+window.autoZoomEnabled = true;
+window.autoFallEnabled = (function() { try { return localStorage.getItem('jarrows_autofall') === 'true'; } catch(e) { return false; } })();
+window.jarrows_debug = false;
+window.qualityPreset = 'balanced';
+
+
 // Constants
 const directions = [
     { x: 1, z: 0 },   // East
@@ -108,7 +118,6 @@ function setCurrentLevel(val) {
     const levelValueElement = document.getElementById('level-value');
     if (levelValueElement) levelValueElement.textContent = val;
 }
-let isGeneratingLevel = false;
 let levelCompleteShown = false;
 let remainingSpins = 3;
 
@@ -117,7 +126,6 @@ let timeLeftSec = 30;
 function setTimeLeftSec(val) { timeLeftSec = val; }
 let timeChallengeActive = false;
 
-let towerPositionOffset = new THREE.Vector3(0, 0, 0);
 let targetTowerPositionOffset = new THREE.Vector3(0, 0, 0);
 
 let countdownTimerPlane = null;
@@ -8112,6 +8120,7 @@ if (typeof window !== 'undefined') {
 let cachedHasFallingBlocks = false;
 let cachedHasActiveAnimations = false;
 let cachedHasPhysicsBlocks = false;
+let cameraStillMoving = false;
 let lastBlockStateCheckTime = 0;
 
 // Battery/perf: cap frame rate on iOS (avoids 120Hz ProMotion drain) and downclock further when idle.
@@ -8212,10 +8221,11 @@ if (typeof window !== 'undefined') {
 // Apply saved preset once lights exist (ensures shadow-quality overrides can take effect)
 applyQualityPreset(qualityPreset);
 
+
+
 function scheduleNextFrame() {
     if (isPaused) return;
     if (isIOS) {
-        // Use a timer to avoid running this callback at 120Hz on ProMotion devices.
         if (frameCapTimeoutId !== null) return;
         frameCapTimeoutId = window.setTimeout(() => {
             frameCapTimeoutId = null;
@@ -8230,7 +8240,6 @@ function animate() {
     scheduleNextFrame();
 
     const currentTime = performance.now();
-    // Extra guard for non-iOS browsers: skip work if called too quickly.
     if (!isIOS && (currentTime - lastFrameTick) < (nextFrameDelayMs - 0.5)) {
         return;
     }
@@ -8239,38 +8248,25 @@ function animate() {
     const deltaTime = (currentTime - lastTime) / 1000;
     lastTime = currentTime;
 
-    // Update FPS counter if enabled
+    // 1. Update FPS Counter
     if (fpsEnabled) {
         fpsFrameCount++;
         if (currentTime - fpsLastUpdate >= fpsUpdateInterval) {
             const fps = Math.round((fpsFrameCount * 1000) / (currentTime - fpsLastUpdate));
             const fpsValue = document.getElementById('fps-value');
             const fpsDisplay = document.getElementById('fps-display');
-            if (fpsValue) {
-                fpsValue.textContent = String(fps);
-            }
-            // Update color based on FPS: red < 30, yellow 30-50, green > 50
+            if (fpsValue) fpsValue.textContent = String(fps);
             if (fpsDisplay) {
-                if (fps < 30) {
-                    fpsDisplay.style.color = '#ff6b6b'; // Red
-                } else if (fps >= 50) {
-                    fpsDisplay.style.color = '#51cf66'; // Green
-                } else {
-                    fpsDisplay.style.color = '#ffd43b'; // Yellow
-                }
+                fpsDisplay.style.color = fps < 30 ? '#ff6b6b' : (fps >= 50 ? '#51cf66' : '#ffd43b');
             }
             fpsFrameCount = 0;
             fpsLastUpdate = currentTime;
         }
     }
 
-    // Time Challenge countdown (survival)
-    // - drains in real time (1.0x)
-    // - pauses during user pause, rules/modal overlays, level-complete modal, background tab, and time animation
-    // - does NOT drain during level generation (fairness)
+    // 2. Time Challenge Logic
     if (isTimeBasedMode() && timeChallengeActive && !timeUpShown) {
-        const canDrain = !isTimeFrozen() && !isGeneratingLevel && !isPaused && !timeAnimationActive;
-        if (canDrain) {
+        if (!isTimeFrozen() && !isGeneratingLevel && !isPaused && !timeAnimationActive) {
             setTimeLeftSec(timeLeftSec - deltaTime);
             if (timeLeftSec <= 0) {
                 setTimeLeftSec(0);
@@ -8280,781 +8276,302 @@ function animate() {
         }
     }
 
-    // Pulsing finish animation - tense effects in last 30 seconds
-    // Check if we're in the final countdown (last 30 seconds)
     const isInFinalCountdown = isTimeBasedMode() && timeChallengeActive && !timeUpShown && timeLeftSec > 0 && timeLeftSec <= 30;
-    if (isInFinalCountdown) {
-        updatePulsingFinishAnimation(timeLeftSec, deltaTime);
-    } else {
-        // Reset pulsing effects when not in countdown
-        resetPulsingFinishAnimation();
-    }
+    if (isInFinalCountdown) updatePulsingFinishAnimation(timeLeftSec, deltaTime);
+    else resetPulsingFinishAnimation();
 
-    // Update countdown timer display (only in time-based modes, only during last 30 seconds)
-    const shouldShowCountdown = isTimeBasedMode() && timeChallengeActive && !timeUpShown && timeLeftSec > 0 && timeLeftSec <= 30;
-    if (shouldShowCountdown) {
-        if (countdownTimerPlane) {
-            // Update bounce animation and get scale
-            const bounceScale = updateCountdownBounce(timeLeftSec);
-            // Update display with bounce scale
-            updateCountdownDisplay(bounceScale);
-            setCountdownTimerVisible(true);
-        }
+    if (isInFinalCountdown && countdownTimerPlane) {
+        const bounceScale = updateCountdownBounce(timeLeftSec);
+        updateCountdownDisplay(bounceScale);
+        setCountdownTimerVisible(true);
     } else {
         setCountdownTimerVisible(false);
     }
 
-
-
-    // Update block lock states (unlock blocks when lock duration expires)
-    for (const block of blocks) {
-        if (block && typeof block.updateLockState === 'function') {
-            block.updateLockState();
-        }
-    }
-
-    // Auto-unlock all blocks if 5 or fewer blocks remain
+    // 3. Physics & Interaction Metadata
     autoUnlockIfFewBlocksRemaining();
-
-    // Note: Block unlocking is now handled by updateLockState() which respects
-    // the full lock duration (1/3 of timer in timer modes, or level-based in Free Flow)
-    // Auto-unlock also triggers when 5 or fewer blocks remain
-
-    // Update tower group position
-    _towerGroupWorldCenter.copy(towerCenter).add(towerPositionOffset);
-    towerGroup.position.copy(_towerGroupWorldCenter);
-    towerGroup.rotation.set(0, 0, 0); // Always locked to zero
-
-    // Dynamic zoom during spawn - uses unified calculation with auto-zoom
-    if (isGeneratingLevel && blocks.length > 0) {
-        // For first blocks or when enough time has passed, update zoom immediately
-        const timeSinceLastUpdate = currentTime - lastSpawnZoomUpdateMs;
-        const shouldUpdateNow = lastSpawnZoomUpdateMs === 0 || timeSinceLastUpdate > SPAWN_ZOOM_UPDATE_INTERVAL_MS;
-
-        if (shouldUpdateNow) {
-            lastSpawnZoomUpdateMs = currentTime;
-
-            _spawnZoomBox.makeEmpty();
-            let hasNonCatapultedBlocks = false;
-            // Ensure all blocks have updated world matrices before calculating bounding box
-            // Exclude catapulted blocks from spawn zoom calculation (same as gameplay auto-zoom)
-            for (const block of blocks) {
-                if (!block || !block.group || block.isRemoved) continue;
-                // Exclude catapulted blocks from auto-zoom calculation
-                if (block.wasCatapulted) continue;
-
-                block.group.updateMatrixWorld(true);
-                _spawnZoomBox.expandByObject(block.group);
-                hasNonCatapultedBlocks = true;
-            }
-
-            const size = _spawnZoomBox.getSize(_spawnZoomSize);
-
-            // Only update zoom if we have non-catapulted blocks to frame (same as gameplay auto-zoom)
-            if (hasNonCatapultedBlocks && !_spawnZoomBox.isEmpty() && size.x !== 0 && size.y !== 0 && size.z !== 0) {
-                // Ensure minimum bounding box size to prevent zooming in too much
-                if (size.x < AUTO_ZOOM_MIN_BOUNDING_SIZE) size.x = AUTO_ZOOM_MIN_BOUNDING_SIZE;
-                if (size.y < AUTO_ZOOM_MIN_BOUNDING_SIZE) size.y = AUTO_ZOOM_MIN_BOUNDING_SIZE;
-                if (size.z < AUTO_ZOOM_MIN_BOUNDING_SIZE) size.z = AUTO_ZOOM_MIN_BOUNDING_SIZE;
-
-                // Calculate effective tower center and look-at target
-                _effectiveTowerCenter.copy(towerCenter).add(towerPositionOffset);
-                _lookAtTarget.copy(_effectiveTowerCenter).add(new THREE.Vector3(0, framingOffsetY, 0));
-
-                // Calculate Camera Vectors for Projection (Perspective-Correct Fit)
-                // We use current angles but need to estimate radius-dependent Forward vector
-                // Use currentRadius as a reasonable approximation for orientation
-                const cx = currentRadius * Math.sin(currentElevation) * Math.cos(currentAzimuth);
-                const cy = currentRadius * Math.cos(currentElevation);
-                const cz = currentRadius * Math.sin(currentElevation) * Math.sin(currentAzimuth);
-
-                // Forward vector: from Camera (at cx,cy,cz relative to tower) to LookAt (at 0,framingOffsetY,0 relative to tower)
-                const fwdX = -cx;
-                const fwdY = framingOffsetY - cy;
-                const fwdZ = -cz;
-                const len = Math.sqrt(fwdX * fwdX + fwdY * fwdY + fwdZ * fwdZ);
-                // Normalized Forward
-                const nFwdX = fwdX / len;
-                const nFwdY = fwdY / len;
-                const nFwdZ = fwdZ / len;
-
-                // Right Vector: WorldUp (0,1,0) cross Forward
-                const rX = nFwdZ;
-                const rY = 0;
-                const rZ = -nFwdX;
-                const rLen = Math.sqrt(rX * rX + rZ * rZ);
-                const nRightX = rX / rLen;
-                const nRightZ = rZ / rLen; // rY is 0
-
-                // Up Vector: Forward cross Right
-                const nUpX = nFwdY * nRightZ;
-                const nUpY = nFwdZ * nRightX - nFwdX * nRightZ;
-                const nUpZ = -nFwdY * nRightX;
-
-                // Project Bounding Box Corners onto Camera Up Vector to find Vertical Extent
-                const boxMin = _spawnZoomBox.min;
-                const boxMax = _spawnZoomBox.max;
-
-                // 8 Corners relative to LookAtTarget
-                const corners = [
-                    new THREE.Vector3(boxMin.x, boxMin.y, boxMin.z),
-                    new THREE.Vector3(boxMin.x, boxMin.y, boxMax.z),
-                    new THREE.Vector3(boxMin.x, boxMax.y, boxMin.z),
-                    new THREE.Vector3(boxMin.x, boxMax.y, boxMax.z),
-                    new THREE.Vector3(boxMax.x, boxMin.y, boxMin.z),
-                    new THREE.Vector3(boxMax.x, boxMin.y, boxMax.z),
-                    new THREE.Vector3(boxMax.x, boxMax.y, boxMin.z),
-                    new THREE.Vector3(boxMax.x, boxMax.y, boxMax.z)
-                ];
-
-                let maxProjY = 0;
-                let maxProjX = 0;
-
-                for (const p of corners) {
-                    // Vector from LookAtTarget to Corner
-                    const relX = p.x - _lookAtTarget.x;
-                    const relY = p.y - _lookAtTarget.y;
-                    const relZ = p.z - _lookAtTarget.z;
-
-                    // Project onto Camera Up (Vertical Distance on Screen)
-                    const projY = Math.abs(relX * nUpX + relY * nUpY + relZ * nUpZ);
-                    if (projY > maxProjY) maxProjY = projY;
-
-                    // Project onto Camera Right (Horizontal Distance on Screen)
-                    const projX = Math.abs(relX * nRightX + relZ * nRightZ);
-                    if (projX > maxProjX) maxProjX = projX;
-                }
-
-                const effectiveHeight = maxProjY * 2;
-
-                // For width, we combine the projected width and the XZ-diagonal heuristic for stability
-                const diagXZ = Math.sqrt(
-                    Math.pow(Math.max(Math.abs(boxMax.x - _lookAtTarget.x), Math.abs(boxMin.x - _lookAtTarget.x)), 2) +
-                    Math.pow(Math.max(Math.abs(boxMax.z - _lookAtTarget.z), Math.abs(boxMin.z - _lookAtTarget.z)), 2)
-                ) * 2;
-                const effectiveWidth = Math.max(maxProjX * 2, diagXZ);
-
-                const fov = camera.fov * (Math.PI / 180);
-                const aspect = camera.aspect;
-
-                // Use mobile-specific padding
-                const effectivePadding = isMobileLike ? ZOOM_PADDING_MOBILE : ZOOM_PADDING;
-
-                // Height check
-                const heightDistance = (effectiveHeight + effectivePadding * 2) / (2 * Math.tan(fov / 2));
-
-                // Width check
-                const widthDistance = (effectiveWidth + effectivePadding * 2) / (2 * Math.tan(fov / 2) * aspect);
-
-                const autoZoomMultiplier = isMobileLike ? AUTO_ZOOM_MULTIPLIER_MOBILE : AUTO_ZOOM_MULTIPLIER_DESKTOP;
-                const requiredDistance = Math.max(heightDistance, widthDistance) * autoZoomMultiplier;
-                const clampedRequiredDistance = Math.max(MIN_RADIUS, Math.min(MAX_RADIUS, requiredDistance));
-                // During spawn, update smoothed auto-zoom immediately for responsive feel
-                smoothedAutoZoomRadius = clampedRequiredDistance;
-                // #region agent log
-                const oldTargetRadius = targetRadius;
-                // #endregion
-                targetRadius = smoothedAutoZoomRadius;
-                // #region agent log
-                // Replaced with debugTelemetry to prevent ERR_INSUFFICIENT_RESOURCES
-                // debugTelemetry({location:'main.js:animate:spawnZoom',message:'Spawn zoom update',data:{blocksCount:blocks.length,sizeX:size.x.toFixed(2),sizeY:size.y.toFixed(2),sizeZ:size.z.toFixed(2),heightDistance:heightDistance.toFixed(2),widthDistance:widthDistance.toFixed(2),requiredDistance:requiredDistance.toFixed(2),oldTargetRadius:oldTargetRadius.toFixed(2),newTargetRadius:targetRadius.toFixed(2),currentRadius:currentRadius.toFixed(2)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'});
-                // #endregion
-            }
-        }
-    }
-
-    // Auto-zoom during gameplay (smoothly frame all blocks except catapulted ones)
-    // Skip if user has manually zoomed recently (allow override) or if auto-zoom is disabled in settings
-    const isAutoZoomDisabled = currentTime < autoZoomDisabledUntilMs;
-    const isAutoZoomEnabled = (typeof window !== 'undefined' && window.autoZoomEnabled !== undefined)
-        ? window.autoZoomEnabled
-        : true; // Default to enabled if not set
-
-    // #region agent log
-    // Removed per-frame telemetry call to prevent ERR_INSUFFICIENT_RESOURCES
-    // Use debugTelemetry() instead if debug telemetry is needed (it has proper throttling/guards)
-    // if (!isGeneratingLevel && blocks.length > 0) {
-    //     debugTelemetry({location:'main.js:animate:autoZoom:beforeThrottle',message:'Auto-zoom before throttle check',data:{isAutoZoomDisabled:isAutoZoomDisabled,isAutoZoomEnabled:isAutoZoomEnabled,timeSinceLastUpdate:currentTime-lastAutoZoomUpdateMs,willRun:(currentTime-lastAutoZoomUpdateMs)>AUTO_ZOOM_UPDATE_INTERVAL_MS,targetRadius:targetRadius.toFixed(2),currentRadius:currentRadius.toFixed(2)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'});
-    // }
-    // #endregion
-
-    if (!isGeneratingLevel && blocks.length > 0 && !isAutoZoomDisabled && isAutoZoomEnabled) {
-        // Throttle expensive bounding-box calculation to avoid long rAF frames
-        if ((currentTime - lastAutoZoomUpdateMs) > AUTO_ZOOM_UPDATE_INTERVAL_MS) {
-            lastAutoZoomUpdateMs = currentTime;
-
-            _autoZoomBox.makeEmpty();
-            let hasNonCatapultedBlocks = false;
-
-            // Calculate effective tower center (with offset) for bounding box calculation
-            _effectiveTowerCenter.copy(towerCenter).add(towerPositionOffset);
-
-            for (const block of blocks) {
-                if (!block || !block.group || block.isRemoved) continue;
-                // Exclude catapulted blocks from auto-zoom calculation
-                if (block.wasCatapulted) continue;
-
-                block.group.updateMatrixWorld(true);
-                _autoZoomBox.expandByObject(block.group);
-                hasNonCatapultedBlocks = true;
-            }
-
-            // #region agent log
-            // Replaced with debugTelemetry to prevent ERR_INSUFFICIENT_RESOURCES
-            // debugTelemetry({location:'main.js:animate:autoZoom:beforeCheck',message:'Auto-zoom before condition check',data:{hasNonCatapultedBlocks:hasNonCatapultedBlocks,isEmpty:_autoZoomBox.isEmpty(),blocksCount:blocks.length,towerOffsetY:towerPositionOffset.y.toFixed(2)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'});
-            // #endregion
-
-            // Only update zoom if we have non-catapulted blocks to frame
-            if (hasNonCatapultedBlocks && !_autoZoomBox.isEmpty()) {
-                // Get bounding box size - this is in world space, which is correct
-                // because the camera position is also in world space relative to effective tower center
-                let size = _autoZoomBox.getSize(_autoZoomSize);
-
-                // #region agent log
-                // Replaced with debugTelemetry to prevent ERR_INSUFFICIENT_RESOURCES
-                // const boxMin = _autoZoomBox.min;
-                // const boxMax = _autoZoomBox.max;
-                // debugTelemetry({location:'main.js:animate:autoZoom:boundingBox',message:'Auto-zoom bounding box',data:{sizeX:size.x.toFixed(2),sizeY:size.y.toFixed(2),sizeZ:size.z.toFixed(2),minX:boxMin.x.toFixed(2),minY:boxMin.y.toFixed(2),minZ:boxMin.z.toFixed(2),maxX:boxMax.x.toFixed(2),maxY:boxMax.y.toFixed(2),maxZ:boxMax.z.toFixed(2),towerOffsetY:towerPositionOffset.y.toFixed(2)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'});
-                // #endregion
-
-                // Ensure minimum bounding box size to prevent zooming in too much with few blocks
-                // This ensures all blocks stay in frame even when there are very few blocks
-                if (size.x < AUTO_ZOOM_MIN_BOUNDING_SIZE) size.x = AUTO_ZOOM_MIN_BOUNDING_SIZE;
-                if (size.y < AUTO_ZOOM_MIN_BOUNDING_SIZE) size.y = AUTO_ZOOM_MIN_BOUNDING_SIZE;
-                if (size.z < AUTO_ZOOM_MIN_BOUNDING_SIZE) size.z = AUTO_ZOOM_MIN_BOUNDING_SIZE;
-
-                // Calculate effective tower center and look-at target
-                _effectiveTowerCenter.copy(towerCenter).add(towerPositionOffset);
-                _lookAtTarget.copy(_effectiveTowerCenter).add(new THREE.Vector3(0, framingOffsetY, 0));
-
-                // Calculate Camera Vectors for Projection (Perspective-Correct Fit)
-                // We use current angles but need to estimate radius-dependent Forward vector
-                // Use currentRadius as a reasonable approximation for orientation
-                const cx = currentRadius * Math.sin(currentElevation) * Math.cos(currentAzimuth);
-                const cy = currentRadius * Math.cos(currentElevation);
-                const cz = currentRadius * Math.sin(currentElevation) * Math.sin(currentAzimuth);
-
-                // Forward vector: from Camera (at cx,cy,cz relative to tower) to LookAt (at 0,framingOffsetY,0 relative to tower)
-                const fwdX = -cx;
-                const fwdY = framingOffsetY - cy;
-                const fwdZ = -cz;
-                const len = Math.sqrt(fwdX * fwdX + fwdY * fwdY + fwdZ * fwdZ);
-                // Normalized Forward
-                const nFwdX = fwdX / len;
-                const nFwdY = fwdY / len;
-                const nFwdZ = fwdZ / len;
-
-                // Right Vector: WorldUp (0,1,0) cross Forward
-                // Rx = Uy*Fz - Uz*Fy = 1*Fz - 0 = Fz
-                // Ry = Uz*Fx - Ux*Fz = 0
-                // Rz = Ux*Fy - Uy*Fx = -Fx
-                const rX = nFwdZ;
-                const rY = 0;
-                const rZ = -nFwdX;
-                const rLen = Math.sqrt(rX * rX + rZ * rZ);
-                const nRightX = rX / rLen;
-                const nRightZ = rZ / rLen; // rY is 0
-
-                // Up Vector: Forward cross Right
-                // Ux = Fy*Rz - Fz*Ry = Fy*Rz
-                // Uy = Fz*Rx - Fx*Rz
-                // Uz = Fx*Ry - Fy*Rx = -Fy*Rx
-                const nUpX = nFwdY * nRightZ;
-                const nUpY = nFwdZ * nRightX - nFwdX * nRightZ;
-                const nUpZ = -nFwdY * nRightX;
-
-                // Project Bounding Box Corners onto Camera Up Vector to find Vertical Extent
-                const boxMin = _autoZoomBox.min;
-                const boxMax = _autoZoomBox.max;
-
-                // 8 Corners relative to LookAtTarget
-                const corners = [
-                    new THREE.Vector3(boxMin.x, boxMin.y, boxMin.z),
-                    new THREE.Vector3(boxMin.x, boxMin.y, boxMax.z),
-                    new THREE.Vector3(boxMin.x, boxMax.y, boxMin.z),
-                    new THREE.Vector3(boxMin.x, boxMax.y, boxMax.z),
-                    new THREE.Vector3(boxMax.x, boxMin.y, boxMin.z),
-                    new THREE.Vector3(boxMax.x, boxMin.y, boxMax.z),
-                    new THREE.Vector3(boxMax.x, boxMax.y, boxMin.z),
-                    new THREE.Vector3(boxMax.x, boxMax.y, boxMax.z)
-                ];
-
-                let maxProjY = 0;
-                let maxProjX = 0;
-
-                for (const p of corners) {
-                    // Vector from LookAtTarget to Corner
-                    const relX = p.x - _lookAtTarget.x;
-                    const relY = p.y - _lookAtTarget.y;
-                    const relZ = p.z - _lookAtTarget.z;
-
-                    // Project onto Camera Up (Vertical Distance on Screen)
-                    const projY = Math.abs(relX * nUpX + relY * nUpY + relZ * nUpZ);
-                    if (projY > maxProjY) maxProjY = projY;
-
-                    // Project onto Camera Right (Horizontal Distance on Screen) - mostly for check
-                    // For width, we previously used XZ diagonal which is rotation-safe.
-                    // But checking actual projected width is good for extreme aspects.
-                    const projX = Math.abs(relX * nRightX + relZ * nRightZ); // Right vector has 0 Y component
-                    if (projX > maxProjX) maxProjX = projX;
-                }
-
-                const effectiveHeight = maxProjY * 2;
-
-                // For width, we combine the projected width and the XZ-diagonal heuristic for stability
-                // The XZ diagonal (circle fit) ensures rotation doesn't clip corners
-                const diagXZ = Math.sqrt(
-                    Math.pow(Math.max(Math.abs(boxMax.x - _lookAtTarget.x), Math.abs(boxMin.x - _lookAtTarget.x)), 2) +
-                    Math.pow(Math.max(Math.abs(boxMax.z - _lookAtTarget.z), Math.abs(boxMin.z - _lookAtTarget.z)), 2)
-                ) * 2;
-                const effectiveWidth = Math.max(maxProjX * 2, diagXZ);
-
-                // Calculate required distance
-                const fov = camera.fov * (Math.PI / 180);
-                const aspect = camera.aspect;
-
-                // Use mobile-specific padding
-                // Reverting generic padding to be tight since our vector math is now precise
-                const effectivePadding = isMobileLike ? ZOOM_PADDING_MOBILE : ZOOM_PADDING;
-
-                // Height check
-                const heightDistance = (effectiveHeight + effectivePadding * 2) / (2 * Math.tan(fov / 2));
-
-                // Width check
-                const widthDistance = (effectiveWidth + effectivePadding * 2) / (2 * Math.tan(fov / 2) * aspect);
-
-                // Desktop 1.5 multiplier was a patch for the bad math. Now that math is good, we can reduce it.
-                // Keeping a slight buffer (1.1) for UI elements.
-                const autoZoomMultiplier = isMobileLike ? AUTO_ZOOM_MULTIPLIER_MOBILE : AUTO_ZOOM_MULTIPLIER_DESKTOP;
-                const requiredDistance = Math.max(heightDistance, widthDistance) * autoZoomMultiplier;
-                const clampedRequiredDistance = Math.max(MIN_RADIUS, Math.min(MAX_RADIUS, requiredDistance));
-                // Smooth the auto-zoom target to prevent jerky movement when bounding box changes
-                // This creates a stable target that gradually approaches the desired distance
-                const AUTO_ZOOM_SMOOTHING = 0.3; // Smooth auto-zoom target updates
-                smoothedAutoZoomRadius += (clampedRequiredDistance - smoothedAutoZoomRadius) * AUTO_ZOOM_SMOOTHING;
-                // #region agent log
-                const oldTargetRadius = targetRadius;
-                // #endregion
-                targetRadius = smoothedAutoZoomRadius;
-                // #region agent log
-                // Replaced with debugTelemetry to prevent ERR_INSUFFICIENT_RESOURCES
-                // debugTelemetry({location:'main.js:animate:autoZoom',message:'Auto-zoom update',data:{blocksCount:blocks.length,sizeX:size.x.toFixed(2),sizeY:size.y.toFixed(2),sizeZ:size.z.toFixed(2),heightDistance:heightDistance.toFixed(2),widthDistance:widthDistance.toFixed(2),requiredDistance:requiredDistance.toFixed(2),oldTargetRadius:oldTargetRadius.toFixed(2),newTargetRadius:targetRadius.toFixed(2),currentRadius:currentRadius.toFixed(2),currentElevation:(currentElevation*180/Math.PI).toFixed(2)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'});
-                // #endregion
-
-                // Debug: log auto-zoom calculation (can be removed later)
-                if (typeof window !== 'undefined' && window.jarrows_debug === '1') {
-                    console.log('[Auto-zoom]', {
-                        requiredDistance: requiredDistance.toFixed(2),
-                        targetRadius: targetRadius.toFixed(2),
-                        size: { x: size.x.toFixed(2), y: size.y.toFixed(2), z: size.z.toFixed(2) }
-                    });
-                }
-            }
-        }
-    }
-
-    // Smooth interpolation - balanced for responsive yet smooth movement
-    // Higher smoothing = faster response = smoother feel
-    const smoothing = isGeneratingLevel ? 0.25 : 0.15; // Increased from 0.04 to 0.15 for smoother, more responsive camera
-    // #region agent log
-    const oldCurrentRadius = currentRadius;
-    const oldTargetRadius = targetRadius;
-    // #endregion
-    currentRadius += (targetRadius - currentRadius) * smoothing;
-    currentAzimuth += (targetAzimuth - currentAzimuth) * smoothing;
-    currentElevation += (targetElevation - currentElevation) * smoothing;
-
-    // Smooth interpolation of tower position offset to prevent camera jumps
-    // Use faster smoothing during level generation for responsive feel
-    const towerOffsetSmoothing = isGeneratingLevel ? 0.3 : 0.2;
-    towerPositionOffset.x += (targetTowerPositionOffset.x - towerPositionOffset.x) * towerOffsetSmoothing;
-    towerPositionOffset.y += (targetTowerPositionOffset.y - towerPositionOffset.y) * towerOffsetSmoothing;
-    towerPositionOffset.z += (targetTowerPositionOffset.z - towerPositionOffset.z) * towerOffsetSmoothing;
-    // #region agent log
-    // Replaced with debugTelemetry to prevent ERR_INSUFFICIENT_RESOURCES
-    // if (Math.abs(oldCurrentRadius - currentRadius) > 0.1 || Math.abs(oldTargetRadius - targetRadius) > 0.1) {
-    //     debugTelemetry({location:'main.js:animate:interpolation',message:'Camera radius interpolation',data:{isGeneratingLevel:isGeneratingLevel,smoothing:smoothing.toFixed(3),oldCurrentRadius:oldCurrentRadius.toFixed(2),newCurrentRadius:currentRadius.toFixed(2),oldTargetRadius:oldTargetRadius.toFixed(2),newTargetRadius:targetRadius.toFixed(2),delta:Math.abs(currentRadius-oldCurrentRadius).toFixed(2)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'});
-    // }
-    // #endregion
-
-    // Snap to target when close to avoid endless micro-updates (saves battery, stabilizes idle frames)
-    const SNAP_EPS = 1e-4;
-    const dr = Math.abs(targetRadius - currentRadius);
-    const da = Math.abs(targetAzimuth - currentAzimuth);
-    const de = Math.abs(targetElevation - currentElevation);
-    if (dr < SNAP_EPS) currentRadius = targetRadius;
-    if (da < SNAP_EPS) currentAzimuth = targetAzimuth;
-    if (de < SNAP_EPS) currentElevation = targetElevation;
-
-    // Only update camera if it's actually moving
-    // This saves CPU when camera is stationary
-    const cameraStillMoving = (dr >= SNAP_EPS) || (da >= SNAP_EPS) || (de >= SNAP_EPS);
-    if (cameraStillMoving ||
-        dr > SNAP_EPS ||
-        da > SNAP_EPS ||
-        de > SNAP_EPS) {
-        updateCameraPosition();
-    }
-
-    // Determine if we need expensive shadow updates this frame
     const isBatteryQuality = qualityPreset === 'battery';
     const interacting = isDraggingCamera || (touchState && touchState.isActive);
+    const isAutoZoomDisabled = currentTime < autoZoomDisabledUntilMs;
+    const isAutoZoomEnabled = (typeof window !== 'undefined' && window.autoZoomEnabled !== undefined) ? window.autoZoomEnabled : true;
 
-    // Cache block state flags to avoid full iteration every frame
-    // In battery mode when idle, only check block state periodically (every 100ms)
-    // First check if we need to iterate based on simple conditions
-    const BLOCK_STATE_CHECK_INTERVAL = isBatteryQuality ? 100 : 16;
-    const needsFullIteration = interacting ||
-        cameraStillMoving ||
-        isGeneratingLevel ||
-        !isBatteryQuality ||
-        (isBatteryQuality && (currentTime - lastBlockStateCheckTime > BLOCK_STATE_CHECK_INTERVAL));
-
-    if (needsFullIteration) {
-        cachedHasFallingBlocks = false;
-        cachedHasActiveAnimations = false;
-        cachedHasPhysicsBlocks = false;
-        for (const block of blocks) {
-            if (!block) continue;
-            if (block.isFalling) {
-                cachedHasFallingBlocks = true;
-                if (block.physicsBody) cachedHasPhysicsBlocks = true;
-            }
-            if (block.isAnimating || (block.removalStartTime && !block.isRemoved)) {
-                cachedHasActiveAnimations = true;
-            }
-            if (cachedHasFallingBlocks && cachedHasActiveAnimations && cachedHasPhysicsBlocks) break;
-        }
-        lastBlockStateCheckTime = currentTime;
-    }
-
-    // Use cached values
-    const hasFallingBlocks = cachedHasFallingBlocks;
-    const hasActiveAnimations = cachedHasActiveAnimations;
-    const hasPhysicsBlocks = cachedHasPhysicsBlocks;
-    const isActiveFrame = interacting || hasFallingBlocks || cameraStillMoving || hasActiveAnimations || isGeneratingLevel;
-    nextFrameDelayMs = isActiveFrame ? ACTIVE_FRAME_MS : IDLE_FRAME_MS;
-
-    // Idle Checks (3s for spin button animation, 10s for penalty drop)
-    // Placed after hasFallingBlocks is declared to avoid ReferenceError
-    const canCheckIdle = !isTimeFrozen() && !isGeneratingLevel && !isPaused && blocks.length > 0;
-    if (canCheckIdle) {
-        const idleSeconds = (currentTime - lastInteractionTime) / 1000;
-        
-        // Spin Button idle animation
-        const diceBtn = document.getElementById('dice-button');
-        if (diceBtn) {
-            if (idleSeconds > 3 && !hasFallingBlocks && remainingSpins > 0) {
-                diceBtn.classList.add('spin-idle-anim');
-            } else {
-                diceBtn.classList.remove('spin-idle-anim');
-            }
-        }
-        
-        // 30-second idle tile drop (1 per second after 30s)
-        if (idleSeconds > 30) {
-            if (currentTime - lastIdleDropTime > 1000) {
-                lastIdleDropTime = currentTime;
-                dropPenaltyTile();
-            }
-        } else {
-            lastIdleDropTime = currentTime; // defer dropping until > 30s
-        }
-    } else {
-        // Reset timers so they don't trigger immediately when game unpauses
-        lastInteractionTime = currentTime;
-        lastIdleDropTime = currentTime;
-    }
-
-    // Keep shadow updates "warm" while the camera is settling (smoothing) and for a short cooldown after interaction.
-    // This prevents noticeable shadow direction/strength jumps when updates are gated too aggressively.
-    // Battery preset: don't burn battery refreshing shadow maps during block motion/catapult/melt;
-    // only update shadows during camera interaction/settle and during level generation.
-    const shouldWarmShadows =
-        isGeneratingLevel ||
-        interacting ||
-        cameraStillMoving ||
-        (!isBatteryQuality && (hasFallingBlocks || hasActiveAnimations));
-
-    // Calculate shadow cooldown based on battery mode and camera state
-    // Extended cooldown when idle in battery mode to save battery
-    const isCameraIdle = !cameraStillMoving && !interacting;
-    const shadowCooldownMs = (isBatteryQuality && isCameraIdle)
-        ? 1200  // Extended cooldown when idle in battery mode
-        : (isIOS ? 600 : 350);  // Normal cooldown
-
-    if (shouldWarmShadows) {
-        shadowUpdateCooldownUntilMs = currentTime + shadowCooldownMs;
-    }
-    const needShadowsThisFrame = currentTime < shadowUpdateCooldownUntilMs;
-
-    // Update light target positions at intervals (rate-limited for battery savings)
-    // Then smoothly interpolate actual light positions every frame to prevent jitter
-    // Skip automatic light updates if user is manually controlling lights via debug panel
-    if (!lightsManuallyControlled && needShadowsThisFrame && (currentTime - lastLightUpdateMs) > LIGHT_UPDATE_INTERVAL_MS) {
-        lastLightUpdateMs = currentTime;
-        updateLightsForCamera(lights, currentAzimuth, currentElevation, _towerGroupWorldCenter);
-        if (renderer.shadowMap) renderer.shadowMap.needsUpdate = true;
-    }
-
-    // Smoothly interpolate light positions every frame to prevent jitter (especially in battery mode)
-    // This allows lights to follow the smoothly moving camera without discrete jumps
-    // Only interpolate when position difference is significant to save battery
-    // Skip interpolation if user is manually controlling lights via debug panel
-    if (!lightsManuallyControlled && lights && targetKeyLightPosition) {
-        const keyLightDistanceSq = lights.keyLight.position.distanceToSquared(targetKeyLightPosition);
-        const fillLightDistanceSq = lights.fillLight && targetFillLightPosition
-            ? lights.fillLight.position.distanceToSquared(targetFillLightPosition)
-            : 0;
-
-        // Only interpolate if position difference is significant (> 0.001 units)
-        if (keyLightDistanceSq > 0.001) {
-            // Use faster interpolation in battery mode to reduce visible lag, but still smooth
-            const lightSmoothing = isBatteryQuality ? 0.15 : 0.3;
-            lights.keyLight.position.lerp(targetKeyLightPosition, lightSmoothing);
-
-            // Update shadow camera to match interpolated light position
-            if (lights.keyLight.shadow && lights.keyLight.shadow.camera) {
-                lights.keyLight.shadow.camera.position.copy(lights.keyLight.position);
-                lights.keyLight.shadow.camera.lookAt(_towerGroupWorldCenter);
-
-                // Adjust shadow camera bounds to follow tower vertical position
-                // This prevents shadow jitter when tower moves up/down
-                const towerY = _towerGroupWorldCenter.y;
-                const shadowBounds = 14; // Base bounds
-                const verticalOffset = Math.max(0, towerY); // Only adjust for upward movement
-                lights.keyLight.shadow.camera.top = shadowBounds + verticalOffset;
-                lights.keyLight.shadow.camera.bottom = -shadowBounds + verticalOffset;
-
-                lights.keyLight.shadow.camera.updateMatrixWorld();
-            }
-        }
-
-        if (lights.fillLight && targetFillLightPosition && fillLightDistanceSq > 0.001) {
-            const lightSmoothing = isBatteryQuality ? 0.15 : 0.3;
-            lights.fillLight.position.lerp(targetFillLightPosition, lightSmoothing);
-        }
-    }
-
-    // Keep shadow maps in manual-update mode, but refresh periodically while motion/interaction is happening.
-    // This avoids abrupt shadow pops from toggling autoUpdate on/off.
-    // In battery mode, increase update frequency when tower is moving to reduce jitter
-    const towerIsMoving = Math.abs(towerPositionOffset.y - targetTowerPositionOffset.y) > 0.01 ||
-        Math.abs(towerPositionOffset.x - targetTowerPositionOffset.x) > 0.01 ||
-        Math.abs(towerPositionOffset.z - targetTowerPositionOffset.z) > 0.01;
-    const effectiveShadowInterval = (isBatteryQuality && towerIsMoving)
-        ? Math.min(SHADOW_MAP_UPDATE_INTERVAL_MS, 50) // Cap at 20Hz when moving in battery mode
-        : SHADOW_MAP_UPDATE_INTERVAL_MS;
-
-    if (renderer.shadowMap && needShadowsThisFrame && (currentTime - lastShadowMapUpdateMs) > effectiveShadowInterval) {
-        lastShadowMapUpdateMs = currentTime;
-        renderer.shadowMap.needsUpdate = true;
-    }
-
-    // Update timer display (throttled; per-frame DOM updates cost battery on mobile)
-    if (currentTime - lastTimerUiMs > TIMER_UI_INTERVAL_MS) {
-        lastTimerUiMs = currentTime;
-        updateTimerDisplay();
-    }
-
-    // Update particle system
-    if (particleSystem) {
-        particleSystem.updateParticles(deltaTime);
-    }
-
-    // Update debris pieces
-    if (debrisManager) {
-        debrisManager.update();
-        // Clean up settled debris pieces (below base plate, after 10 seconds)
-        if (debrisManager.getPieceCount() > 0) {
-            debrisManager.cleanupSettled(-0.5, 10);
-        }
-    }
-
-    // Update block count (FPS tracking moved to animate function)
-    const blockValueElement = document.getElementById('block-value');
-    if (blockValueElement) {
-        blockValueElement.textContent = blocks.length;
-    }
-
-    // Reset frame flag
+    // 4. Update Physics (CRITICAL: Before block sync)
     physicsUpdatedThisFrame = false;
-
-    // CRITICAL: Only call updatePhysics ONCE per frame, before any reads
-    // Process operations and step physics
-    // In battery mode, skip physics when truly idle to save CPU
-    // Also check for debris pieces - they need physics to fall
     const hasDebris = debrisManager && debrisManager.getPieceCount() > 0;
     const shouldUpdatePhysics = !physicsUpdatedThisFrame &&
-        (hasPhysicsBlocks || hasPendingOperations() || hasFallingBlocks || hasDebris) &&
-        !(isBatteryQuality && !isActiveFrame && !hasFallingBlocks && !hasDebris);
+        (cachedHasPhysicsBlocks || hasPendingOperations() || cachedHasFallingBlocks || hasDebris) &&
+        !(isBatteryQuality && !interacting && !cachedHasFallingBlocks && !cameraStillMoving && !cachedHasActiveAnimations && !isGeneratingLevel);
 
     if (shouldUpdatePhysics) {
         updatePhysics(physics, deltaTime);
         physicsUpdatedThisFrame = true;
     }
 
-    // Update block visuals from physics AFTER step completes
-    // This is the read phase - modifications queued here will be processed NEXT frame
-    if (!isPhysicsStepping() && !isPhysicsProcessing()) {
-        // Include blocks that are falling, even if they don't have a physics body yet
-        // (they need updateFromPhysics to create the physics body)
-        for (const block of blocks) {
-            if (!block || block.isRemoved || !block.isFalling) continue;
-            block.updateFromPhysics();
-        }
+    // 5. Unified Block Processing Loop (Single Pass)
+    _towerGroupWorldCenter.copy(towerCenter).add(towerPositionOffset);
+    towerGroup.position.copy(_towerGroupWorldCenter);
+    
+    if (isAutoZoomEnabled && !isAutoZoomDisabled) {
+        if (isGeneratingLevel) _spawnZoomBox.makeEmpty();
+        else _autoZoomBox.makeEmpty();
+    }
+    
+    let hasNonCatapultedBlocksForZoom = false;
+    cachedHasFallingBlocks = false;
+    cachedHasActiveAnimations = false;
+    cachedHasPhysicsBlocks = false;
 
-        // Update highlight animations
-        for (const block of blocks) {
-            if (block.updateHighlightAnimation) {
-                block.updateHighlightAnimation(deltaTime);
+    for (const block of blocks) {
+        if (!block || block.isRemoved) continue;
+
+        if (typeof block.updateLockState === 'function') block.updateLockState();
+        
+        if (block.isFalling) {
+            cachedHasFallingBlocks = true;
+            block.updateFromPhysics(); // Start/update physics processing
+            if (block.physicsBody) {
+                cachedHasPhysicsBlocks = true;
             }
         }
+        
+        if (block.isAnimating || (block.removalStartTime && !block.isRemoved)) {
+            cachedHasActiveAnimations = true;
+        }
 
-        // Update melt animations (for blocks being removed)
-        // Check ALL blocks, not just non-removed ones
-        // Update melt animations (for blocks being removed)
-        // Check ALL blocks, not just non-removed ones
-        for (const block of blocks) {
-            if (block.updateMeltAnimation && block.removalStartTime && !block.isRemoved) {
-                try {
-                    block.updateMeltAnimation(deltaTime);
-                } catch (e) {
-                    console.error('Error updating melt animation:', e, block);
+        if (block.updateHighlightAnimation) block.updateHighlightAnimation(deltaTime);
+        if (block.updateMeltAnimation && block.removalStartTime && !block.isRemoved) {
+            block.updateMeltAnimation(deltaTime);
+        }
+
+        if (isAutoZoomEnabled && !isAutoZoomDisabled && !block.wasCatapulted) {
+             const zoomUpdateInterval = isGeneratingLevel ? SPAWN_ZOOM_UPDATE_INTERVAL_MS : AUTO_ZOOM_UPDATE_INTERVAL_MS;
+             const lastUpdate = isGeneratingLevel ? lastSpawnZoomUpdateMs : lastAutoZoomUpdateMs;
+             if (currentTime - lastUpdate > zoomUpdateInterval) {
+                  block.group.updateMatrixWorld(true);
+                  if (isGeneratingLevel) _spawnZoomBox.expandByObject(block.group);
+                  else _autoZoomBox.expandByObject(block.group);
+                  hasNonCatapultedBlocksForZoom = true;
+             }
+        }
+    }
+    lastBlockStateCheckTime = currentTime;
+
+    // 6. Camera & Zoom Logic
+    if (isAutoZoomEnabled && !isAutoZoomDisabled) {
+        const zoomUpdateInterval = isGeneratingLevel ? SPAWN_ZOOM_UPDATE_INTERVAL_MS : AUTO_ZOOM_UPDATE_INTERVAL_MS;
+        const lastUpdate = isGeneratingLevel ? lastSpawnZoomUpdateMs : lastAutoZoomUpdateMs;
+        if (currentTime - lastUpdate > zoomUpdateInterval) {
+            if (isGeneratingLevel) lastSpawnZoomUpdateMs = currentTime;
+            else lastAutoZoomUpdateMs = currentTime;
+
+            const activeBox = isGeneratingLevel ? _spawnZoomBox : _autoZoomBox;
+            if (hasNonCatapultedBlocksForZoom && !activeBox.isEmpty()) {
+                const size = activeBox.getSize(_autoZoomSize);
+                if (size.x < AUTO_ZOOM_MIN_BOUNDING_SIZE) size.x = AUTO_ZOOM_MIN_BOUNDING_SIZE;
+                if (size.y < AUTO_ZOOM_MIN_BOUNDING_SIZE) size.y = AUTO_ZOOM_MIN_BOUNDING_SIZE;
+                if (size.z < AUTO_ZOOM_MIN_BOUNDING_SIZE) size.z = AUTO_ZOOM_MIN_BOUNDING_SIZE;
+
+                _effectiveTowerCenter.copy(towerCenter).add(towerPositionOffset);
+                _lookAtTarget.copy(_effectiveTowerCenter).add(new THREE.Vector3(0, framingOffsetY, 0));
+
+                const cx = currentRadius * Math.sin(currentElevation) * Math.cos(currentAzimuth);
+                const cy = currentRadius * Math.cos(currentElevation);
+                const cz = currentRadius * Math.sin(currentElevation) * Math.sin(currentAzimuth);
+                const fwdX = -cx, fwdY = framingOffsetY - cy, fwdZ = -cz;
+                const len = Math.sqrt(fwdX*fwdX + fwdY*fwdY + fwdZ*fwdZ);
+                const nFwdX = fwdX/len, nFwdY = fwdY/len, nFwdZ = fwdZ/len;
+                const rX = nFwdZ, rZ = -nFwdX;
+                const rLen = Math.sqrt(rX*rX + rZ*rZ);
+                const nRightX = rX/rLen, nRightZ = rZ/rLen;
+                const nUpX = nFwdY * nRightZ, nUpY = nFwdZ * nRightX - nFwdX * nRightZ, nUpZ = -nFwdY * nRightX;
+
+                const boxMin = activeBox.min, boxMax = activeBox.max;
+                const corners = [
+                    {x:boxMin.x, y:boxMin.y, z:boxMin.z}, {x:boxMin.x, y:boxMin.y, z:boxMax.z},
+                    {x:boxMin.x, y:boxMax.y, z:boxMin.z}, {x:boxMin.x, y:boxMax.y, z:boxMax.z},
+                    {x:boxMax.x, y:boxMin.y, z:boxMin.z}, {x:boxMax.x, y:boxMin.y, z:boxMax.z},
+                    {x:boxMax.x, y:boxMax.y, z:boxMin.z}, {x:boxMax.x, y:boxMax.y, z:boxMax.z}
+                ];
+
+                let maxProjY = 0, maxProjX = 0;
+                for (const p of corners) {
+                    const relX = p.x - _lookAtTarget.x, relY = p.y - _lookAtTarget.y, relZ = p.z - _lookAtTarget.z;
+                    const projY = Math.abs(relX * nUpX + relY * nUpY + relZ * nUpZ);
+                    if (projY > maxProjY) maxProjY = projY;
+                    const projX = Math.abs(relX * nRightX + relZ * nRightZ);
+                    if (projX > maxProjX) maxProjX = projX;
                 }
+
+                const diagXZ = Math.sqrt(
+                    Math.pow(Math.max(Math.abs(boxMax.x - _lookAtTarget.x), Math.abs(boxMin.x - _lookAtTarget.x)), 2) +
+                    Math.pow(Math.max(Math.abs(boxMax.z - _lookAtTarget.z), Math.abs(boxMin.z - _lookAtTarget.z)), 2)
+                ) * 2;
+                const effectiveHeight = maxProjY * 2, effectiveWidth = Math.max(maxProjX * 2, diagXZ);
+                const fov = camera.fov * (Math.PI / 180), aspect = camera.aspect;
+                const padding = isMobileLike ? ZOOM_PADDING_MOBILE : ZOOM_PADDING;
+                const hDist = (effectiveHeight + padding * 2) / (2 * Math.tan(fov / 2));
+                const wDist = (effectiveWidth + padding * 2) / (2 * Math.tan(fov / 2) * aspect);
+                const multiplier = isMobileLike ? AUTO_ZOOM_MULTIPLIER_MOBILE : AUTO_ZOOM_MULTIPLIER_DESKTOP;
+                const requiredDistance = Math.max(hDist, wDist) * multiplier;
+                const clampedDist = Math.max(MIN_RADIUS, Math.min(MAX_RADIUS, requiredDistance));
+
+                if (isGeneratingLevel) smoothedAutoZoomRadius = clampedDist;
+                else smoothedAutoZoomRadius += (clampedDist - smoothedAutoZoomRadius) * 0.3;
+                targetRadius = smoothedAutoZoomRadius;
             }
         }
+    }
 
-        // Periodically check for blocks that lost support (continuous monitoring)
-        // In battery mode, check less frequently to save battery (400ms vs 200ms)
-        const supportCheckInterval = isBatteryQuality ? 400 : 200;
-        if (currentTime - lastSupportCheckTime > supportCheckInterval) {
-            lastSupportCheckTime = currentTime;
-            checkAndTriggerFalling(blocks);
+    const smoothing = isGeneratingLevel ? 0.25 : 0.15;
+    currentRadius += (targetRadius - currentRadius) * smoothing;
+    currentAzimuth += (targetAzimuth - currentAzimuth) * smoothing;
+    currentElevation += (targetElevation - currentElevation) * smoothing;
+
+    const towerOffsetSmoothing = isGeneratingLevel ? 0.3 : 0.2;
+    towerPositionOffset.x += (targetTowerPositionOffset.x - towerPositionOffset.x) * towerOffsetSmoothing;
+    towerPositionOffset.y += (targetTowerPositionOffset.y - towerPositionOffset.y) * towerOffsetSmoothing;
+    towerPositionOffset.z += (targetTowerPositionOffset.z - towerPositionOffset.z) * towerOffsetSmoothing;
+
+    const SNAP_EPS = 1e-4;
+    const dr = Math.abs(targetRadius - currentRadius), da = Math.abs(targetAzimuth - currentAzimuth), de = Math.abs(targetElevation - currentElevation);
+    if (dr < SNAP_EPS) currentRadius = targetRadius;
+    if (da < SNAP_EPS) currentAzimuth = targetAzimuth;
+    if (de < SNAP_EPS) currentElevation = targetElevation;
+
+    cameraStillMoving = (dr >= SNAP_EPS) || (da >= SNAP_EPS) || (de >= SNAP_EPS);
+    if (cameraStillMoving) updateCameraPosition();
+
+    // 7. Idle & Battery Logic
+    const hasFallingBlocks = cachedHasFallingBlocks;
+    const hasActiveAnimations = cachedHasActiveAnimations;
+    const isActiveFrame = interacting || hasFallingBlocks || cameraStillMoving || hasActiveAnimations || isGeneratingLevel;
+    nextFrameDelayMs = isActiveFrame ? ACTIVE_FRAME_MS : IDLE_FRAME_MS;
+
+    const canCheckIdle = !isTimeFrozen() && !isGeneratingLevel && !isPaused && blocks.length > 0;
+    if (canCheckIdle) {
+        const idleSeconds = (currentTime - lastInteractionTime) / 1000;
+        const diceBtn = document.getElementById('dice-button');
+        if (diceBtn) {
+            if (idleSeconds > 3 && !hasFallingBlocks && remainingSpins > 0) diceBtn.classList.add('spin-idle-anim');
+            else diceBtn.classList.remove('spin-idle-anim');
         }
+        if (window.autoFallEnabled && idleSeconds > 30) {
+            if (currentTime - lastIdleDropTime > 1000) {
+                lastIdleDropTime = currentTime;
+                dropPenaltyTile();
+            }
+        } else if (!window.autoFallEnabled) lastIdleDropTime = currentTime;
+    } else {
+        lastInteractionTime = currentTime;
+        lastIdleDropTime = currentTime;
+    }
 
-        // Clean up removed blocks and update solution tracking
-        for (let i = blocks.length - 1; i >= 0; i--) {
-            const block = blocks[i];
+    // 8. Shadows & Lights
+    const shouldWarmShadows = isGeneratingLevel || interacting || cameraStillMoving || (!isBatteryQuality && (hasFallingBlocks || hasActiveAnimations));
+    const isCameraIdle = !cameraStillMoving && !interacting;
+    const shadowCooldownMs = (isBatteryQuality && isCameraIdle) ? 1200 : (isIOS ? 600 : 350);
+    if (shouldWarmShadows) shadowUpdateCooldownUntilMs = currentTime + shadowCooldownMs;
+    const needShadowsThisFrame = currentTime < shadowUpdateCooldownUntilMs;
 
-            // Melt animation cleanup is handled in updateMeltAnimation function
+    if (!lightsManuallyControlled && needShadowsThisFrame && (currentTime - lastLightUpdateMs) > LIGHT_UPDATE_INTERVAL_MS) {
+        lastLightUpdateMs = currentTime;
+        updateLightsForCamera(lights, currentAzimuth, currentElevation, _towerGroupWorldCenter);
+        if (renderer.shadowMap) renderer.shadowMap.needsUpdate = true;
+    }
 
-            if (block.isRemoved) {
-                // Distinguish between manual removal (has removalStartTime) and natural fall-off
-                // Manual removals already handled stats/time in the melt animation completion callback
-                // Natural fall-offs need stats/time tracking here
-                const isNaturalFall = !block.removalStartTime;
-
-                if (isNaturalFall) {
-                    // Block fell off naturally - track stats and award time
-                    trackBlockRemoved();
-                    timeChallengeAwardForBlockRemoved(block.length);
-                }
-
-                // Ensure block is removed from towerGroup (in case remove() didn't work)
-                if (block.group.parent) {
-                    block.group.parent.remove(block.group);
-                }
-
-                // Clean up physics body if it exists
-                if (block.physicsBody && block.physicsBody.body) {
-                    import('./physics.js').then(({ removePhysicsBody }) => {
-                        removePhysicsBody(physics, block.physicsBody.body);
-                    });
-                }
-
-                // Block was removed (fell off) - advance solution if we're tracking
-                if (window.puzzleSolution && window.solutionStep < window.puzzleSolution.length) {
-                    window.solutionStep++;
-                    // Update highlight after a short delay to ensure cleanup is done
-                    setTimeout(() => {
-                        highlightNextBlock();
-                    }, 100);
-                }
-
-                // Keep move history entries even if a block is removed.
-                // Undo can resurrect the last-removed block back onto the board.
-
-                blocks.splice(i, 1);
+    if (!lightsManuallyControlled && lights && targetKeyLightPosition) {
+        const keyLightDistSq = lights.keyLight.position.distanceToSquared(targetKeyLightPosition);
+        if (keyLightDistSq > 0.001) {
+            const lSmooth = isBatteryQuality ? 0.15 : 0.3;
+            lights.keyLight.position.lerp(targetKeyLightPosition, lSmooth);
+            if (lights.keyLight.shadow && lights.keyLight.shadow.camera) {
+                lights.keyLight.shadow.camera.position.copy(lights.keyLight.position);
+                lights.keyLight.shadow.camera.lookAt(_towerGroupWorldCenter);
+                const tY = _towerGroupWorldCenter.y, sB = 14, vO = Math.max(0, tY);
+                lights.keyLight.shadow.camera.top = sB + vO;
+                lights.keyLight.shadow.camera.bottom = -sB + vO;
+                lights.keyLight.shadow.camera.updateMatrixWorld();
             }
         }
+        if (lights.fillLight && targetFillLightPosition && lights.fillLight.position.distanceToSquared(targetFillLightPosition) > 0.001) {
+            lights.fillLight.position.lerp(targetFillLightPosition, isBatteryQuality ? 0.15 : 0.3);
+        }
+    }
 
-        // Check for level completion (all blocks cleared)
-        // Only check if not generating a new level and level complete hasn't been shown yet
-        // Don't show level complete if time ran out (user failed)
-        if (blocks.length === 0 && currentLevel >= 0 && !isGeneratingLevel && !levelCompleteShown && !timeUpShown) {
-            levelCompleteShown = true;
-            stopTimer(); // Stop timer when level is complete
-            // Save progress for the next level (currentLevel + 1) since they'll advance
-            // This ensures progress is saved even if they close the browser before clicking "Next Level"
-            // We save the next level directly to localStorage without modifying currentLevel
+    const towerIsMoving = Math.abs(towerPositionOffset.y - targetTowerPositionOffset.y) > 0.01;
+    const shadowInterval = (isBatteryQuality && towerIsMoving) ? Math.min(SHADOW_MAP_UPDATE_INTERVAL_MS, 50) : SHADOW_MAP_UPDATE_INTERVAL_MS;
+    if (renderer.shadowMap && needShadowsThisFrame && (currentTime - lastShadowMapUpdateMs) > shadowInterval) {
+        lastShadowMapUpdateMs = currentTime;
+        renderer.shadowMap.needsUpdate = true;
+    }
+
+    // 9. Misc Updates (UI, Particles, Debris)
+    if (currentTime - lastTimerUiMs > TIMER_UI_INTERVAL_MS) { lastTimerUiMs = currentTime; updateTimerDisplay(); }
+    if (particleSystem) particleSystem.updateParticles(deltaTime);
+    if (debrisManager) {
+        debrisManager.update();
+        if (debrisManager.getPieceCount() > 0) debrisManager.cleanupSettled(-0.5, 10);
+    }
+    const blockValueElement = document.getElementById('block-value');
+    if (blockValueElement) blockValueElement.textContent = blocks.length;
+
+    // 10. Support Check & Cleanup
+    const supportCheckInterval = isBatteryQuality ? 400 : 200;
+    if (currentTime - lastSupportCheckTime > supportCheckInterval) {
+        lastSupportCheckTime = currentTime;
+        checkAndTriggerFalling(blocks);
+    }
+
+    for (let i = blocks.length - 1; i >= 0; i--) {
+        const block = blocks[i];
+        if (block.isRemoved) {
+            if (!block.removalStartTime) { trackBlockRemoved(); timeChallengeAwardForBlockRemoved(block.length); }
+            if (block.group.parent) block.group.parent.remove(block.group);
+            if (block.physicsBody && block.physicsBody.body) {
+                import('./physics.js').then(({ removePhysicsBody }) => removePhysicsBody(physics, block.physicsBody.body));
+            }
+            if (window.puzzleSolution && window.solutionStep < window.puzzleSolution.length) {
+                window.solutionStep++;
+                setTimeout(() => highlightNextBlock(), 100);
+            }
+            blocks.splice(i, 1);
+        }
+    }
+
+    // 11. Level Completion
+    if (blocks.length === 0 && currentLevel >= 0 && !isGeneratingLevel && !levelCompleteShown && !timeUpShown) {
+        levelCompleteShown = true;
+        stopTimer();
+        try {
+            const nextLevel = currentLevel + 1;
+            localStorage.setItem(getStorageKey(), nextLevel.toString());
+            const highest = parseInt(localStorage.getItem(STORAGE_HIGHEST_LEVEL_KEY) || '0', 10);
+            if (nextLevel > highest) localStorage.setItem(STORAGE_HIGHEST_LEVEL_KEY, nextLevel.toString());
+        } catch (e) { console.warn('Failed to save progress:', e); }
+        
+        let elapsed = timerPausedTime;
+        if (isTimerRunning && timerStartTime !== null) elapsed += (performance.now() / 1000) - timerStartTime;
+        showLevelCompleteModal(currentLevel);
+        (async () => {
             try {
-                const nextLevel = currentLevel + 1;
-                // FIX: Use correct storage key based on game mode
-                const storageKey = getStorageKey();
-                localStorage.setItem(storageKey, nextLevel.toString());
-                // Also update highest level if needed
-                const highestLevel = parseInt(localStorage.getItem(STORAGE_HIGHEST_LEVEL_KEY) || '0', 10);
-                if (nextLevel > highestLevel) {
-                    localStorage.setItem(STORAGE_HIGHEST_LEVEL_KEY, nextLevel.toString());
+                const stats = await completeLevel(elapsed);
+                if (isTimeBasedMode() && timeChallengeActive) {
+                    stats.timeUnusedLevel = timeChallengeInitialTime;
+                    stats.timeCollectedLevel = timeChallengeTimeCollected;
+                    stats.timeCollectedAllTime = timeChallengeTimeCollectedAllTime;
+                    const calculatedCarriedOver = timeChallengeInitialTime + timeChallengeTimeCollected - timeChallengeSpinCost;
+                    stats.timeCarriedOverLevel = Math.max(0, calculatedCarriedOver);
+                    stats.timeLostLevel = timeChallengeSpinCost;
+                    stats.carriedOverHistory = Array.isArray(timeChallengeCarriedOverHistory) ? [...timeChallengeCarriedOverHistory] : [];
                 }
-                console.log(`Progress saved: Level ${nextLevel} (completed level ${currentLevel}, mode: ${isTimeChallengeMode() ? 'Time Challenge' : 'Free Flow'})`);
-            } catch (e) {
-                console.warn('Failed to save progress on level completion:', e);
-            }
-            // Get final time for stats
-            let elapsedSeconds = timerPausedTime;
-            if (isTimerRunning && timerStartTime !== null) {
-                elapsedSeconds += (performance.now() / 1000) - timerStartTime;
-            }
-
-            // Show level complete modal immediately
-            showLevelCompleteModal(currentLevel);
-
-            // Complete level and get stats (non-blocking)
-            (async () => {
-                try {
-                    const userStats = await completeLevel(elapsedSeconds);
-                    // Add Time Challenge specific stats
-                    if (isTimeBasedMode() && timeChallengeActive) {
-                        userStats.timeUnusedLevel = timeChallengeInitialTime; // Initial time at start of level
-                        userStats.timeCollectedLevel = timeChallengeTimeCollected;
-                        // All-time includes current level (already cumulative from block removals)
-                        userStats.timeCollectedAllTime = timeChallengeTimeCollectedAllTime;
-                        // Calculate carried over from formula: unused + collected - spin
-                        // Use current timeLeftSec if available, otherwise use timeChallengeResidualSec
-                        const calculatedCarriedOver = timeChallengeInitialTime + timeChallengeTimeCollected - timeChallengeSpinCost;
-                        userStats.timeCarriedOverLevel = Math.max(0, calculatedCarriedOver);
-                        // Use actual spin cost (time spent on spins) instead of calculated lost time
-                        userStats.timeLostLevel = timeChallengeSpinCost;
-                        // Include carried over history for graph - ensure it's a proper array
-                        // Create a defensive copy to prevent issues if the array is modified
-                        userStats.carriedOverHistory = Array.isArray(timeChallengeCarriedOverHistory)
-                            ? [...timeChallengeCarriedOverHistory]
-                            : [];
-                    }
-                    const comparison = await getLevelComparison(userStats);
-                    updateLevelCompleteModal(userStats, comparison);
-                } catch (error) {
-                    console.error('Error processing stats:', error);
-                    // Modal already shown, so continue
-                }
-            })();
-        }
-
+                const comp = await getLevelComparison(stats);
+                updateLevelCompleteModal(stats, comp);
+            } catch (error) { console.error('Error stats:', error); }
+        })();
     }
 
-    // Only render when something is actually changing
-    // In battery mode, skip rendering when truly idle to save GPU power
-    const shouldRender = isActiveFrame ||
-        cameraStillMoving ||
-        hasFallingBlocks ||
-        hasActiveAnimations ||
-        !isBatteryQuality; // Always render in balanced/performance modes
-
-    if (shouldRender) {
-        renderer.render(scene, camera);
-    }
+    // 12. Render
+    if (isActiveFrame || !isBatteryQuality) renderer.render(scene, camera);
 }
 
 // Test function to verify block counts across levels
@@ -9133,7 +8650,6 @@ document.addEventListener('visibilitychange', () => {
 let pulsingFinishActive = false;
 let pulsingFinishStartTime = 0;
 let beaconRotation = 0;
-// Heartbeat variables removed
 
 // Update pulsing finish animation (beacon light + heartbeat pulse)
 async function updatePulsingFinishAnimation(timeLeft, deltaTime) {
@@ -9163,13 +8679,8 @@ async function updatePulsingFinishAnimation(timeLeft, deltaTime) {
     beaconRotation += deltaTime * BEACON_ROTATION_SPEED;
     if (beaconRotation > Math.PI * 2) beaconRotation -= Math.PI * 2;
 
-    // Heartbeat sound logic removed
-
     // Apply police beacon light effect (CSS overlay)
     applyBeaconLightEffect(beaconRotation, clampedIntensity);
-
-    // Apply heartbeat pulse to blocks
-    // Heartbeat pulse animation removed
 }
 
 // Reset pulsing finish animation
@@ -9178,7 +8689,6 @@ function resetPulsingFinishAnimation() {
 
     pulsingFinishActive = false;
     beaconRotation = 0;
-    // Heartbeat cleanup removed
 
     // Remove beacon overlay
     const beaconOverlay = document.getElementById('pulsing-beacon-overlay');
@@ -9243,10 +8753,7 @@ function applyBeaconLightEffect(rotation, intensity) {
     `;
 }
 
-
-
 // Test function for pulsing finish animation
-// Usage: testPulsingFinishAnimation(seconds) - e.g., testPulsingFinishAnimation(25) to test with 25 seconds left
 window.testPulsingFinishAnimation = function (seconds = 25) {
     if (!isTimeBasedMode()) {
         console.warn('[Test] Not in time-based mode. Animation requires time-based mode.');
