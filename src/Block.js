@@ -3,6 +3,35 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { createPhysicsBlock, removePhysicsBody, isPhysicsStepping, deferBodyCreation, deferBodyModification } from './physics.js';
 import { playSound, isAudioEnabled } from './audio.js';
 
+// Global geometry pool to reuse RoundedBoxGeometry instances
+const GeometryPool = new Map();
+
+/**
+ * Get a pooled RoundedBoxGeometry or create a new one if it doesn't exist.
+ * @param {number} width 
+ * @param {number} height 
+ * @param {number} depth 
+ * @param {number} radius 
+ * @param {number} segments 
+ * @returns {THREE.BufferGeometry}
+ */
+function getCubeGeometry(width, height, depth, radius, segments) {
+    // Round values to 3 decimal places to avoid tiny precision differences causing cache misses
+    const w = Math.round(width * 1000) / 1000;
+    const h = Math.round(height * 1000) / 1000;
+    const d = Math.round(depth * 1000) / 1000;
+    const r = Math.round(radius * 1000) / 1000;
+    const s = Math.round(segments);
+    
+    const key = `${w}_${h}_${d}_${r}_${s}`;
+    if (GeometryPool.has(key)) {
+        return GeometryPool.get(key);
+    }
+    const geometry = new RoundedBoxGeometry(w, h, d, s, r);
+    GeometryPool.set(key, geometry);
+    return geometry;
+}
+
 /**
  * Safe telemetry logging - only sends if telemetry server is available
  * Suppresses console errors when server is not running
@@ -135,7 +164,9 @@ function isHeadOnCollision(movingBlock, otherBlock, collisionX, collisionZ, curr
 }
 
 export class Block {
-    constructor(length, gridX, gridZ, direction, isVertical, arrowStyle, scene, physics, gridSize, cubeSize, yOffset = 0, level = 1) {
+    constructor(length, gridX, gridZ, direction, isVertical, arrowStyle, scene, physics, gridSize, cubeSize, yOffset = 0, level = 1, blockInstanceManager = null) {
+        this.blockInstanceManager = blockInstanceManager;
+        this.isDirty = true; // Mark as dirty for initial matrix update
         this.length = length;
         this.gridX = gridX;
         this.gridZ = gridZ;
@@ -173,6 +204,10 @@ export class Block {
         this.level = level; // Track which level this block belongs to
         this.arrowStyle = arrowStyle; // Store arrow style for indicator material matching
 
+        // Performance throttling timestamps
+        this._lastLockUpdate = 0;
+        this._lastFillUpdate = 0;
+
         this.group = new THREE.Group();
 
         // Create a single connected block geometry instead of separate cubes
@@ -197,13 +232,13 @@ export class Block {
             blockDepth = length * cubeSize;
         }
 
-        // Create single connected block with rounded edges
-        const blockGeometry = new RoundedBoxGeometry(
+        // Create single connected block with rounded edges from pool
+        const blockGeometry = getCubeGeometry(
             blockWidth,
             blockHeight,
             blockDepth,
-            segments,
-            radius
+            radius,
+            segments
         );
 
         // Use Classic palette as default: original natural colors
@@ -259,6 +294,14 @@ export class Block {
         this.cubes = [blockMesh];
         this.group.add(blockMesh);
 
+        // Support for InstancedMesh optimization
+        if (this.blockInstanceManager) {
+            // Hide the individual mesh but keep it for raycasting
+            blockMesh.visible = false;
+            // Register with instancing manager
+            this.blockInstanceManager.registerBlock(this, blockGeometry, blockMaterial);
+        }
+
         // Store original material for highlighting
         this.originalMaterial = blockMaterial;
         this.isHighlighted = false;
@@ -281,6 +324,26 @@ export class Block {
 
         // Add to scene (will be moved to towerGroup later)
         scene.add(this.group);
+    }
+
+    // Update matrix for InstancedMesh
+    updateMatrix() {
+        this.group.updateMatrix();
+        this.matrix = this.group.matrix.clone();
+        
+        // Offset for block body (since mesh is positioned at half-height in group)
+        const blockHeight = this.isVertical ? this.length * this.cubeSize : this.cubeSize;
+        const offsetMatrix = new THREE.Matrix4().makeTranslation(0, blockHeight / 2, 0);
+        this.matrix.multiply(offsetMatrix);
+    }
+
+    // Mark as dirty when moved/rotated
+    move(newX, newZ, newElevation = null) {
+        this.gridX = newX;
+        this.gridZ = newZ;
+        if (newElevation !== null) this.yOffset = newElevation;
+        this.updateWorldPosition();
+        this.isDirty = true;
     }
 
     // Mark this block as a filler block and apply brighter blue glow styling
@@ -1551,7 +1614,13 @@ export class Block {
             return;
         }
 
+        // Performance: Throttle UI fill updates (not needed every single frame)
         const now = performance.now();
+        if (now - this._lastFillUpdate < 32) { // ~30 FPS for UI fill
+            return;
+        }
+        this._lastFillUpdate = now;
+
         const remainingMs = this.lockEndTime - now;
         const totalDuration = this.lockEndTime - this.lockStartTime;
 
@@ -1659,12 +1728,18 @@ export class Block {
      * Should be called regularly (e.g., in animation loop)
      */
     updateLockState() {
+        // Performance: Throttle lock state checks (e.g. 10 times per second)
+        const now = performance.now();
+        if (now - this._lastLockUpdate < 100) {
+            return;
+        }
+        this._lastLockUpdate = now;
+
         // Update fill progress before checking expiration
         if (this.isLocked) {
             this.updateLockFillProgress();
 
             // Check if we should start flashing (5 seconds remaining)
-            const now = performance.now();
             const remainingMs = this.lockEndTime - now;
             const remainingSeconds = remainingMs / 1000;
 
@@ -2296,6 +2371,8 @@ export class Block {
             this.yOffset,
             centerZ - towerCenterOffset
         );
+        this.group.updateMatrix(); // Ensure matrix is ready for instancing
+        this.isDirty = true; // Mark for InstancedMesh sync
 
         // Don't sync physics during grid movement - physics only used when falling
     }
@@ -2543,6 +2620,7 @@ export class Block {
                 z - towerCenterOffset
             );
             this.group.quaternion.set(qx, qy, qz, qw);
+            this.isDirty = true; // Mark for InstancedMesh sync
 
             // Remove shadows ONLY from catapulted blocks, and only while they are moving.
             // Space note: this only affects shading (renderer shadow terms), not physics; no transforms involved.
@@ -4405,6 +4483,10 @@ export class Block {
     remove() {
         // Mark as removed first to prevent any further physics reads
         this.isRemoved = true;
+
+        if (this.blockInstanceManager) {
+            this.blockInstanceManager.deregister(this);
+        }
 
         if (this.physicsBody) {
             removePhysicsBody(this.physics, this.physicsBody, true);

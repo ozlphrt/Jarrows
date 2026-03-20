@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/v2-improvements
+      - feature/battery-optimization-test
   workflow_dispatch:
 
 permissions:
@@ -30,13 +31,13 @@ jobs:
       - name: Build with preview base path
         run: npm run build
         env:
-          # Override the vite base so assets resolve under /Jarrows/preview/
-          VITE_BASE_PATH: /Jarrows/preview/
+          # Override the vite base so assets resolve under the correct subdirectory
+          VITE_BASE_PATH: ${{ github.ref == 'refs/heads/feature/battery-optimization-test' && '/Jarrows/battery-test/' || '/Jarrows/preview/' }}
 
-      - name: Deploy to gh-pages-preview branch
+      - name: Deploy to gh-pages branch
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_branch: gh-pages-preview
           publish_dir: ./dist
-          destination_dir: preview
+          destination_dir: ${{ github.ref == 'refs/heads/feature/battery-optimization-test' && 'battery-test' || 'preview' }}

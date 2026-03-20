@@ -12,6 +12,7 @@ import { showMilestoneModal, showFeatureModal, showLevelUpdateModal } from './in
 import { getChangelogForVersion } from './changelog.js';
 import { createParticleSystem } from './particles.js';
 import { DebrisManager } from './debris.js';
+import { BlockInstanceManager } from './BlockInstanceManager.js'; // New manager for InstancedMesh
 import appVersionRaw from '../VERSION?raw';
 
 // Build-time constant injected by Vite (see vite.config.js). Falls back to '' if not defined.
@@ -61,6 +62,9 @@ let updateCheckInterval = null;
 // --- CRITICAL GAME STATE AND CONFIGURATION (Moved to top to prevent TDZ errors) ---
 let isGeneratingLevel = false;
 let towerPositionOffset = new THREE.Vector3(0, 0, 0);
+
+// Initialize BlockInstanceManager (initialized after scene is created below)
+let blockInstanceManager = null;
 
 window.isMobileLike = false;
 window.autoZoomEnabled = true;
@@ -386,9 +390,12 @@ const initialQualityPreset = qualityPreset;
 
 // Scene setup
 const scene = new THREE.Scene();
-// Dark theme: much darker grey gradient (default)
 setGradientBackground(scene, 0x0f0f0f, 0x050505);
 setupFog(scene, true); // Fog enabled for dark theme
+
+// Initialize BlockInstanceManager
+blockInstanceManager = new BlockInstanceManager(scene);
+window.blockInstanceManager = blockInstanceManager;
 
 // Expose scene, blocks, THREE, and scene functions for toggle handlers
 window.gameScene = scene;
@@ -979,7 +986,7 @@ const MIN_RADIUS = 5;
 const MAX_RADIUS = 50;
 const MIN_ELEVATION = -Math.PI / 2 + 0.1;
 const MAX_ELEVATION = Math.PI / 2 - 0.1;
-const ZOOM_PADDING = 1.5; // Padding for desktop
+const ZOOM_PADDING = 4.0; // Increased from 1.5 to prevent "too near" zoom on desktop
 const ZOOM_PADDING_MOBILE = 0.2; // Minimal padding for mobile
 const AUTO_ZOOM_MIN_BOUNDING_SIZE = 3; // Minimum bounding box size to prevent zooming in too much with few blocks
 const SPAWN_ZOOM_PADDING = 1; // Minimal extra padding during spawn
@@ -987,7 +994,7 @@ const SPAWN_ZOOM_MULTIPLIER = 1.05; // Minimal additional multiplier for spawn z
 // Auto-zoom multiplier: platform-aware - larger on desktop (zoom out more), smaller on mobile (zoom in more)
 // Desktop needs more zoom-out to prevent blocks going out of frame
 // Mobile can zoom in more to reduce wasted space on sides
-const AUTO_ZOOM_MULTIPLIER_DESKTOP = 1.12; // Desktop: 1.12 for comfortable fit above UI
+const AUTO_ZOOM_MULTIPLIER_DESKTOP = 1.25; // Increased from 1.12 for more comfortable fit above UI
 const AUTO_ZOOM_MULTIPLIER_MOBILE = 1.02; // Mobile: very tight fit (2% margin)
 // Desktop-specific padding multiplier to ensure all blocks stay visible
 const DESKTOP_ZOOM_PADDING_MULTIPLIER = 1.0; // No extra multiplier needed
@@ -2214,7 +2221,18 @@ function getBlocksForLevel(level) {
     if (level === 0) {
         return 3;
     }
-    return 10 + (level - 1) * 10;
+    
+    // Default growth: 10 + (level - 1) * 10
+    // After level 50, slow down growth: 500 + (level - 50) * 2
+    // Hard cap at 1000 blocks
+    let count;
+    if (level <= 50) {
+        count = 10 + (level - 1) * 10;
+    } else {
+        count = 500 + (level - 50) * 2;
+    }
+    
+    return Math.min(1000, count);
 }
 
 // Validation functions are now imported from puzzle_validation.js
@@ -2582,7 +2600,7 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                 }
 
                 // Cells are now reserved - create the block
-                const block = new Block(length, cell.x, cell.z, randomDir, isVertical, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level);
+                const block = new Block(length, cell.x, cell.z, randomDir, isVertical, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level, blockInstanceManager);
 
                 // Move block from scene to towerGroup
                 scene.remove(block.group);
@@ -3608,6 +3626,11 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
     // Update grid size before generation
     updateGridSize(level);
 
+    // Clear old instances
+    if (blockInstanceManager) {
+        blockInstanceManager.clear();
+    }
+
 
     // ABSOLUTE HARD STOP: If isRestart and level is 0, reject immediately
     // This is the last line of defense - should never be reached if restartCurrentLevel works correctly
@@ -4437,7 +4460,8 @@ function dropPenaltyTile() {
         gridSize,          // gridSize
         cubeSize,          // cubeSize
         yOffset,           // yOffset
-        currentLevel       // level
+        currentLevel,      // level
+        blockInstanceManager // blockInstanceManager
     );
     
     scene.remove(block.group);
@@ -4855,6 +4879,9 @@ function undoLastMove() {
 
     // Step 12: Update undo button state
     updateUndoButtonState();
+
+    // Final grid sync
+    updateSupportGrid();
 
     return true;
 }
@@ -7346,6 +7373,7 @@ function onMouseClick(event) {
     const willFall = block.canMove(blocks) === 'fall';
 
     block.move(blocks, gridSize);
+    updateSupportGrid();
 
     // If block will fall, it's being cleared - advance solution step
     if (willFall && window.puzzleSolution) {
@@ -7361,6 +7389,33 @@ function onMouseClick(event) {
     }
 }
 
+// Global grid for fast support checking
+let _supportGrid = new Map();
+
+/**
+ * Update the global support grid based on current block positions
+ * Map key: "x,y,z" (integer grid coordinates)
+ * Map value: Block object
+ */
+function updateSupportGrid() {
+    _supportGrid.clear();
+    for (const block of blocks) {
+        if (block.isRemoved || block.isFalling) continue;
+        
+        // Get all cells this block occupies
+        const cells = getBlockCells(block);
+        const yBase = Math.round(block.yOffset / block.cubeSize);
+        
+        for (const cell of cells) {
+            const h = block.isVertical ? block.length : 1;
+            for (let dy = 0; dy < h; dy++) {
+                const key = `${cell.x},${yBase + dy},${cell.z}`;
+                _supportGrid.set(key, block);
+            }
+        }
+    }
+}
+
 /**
  * Check if a block has support from blocks below it
  * A block has support if:
@@ -7369,48 +7424,27 @@ function onMouseClick(event) {
  */
 function blockHasSupport(block, allBlocks) {
     // Blocks on the ground always have support
-    if (block.yOffset === 0) {
+    if (block.yOffset <= 0.01) {
         return true;
     }
 
     // Get all cells this block occupies
     const blockCells = getBlockCells(block);
+    const yGrid = Math.round(block.yOffset / block.cubeSize);
 
     // For a block to have support, at least one of its cells must have support
-    // (This allows horizontal blocks to be supported by just one cell)
     for (const cell of blockCells) {
-        let cellHasSupport = false;
-
-        // Look for blocks below this cell
-        for (const other of allBlocks) {
-            if (other === block || other.isFalling || other.isRemoved) continue;
-
-            // Block must be at a lower Y level than the current block's bottom
-            if (other.yOffset >= block.yOffset) continue;
-
-            // Calculate the top of the supporting block
+        // Check cell directly below (y - 1)
+        const key = `${cell.x},${yGrid - 1},${cell.z}`;
+        const other = _supportGrid.get(key);
+        
+        if (other && other !== block && !other.isFalling && !other.isRemoved) {
+            // Found a supporting block
             const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
             const otherTop = other.yOffset + otherHeight;
-
-            // Support block's top must be at or above this block's bottom
-            // (with a small tolerance for floating point precision)
-            if (otherTop < block.yOffset - 0.01) continue;
-
-            // Check if the supporting block occupies this cell
-            const otherCells = getBlockCells(other);
-            for (const otherCell of otherCells) {
-                if (otherCell.x === cell.x && otherCell.z === cell.z) {
-                    cellHasSupport = true;
-                    break;
-                }
+            if (otherTop >= block.yOffset - 0.01) {
+                return true;
             }
-
-            if (cellHasSupport) break;
-        }
-
-        // If this cell has support, the block has support (at least one cell is enough)
-        if (cellHasSupport) {
-            return true;
         }
     }
 
@@ -7422,12 +7456,12 @@ function blockHasSupport(block, allBlocks) {
  * Blocks fall until they reach the base (yOffset = 0) or another supporting block
  */
 function checkAndTriggerFalling(blocks) {
-    // Skip support checking during level generation to prevent false positives
-    // Blocks are placed with proper support during generation, but the check might
-    // run before all blocks are fully initialized, causing blocks to fall incorrectly
     if (isGeneratingLevel || window.supportCheckingEnabled === false) {
         return;
     }
+
+    // Update global grid before check
+    updateSupportGrid();
 
     // IMPORTANT: Batch detect unsupported blocks so chain reactions happen simultaneously.
     // Without batching, the simulation becomes "stepped" (lower blocks fall first, then above),
@@ -7475,31 +7509,23 @@ function checkAndTriggerFalling(blocks) {
  * Like blockHasSupport, but treats blocks in `excluded` as if they don't exist (they provide no support).
  */
 function blockHasSupportExcluding(block, allBlocks, excluded) {
-    if (block.yOffset === 0) return true;
+    if (block.yOffset <= 0.01) return true;
     const blockCells = getBlockCells(block);
+    const yGrid = Math.round(block.yOffset / block.cubeSize);
 
     for (const cell of blockCells) {
-        let cellHasSupport = false;
-        for (const other of allBlocks) {
-            if (other === block || other.isFalling || other.isRemoved) continue;
+        const key = `${cell.x},${yGrid - 1},${cell.z}`;
+        const other = _supportGrid.get(key);
+        
+        if (other && other !== block && !other.isFalling && !other.isRemoved) {
             if (excluded && excluded.has(other)) continue;
-            if (other.yOffset >= block.yOffset) continue;
-
+            
             const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
             const otherTop = other.yOffset + otherHeight;
-            if (otherTop < block.yOffset - 0.01) continue;
-
-            const otherCells = getBlockCells(other);
-            for (const otherCell of otherCells) {
-                if (otherCell.x === cell.x && otherCell.z === cell.z) {
-                    cellHasSupport = true;
-                    break;
-                }
+            if (otherTop >= block.yOffset - 0.01) {
+                return true;
             }
-
-            if (cellHasSupport) break;
         }
-        if (cellHasSupport) return true;
     }
     return false;
 }
@@ -7524,32 +7550,28 @@ function computeSupportFallTargets(allBlocks, toFall) {
 
     for (const block of fallBlocks) {
         const blockCells = getBlockCells(block);
+        const yGrid = Math.round(block.yOffset / block.cubeSize);
         let targetYOffset = 0;
 
         for (const cell of blockCells) {
             let highestSupportY = 0;
-            for (const other of allBlocks) {
-                if (other === block || other.isFalling || other.isRemoved) continue;
-
-                const otherInFallSet = toFall.has(other);
-                // Only allow other falling blocks to act as support if we've already computed their target.
-                if (otherInFallSet && !targets.has(other)) continue;
-                // Static supports must be below current bottom; resolved falling supports use their target position.
-                const otherBaseY = otherInFallSet ? targets.get(other) : other.yOffset;
-                if (otherBaseY >= block.yOffset) continue;
-
-                const otherCells = getBlockCells(other);
-                let occupiesCell = false;
-                for (const otherCell of otherCells) {
-                    if (otherCell.x === cell.x && otherCell.z === cell.z) {
-                        occupiesCell = true;
-                        break;
-                    }
+            
+            // Check all cells below in the grid
+            for (let y = yGrid - 1; y >= 0; y--) {
+                const key = `${cell.x},${y},${cell.z}`;
+                const other = _supportGrid.get(key);
+                
+                if (other && other !== block && !other.isFalling && !other.isRemoved) {
+                    const otherInFallSet = toFall.has(other);
+                    // Only allow other falling blocks to act as support if we've already computed their target.
+                    if (otherInFallSet && !targets.has(other)) continue;
+                    
+                    const otherTop = getBlockTop(other);
+                    if (otherTop > highestSupportY) highestSupportY = otherTop;
+                    
+                    // Stop searching this cell column once we hit a support
+                    break;
                 }
-                if (!occupiesCell) continue;
-
-                const otherTop = getBlockTop(other);
-                if (otherTop > highestSupportY) highestSupportY = otherTop;
             }
             if (highestSupportY > targetYOffset) targetYOffset = highestSupportY;
         }
@@ -7569,62 +7591,40 @@ function computeSupportFallTargets(allBlocks, toFall) {
 function startBlockFalling(block) {
     if (block.isFalling || block.isRemoved || block.isAnimating) return;
 
-    // For blocks losing support, we want them to fall down in discrete Y steps
-    // until they land on the base or another block
-    // This is different from blocks falling off the edge which use physics
-
-    // Check if block is already on the ground
-    if (block.yOffset === 0) {
-        // Already on ground, shouldn't fall
+    if (block.yOffset <= 0.01) {
         return;
     }
 
-    // Find the lowest Y level where this block can land (has support or is at base)
-    let targetYOffset = 0; // Start at base
-
-    // Get all cells this block occupies
+    // Find the lowest Y level where this block can land
+    let targetYOffset = 0;
     const blockCells = getBlockCells(block);
+    const yGrid = Math.round(block.yOffset / block.cubeSize);
 
-    // For each cell, find the highest supporting block below
     for (const cell of blockCells) {
-        let highestSupportY = 0; // Base level
-
-        // Look for blocks below this cell
-        for (const other of blocks) {
-            if (other === block || other.isFalling || other.isRemoved) continue;
-
-            // Block must be at a lower Y level than current block
-            if (other.yOffset >= block.yOffset) continue;
-
-            // Check if this block occupies the cell
-            const otherCells = getBlockCells(other);
-            for (const otherCell of otherCells) {
-                if (otherCell.x === cell.x && otherCell.z === cell.z) {
-                    // Calculate the top of the supporting block
-                    const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
-                    const otherTop = other.yOffset + otherHeight;
-
-                    // Update highest support if this is higher
-                    if (otherTop > highestSupportY) {
-                        highestSupportY = otherTop;
-                    }
-                    break;
-                }
+        let highestSupportYAtCell = 0;
+        
+        // Search downwards in the grid for support
+        for (let y = yGrid - 1; y >= 0; y--) {
+            const key = `${cell.x},${y},${cell.z}`;
+            const other = _supportGrid.get(key);
+            
+            if (other && other !== block && !other.isFalling && !other.isRemoved) {
+                const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
+                const otherTop = other.yOffset + otherHeight;
+                highestSupportYAtCell = otherTop;
+                break;
             }
         }
-
-        // Target Y offset is the highest support found across all cells
-        if (highestSupportY > targetYOffset) {
-            targetYOffset = highestSupportY;
+        
+        if (highestSupportYAtCell > targetYOffset) {
+            targetYOffset = highestSupportYAtCell;
         }
     }
 
-    // If target is same as current, block already has support
-    if (targetYOffset >= block.yOffset) {
-        return; // Block already has support
+    if (targetYOffset >= block.yOffset - 0.01) {
+        return;
     }
 
-    // Use the generic animation helper for consistency.
     startBlockFallingToTarget(block, targetYOffset);
 }
 
@@ -8021,6 +8021,7 @@ function onTouchEnd(event) {
     const willFall = block.canMove(blocks) === 'fall';
 
     block.move(blocks, gridSize);
+    updateSupportGrid();
 
     // After a block moves, validate structure and fix any overlaps
     setTimeout(() => {
@@ -8297,12 +8298,18 @@ function animate() {
     const isAutoZoomDisabled = currentTime < autoZoomDisabledUntilMs;
     const isAutoZoomEnabled = (typeof window !== 'undefined' && window.autoZoomEnabled !== undefined) ? window.autoZoomEnabled : true;
 
-    // 4. Update Physics (CRITICAL: Before block sync)
+    // 4. Update Physics (Aggressive Throttling for Battery)
     physicsUpdatedThisFrame = false;
     const hasDebris = debrisManager && debrisManager.getPieceCount() > 0;
-    const shouldUpdatePhysics = !physicsUpdatedThisFrame &&
-        (cachedHasPhysicsBlocks || hasPendingOperations() || cachedHasFallingBlocks || hasDebris) &&
-        !(isBatteryQuality && !interacting && !cachedHasFallingBlocks && !cameraStillMoving && !cachedHasActiveAnimations && !isGeneratingLevel);
+    
+    // Determine if physics MUST run this frame
+    const physicsNeedsStep = cachedHasPhysicsBlocks || hasPendingOperations() || cachedHasFallingBlocks || hasDebris;
+    const isInteractingOrGenerating = interacting || isGeneratingLevel;
+    
+    // In battery mode, we only step physics if there's actual movement or we're interacting
+    // Otherwise, we can pause the engine entirely to save CPU
+    const shouldUpdatePhysics = !physicsUpdatedThisFrame && physicsNeedsStep && 
+        (!isBatteryQuality || isInteractingOrGenerating || cachedHasFallingBlocks || hasDebris);
 
     if (shouldUpdatePhysics) {
         updatePhysics(physics, deltaTime);
@@ -8361,6 +8368,11 @@ function animate() {
         }
     }
     lastBlockStateCheckTime = currentTime;
+
+    // Update InstancedMesh matrices
+    if (blockInstanceManager) {
+        blockInstanceManager.update();
+    }
 
     // 6. Camera & Zoom Logic
     if (isAutoZoomEnabled && !isAutoZoomDisabled) {
@@ -8474,11 +8486,19 @@ function animate() {
         lastIdleDropTime = currentTime;
     }
 
-    // 8. Shadows & Lights
-    const shouldWarmShadows = isGeneratingLevel || interacting || cameraStillMoving || (!isBatteryQuality && (hasFallingBlocks || hasActiveAnimations));
+    // 8. Shadows & Lights (Static Shadow Gating)
+    // Only update shadows if something relevant changed (Camera, Blocks, Level Gen, Debris)
+    const blocksMoving = cachedHasFallingBlocks || cachedHasActiveAnimations;
+    const shouldWarmShadows = isGeneratingLevel || interacting || cameraStillMoving || hasDebris || blocksMoving;
+    
     const isCameraIdle = !cameraStillMoving && !interacting;
     const shadowCooldownMs = (isBatteryQuality && isCameraIdle) ? 1200 : (isIOS ? 600 : 350);
-    if (shouldWarmShadows) shadowUpdateCooldownUntilMs = currentTime + shadowCooldownMs;
+    
+    if (shouldWarmShadows) {
+        shadowUpdateCooldownUntilMs = currentTime + shadowCooldownMs;
+    }
+    
+    // Aggressive gating: if nothing is moving and cooldown expired, freeze shadows
     const needShadowsThisFrame = currentTime < shadowUpdateCooldownUntilMs;
 
     if (!lightsManuallyControlled && needShadowsThisFrame && (currentTime - lastLightUpdateMs) > LIGHT_UPDATE_INTERVAL_MS) {
@@ -8495,9 +8515,14 @@ function animate() {
             if (lights.keyLight.shadow && lights.keyLight.shadow.camera) {
                 lights.keyLight.shadow.camera.position.copy(lights.keyLight.position);
                 lights.keyLight.shadow.camera.lookAt(_towerGroupWorldCenter);
-                const tY = _towerGroupWorldCenter.y, sB = 14, vO = Math.max(0, tY);
-                lights.keyLight.shadow.camera.top = sB + vO;
-                lights.keyLight.shadow.camera.bottom = -sB + vO;
+                
+                // Tighten shadow camera frustum: bound only the active tower height
+                const tY = _towerGroupWorldCenter.y;
+                const towerHeight = Math.max(1, blocks.reduce((max, b) => Math.max(max, b.yOffset), 0) + 2);
+                const sB = 10; // slightly tighter side bound
+                const vO = Math.max(0, tY);
+                lights.keyLight.shadow.camera.top = towerHeight + 2;
+                lights.keyLight.shadow.camera.bottom = -2;
                 lights.keyLight.shadow.camera.updateMatrixWorld();
             }
         }
@@ -8507,7 +8532,13 @@ function animate() {
     }
 
     const towerIsMoving = Math.abs(towerPositionOffset.y - targetTowerPositionOffset.y) > 0.01;
-    const shadowInterval = (isBatteryQuality && towerIsMoving) ? Math.min(SHADOW_MAP_UPDATE_INTERVAL_MS, 50) : SHADOW_MAP_UPDATE_INTERVAL_MS;
+    let shadowInterval = (isBatteryQuality && towerIsMoving) ? Math.min(SHADOW_MAP_UPDATE_INTERVAL_MS, 50) : SHADOW_MAP_UPDATE_INTERVAL_MS;
+    
+    // Scale shadow interval with block count to save performance at extreme levels
+    if (blocks.length > 500) {
+        shadowInterval = Math.max(shadowInterval, blocks.length / 5); // 1000 blocks = 200ms interval
+    }
+    
     if (renderer.shadowMap && needShadowsThisFrame && (currentTime - lastShadowMapUpdateMs) > shadowInterval) {
         lastShadowMapUpdateMs = currentTime;
         renderer.shadowMap.needsUpdate = true;
