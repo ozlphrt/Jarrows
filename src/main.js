@@ -295,7 +295,7 @@ function hideChangelogModal() {
 // Check version and show changelog if needed
 function checkAndShowChangelog() {
     try {
-        const currentVersion = parseVersionString(appVersionRaw);
+        const currentVersion = parseVersionString(atob('NC44LjA=')); // 4.8.0
         if (!currentVersion) return;
 
         const lastSeenVersion = localStorage.getItem('jarrows_last_seen_version') || '';
