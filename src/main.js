@@ -1,7 +1,8 @@
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { initPhysics, createPhysicsBlock, updatePhysics, isPhysicsStepping, hasPendingOperations, isPhysicsProcessing, removePhysicsBody } from './physics.js';
 import { Block } from './Block.js';
-import { createLights, createGrid, setGradientBackground, setupFog, setMysticalBackground } from './scene.js';
+import { createLights, createGrid, setGradientBackground, setupFog } from './scene.js';
 import { validateStructure, validateSolvability, calculateDifficulty, getBlockCells, fixOverlappingBlocks, checkAndFixAllOverlaps, canBlockExit } from './puzzle_validation.js';
 import { initStats, startLevelStats, trackMove, trackSpin, trackBlockRemoved, completeLevel, getLevelComparison, getElapsedTime } from './stats/stats.js';
 import { updateLevelCompleteModal, showOfflineIndicator, hideOfflineIndicator, showPersonalHistoryModal, showProfileModal } from './stats/statsUI.js';
@@ -391,12 +392,12 @@ const scene = new THREE.Scene();
 setGradientBackground(scene, 0x0f0f0f, 0x050505);
 setupFog(scene, true); // Fog enabled for dark theme
 
-// Expose scene, blocks, THREE, and scene functions for toggle handlers
+// Expose scene, blocks, THREE, and scene functions for global access
 window.gameScene = scene;
 window.THREE = THREE;
 window.setGradientBackground = setGradientBackground;
 window.setupFog = setupFog;
-window.setMysticalBackground = setMysticalBackground;
+
 // Expose app version (from root VERSION file) for Settings UI
 window.jarrowsVersion = parseVersionString(appVersionRaw);
 window.jarrowsGitSha = sanitizeGitSha(JARROWS_GIT_SHA);
@@ -616,11 +617,12 @@ if (typeof window !== 'undefined') {
 }
 // Create grid and base plate
 const gridData = createGrid(scene);
+// Expose lights and gridData for biome toggling
+window.gameLights = lights;
+window.gameGrid = gridData;
+
 base = gridData.base;
 gridHelper = gridData.gridHelper;
-
-// Mystical view state
-let isMysticalView = false;
 
 // Create tower group - contains base, grid, and all blocks
 const towerGroup = new THREE.Group();
@@ -876,59 +878,6 @@ function setCountdownTimerVisible(visible) {
     }
 }
 
-
-// Toggle mystical view function
-function toggleMysticalView(enabled) {
-    isMysticalView = enabled;
-
-    if (enabled) {
-        // Enable mystical view - only change background and lighting
-        // Keep base visible (no ground replacement)
-        base.visible = true;
-
-        // Set mystical background
-        setMysticalBackground(scene);
-
-        // No fog
-        setupFog(scene, true, false);
-
-        // Optionally adjust lighting for softer look
-        if (lights.ambientLight) {
-            lights.ambientLight.intensity = 0.18; // Slightly higher ambient
-        }
-        if (lights.keyLight) {
-            lights.keyLight.intensity = 1.6; // Slightly softer key light
-        }
-    } else {
-        // Disable mystical view - restore normal view
-        // Keep base visible
-        base.visible = true;
-
-        // Restore dark background
-        setGradientBackground(scene, 0x0f0f0f, 0x050505);
-
-        // No fog
-        setupFog(scene, true, false);
-
-        // Restore original lighting
-        if (lights.ambientLight) {
-            lights.ambientLight.intensity = 0.10;
-        }
-        if (lights.keyLight) {
-            lights.keyLight.intensity = 1.8;
-        }
-    }
-
-    // Save preference
-    try {
-        localStorage.setItem('jarrows_mystical_view', enabled ? '1' : '0');
-    } catch (e) {
-        console.warn('Failed to save mystical view preference:', e);
-    }
-}
-
-// Expose toggle function globally
-window.toggleMysticalView = toggleMysticalView;
 
 // Function to center the tower (reset pan offset)
 function centerTower() {

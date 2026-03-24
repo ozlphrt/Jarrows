@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 
 // Lighting system v5.0.0 - Updated default values
 
@@ -40,22 +41,16 @@ export function setGradientBackground(scene, topColor, bottomColor) {
 /**
  * Set up fog for the scene
  * @param {THREE.Scene} scene - The Three.js scene
- * @param {boolean} isDarkTheme - Whether dark theme is active
- * @param {boolean} isMysticalView - Whether mystical view is active
+ * @param {number|null} near - Fog near distance
+ * @param {number|null} far - Fog far distance
+ * @param {number} color - Fog color (hex)
  */
-export function setupFog(scene, isDarkTheme, isMysticalView = false) {
-    // Fog removed entirely - set to null for all views
-    scene.fog = null;
-}
-
-/**
- * Set mystical background gradient (light blue/white)
- * @param {THREE.Scene} scene - The Three.js scene
- */
-export function setMysticalBackground(scene) {
-    // Light blue to light gray gradient for mystical view
-    // Top: light blue (0xd0e8ff), Bottom: light gray (0xe8e8e8) - more visible gradient
-    setGradientBackground(scene, 0xd0e8ff, 0xe8e8e8);
+export function setupFog(scene, near = null, far = null, color = 0x000000) {
+    if (near === null || far === null) {
+        scene.fog = null;
+    } else {
+        scene.fog = new THREE.Fog(color, near, far);
+    }
 }
 
 export function createLights(scene) {
@@ -159,7 +154,6 @@ export function createGrid(scene) {
     
     return { base, gridHelper, gridSize, cubeSize };
 }
-
 
 /**
  * Create visual helpers for camera pivot point

@@ -2352,15 +2352,7 @@
             }
         }
 
-        if (import.meta.env.DEV) {
-            await unregisterServiceWorkersAndClearCaches();
-        }
-
-        await import('./src/main.js');
-
-        // Wait for main.js to load and expose scene/blocks
-        let blocks;
-        // Load preferences from localStorage
+        // Load preferences from localStorage (MOVED BEFORE IMPORT TO AVOID RACE CONDITION)
         function loadPreferences() {
             try {
                 const savedTheme = localStorage.getItem('jarrows_theme');
@@ -2398,17 +2390,27 @@
             }
         }
 
-        // Load preferences
+        // Initialize variables from preferences
         const preferences = loadPreferences();
         let isDarkTheme = preferences.isDarkTheme;
-        let useColoredBlocks = preferences.useColoredBlocks;
+        let useColoredBlocks = preferences.useColoredBlocks || false;
         let qualityPreset = preferences.qualityPreset || 'balanced';
         let autoZoomEnabled = preferences.autoZoomEnabled !== undefined ? preferences.autoZoomEnabled : true;
         let handlersSetup = false;
 
         // Expose settings globally so blocks can check on creation
+        // This MUST happen before main.js is imported and starts generating levels
         window.useColoredBlocksDefault = useColoredBlocks;
         window.jarrowsQualityPreset = qualityPreset;
+
+        if (import.meta.env.DEV) {
+            await unregisterServiceWorkersAndClearCaches();
+        }
+
+        await import('./src/main.js');
+
+        // Wait for main.js to load and expose scene/blocks
+        let blocks;
 
         function updateThemeIcon() {
             const scene = window.gameScene;
@@ -2485,25 +2487,23 @@
 
             if (!currentBlocks || currentBlocks.length === 0) return;
 
-            const colors = [0xff6b6b, 0x4ecdc4, 0xffe66d]; // Red, Teal, Yellow
+            // Unify with Block.js colors: [Red, Teal, Golden Yellow]
+            const colors = [0xff6b6b, 0x4ecdc4, 0xffc125]; 
             const whiteColor = 0xffffff;
 
             currentBlocks.forEach(block => {
-                if (block.cubes && block.cubes.length > 0) {
+                const blockColor = useColoredBlocks
+                    ? (colors[block.length - 1] || colors[0])
+                    : whiteColor;
+                
+                // Use the built-in update method if available
+                if (block.updateBlockColor) {
+                    block.updateBlockColor(blockColor);
+                } else if (block.cubes && block.cubes.length > 0) {
+                    // Fallback for blocks without the update method
                     const mesh = block.cubes[0];
                     if (mesh && mesh.material) {
-                        const blockColor = useColoredBlocks
-                            ? (colors[block.length - 1] || colors[0])
-                            : whiteColor;
-                        const arrowColor = colors[block.length - 1] || colors[0]; // Always colored
-
-                        // Update block color
                         mesh.material.color.setHex(blockColor);
-
-                        // Update arrow and indicators to always use colored version
-                        if (block.updateBlockColor) {
-                            block.updateBlockColor(blockColor, arrowColor);
-                        }
                     }
                 }
             });
