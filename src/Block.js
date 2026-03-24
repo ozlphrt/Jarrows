@@ -5,6 +5,68 @@ import { playSound, isAudioEnabled } from './audio.js';
 
 // Global geometry pool to reuse RoundedBoxGeometry instances
 const GeometryPool = new Map();
+const TextureCache = new Map();
+
+/**
+ * Creates a diagonal yellow/black stripe texture for bomb blocks.
+ */
+function createBombStripeTexture() {
+    if (TextureCache.has('bombStripes')) return TextureCache.get('bombStripes');
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 128; // Increased resolution
+    canvas.height = 128;
+    const ctx = canvas.getContext('2d');
+
+    // Yellow background
+    ctx.fillStyle = '#ffcc00';
+    ctx.fillRect(0, 0, 128, 128);
+
+    // Much larger black diagonal stripes (Task 2.4/3.3)
+    ctx.fillStyle = '#000000';
+    const stripeWidth = 64; // Significant increase
+    for (let i = -128; i < 256; i += stripeWidth * 2) {
+        ctx.beginPath();
+        ctx.moveTo(i, 0);
+        ctx.lineTo(i + 128, 128);
+        ctx.lineTo(i + 128 + stripeWidth, 128);
+        ctx.lineTo(i + stripeWidth, 0);
+        ctx.fill();
+    }
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(1, 1); // Large scale mapping
+    TextureCache.set('bombStripes', texture);
+    return texture;
+}
+
+/**
+ * Creates a procedural radial glow texture for "hazing" effect. (Task 3.4)
+ */
+function createGlowTexture() {
+    if (TextureCache.has('glow')) return TextureCache.get('glow');
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+
+    // Strong radial gradient for haze
+    const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gradient.addColorStop(0.0, 'rgba(255, 255, 255, 1.0)');
+    gradient.addColorStop(0.3, 'rgba(255, 255, 255, 0.6)');
+    gradient.addColorStop(0.7, 'rgba(255, 255, 255, 0.1)');
+    gradient.addColorStop(1.0, 'rgba(255, 255, 255, 0.0)');
+
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 64, 64);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    TextureCache.set('glow', texture);
+    return texture;
+}
 
 /**
  * Get a pooled RoundedBoxGeometry or create a new one if it doesn't exist.
@@ -164,7 +226,7 @@ function isHeadOnCollision(movingBlock, otherBlock, collisionX, collisionZ, curr
 }
 
 export class Block {
-    constructor(length, gridX, gridZ, direction, isVertical, arrowStyle, scene, physics, gridSize, cubeSize, yOffset = 0, level = 1, blockInstanceManager = null) {
+    constructor(length, gridX, gridZ, direction, isVertical, arrowStyle, scene, physics, gridSize, cubeSize, yOffset = 0, level = 1, isBomb = false, blockInstanceManager = null) {
         this.blockInstanceManager = null;
         this.isDirty = false; // Mark as dirty for initial matrix update
         this.length = length;
@@ -175,6 +237,7 @@ export class Block {
         this.isAnimating = false;
         this.isFalling = false;
         this.isExploding = false;
+        this.isBomb = isBomb;
         this.needsTransitionToFalling = false;
         this.needsStop = false;
         // Catapult shadow policy (Battery preset only): suppress shadows only while a catapulted block is moving.
@@ -250,7 +313,11 @@ export class Block {
             ? window.useColoredBlocksDefault
             : false; // Default to white blocks
 
-        const blockColor = useColored ? colors[length - 1] : whiteColor;
+        let blockColor = useColored ? colors[length - 1] : whiteColor;
+        
+        // Bomb override: Keep original color but add stripes (Task 2.2, 2.4)
+        // (Removed Orangered override)
+
         // Arrow color always uses length-based colors (for visibility)
         const arrowColor = colors[length - 1];
 
@@ -264,6 +331,15 @@ export class Block {
             opacity: 1.0, // Explicitly set opacity
             transparent: false // Will be set to true when locked
         });
+
+        // Apply bomb styling: Indicators glow (Task 2.3, 3.2, 3.4)
+        if (this.isBomb) {
+            // Striped texture removed by user request (Task 5.1)
+            
+            // Indicator materials will be stored for oscillation in update()
+            this.bombIndicatorMaterials = []; 
+            this.bombGlowSprites = []; // For "hazing" effect (Task 3.4)
+        }
 
         // Apply filler block styling if this is a filler
         if (this.isFiller) {
@@ -330,6 +406,40 @@ export class Block {
         const blockHeight = this.isVertical ? this.length * this.cubeSize : this.cubeSize;
         const offsetMatrix = new THREE.Matrix4().makeTranslation(0, blockHeight / 2, 0);
         this.matrix.multiply(offsetMatrix);
+    }
+
+    // Animates bomb indicator glow and other per-frame effects (Task 2.3, 3.2, 3.4)
+    update(time) {
+        if (this.isBomb) {
+            // Pulsating intensity (Task 2.3)
+            const pulse = Math.sin(time * 0.005);
+            const intensity = 0.8 + pulse * 0.6; // Strong oscillation: 0.2 to 1.4
+            
+            // Update emissive materials (Task 3.2)
+            if (this.bombIndicatorMaterials) {
+                for (const mat of this.bombIndicatorMaterials) {
+                    mat.emissiveIntensity = intensity;
+                }
+            }
+            
+            // Update hazing sprites (Task 3.4)
+            if (this.bombGlowSprites) {
+                const spriteScaleMult = 0.8 + pulse * 0.4; // Pulsates between 0.4 and 1.2 relative to base
+                const opacity = 0.4 + pulse * 0.3; // Opacity also pulses
+                
+                for (const sprite of this.bombGlowSprites) {
+                    // Update opacity
+                    if (sprite.material) {
+                        sprite.material.opacity = Math.max(0.1, opacity);
+                    }
+                    // Update scale proportionally (assuming base scale is saved or using a standard multiplier)
+                    // Since sprites have different base scales (1.2, 0.6, 0.8), we'll apply a multiplier
+                    if (!sprite._baseScale) sprite._baseScale = sprite.scale.x;
+                    const s = sprite._baseScale * spriteScaleMult;
+                    sprite.scale.set(s, s, s);
+                }
+            }
+        }
     }
 
     // Mark as dirty when moved/rotated
@@ -738,6 +848,31 @@ export class Block {
         const topArrowData = createArrowGeometry(style);
         const topArrowMesh = new THREE.Mesh(topArrowData.geometry, topArrowData.material);
 
+        // Bomb styling: Add indicator material and glow sprite (Task 3.2, 3.4)
+        if (this.isBomb && this.bombIndicatorMaterials) {
+            this.bombIndicatorMaterials.push(topArrowData.material);
+            
+            // Match indicator color (red, yellow, or green) (Task 3.2)
+            topArrowData.material.emissive = new THREE.Color(blockColor);
+            topArrowData.material.emissiveIntensity = 0.5;
+
+            // Add hazing glow sprite (Task 3.4)
+            const glowTexture = createGlowTexture();
+            const glowMaterial = new THREE.SpriteMaterial({
+                map: glowTexture,
+                color: blockColor,
+                transparent: true,
+                opacity: 0.5,
+                blending: THREE.AdditiveBlending
+            });
+            const glowSprite = new THREE.Sprite(glowMaterial);
+            glowSprite.scale.set(1.2, 1.2, 1.2);
+            glowSprite.position.copy(topArrowMesh.position);
+            glowSprite.position.z += 0.05; // Slightly in front
+            topArrow.add(glowSprite);
+            this.bombGlowSprites.push(glowSprite);
+        }
+
         // Store original emissiveIntensity for later color updates
         if (topArrowMesh.material.emissive) {
             topArrowMesh.material._originalEmissiveIntensity = topArrowMesh.material.emissiveIntensity !== undefined
@@ -894,6 +1029,30 @@ export class Block {
             side: THREE.DoubleSide
         });
 
+        // Bomb styling: Add indicator material and glow sprite (Task 3.2, 3.4)
+        if (this.isBomb && this.bombIndicatorMaterials) {
+            this.bombIndicatorMaterials.push(dotMaterial);
+            
+            // Match indicator color (Task 3.2)
+            dotMaterial.emissive = new THREE.Color(indicatorColor);
+            dotMaterial.emissiveIntensity = 0.5;
+
+            const glowTexture = createGlowTexture();
+            const glowMaterial = new THREE.SpriteMaterial({
+                map: glowTexture,
+                color: indicatorColor,
+                transparent: true,
+                opacity: 0.5,
+                blending: THREE.AdditiveBlending
+            });
+            const glowSprite = new THREE.Sprite(glowMaterial);
+            glowSprite.scale.set(0.6, 0.6, 0.6);
+            this.bombGlowSprites.push(glowSprite);
+            
+            // We'll add this to the same group/parent as dotMesh later
+            this._pendingDotGlow = glowSprite; 
+        }
+
         const dotMesh = new THREE.Mesh(dotGeometry, dotMaterial);
         // Battery/perf: receive only (avoid extra shadow casters for tiny details)
         dotMesh.castShadow = false;
@@ -921,6 +1080,30 @@ export class Block {
             color: indicatorColor,
             side: THREE.DoubleSide
         });
+
+        // Bomb styling: Add indicator material and glow sprite (Task 3.2, 3.4)
+        if (this.isBomb && this.bombIndicatorMaterials) {
+            this.bombIndicatorMaterials.push(circleMaterial);
+            
+            // Match indicator color (Task 3.2)
+            circleMaterial.emissive = new THREE.Color(indicatorColor);
+            circleMaterial.emissiveIntensity = 0.5;
+
+            const glowTexture = createGlowTexture();
+            const glowMaterial = new THREE.SpriteMaterial({
+                map: glowTexture,
+                color: indicatorColor,
+                transparent: true,
+                opacity: 0.5,
+                blending: THREE.AdditiveBlending
+            });
+            const glowSprite = new THREE.Sprite(glowMaterial);
+            glowSprite.scale.set(0.8, 0.8, 0.8);
+            this.bombGlowSprites.push(glowSprite);
+            
+            // We'll add this to the same group/parent as circleMesh later
+            this._pendingCircleGlow = glowSprite;
+        }
 
         const circleMesh = new THREE.Mesh(circleGeometry, circleMaterial);
         // Battery/perf: receive only (avoid extra shadow casters for tiny details)
@@ -1020,7 +1203,24 @@ export class Block {
         }
 
         indicatorsGroup.add(dotMesh);
+        if (this._pendingDotGlow) {
+            this._pendingDotGlow.position.copy(dotMesh.position);
+            // Push sprite slightly more towards the viewer relative to the surface
+            const dotDirection = dotMesh.position.clone().normalize();
+            this._pendingDotGlow.position.add(dotDirection.multiplyScalar(0.04));
+            indicatorsGroup.add(this._pendingDotGlow);
+            delete this._pendingDotGlow;
+        }
+        
         indicatorsGroup.add(circleMesh);
+        if (this._pendingCircleGlow) {
+            this._pendingCircleGlow.position.copy(circleMesh.position);
+            const circleDirection = circleMesh.position.clone().normalize();
+            this._pendingCircleGlow.position.add(circleDirection.multiplyScalar(0.04));
+            indicatorsGroup.add(this._pendingCircleGlow);
+            delete this._pendingCircleGlow;
+        }
+
         this.group.add(indicatorsGroup);
         this.directionIndicators = indicatorsGroup;
 
@@ -4471,6 +4671,125 @@ export class Block {
         });
     }
 
+    detonate() {
+        if (this.isExploding) return;
+        this.isExploding = true;
+        this.isRemoved = true;
+
+        // Get world position for radius calculation
+        this.group.updateMatrixWorld(true);
+        const bombPos = new THREE.Vector3();
+        this.group.getWorldPosition(bombPos);
+
+        // Particle effect (White-yellow flash for Task 6.3)
+        if (window.particleSystem) {
+             window.particleSystem.addExplosion(bombPos, new THREE.Color(0xffffaa), 100, 5.0);
+        }
+
+        const affectedBlocks = this.getAffectedBlocks();
+
+        // Detonate/Remove affected blocks
+        affectedBlocks.forEach((block, index) => {
+            const delay = index * 30; 
+            
+            setTimeout(() => {
+                if (block.isRemoved || block.isExploding) return;
+
+                if (block.isBomb) {
+                    block.detonate(); 
+                } else {
+                    // Use explodeWithParticles for faster, cleaner removal (Task 6.2)
+                    if (window.particleSystem) {
+                        block.explodeWithParticles(window.particleSystem, 0);
+                    } else if (typeof window.removeBlockWithAnimation === 'function') {
+                        window.removeBlockWithAnimation(block);
+                    } else {
+                        block.remove();
+                    }
+                }
+            }, delay);
+        });
+
+        // Finally remove the bomb itself
+        this.remove();
+    }
+
+    /**
+     * Get array of grid cells occupied by this block.
+     * @returns {Array<{x: number, y: number, z: number}>} Array of cells
+     */
+    getOccupiedCells() {
+        const cells = [];
+        // Normalize yOffset to layer index (layers are at 1.2 unit intervals)
+        const layerY = Math.round(this.yOffset / 1.2);
+        
+        for (let i = 0; i < this.length; i++) {
+            if (this.isVertical) {
+                // Vertical blocks span multiple layers at the same (gridX, gridZ)
+                cells.push({ x: this.gridX, y: layerY + i, z: this.gridZ });
+            } else {
+                // Horizontal blocks span multiple grid cells in one layer
+                cells.push({
+                    x: this.gridX + this.direction.x * i,
+                    y: layerY,
+                    z: this.gridZ + this.direction.z * i
+                });
+            }
+        }
+        return cells;
+    }
+
+    /**
+     * Get list of blocks within the detonation radius (Task 9.2)
+     * Transitions from distance-based to robust grid adjacency check.
+     * @returns {Block[]} Array of affected blocks
+     */
+    getAffectedBlocks() {
+        const allBlocks = window.gameBlocks || [];
+        const bombCells = this.getOccupiedCells();
+
+        return allBlocks.filter(block => {
+            if (block === this || block.isRemoved || block.isExploding) return false;
+            
+            const targetCells = block.getOccupiedCells();
+            
+            // Check if any bomb cell is adjacent to any target cell
+            // Adjacency is defined as Manhattan distance <= 1 (face-touching or same cell)
+            return bombCells.some(bCell => 
+                targetCells.some(tCell => {
+                    const dx = Math.abs(bCell.x - tCell.x);
+                    const dy = Math.abs(bCell.y - tCell.y);
+                    const dz = Math.abs(bCell.z - tCell.z);
+                    return (dx + dy + dz) <= 1;
+                })
+            );
+        });
+    }
+
+    /**
+     * Temporarily highlight the block (Task 7.2)
+     * @param {THREE.Color} color - Highlight color
+     * @param {number} duration - Duration in ms
+     */
+    highlight(color = new THREE.Color(0xff0000), duration = 2000) {
+        this.cubes.forEach(cube => {
+            if (cube.material) {
+                const oldEmissive = cube.material.emissive.clone();
+                const oldIntensity = cube.material.emissiveIntensity;
+                
+                cube.material.emissive.copy(color);
+                cube.material.emissiveIntensity = 1.0;
+                
+                setTimeout(() => {
+                    if (cube.material) {
+                        cube.material.emissive.copy(oldEmissive);
+                        cube.material.emissiveIntensity = oldIntensity;
+                    }
+                }, duration);
+            }
+        });
+    }
+
     remove() {
         this.isRemoved = true;
 
@@ -4481,12 +4800,10 @@ export class Block {
         }
 
         // Remove from parent (could be scene or towerGroup)
-        // Blocks are now in towerGroup, so remove from parent
         if (this.group.parent) {
             this.group.parent.remove(this.group);
-        } else {
-            // Fallback: try removing from scene if no parent
-            this.scene.remove(this.group);
+        } else if (typeof window.scene !== 'undefined') {
+            window.scene.remove(this.group);
         }
     }
 }

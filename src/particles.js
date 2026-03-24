@@ -53,24 +53,22 @@ export function createParticleSystem(maxParticles = 1000, scene) {
      * @param {number} velocity - Base velocity magnitude
      */
     function addExplosion(position, color, count = 30, velocity = 3.0) {
-        const spawnCount = Math.min(count, maxParticles - particles.length);
-        
-        for (let i = 0; i < spawnCount; i++) {
+        // Task 11.1: Reuse oldest slots indefinitely
+        for (let i = 0; i < count; i++) {
             const index = nextParticleIndex;
             nextParticleIndex = (nextParticleIndex + 1) % maxParticles;
             
-            // If slot is already occupied, reuse it
-            if (particles[index]) {
-                // Reuse existing particle
-            } else {
+            // If slot is empty, initialize it
+            if (!particles[index]) {
                 particles[index] = {
-                    active: true,
                     index: index
                 };
             }
             
             const particle = particles[index];
             particle.active = true;
+            particle.isGrounded = false;
+            particle.groundedAge = 0;
             particle.lifetime = PARTICLE_LIFETIME;
             particle.age = 0;
             particle.startSize = 0.08 + Math.random() * 0.15; // Track start size for linear shrink
@@ -113,41 +111,94 @@ export function createParticleSystem(maxParticles = 1000, scene) {
      */
     function updateParticles(deltaTime) {
         const KILL_Y = -10.0; // Deep cleanup for particles falling into void
-        const EXTENDED_BASE_SIZE = 10.5; // Half of 21 units (extended base plate)
-        const TOWER_GROUP_X = 3.5; // towerGroup X position in world space
-        const TOWER_GROUP_Z = 3.5; // towerGroup Z position in world space
-        const BASE_MIN_X = TOWER_GROUP_X - EXTENDED_BASE_SIZE; // -7
-        const BASE_MAX_X = TOWER_GROUP_X + EXTENDED_BASE_SIZE; // +14
-        const BASE_MIN_Z = TOWER_GROUP_Z - EXTENDED_BASE_SIZE; // -7
-        const BASE_MAX_Z = TOWER_GROUP_Z + EXTENDED_BASE_SIZE; // +14
+        const BASE_HALF_SIZE = 10.5; // Half of 21x21 plate
+        
+        // Get dynamic base plate world position
+        let baseWorldY = 0;
+        let baseWorldX = 0;
+        let baseWorldZ = 0;
+        if (window.gameGrid && window.gameGrid.base) {
+            const basePos = new THREE.Vector3();
+            window.gameGrid.base.getWorldPosition(basePos);
+            // The BoxGeometry is 0.2 units thick. If its center is at basePos.y, the top surface is basePos.y + 0.1.
+            baseWorldY = basePos.y + 0.1; 
+            baseWorldX = basePos.x;
+            baseWorldZ = basePos.z;
+        }
+
+        const BASE_MIN_X = baseWorldX - BASE_HALF_SIZE;
+        const BASE_MAX_X = baseWorldX + BASE_HALF_SIZE;
+        const BASE_MIN_Z = baseWorldZ - BASE_HALF_SIZE;
+        const BASE_MAX_Z = baseWorldZ + BASE_HALF_SIZE;
         
         for (let i = 0; i < maxParticles; i++) {
             if (!particles[i] || !particles[i].active) continue;
             
             const particle = particles[i];
+            
+            if (particle.isGrounded) {
+                // Grounded particle settling logic
+                particle.groundedAge += deltaTime;
+                if (particle.groundedAge >= 3.0) {
+                    particle.active = false;
+                    sizes[i] = 0;
+                } else {
+                    // Start fading out in the last 0.5s of the 3s lifetime
+                    const timeRemaining = 3.0 - particle.groundedAge;
+                    if (timeRemaining < 0.5) {
+                        sizes[i] = particle.startSize * (timeRemaining / 0.5);
+                    } else {
+                        sizes[i] = particle.startSize; // Restore size when grounded
+                    }
+                }
+                
+                // Stick to the ground even if the tower wobbles
+                positions[i * 3 + 1] = baseWorldY + 0.01;
+                continue;
+            }
+
             particle.age += deltaTime;
             
             // Apply gravity
             particle.velocity.y += GRAVITY * deltaTime;
             
+            // Calculate next position
+            const nextX = positions[i * 3] + particle.velocity.x * deltaTime;
+            const nextY = positions[i * 3 + 1] + particle.velocity.y * deltaTime;
+            const nextZ = positions[i * 3 + 2] + particle.velocity.z * deltaTime;
+
+            // Ground collision check
+            // Hit ground/base plate with epsilon threshold (+0.05)
+            const isOnBasePlate = nextX >= BASE_MIN_X && nextX <= BASE_MAX_X && 
+                                 nextZ >= BASE_MIN_Z && nextZ <= BASE_MAX_Z;
+            
+            if (nextY <= baseWorldY + 0.05 && isOnBasePlate) {
+                // Particle "landed" on the plate - stay put for 3 seconds
+                particle.isGrounded = true;
+                if (particle.velocity) particle.velocity.set(0, 0, 0); // Stop moving
+                
+                // Snap to ground level
+                positions[i * 3] = nextX;
+                positions[i * 3 + 1] = baseWorldY + 0.01; // Slightly above ground to avoid z-fighting
+                positions[i * 3 + 2] = nextZ;
+                continue; // Skip the rest of the update
+            }
+
             // Update position
-            positions[i * 3] += particle.velocity.x * deltaTime;
-            positions[i * 3 + 1] += particle.velocity.y * deltaTime;
-            positions[i * 3 + 2] += particle.velocity.z * deltaTime;
+            positions[i * 3] = nextX;
+            positions[i * 3 + 1] = nextY;
+            positions[i * 3 + 2] = nextZ;
             
             // Update lifetime and fade
             const lifetimeProgress = particle.age / particle.lifetime;
             if (lifetimeProgress >= 1.0 || positions[i * 3 + 1] < KILL_Y) {
-                // Particle dissipated or fell deep into void
+                // Particle dissipated in air or fell deep into void
                 particle.active = false;
                 sizes[i] = 0;
             } else {
-                // Fade out over lifetime (linear shrink)
-                const fade = 1.0 - lifetimeProgress;
-                sizes[i] = particle.startSize * fade; // Shrink linearly over time
-                
-                // Update color alpha (via material opacity per particle would require custom shader)
-                // For now, we'll use size as a proxy for visibility
+                // Fade out slightly over lifetime in air, but keep visible enough to see them land
+                const fade = Math.max(0.3, 1.0 - lifetimeProgress);
+                sizes[i] = particle.startSize * fade; 
             }
         }
         

@@ -898,7 +898,6 @@ function centerTowerVertically() {
     // Calculate min and max Y positions of all blocks
     for (const block of blocks) {
         if (block.isRemoved || block.isFalling) continue;
-
         const blockHeight = block.isVertical ? block.length * block.cubeSize : block.cubeSize;
         const blockBottom = block.yOffset;
         const blockTop = blockBottom + blockHeight;
@@ -2550,8 +2549,11 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                     continue; // Cells not available - skip this attempt
                 }
 
+                // Determine if this should be a bomb block (Task 1.1)
+                const isBomb = (level >= 31 && Math.random() < 0.15);
+                
                 // Cells are now reserved - create the block
-                const block = new Block(length, cell.x, cell.z, randomDir, isVertical, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level);
+                const block = new Block(length, cell.x, cell.z, randomDir, isVertical, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level, isBomb);
 
                 // Move block from scene to towerGroup
                 scene.remove(block.group);
@@ -2625,8 +2627,11 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                                 continue;
                             }
 
+                            // Determine if this should be a bomb block (Task 1.1)
+                            const isBomb = (level >= 31 && Math.random() < 0.15);
+                            
                             // Create block for support check
-                            const testBlock = new Block(tryLength, cell.x, cell.z, dir, isVert, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level);
+                            const testBlock = new Block(tryLength, cell.x, cell.z, dir, isVert, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level, isBomb);
                             scene.remove(testBlock.group);
 
                             // Check support
@@ -2690,8 +2695,11 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                                 continue;
                             }
 
+                            // Determine if this should be a bomb block (Task 1.1)
+                            const isBomb = (level >= 31 && Math.random() < 0.15);
+                            
                             // Create block for support check
-                            const testBlock = new Block(tryLength, cell.x, cell.z, dir, isVert, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level);
+                            const testBlock = new Block(tryLength, cell.x, cell.z, dir, isVert, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level, isBomb);
                             scene.remove(testBlock.group);
 
                             // Check support
@@ -2785,8 +2793,11 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                 // ATOMIC OPERATION: Try to reserve cells BEFORE creating the block
                 const reservation = tryReserveCells(x, 0, length, isVertical, direction);
                 if (reservation) {
+                    // Determine if this should be a bomb block (Task 1.1)
+                    const isBomb = (level >= 31 && Math.random() < 0.15);
+                    
                     // Cells reserved - create block
-                    const block = new Block(length, x, 0, direction, isVertical, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level);
+                    const block = new Block(length, x, 0, direction, isVertical, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level, isBomb);
                     // Check if block has support (for level 2+)
                     if (hasSupport(block)) {
                         scene.remove(block.group); // Remove from scene, will be added with animation
@@ -2822,8 +2833,11 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                 // ATOMIC OPERATION: Try to reserve cells BEFORE creating the block
                 const reservation = tryReserveCells(x, gridSize - 1, length, isVertical, direction);
                 if (reservation) {
+                    // Determine if this should be a bomb block (Task 1.1)
+                    const isBomb = (level >= 31 && Math.random() < 0.15);
+                    
                     // Cells reserved - create block
-                    const block = new Block(length, x, gridSize - 1, direction, isVertical, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level);
+                    const block = new Block(length, x, gridSize - 1, direction, isVertical, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level, isBomb);
                     // Check if block has support (for level 2+)
                     if (hasSupport(block)) {
                         scene.remove(block.group); // Remove from scene, will be added with animation
@@ -2859,8 +2873,11 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                 // ATOMIC OPERATION: Try to reserve cells BEFORE creating the block
                 const reservation = tryReserveCells(0, z, length, isVertical, direction);
                 if (reservation) {
+                    // Determine if this should be a bomb block (Task 1.1)
+                    const isBomb = (level >= 31 && Math.random() < 0.15);
+                    
                     // Cells reserved - create block
-                    const block = new Block(length, 0, z, direction, isVertical, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level);
+                    const block = new Block(length, 0, z, direction, isVertical, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level, isBomb);
                     // Check if block has support (for level 2+)
                     if (hasSupport(block)) {
                         scene.remove(block.group); // Remove from scene, will be added with animation
@@ -2896,8 +2913,11 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                 // ATOMIC OPERATION: Try to reserve cells BEFORE creating the block
                 const reservation = tryReserveCells(gridSize - 1, z, length, isVertical, direction);
                 if (reservation) {
+                    // Determine if this should be a bomb block (Task 1.1)
+                    const isBomb = (level >= 31 && Math.random() < 0.15);
+                    
                     // Cells reserved - create block
-                    const block = new Block(length, gridSize - 1, z, direction, isVertical, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level);
+                    const block = new Block(length, gridSize - 1, z, direction, isVertical, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level, isBomb);
                     // Check if block has support (for level 2+)
                     if (hasSupport(block)) {
                         scene.remove(block.group); // Remove from scene, will be added with animation
@@ -3219,8 +3239,12 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                         continue; // Cells not available - skip this attempt
                     }
 
+                    // Determine if this should be a bomb block (Task 1.1)
+                    // Slated for levels 31-40 in roadmap
+                    const isBomb = (level >= 31 && Math.random() < 0.15); // 15% chance
+                    
                     // Cells reserved - create block
-                    const testBlock = new Block(tryLength, cell.x, cell.z, dir, false, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level);
+                    const testBlock = new Block(tryLength, cell.x, cell.z, dir, false, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level, isBomb);
 
                     // Check if block has support (for level 2+)
                     if (!hasSupport(testBlock)) {
@@ -3482,7 +3506,8 @@ function createHeadOnCollisionBlocks(targetBlockCount = 10) {
             }
             const isVertical1 = pair.vert1 === true;
             console.log(`Creating block1 at (${pair.x1}, ${pair.z1}), vert1=${pair.vert1}, isVertical1=${isVertical1}, length=${pair.len1}`);
-            const block1 = new Block(pair.len1, pair.x1, pair.z1, pair.dir1, isVertical1, currentArrowStyle, scene, physics, gridSize, cubeSize, 0, 1);
+            const isBomb = (level >= 31 && Math.random() < 0.15);
+            const block1 = new Block(pair.len1, pair.x1, pair.z1, pair.dir1, isVertical1, currentArrowStyle, scene, physics, gridSize, cubeSize, 0, 1, isBomb);
             console.log(`Block1 created, isVertical=${block1.isVertical}`);
             scene.remove(block1.group);
             blocksToPlace.push(block1);
@@ -3516,7 +3541,8 @@ function createHeadOnCollisionBlocks(targetBlockCount = 10) {
                 }
                 const isVertical2 = pair.vert2 === true;
                 console.log(`Creating block2 at (${pair.x2}, ${pair.z2}), vert2=${pair.vert2}, isVertical2=${isVertical2}, length=${pair.len2}`);
-                const block2 = new Block(pair.len2, pair.x2, pair.z2, pair.dir2, isVertical2, currentArrowStyle, scene, physics, gridSize, cubeSize, 0, 1);
+                const isBomb = (level >= 31 && Math.random() < 0.15);
+                const block2 = new Block(pair.len2, pair.x2, pair.z2, pair.dir2, isVertical2, currentArrowStyle, scene, physics, gridSize, cubeSize, 0, 1, isBomb);
                 console.log(`Block2 created, isVertical=${block2.isVertical}`);
                 scene.remove(block2.group);
                 blocksToPlace.push(block2);
@@ -3558,7 +3584,8 @@ function createHeadOnCollisionBlocks(targetBlockCount = 10) {
                 } else {
                     occupyCells(x, z, length, isXAligned);
                 }
-                const block = new Block(length, x, z, direction, isVertical, currentArrowStyle, scene, physics, gridSize, cubeSize, 0, 1);
+                const isBomb = false; // Level 1 testing blocks are not bombs
+                const block = new Block(length, x, z, direction, isVertical, currentArrowStyle, scene, physics, gridSize, cubeSize, 0, 1, isBomb);
                 scene.remove(block.group);
                 blocksToPlace.push(block);
             }
@@ -4407,6 +4434,7 @@ function dropPenaltyTile() {
     const targetX = Math.floor(Math.random() * (maxX + 1));
     const targetZ = Math.floor(Math.random() * (maxZ + 1));
 
+    const isBomb = (currentLevel >= 31 && Math.random() < 0.1);
     const block = new Block(
         length,            // length
         targetX,           // gridX
@@ -4419,7 +4447,8 @@ function dropPenaltyTile() {
         gridSize,          // gridSize
         cubeSize,          // cubeSize
         yOffset,           // yOffset
-        currentLevel      // level
+        currentLevel,      // level
+        isBomb             // isBomb
     );
     
     scene.remove(block.group);
@@ -4845,8 +4874,15 @@ function undoLastMove() {
 }
 
 // Remove a block with selected animation type
+window.removeBlockWithAnimation = removeBlockWithAnimation;
 function removeBlockWithAnimation(block) {
     if (!blocks.includes(block) || block.isRemoved || block.isFalling || block.isAnimating) {
+        return;
+    }
+
+    // Bomb detonation logic: if it's a bomb, detonate it immediately instead of melting
+    if (block.isBomb) {
+        block.detonate();
         return;
     }
 
@@ -6285,7 +6321,6 @@ function computeFirstStepPotentialBlockers(block, allBlocks, preState) {
 
         const directionsOpposed = (block.direction.x === -other.direction.x) && (block.direction.z === -other.direction.z);
         const headOnAllowed = directionsOpposed; // In current logic, opposite directions generally allow head-on continuation.
-
         blockers.push({
             other: {
                 gridX: other.gridX,
@@ -7301,6 +7336,20 @@ function onMouseClick(event) {
     const closestHit = allIntersections[0];
     const block = closestHit.block;
 
+    // Bomb detonation logic: if it's a bomb, detonate it on tap! (Task 1.1)
+    if (block.isBomb && !block.isRemoved && !block.isExploding) {
+        // Shift+Click debug feature (Task 7.3)
+        if (event && event.shiftKey) {
+            const affected = block.getAffectedBlocks();
+            affected.forEach(b => b.highlight(new THREE.Color(0xffff00), 1500)); // Yellow highlight for targets
+            block.highlight(new THREE.Color(0xff0000), 1500); // Red highlight for bomb
+            return;
+        }
+        block.detonate();
+        updateUndoButtonState();
+        return;
+    }
+
     // Prevent locked blocks from being moved
     if (block.isLocked) {
         showLockTimeRemaining(block);
@@ -7909,7 +7958,9 @@ function onTouchEnd(event) {
     for (const block of blocks) {
         if (!block || block.isRemoved) continue;
         if (block.isAnimating || block.isFalling) continue;
-        if (!block.group || !block.cubes || block.cubes.length === 0) continue; // Ensure block has valid geometry
+        if (!block.group || !block.cubes || block.cubes.length === 0) {
+             continue;
+        }
 
         // Update block's world matrix before raycasting
         block.group.updateMatrixWorld(true);
@@ -7943,6 +7994,20 @@ function onTouchEnd(event) {
     // Get the closest intersection
     const closestHit = allIntersections[0];
     const block = closestHit.block;
+
+    // Bomb detonation logic: if it's a bomb, detonate it on tap! (Task 1.1)
+    if (block.isBomb && !block.isRemoved && !block.isExploding) {
+        // Shift+Click debug feature (Task 7.3)
+        if (event && event.shiftKey) {
+            const affected = block.getAffectedBlocks();
+            affected.forEach(b => b.highlight(new THREE.Color(0xffff00), 1500)); 
+            block.highlight(new THREE.Color(0xff0000), 1500);
+            return;
+        }
+        block.detonate();
+        updateUndoButtonState();
+        return;
+    }
 
     // Prevent locked blocks from being moved (they can still intercept taps)
     if (block.isLocked) {
@@ -8518,6 +8583,9 @@ function animate() {
 
     for (let i = blocks.length - 1; i >= 0; i--) {
         const block = blocks[i];
+        
+        // Update block animations and per-frame logic (Task 2.3)
+        block.update(currentTime);
         if (block.isRemoved) {
             if (!block.removalStartTime) { trackBlockRemoved(); timeChallengeAwardForBlockRemoved(block.length); }
             if (block.group.parent) block.group.parent.remove(block.group);
