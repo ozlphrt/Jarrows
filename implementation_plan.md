@@ -51,6 +51,22 @@ The primary goal of Jarrows v2 is to evolve the core gameplay from a simple phys
 *   **Task 3.3: Superheat Frenzy**
     *   Implement the temporary "No-Collision Slider" state.
 
+## [NEW] Bomb Block Distribution Bias Fix
+
+**Issue**: The user noticed bombs cluster heavily at the top of the tower. 
+**Root Cause**: In `generateSolvablePuzzle`, the bottom layers prioritize long blocks (length 2 and 3) to provide a stable foundation, while the upper layers are aggressively packed with individual single blocks (length 1) to hit the required block quota. Because the 15% bomb probability is currently applied *per block* regardless of size, the upper layers with 3x as many blocks receive 3x as many bombs.
+**Solution**: Scale the bomb probability by the block's length so that larger blocks have a proportionately higher chance of being bombs. This guarantees an even distribution by volume.
+
+### Proposed Changes
+
+#### [MODIFY] [main.js](file:///c:/Users/ozalp/Code/AntiGravity/Jarrows%20v2/src/main.js)
+- Find all block instantiations within `createSolvableBlocks`.
+- Update the `isBomb` probability check from:
+  `const isBomb = (level >= 31 && Math.random() < 0.15);`
+- to account for block length:
+  `const isBomb = (level >= 31 && Math.random() < (0.075 * length));` (where length is 1, 2, or 3).
+- *Note: Using a base of 7.5% per cell means a 3-cell block has a 22.5% chance, a 2-cell has 15%, and a 1-cell has 7.5%, roughly restoring the overall average to ~15% while shifting weight to the bottom.*
+
 ---
 
 ## 3. Deep Technical Implementation Detail

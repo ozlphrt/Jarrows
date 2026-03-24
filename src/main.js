@@ -2550,7 +2550,7 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                 }
 
                 // Determine if this should be a bomb block (Task 1.1)
-                const isBomb = (level >= 31 && Math.random() < 0.15);
+                const isBomb = (level >= 31 && Math.random() < (0.075 * length));
                 
                 // Cells are now reserved - create the block
                 const block = new Block(length, cell.x, cell.z, randomDir, isVertical, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level, isBomb);
@@ -2628,7 +2628,7 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                             }
 
                             // Determine if this should be a bomb block (Task 1.1)
-                            const isBomb = (level >= 31 && Math.random() < 0.15);
+                            const isBomb = (level >= 31 && Math.random() < (0.075 * tryLength));
                             
                             // Create block for support check
                             const testBlock = new Block(tryLength, cell.x, cell.z, dir, isVert, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level, isBomb);
@@ -2696,7 +2696,7 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                             }
 
                             // Determine if this should be a bomb block (Task 1.1)
-                            const isBomb = (level >= 31 && Math.random() < 0.15);
+                            const isBomb = (level >= 31 && Math.random() < (0.075 * tryLength));
                             
                             // Create block for support check
                             const testBlock = new Block(tryLength, cell.x, cell.z, dir, isVert, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level, isBomb);
@@ -2794,7 +2794,7 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                 const reservation = tryReserveCells(x, 0, length, isVertical, direction);
                 if (reservation) {
                     // Determine if this should be a bomb block (Task 1.1)
-                    const isBomb = (level >= 31 && Math.random() < 0.15);
+                    const isBomb = (level >= 31 && Math.random() < (0.075 * length));
                     
                     // Cells reserved - create block
                     const block = new Block(length, x, 0, direction, isVertical, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level, isBomb);
@@ -2834,7 +2834,7 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                 const reservation = tryReserveCells(x, gridSize - 1, length, isVertical, direction);
                 if (reservation) {
                     // Determine if this should be a bomb block (Task 1.1)
-                    const isBomb = (level >= 31 && Math.random() < 0.15);
+                    const isBomb = (level >= 31 && Math.random() < (0.075 * length));
                     
                     // Cells reserved - create block
                     const block = new Block(length, x, gridSize - 1, direction, isVertical, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level, isBomb);
@@ -2874,7 +2874,7 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                 const reservation = tryReserveCells(0, z, length, isVertical, direction);
                 if (reservation) {
                     // Determine if this should be a bomb block (Task 1.1)
-                    const isBomb = (level >= 31 && Math.random() < 0.15);
+                    const isBomb = (level >= 31 && Math.random() < (0.075 * length));
                     
                     // Cells reserved - create block
                     const block = new Block(length, 0, z, direction, isVertical, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level, isBomb);
@@ -2914,7 +2914,7 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                 const reservation = tryReserveCells(gridSize - 1, z, length, isVertical, direction);
                 if (reservation) {
                     // Determine if this should be a bomb block (Task 1.1)
-                    const isBomb = (level >= 31 && Math.random() < 0.15);
+                    const isBomb = (level >= 31 && Math.random() < (0.075 * length));
                     
                     // Cells reserved - create block
                     const block = new Block(length, gridSize - 1, z, direction, isVertical, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level, isBomb);
@@ -3241,7 +3241,7 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
 
                     // Determine if this should be a bomb block (Task 1.1)
                     // Slated for levels 31-40 in roadmap
-                    const isBomb = (level >= 31 && Math.random() < 0.15); // 15% chance
+                    const isBomb = (level >= 31 && Math.random() < (0.075 * tryLength)); // scaled by length
                     
                     // Cells reserved - create block
                     const testBlock = new Block(tryLength, cell.x, cell.z, dir, false, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level, isBomb);
@@ -3506,7 +3506,7 @@ function createHeadOnCollisionBlocks(targetBlockCount = 10) {
             }
             const isVertical1 = pair.vert1 === true;
             console.log(`Creating block1 at (${pair.x1}, ${pair.z1}), vert1=${pair.vert1}, isVertical1=${isVertical1}, length=${pair.len1}`);
-            const isBomb = (level >= 31 && Math.random() < 0.15);
+            const isBomb = (level >= 31 && Math.random() < (0.075 * pair.len1));
             const block1 = new Block(pair.len1, pair.x1, pair.z1, pair.dir1, isVertical1, currentArrowStyle, scene, physics, gridSize, cubeSize, 0, 1, isBomb);
             console.log(`Block1 created, isVertical=${block1.isVertical}`);
             scene.remove(block1.group);
@@ -3541,7 +3541,7 @@ function createHeadOnCollisionBlocks(targetBlockCount = 10) {
                 }
                 const isVertical2 = pair.vert2 === true;
                 console.log(`Creating block2 at (${pair.x2}, ${pair.z2}), vert2=${pair.vert2}, isVertical2=${isVertical2}, length=${pair.len2}`);
-                const isBomb = (level >= 31 && Math.random() < 0.15);
+                const isBomb = (level >= 31 && Math.random() < (0.075 * pair.len2));
                 const block2 = new Block(pair.len2, pair.x2, pair.z2, pair.dir2, isVertical2, currentArrowStyle, scene, physics, gridSize, cubeSize, 0, 1, isBomb);
                 console.log(`Block2 created, isVertical=${block2.isVertical}`);
                 scene.remove(block2.group);
@@ -4434,7 +4434,7 @@ function dropPenaltyTile() {
     const targetX = Math.floor(Math.random() * (maxX + 1));
     const targetZ = Math.floor(Math.random() * (maxZ + 1));
 
-    const isBomb = (currentLevel >= 31 && Math.random() < 0.1);
+    const isBomb = (currentLevel >= 31 && Math.random() < (0.05 * length));
     const block = new Block(
         length,            // length
         targetX,           // gridX
