@@ -30,8 +30,16 @@ The primary goal of Jarrows v2 is to evolve the core gameplay from a simple phys
 *Focus: Introducing mandatory sequencing and "Iconic" challenges.*
 
 *   **Task 2.1: Key & Lock System**
-    *   Develop a `DependencyGraph` to manage block-to-block locking states.
-    *   Implement visual "Locked" indicators (shield icons/dimming).
+    *   **Visuals (`Block.js`)**: 
+        *   Add `isKey` and `isLocked` properties to `Block`.
+        *   Keys will have a glowing keyhole icon (`createKeyTexture`).
+        *   Locks will have a heavy chain or shield visual (`createLockTexture`) and will visually "shake" and play a clink sound if the player tries to move them while locked.
+    *   **Logic (`Block.js` & `main.js`)**: 
+        *   Locks keep a reference to their Key (`this.lockedByKey = keyBlock`).
+        *   When a Key block is successfully removed, it triggers `unlock()` on all associated Lock blocks.
+    *   **Generation Safety (`main.js`)**: 
+        *   To guarantee solvability without deadlocks, Keys must always be placed in upper/outer layers or generated in a way that guarantees they can be accessed *before* the Lock. 
+        *   This feature will activate starting at **Level 61**, bringing in high-level sequencing strategy.
 *   **Task 2.2: Iconic Architecture Templates**
     *   Create a JSON-based Voxel Template system.
     *   Refactor `createSolvableBlocks` in `main.js` to support masked generation.
