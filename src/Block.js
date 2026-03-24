@@ -4754,13 +4754,13 @@ export class Block {
             const targetCells = block.getOccupiedCells();
             
             // Check if any bomb cell is adjacent to any target cell
-            // Adjacency is defined as Manhattan distance <= 1 (face-touching or same cell)
+            // Adjacency is defined as Chebyshev distance <= 1 (shares corner, edge, or face)
             return bombCells.some(bCell => 
                 targetCells.some(tCell => {
                     const dx = Math.abs(bCell.x - tCell.x);
                     const dy = Math.abs(bCell.y - tCell.y);
                     const dz = Math.abs(bCell.z - tCell.z);
-                    return (dx + dy + dz) <= 1;
+                    return dx <= 1 && dy <= 1 && dz <= 1;
                 })
             );
         });
