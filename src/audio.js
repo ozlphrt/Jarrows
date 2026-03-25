@@ -47,6 +47,65 @@ const syntheticSounds = {
         noise.stop(ctx.currentTime + duration);
 
         return noise;
+    },
+    /**
+     * "Crush": A sharp, plasticky "dice clack" sound.
+     * Aligned with standard move sounds but with a mechanical, resonant character.
+     */
+    'syntheticCrush': (ctx, destination, volume) => {
+        const duration = 0.3;
+        const now = ctx.currentTime;
+        
+        // Layer 1: The "Plasticky Thud" (Tighter, resonant low-end)
+        const lowOsc = ctx.createOscillator();
+        const lowGain = ctx.createGain();
+        lowOsc.type = 'sine';
+        lowOsc.frequency.setValueAtTime(150, now);
+        lowOsc.frequency.exponentialRampToValueAtTime(40, now + 0.1);
+        lowGain.gain.setValueAtTime(volume * 0.8, now);
+        lowGain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+        lowOsc.connect(lowGain);
+        lowGain.connect(destination);
+        lowOsc.start(now);
+        lowOsc.stop(now + 0.15);
+        
+        // Layer 2: The "Dice Clack" (High-Q resonant noise)
+        const clackBuffer = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * 0.1), ctx.sampleRate);
+        const clackData = clackBuffer.getChannelData(0);
+        for (let i = 0; i < clackBuffer.length; i++) clackData[i] = Math.random() * 2 - 1;
+        const clackSource = ctx.createBufferSource();
+        clackSource.buffer = clackBuffer;
+        const clackFilter = ctx.createBiquadFilter();
+        clackFilter.type = "bandpass";
+        clackFilter.frequency.setValueAtTime(2500, now);
+        clackFilter.Q.setValueAtTime(12, now); // High resonance for "plastic" feel
+        const clackGain = ctx.createGain();
+        clackGain.gain.setValueAtTime(volume * 1.5, now); // Sharp attack
+        clackGain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+        clackSource.connect(clackFilter);
+        clackFilter.connect(clackGain);
+        clackGain.connect(destination);
+        clackSource.start(now);
+
+        // Layer 3: The "Satin Friction" (Aligned with 'syntheticSpin')
+        const satinBuffer = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * duration), ctx.sampleRate);
+        const satinData = satinBuffer.getChannelData(0);
+        for (let i = 0; i < satinBuffer.length; i++) satinData[i] = Math.random() * 2 - 1;
+        const satinSource = ctx.createBufferSource();
+        satinSource.buffer = satinBuffer;
+        const satinFilter = ctx.createBiquadFilter();
+        satinFilter.type = "highpass";
+        satinFilter.frequency.setValueAtTime(6000, now);
+        satinFilter.frequency.exponentialRampToValueAtTime(1200, now + duration * 0.5);
+        const satinGain = ctx.createGain();
+        satinGain.gain.setValueAtTime(volume * 0.4, now);
+        satinGain.gain.exponentialRampToValueAtTime(0.001, now + duration * 0.6);
+        satinSource.connect(satinFilter);
+        satinFilter.connect(satinGain);
+        satinGain.connect(destination);
+        satinSource.start(now);
+
+        return lowOsc; // Return the first oscillator as a representative source
     }
 };
 
@@ -221,5 +280,6 @@ export {
 if (typeof window !== 'undefined') {
     window.toggleAudio = toggleAudio;
     window.isAudioEnabled = isAudioEnabled;
+    window.playSound = playSound;
 }
 

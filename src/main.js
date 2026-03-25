@@ -63,6 +63,24 @@ let updateCheckInterval = null;
 let isGeneratingLevel = false;
 let towerPositionOffset = new THREE.Vector3(0, 0, 0);
 
+// Task 1.2: Camera shake variables
+let cameraShakeIntensity = 0;
+let cameraShakeStartTime = 0;
+let cameraShakeDuration = 0;
+const _cameraShakeOffset = new THREE.Vector3();
+
+/**
+ * Trigger a camera shake effect (Task 1.2)
+ * @param {number} intensity - The strength of the shake
+ * @param {number} duration - The duration in ms
+ */
+function shakeCamera(intensity, duration) {
+    cameraShakeIntensity = intensity;
+    cameraShakeDuration = duration;
+    cameraShakeStartTime = performance.now();
+}
+window.shakeCamera = shakeCamera;
+
 // Initialize BlockInstanceManager (initialized after scene is created below)
 
 window.isMobileLike = false;
@@ -122,7 +140,29 @@ function setCurrentLevel(val) {
     if (levelValueElement) levelValueElement.textContent = val;
 }
 let levelCompleteShown = false;
-let remainingSpins = 3;
+let remainingSpins = 0; // Task 7.8.0: Start with 0 free spins
+let levelInitialBlockCount = 0; // Task 7.9.0: Track initial blocks for progress dial
+
+/**
+ * Recharge a spin for the player (Spin Gem prize).
+ * Task 1.3: Resource Management
+ */
+window.rechargeSpin = function () {
+    // Task 7.7.8: Manual collection also adds time (consistent with blasted reward)
+    setTimeLeftSec(timeLeftSec + 10);
+    playSound('timeAdded', 1.0);
+    flashTimerDelta(10);
+    updateTimerDisplay();
+
+    // Plus the Free Spin token
+    if (remainingSpins < 5) {
+        remainingSpins++;
+        updateSpinCounterDisplay();
+        console.log(`[Spin] 💎 COLLECTED! +10s Time + 1 Free Spin. Total Free Spins: ${remainingSpins}`);
+    } else {
+        console.log('[Spin] 💎 COLLECTED! +10s Time (Free Spins already at max 5)');
+    }
+};
 
 let gameMode = 'inferno';
 let timeLeftSec = 30;
@@ -1101,6 +1141,18 @@ function updateCameraPosition() {
     _lookAtTarget.copy(_effectiveTowerCenter).add(_lookAtOffset);
     camera.lookAt(_lookAtTarget);
 
+    // Task 1.2: Apply camera shake offset if active
+    const now = performance.now();
+    if (now - cameraShakeStartTime < cameraShakeDuration) {
+        const p = 1 - (now - cameraShakeStartTime) / cameraShakeDuration; // Decay factor
+        _cameraShakeOffset.set(
+            (Math.random() - 0.5) * 2 * cameraShakeIntensity * p,
+            (Math.random() - 0.5) * 2 * cameraShakeIntensity * p,
+            (Math.random() - 0.5) * 2 * cameraShakeIntensity * p
+        );
+        camera.position.add(_cameraShakeOffset);
+    }
+
     // Update tower group position
     towerGroup.position.copy(towerCenter.clone().add(towerPositionOffset));
     towerGroup.rotation.set(0, 0, 0); // Always locked to zero
@@ -1557,6 +1609,59 @@ function flashTimerDelta(deltaSeconds) {
     window.setTimeout(() => deltaEl.classList.remove('show'), 720);
 }
 
+// Task 7.7.3: Show floating spin collection feedback
+/**
+ * Award time bonus specifically for blasted spin gems
+ * @param {number} seconds - Seconds to add
+ */
+window.awardSpinGemBlastedTime = function(seconds) {
+    if (!isTimeBasedMode() || timeUpShown) return;
+    
+    // Add time
+    setTimeLeftSec(timeLeftSec + seconds);
+    
+    // Play sound
+    playSound('timeAdded', 0.9);
+    
+    // Flash UI
+    flashTimerDelta(seconds);
+    updateTimerDisplay();
+    
+    // Show special feedback
+    if (typeof window.showSpinFeedback === 'function') {
+        window.showSpinFeedback(false, true); // (success=false, isBlastedReward=true)
+    }
+};
+
+window.showSpinFeedback = function(isSuccess, isBlastedReward = false) {
+    const toast = document.createElement('div');
+    toast.className = `spin-feedback-toast ${isSuccess || isBlastedReward ? 'success' : 'failure'}`;
+    
+    if (isBlastedReward) {
+        toast.innerHTML = '<span>⏱️</span> Blasted! +10s Time Bonus';
+        // Sound is already handled by awardSpinGemBlastedTime
+    } else if (isSuccess) {
+        toast.innerHTML = '<span>💎</span> +1 Spin - Nice Job';
+        playSound('timeAdded', 0.8);
+    } else {
+        toast.innerHTML = '<span>💥</span> Opps blasted a spin block';
+        playSound('timeRemoved', 1.0);
+    }
+    
+    document.body.appendChild(toast);
+    
+    // Animate
+    requestAnimationFrame(() => {
+        toast.classList.add('show');
+    });
+    
+    // Remove after animation
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 400);
+    }, 2000);
+};
+
 // Mode selection modal removed - all users are in inferno mode
 // This function is kept for backward compatibility but always returns inferno mode
 function showModeSelectModal() {
@@ -1735,112 +1840,6 @@ function timeChallengeAwardForBlockRemoved(blockLength) {
     // Show flash animation (same as spin)
     flashTimerDelta(gained);
     updateTimerDisplay();
-}
-
-function timeChallengeApplySpinCost() {
-    if (!isTimeBasedMode() || timeUpShown) return;
-    // Note: timeChallengeActive check removed - allow spin cost even if not yet active
-    // (timeChallengeActive might not be set during initialization)
-
-    // Get spin cost multiplier based on mode and level
-    let multiplier = 1 / 3; // Default for Time Challenge
-    if (isInfernoMode()) {
-        const config = getInfernoDifficultyConfig(currentLevel);
-        multiplier = config.spinCostMultiplier;
-    }
-
-    // Cost: multiplier of remaining time
-    const before = timeLeftSec;
-    setTimeLeftSec(timeLeftSec * (1 - multiplier));
-    const delta = Math.trunc(timeLeftSec) - Math.trunc(before);
-    // Prefer to show a clear negative number of seconds.
-    const spent = Math.max(1, Math.ceil(before * multiplier));
-
-    // Track total spin cost for this level
-    timeChallengeSpinCost += spent;
-
-    // Play synthetic spin sound effect
-    playSound('syntheticSpin', 0.12);
-
-    flashTimerDelta(-spent);
-    updateTimerDisplay();
-
-    // Show prominent spin time cost display
-    showSpinTimeCost(spent);
-}
-
-// Apply big spin cost (higher cost than regular spin)
-function timeChallengeApplyBigSpinCost() {
-    if (!isTimeBasedMode() || timeUpShown) return;
-    // Note: timeChallengeActive check removed - allow spin cost even if not yet active
-    // (timeChallengeActive might not be set during initialization)
-
-    // Get big spin cost multiplier based on mode and level
-    let multiplier = 1 / 2; // Default for Time Challenge (1.5x regular 1/3)
-    if (isInfernoMode()) {
-        multiplier = getBigSpinCostMultiplier(currentLevel);
-    }
-
-    // Cost: multiplier of remaining time
-    const before = timeLeftSec;
-    setTimeLeftSec(timeLeftSec * (1 - multiplier));
-    const delta = Math.trunc(timeLeftSec) - Math.trunc(before);
-    // Prefer to show a clear negative number of seconds.
-    const spent = Math.max(1, Math.ceil(before * multiplier));
-
-    // Track total spin cost for this level
-    timeChallengeSpinCost += spent;
-
-    // Play synthetic spin sound effect (louder for big spin)
-    playSound('syntheticSpin', 0.2);
-
-    flashTimerDelta(-spent);
-    updateTimerDisplay();
-
-    // Show prominent spin time cost display
-    showSpinTimeCost(spent);
-}
-
-// Show spin time cost display prominently (big, bold, centered)
-function showSpinTimeCost(seconds) {
-    const overlay = document.getElementById('spin-time-cost-overlay');
-    const costValue = document.getElementById('spin-time-cost-value');
-
-    if (!overlay || !costValue) return;
-
-    // Format time as "xx min xx sec"
-    const minutes = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    let timeStr = '';
-    if (minutes > 0) {
-        timeStr = `${minutes} min ${secs} sec`;
-    } else {
-        timeStr = `${secs} sec`;
-    }
-    timeStr = `-${timeStr}`;
-
-    costValue.textContent = timeStr;
-
-    // Show with animation - centered on screen
-    overlay.style.display = 'block';
-    overlay.style.opacity = '0';
-    overlay.style.transform = 'translate(-50%, -50%) scale(1.3)';
-    overlay.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
-
-    // Animate in
-    requestAnimationFrame(() => {
-        overlay.style.opacity = '1';
-        overlay.style.transform = 'translate(-50%, -50%) scale(1)';
-    });
-
-    // Hide after 3 seconds with fade out
-    setTimeout(() => {
-        overlay.style.opacity = '0';
-        overlay.style.transform = 'translate(-50%, -50%) scale(0.9)';
-        setTimeout(() => {
-            overlay.style.display = 'none';
-        }, 300);
-    }, 3000);
 }
 
 function showPauseModal() {
@@ -2189,14 +2188,15 @@ function getBlocksForLevel(level) {
  * Reverse Generation: Start from solved state (blocks at edges) and work backward
  * This guarantees 100% solvable puzzles
  * @param {number} yOffset - Y offset for this layer (0 for level 1, cubeSize for level 2, etc.)
- * @param {Set} lowerLayerCells - Cells occupied by blocks in lower layers (for level 2+ to prevent overlapping and floating)
- * @param {number} targetBlockCount - Target number of blocks to generate
+ * @param {Set} lowerLayerCells - Cells occupied by blocks in lower layers
+ * @param {number} targetBlockCount - Target number of blocks to generate for this layer
  * @param {number} level - Current level number
- * @param {boolean} preferLongBlocks - If true, prefer longer blocks (2-3 cells) over single blocks
+ * @param {boolean} preferLongBlocks - If true, prefer longer blocks
  * @param {Object} difficultyConfig - Optional Inferno mode difficulty configuration
- * @returns {Array} Array of blocks to be placed (not yet added to scene)
+ * @param {number} heightRatio - Current layer height relative to total height (0-1)
+ * @returns {Array} Array of blocks to be placed
  */
-function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCount = 10, level = 1, preferLongBlocks = false, difficultyConfig = null) {
+function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCount = 10, level = 1, preferLongBlocks = false, difficultyConfig = null, heightRatio = 0.5) {
     // Note: We don't clear blocks here - that's done in generateSolvablePuzzle
     // This allows us to add multiple layers
     // preferLongBlocks: If true, prefer longer blocks (2-3 cells) over single blocks
@@ -2206,6 +2206,24 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
     const occupiedCells = new Set();
     const blocksToPlace = []; // Store blocks to be placed sequentially
     const isUpperLayer = yOffset > 0; // Declare once for use throughout function
+
+    // Task 7.7.4: Height-based probability modulation and shuffled deck
+    // Calculate expected special block counts for this layer to ensure even distribution
+    const heightMod = 1.6 - (heightRatio * 1.2);
+    const bombBaseProb = (level >= 31) ? 0.08 : 0;
+    const spinBaseProb = (level >= 11) ? 0.12 : 0;
+    
+    // Create a "deck" of special types to ensure guaranteed distribution even in sparse layers
+    const specialDeck = [];
+    const deckSize = Math.max(targetBlockCount, 50); 
+    for (let i = 0; i < deckSize; i++) {
+        const rand = Math.random();
+        if (rand < bombBaseProb * heightMod) specialDeck.push('bomb');
+        else if (rand < (bombBaseProb + spinBaseProb) * heightMod) specialDeck.push('spin');
+        else specialDeck.push('normal');
+    }
+    shuffleArray(specialDeck);
+    let specialIdx = 0;
 
     // For small/medium block counts (Level 0-5: 3, 10, 20, 30, 40, 50 blocks), use random placement across entire grid
     // This prevents all blocks being at edges, all arrows pointing out, and all being vertical
@@ -2549,11 +2567,13 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                     continue; // Cells not available - skip this attempt
                 }
 
-                // Determine if this should be a bomb block (Task 1.1)
-                const isBomb = (level >= 31 && Math.random() < (0.075 * length));
-                
+                // Task 7.7.4: Use special deck for balanced distribution
+                const specialType = specialDeck[specialIdx % specialDeck.length];
+                const isBomb = (specialType === 'bomb');
+                const isSpinGem = (specialType === 'spin');
+
                 // Cells are now reserved - create the block
-                const block = new Block(length, cell.x, cell.z, randomDir, isVertical, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level, isBomb);
+                const block = new Block(length, cell.x, cell.z, randomDir, isVertical, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level, isBomb, isSpinGem);
 
                 // Move block from scene to towerGroup
                 scene.remove(block.group);
@@ -2572,6 +2592,8 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                 // Block is valid - keep it and cells remain reserved
                 // Will be added to towerGroup with animation in placeBlocksBatch
                 blocksToPlace.push(block);
+                // Task 7.7.6: Increment deck index ONLY on successful placement
+                specialIdx++;
                 placedThisPass++;
             }
 
@@ -2627,11 +2649,13 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                                 continue;
                             }
 
-                            // Determine if this should be a bomb block (Task 1.1)
-                            const isBomb = (level >= 31 && Math.random() < (0.075 * tryLength));
-                            
+                            // Task 7.7.4: Use special deck for balanced distribution
+                            const specialType = specialDeck[specialIdx % specialDeck.length];
+                            const isBomb = (specialType === 'bomb');
+                            const isSpinGem = (specialType === 'spin');
+
                             // Create block for support check
-                            const testBlock = new Block(tryLength, cell.x, cell.z, dir, isVert, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level, isBomb);
+                            const testBlock = new Block(tryLength, cell.x, cell.z, dir, isVert, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level, isBomb, isSpinGem);
                             scene.remove(testBlock.group);
 
                             // Check support
@@ -2643,9 +2667,12 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                                 continue;
                             }
 
-                            // Valid placement - keep it
+                            // Success - block supported
                             blocksToPlace.push(testBlock);
+                            // Task 7.7.6: Increment deck index ONLY on successful placement
+                            specialIdx++;
                             placed = true;
+                            break;
                         }
                     }
                 }
@@ -2695,11 +2722,13 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                                 continue;
                             }
 
-                            // Determine if this should be a bomb block (Task 1.1)
-                            const isBomb = (level >= 31 && Math.random() < (0.075 * tryLength));
-                            
+                            // Task 7.7.4/7.7.6: Use special deck for balanced distribution
+                            const specialType = specialDeck[specialIdx % specialDeck.length];
+                            const isBomb = (specialType === 'bomb');
+                            const isSpinGem = (specialType === 'spin');
+
                             // Create block for support check
-                            const testBlock = new Block(tryLength, cell.x, cell.z, dir, isVert, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level, isBomb);
+                            const testBlock = new Block(tryLength, cell.x, cell.z, dir, isVert, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level, isBomb, isSpinGem);
                             scene.remove(testBlock.group);
 
                             // Check support
@@ -2712,7 +2741,10 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
 
                             // Valid - keep it
                             blocksToPlace.push(testBlock);
+                            // Task 7.7.6: Increment deck index ONLY on successful placement
+                            specialIdx++;
                             placed = true;
+                            break;
                         }
                     }
                 }
@@ -3584,8 +3616,13 @@ function createHeadOnCollisionBlocks(targetBlockCount = 10) {
                 } else {
                     occupyCells(x, z, length, isXAligned);
                 }
-                const isBomb = false; // Level 1 testing blocks are not bombs
-                const block = new Block(length, x, z, direction, isVertical, currentArrowStyle, scene, physics, gridSize, cubeSize, 0, 1, isBomb);
+                // Determine if this should be a bomb block (Task 1.1)
+                const isBomb = (level >= 31 && Math.random() < (0.075 * length));
+
+                // Task 1.3: Spin Gems appear from Level 11+
+                const isSpinGem = !isBomb && (level >= 11 && Math.random() < 0.10);
+
+                const block = new Block(length, x, z, direction, isVertical, currentArrowStyle, scene, physics, gridSize, cubeSize, 0, 1, isBomb, isSpinGem);
                 scene.remove(block.group);
                 blocksToPlace.push(block);
             }
@@ -3688,6 +3725,18 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
     isGeneratingLevel = true;
     levelCompleteShown = false; // Reset level complete flag for new level
 
+    // Task 1.3 & 7.8.0: Reset spins to 0 ONLY when starting Level 11 (first arrival)
+    if (level === 11 && !isRestart && !levelCompleteShown) {
+        remainingSpins = 0;
+        updateSpinCounterDisplay();
+        console.log(`[Spin] First arrival at Level 11 - remainingSpins reset to 0`);
+    } else if (level === 11 && !isRestart) {
+        // Fallback for edge cases
+        // Task 7.8.0: Don't give free spins here, spins now cost time by default
+        // if (remainingSpins > 3) remainingSpins = 3; 
+        updateSpinCounterDisplay();
+    }
+
     // CRITICAL: Reset tower position offset at start of level to prevent camera jumps
     // Only set target to 0, let smooth interpolation handle the transition
     // This ensures smooth transition from previous level's offset instead of instant snap
@@ -3717,16 +3766,9 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
     // IMMEDIATELY save to prevent any loss
     saveProgress();
 
-    // Only reset spin counter for NEW level, not when restarting the same level
-    // When restarting, preserve remainingSpins (game-level state)
-    if (!isRestart) {
-        if (!isTimeBasedMode()) {
-            remainingSpins = 3;
-        } else {
-            remainingSpins = Number.POSITIVE_INFINITY;
-        }
-        updateSpinCounterDisplay();
-    }
+    // Task 7.8.0: Removed redundant/incorrect reset
+    // remainingSpins = 3;
+    // updateSpinCounterDisplay();
 
     // Ensure randomization by consuming some random numbers at start
     // This helps prevent identical layouts when generation happens quickly
@@ -3811,8 +3853,12 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
         const blocksPerLayerEstimate = gridCells * 0.6; // Assume 60% fill rate per layer
         const maxLayersNeeded = Math.ceil(targetBlockCount / blocksPerLayerEstimate) + 3; // More buffer
         const maxLayers = Math.max(15, maxLayersNeeded); // At least 15, but more if needed
+        // Calculate estimated total layers for distribution balancing (Task 7.7.4)
+        const totalEstimatedLayers = Math.max(1, Math.ceil(estimatedVolume / (dynamicGridSize * dynamicGridSize * cubeSize)));
+        
         while (remainingBlocks > 0 && currentLayer < maxLayers) {
             const yOffset = currentLayer * cubeSize;
+            const heightRatio = Math.min(1.0, currentLayer / totalEstimatedLayers);
 
             // For layer 1: Use longer blocks to minimize block count (prefer 2-3 cell blocks)
             // This leaves more room for layer 2
@@ -3846,7 +3892,7 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
             }
 
             // Generate blocks for this layer with preference for longer blocks in layer 1
-            const layerBlocks = createSolvableBlocks(yOffset, lowerLayerCells, blocksForThisLayer, level, preferLongBlocks, difficultyConfig);
+            const layerBlocks = createSolvableBlocks(yOffset, lowerLayerCells, blocksForThisLayer, level, preferLongBlocks, difficultyConfig, heightRatio);
 
             // Track cells occupied by this layer for next layer
             // We need to track both 2D cells (for support checking) and Y ranges (for overlap checking)
@@ -3949,7 +3995,8 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
                 const blocksForThisLayer = Math.min(remainingBlocks, supportedCells);
 
                 // Create blocks with single-block-only preference (preferLongBlocks = false)
-                const layerBlocks = createSolvableBlocks(yOffset, lowerLayerCells, blocksForThisLayer, level, false, difficultyConfig);
+                const heightRatio = Math.min(1.0, currentLayer / totalEstimatedLayers);
+                const layerBlocks = createSolvableBlocks(yOffset, lowerLayerCells, blocksForThisLayer, level, false, difficultyConfig, heightRatio);
 
                 // Track cells (same as main loop)
                 const currentLayerCells = new Set();
@@ -4191,8 +4238,8 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
             }
         }
     } else {
-        // Single layer generation (base layer at Y=0)
-        allBlocks = createSolvableBlocks(0, null, targetBlockCount, level, false, difficultyConfig);
+        // Single layer generation (base layer at Y=0) - heightRatio is 0
+        allBlocks = createSolvableBlocks(0, null, targetBlockCount, level, false, difficultyConfig, 0);
     }
 
     // ============================================
@@ -4329,10 +4376,9 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
 
             // Regenerate
             if (needsMultipleLayers) {
-                // Regenerate multi-layer (simplified - just regenerate single layer for now)
-                allBlocks = createSolvableBlocks(0, null, targetBlockCount, level, false, adjustedConfig);
+                allBlocks = createSolvableBlocks(0, null, targetBlockCount, level, false, adjustedConfig, 0);
             } else {
-                allBlocks = createSolvableBlocks(0, null, targetBlockCount, level, false, adjustedConfig);
+                allBlocks = createSolvableBlocks(0, null, targetBlockCount, level, false, adjustedConfig, 0);
             }
 
             // Key/Lock regeneration
@@ -4440,6 +4486,13 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
         console.warn(`[generateSolvablePuzzle] Level mismatch: currentLevel=${currentLevel}, level=${level}. Fixing...`);
         currentLevel = level;
     }
+
+    // Task 7.9.0/8.1.0: Initialize progress dial data
+    levelInitialBlockCount = blocks.length;
+    console.log(`[Progress] Level ${level} initialized with ${levelInitialBlockCount} blocks`);
+    
+    // Explicitly update dial now
+    updateProgressDial();
 
     // Keep isGeneratingLevel true for a bit longer to prevent support checking from running
     // Blocks need time to fully initialize before support checking resumes
@@ -4681,24 +4734,7 @@ function updateTimerDisplay() {
         timerLevelElement.textContent = String(currentLevel);
     }
 
-    const spinCostValueElement = document.getElementById('spin-cost-value');
-    const spinCostSeparator = document.getElementById('spin-cost-separator');
-
     if (isTimeBasedMode()) {
-        if (spinCostValueElement && spinCostSeparator) {
-            spinCostValueElement.style.display = 'block';
-            spinCostSeparator.style.display = 'block';
-
-            let multiplier = 1 / 3;
-            if (isInfernoMode()) {
-                multiplier = getSpinCostMultiplier(currentLevel);
-            }
-            const cost = Math.max(1, Math.ceil(timeLeftSec * multiplier));
-            const costMins = Math.floor(cost / 60);
-            const costSecs = Math.floor(cost % 60);
-            spinCostValueElement.textContent = `-${String(costMins).padStart(2, '0')}:${String(costSecs).padStart(2, '0')}`;
-        }
-
         if (timeChallengeActive) {
             // During animation, show precise value for smooth visual feedback
             // Otherwise, show ceil so players don't feel robbed at 0.1s remaining
@@ -4706,12 +4742,12 @@ function updateTimerDisplay() {
                 ? Math.max(0, Math.round(timeLeftSec * 10) / 10) // Show 1 decimal during animation
                 : Math.max(0, Math.ceil(timeLeftSec));
             timerValueElement.textContent = formatTime(displaySeconds);
+            
+            // Task 7.7.7: Update spin counter display to refresh button state as time changes
+            if (remainingSpins === 0) {
+                updateSpinCounterDisplay();
+            }
             return;
-        }
-    } else {
-        if (spinCostValueElement && spinCostSeparator) {
-            spinCostValueElement.style.display = 'none';
-            spinCostSeparator.style.display = 'none';
         }
     }
 
@@ -4815,6 +4851,7 @@ function recordMoveState(block, preMoveState) {
     // Track move for stats
     trackMove();
     updateIdleTimers(); // Reset idle timers on move
+    updateProgressDial(); // Update progress dial on move
 
     updateUndoButtonState();
 }
@@ -4848,6 +4885,9 @@ function undoLastMove() {
         return false;
     }
 
+    // Expose for Block.js
+    window.trackBlockRemoved = trackBlockRemoved;
+    window.updateProgressDial = updateProgressDial;
     // Step 1: Ensure block exists in blocks array and scene
     if (!blocks.includes(block)) {
         blocks.push(block);
@@ -4958,6 +4998,7 @@ function undoLastMove() {
 
     // Step 12: Update undo button state
     updateUndoButtonState();
+    updateProgressDial(); // Update progress dial on undo
 
     // Final grid sync
     updateSupportGrid();
@@ -4983,6 +5024,9 @@ function removeBlockWithAnimation(block) {
     block.isRemoved = false; // Don't mark as removed until animation completes
     block.removalStartTime = performance.now();
     block.meltDuration = 600; // 600ms melt animation (faster)
+
+    // Task 8.0.0: Update progress dial immediately when animation starts
+    updateProgressDial();
 
     // Store original scale, position, rotation, and colors
     const originalScale = block.group.scale.clone();
@@ -5155,6 +5199,20 @@ function removeBlockWithAnimation(block) {
                 trackBlockRemoved();
                 // Time Challenge: gaining time is based on block removals (efficient moves)
                 timeChallengeAwardForBlockRemoved(this.length);
+                
+                // Task 7.7.3/7.7.6: Recharge spin and show feedback if this was a Spin Gem (Success)
+                if (this.isSpinGem) {
+                    console.log('[Spin] Block cleared - triggering SUCCESS feedback');
+                    if (typeof window.rechargeSpin === 'function') {
+                        window.rechargeSpin();
+                    }
+                    if (typeof window.showSpinFeedback === 'function') {
+                        window.showSpinFeedback(true);
+                    }
+                } else {
+                    console.log('[Spin] Block cleared - not a spin gem');
+                }
+                
                 // Auto-unlock all blocks if 5 or fewer blocks remain
                 autoUnlockIfFewBlocksRemaining();
             }
@@ -5162,6 +5220,7 @@ function removeBlockWithAnimation(block) {
             // Undo can resurrect the last-removed block back onto the board.
             // Clear animation function
             this.updateMeltAnimation = null;
+            updateProgressDial(); // Update progress dial after block removal
         }
     };
 
@@ -5479,6 +5538,9 @@ async function restartCurrentLevel() {
         return;
     }
 
+    // Update currentLevel to match levelToRestart one final time
+    currentLevel = levelToRestart;
+
     // Clear move history for this level
     moveHistory = [];
     totalMoves = 0;
@@ -5610,8 +5672,8 @@ async function startNewGame() {
     debugCollisionEvents = []; // Clear collision events
     debugMovementCalculations = []; // Clear movement calculations
 
-    // Reset spin counter
-    remainingSpins = isTimeBasedMode() ? Number.POSITIVE_INFINITY : 3;
+    // Reset spin counter to 0 (Task 7.8.0)
+    remainingSpins = 0;
     updateSpinCounterDisplay();
 
     // Hide level complete modal if visible
@@ -5908,7 +5970,7 @@ async function investigateBug() {
     console.log('Recent Moves:', investigationReport.recentMoves);
     console.log('Current Game State:', investigationReport.currentGameState);
     console.log('Recent Console Logs:', investigationReport.recentConsoleLogs);
-    console.log('Recent Collision Events:', investigationReport.recentCollisionEvents);
+    console.log('Recent Collision Events:', investigationReport.recentCollisions);
     console.log('Recent Movement Calculations:', investigationReport.recentMovementCalculations);
     console.log('System Info:', investigationReport.systemInfo);
     console.log('\n--- Full Report (JSON) ---');
@@ -6481,8 +6543,7 @@ if (newGameConfirm) {
     newGameConfirm.addEventListener('click', async () => {
         hideNewGameModal();
         // Always in inferno mode (time-based) - no mode selection needed
-        timeChallengeResetRun();
-        remainingSpins = Number.POSITIVE_INFINITY;
+        remainingSpins = 0; // Task 7.8.0
         updateSpinCounterDisplay();
         updateTimerDisplay();
         await startNewGame();
@@ -6505,14 +6566,27 @@ function updateSpinCounterDisplay() {
     // #endregion
     const spinCounter = document.getElementById('spin-counter');
     if (spinCounter) {
-        if (isTimeBasedMode()) {
-            // Unlimited spins in time-based modes - hide the badge as requested
-            spinCounter.style.display = 'none';
+        spinCounter.style.display = 'flex';
+        
+        if (remainingSpins > 0) {
+            spinCounter.textContent = remainingSpins.toString();
+            spinCounter.style.fontSize = '14px';
+            spinCounter.style.color = '#fff';
+            spinCounter.title = `${remainingSpins} Free Spins available`;
+        } else if (isTimeBasedMode()) {
+            // Task 7.8.1: Don't show percentage here (it's in the timer now)
+            // Just show empty or subtle indicator that it's active
+            spinCounter.textContent = ''; 
+            spinCounter.style.display = 'none'; // Hide if no free spins
+        } else {
+            spinCounter.textContent = '0';
+            spinCounter.style.fontSize = '14px';
+        }
+        
+        if (remainingSpins === Number.POSITIVE_INFINITY) {
             spinCounter.textContent = '∞';
             spinCounter.setAttribute('data-infinity', 'true');
         } else {
-            spinCounter.style.display = 'flex'; // Restore visibility for non-time modes
-            spinCounter.textContent = remainingSpins.toString();
             spinCounter.removeAttribute('data-infinity');
         }
     }
@@ -6520,12 +6594,19 @@ function updateSpinCounterDisplay() {
     const diceButton = document.getElementById('dice-button');
     if (diceButton) {
         const wasDisabled = diceButton.disabled;
-        if (!isTimeBasedMode() && remainingSpins === 0) {
+        
+        // Disable if: 
+        // 1. No free spins AND (Not time mode OR not enough time)
+        const hasNoFreeSpins = remainingSpins === 0;
+        const cannotAffordTime = isTimeBasedMode() && timeLeftSec < 1.0; // In % mode, costs at least something
+        const isNotTimeMode = !isTimeBasedMode();
+        
+        if (hasNoFreeSpins && (cannotAffordTime || isNotTimeMode)) {
             diceButton.disabled = true;
             diceButton.style.opacity = '0.5';
             diceButton.style.cursor = 'not-allowed';
             // #region agent log
-            debugTelemetry({ location: 'main.js:updateSpinCounterDisplay:disabled', message: 'Dice button disabled', data: { wasDisabled: wasDisabled, nowDisabled: true, remainingSpins: remainingSpins }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H2' });
+            debugTelemetry({ location: 'main.js:updateSpinCounterDisplay:disabled', message: 'Dice button disabled', data: { wasDisabled: wasDisabled, nowDisabled: true, remainingSpins: remainingSpins, timeLeftSec: timeLeftSec }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H2' });
             // #endregion
         } else {
             diceButton.disabled = false;
@@ -6640,12 +6721,20 @@ function spinRandomBlocks() {
         // #endregion
     }
 
-    // Check if spins are available
-    if (!isTimeBasedMode() && remainingSpins <= 0) {
+    // Check if spins or time are available (Task 7.7.8: Percentage cost)
+    const canSpinWithTime = isTimeBasedMode() && timeLeftSec >= 1.0; 
+    const canSpinWithResource = remainingSpins > 0 || remainingSpins === Number.POSITIVE_INFINITY;
+    
+    if (!canSpinWithResource && !canSpinWithTime) {
         // #region agent log
-        debugTelemetry({ location: 'main.js:spinRandomBlocks:blockedNoSpins', message: 'Spin blocked: no spins remaining', data: { remainingSpins: remainingSpins }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H2' });
+        debugTelemetry({ location: 'main.js:spinRandomBlocks:blockedNoResource', message: 'Spin blocked: insufficient resource and time', data: { remainingSpins: remainingSpins, timeLeftSec: timeLeftSec, canSpinWithTime: canSpinWithTime }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H2' });
         // #endregion
-        console.log('[Spin] ❌ BLOCKED: No spins remaining (remainingSpins:', remainingSpins, ')');
+        console.log('[Spin] ❌ BLOCKED: Insufficient spins and time (Spins:', remainingSpins, 'Time:', timeLeftSec, ')');
+        
+        if (isTimeBasedMode() && timeLeftSec < 1.0) {
+            flashTimerDelta(-1);
+            playSound('error', 0.5);
+        }
         return;
     }
 
@@ -6686,24 +6775,27 @@ function spinRandomBlocks() {
         return; // No eligible blocks to spin
     }
 
-    // Time-based modes: spin is a "purchase" that costs time (unlimited spins).
-    console.log('[Spin] Applying spin cost...');
-    if (isTimeBasedMode() && !timeUpShown) {
-        if (timeChallengeActive) {
-            console.log('[Spin] Applying time cost (timeChallengeActive is true)');
-            timeChallengeApplySpinCost();
-        } else {
-            // If timeChallengeActive is false but we're in time-based mode, 
-            // still allow the spin (timeChallengeActive might not be set yet)
-            // This can happen during level generation or initialization
-            console.log('[Spin] ⚠️ Time-based mode but timeChallengeActive is false, allowing spin anyway');
-        }
-    } else {
-        // Free Flow: Decrement spin counter
-        console.log('[Spin] Decrementing spin counter (Free Flow mode)');
+    // Task 1.3 & 7.7.1 & 7.7.8: Resource Management (Priority: Free Spins > Time Percentage)
+    if (remainingSpins > 0 && remainingSpins !== Number.POSITIVE_INFINITY) {
+        console.log('[Spin] Using free spin');
         remainingSpins--;
         updateSpinCounterDisplay();
+    } else if (remainingSpins === Number.POSITIVE_INFINITY) {
+        console.log('[Spin] Infinite spins enabled (Free), no deduction');
+    } else if (isTimeBasedMode()) {
+        // Task 7.7.8: Cost percentage of remaining time
+        const multiplier = getSpinCostMultiplier(currentLevel);
+        const cost = Math.max(1, Math.ceil(timeLeftSec * multiplier));
+        console.log(`[Spin] Costing ${Math.round(multiplier * 100)}% of time (${cost}s)`);
+        
+        setTimeLeftSec(timeLeftSec - cost);
+        flashTimerDelta(-cost);
+        updateTimerDisplay();
+        updateSpinCounterDisplay();
     }
+
+    // Play spin sound with sufficient volume (Task 7.7.1)
+    playSound('syntheticSpin', 0.7);
 
     updateIdleTimers(); // Reset idle timers on spin
 
@@ -7320,8 +7412,7 @@ updateCameraPosition(); // Position camera immediately to avoid default (0,0,0) 
     currentLevel = loadProgress();
     timeChallengeResetRun(); // This sets residual to 0 and initializes state
     // Initial time for the level will be calculated in generateSolvablePuzzle()
-    remainingSpins = Number.POSITIVE_INFINITY;
-
+    remainingSpins = 0; // Task 7.8.0
     updateSpinCounterDisplay();
     updateTimerDisplay();
     await generateSolvablePuzzle(currentLevel);
@@ -7763,8 +7854,10 @@ function startBlockFallingToTarget(block, targetYOffset) {
     const startTime = performance.now();
     const fallDistance = startY - targetYOffset;
 
+    // Task 1.2: Detect high-impact falls (distance > 2.0 units) at Level 21+
+    const isCrushingFall = (currentLevel >= 21) && (fallDistance > 2.0);
+
     // Fast slam: higher effective gravity and tighter caps, with acceleration curve.
-    // d = 1/2 g t^2 => t = sqrt(2d/g)
     const SUPPORT_FALL_EFFECTIVE_G = 85;
     const SUPPORT_FALL_MIN_MS = 80;
     const SUPPORT_FALL_MAX_MS = 450;
@@ -7798,10 +7891,76 @@ function startBlockFallingToTarget(block, targetYOffset) {
             block.updateWorldPosition();
             block.isAnimating = false;
             fallAnimationId = null;
+
+            // Task 1.2: Trigger crushing effect upon landing
+            if (isCrushingFall && !block.isRemoved) {
+                (async () => {
+                    // Task 1.2 Revision: Crush blocks beneath sequentially FIRST
+                    await crushBlocksBelow(block, targetYOffset);
+                    
+                    // Task 1.2 Revision: Then crush the falling block itself
+                    if (!block.isRemoved && typeof block.onCrushed === 'function') {
+                        block.onCrushed(window.particleSystem);
+                    }
+
+                    // Task 1.2 Revision: Beefier screen shake for "weight"
+                    if (typeof window.shakeCamera === 'function') {
+                        window.shakeCamera(0.07, 140);
+                    }
+                })();
+            }
         }
     };
 
     fallAnimationId = requestAnimationFrame(animateFall);
+}
+
+/**
+ * Identify and crush blocks directly beneath a high-impact fall (Task 1.2)
+ * Sequential destruction: blocks are crushed one after another with a small delay.
+ * @param {Block} crushingBlock - The block that landed
+ * @param {number} landY - The Y level it landed on
+ */
+async function crushBlocksBelow(crushingBlock, landY) {
+    if (landY < 0.1) return; // Don't crush the base plate itself
+
+    const landingCells = crushingBlock.getOccupiedCells();
+    // Identify the layer just beneath the landing level (layers are spaced at 1.2 units)
+    const belowLayerY = Math.round(landY / 1.2) - 1;
+
+    // Use a small local array to avoid concurrent modification issues during iteration
+    const blocksToCrush = [];
+
+    blocks.forEach(other => {
+        if (other === crushingBlock || other.isRemoved || other.isExploding) return;
+
+        const otherCells = other.getOccupiedCells();
+        const isDirectlyBelow = otherCells.some(oc => 
+            oc.y === belowLayerY && 
+            landingCells.some(lc => lc.x === oc.x && lc.z === oc.z)
+        );
+
+        if (isDirectlyBelow) {
+            blocksToCrush.push(other);
+        }
+    });
+
+    // Detonate or explode all identified blocks one by one with a small delay
+    for (let i = 0; i < blocksToCrush.length; i++) {
+        const other = blocksToCrush[i];
+        if (other.isRemoved || other.isExploding) continue;
+
+        if (typeof other.onCrushed === 'function') {
+            other.onCrushed(window.particleSystem);
+        } else {
+            other.remove();
+        }
+        
+        // Wait a bit before crushing the next block to create a "collapse" feel
+        if (i < blocksToCrush.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 110));
+        }
+    }
 }
 
 // Add click handler to window (simple, matches working version)
@@ -8237,7 +8396,7 @@ window.addEventListener('resize', () => {
 
 // Animation loop with physics
 let lastTime = performance.now();
-let physicsUpdatedThisFrame = false; // Track if physics was updated this frame
+let physicsUpdatedThisFrame = false;
 let lastSupportCheckTime = 0;
 // Support check interval is now calculated dynamically based on quality preset
 
@@ -8613,11 +8772,6 @@ function animate() {
     const canCheckIdle = !isTimeFrozen() && !isGeneratingLevel && !isPaused && blocks.length > 0;
     if (canCheckIdle) {
         const idleSeconds = (currentTime - lastInteractionTime) / 1000;
-        const diceBtn = document.getElementById('dice-button');
-        if (diceBtn) {
-            if (idleSeconds > 3 && !hasFallingBlocks && remainingSpins > 0) diceBtn.classList.add('spin-idle-anim');
-            else diceBtn.classList.remove('spin-idle-anim');
-        }
         if (window.autoFallEnabled && idleSeconds > 30) {
             if (currentTime - lastIdleDropTime > 1000) {
                 lastIdleDropTime = currentTime;
@@ -8967,4 +9121,69 @@ window.testPulsingFinishAnimation = function (seconds = 25) {
 };
 
 scheduleNextFrame();
+
+/**
+ * Shuffle an array in place using Durstenfeld shuffle (Task 7.7.4)
+ * @param {Array} array 
+ */
+/**
+ * Shuffle an array in place using Durstenfeld shuffle (Task 7.7.4)
+ * @param {Array} array 
+ */
+function shuffleArray(array) {
+    if (!array || array.length <= 1) return array;
+    for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+    }
+    return array;
+}
+
+/**
+ * Update the Progress Dial UI (Task 7.9.0)
+ * Shows % progress and remaining Bomb/Spin blocks.
+ */
+function updateProgressDial() {
+    const progressFill = document.getElementById('progress-fill');
+    const progressText = document.getElementById('progress-text');
+    const bombCountEl = document.getElementById('bomb-count');
+    const spinCountEl = document.getElementById('spin-count');
+    
+    if (!progressFill || !progressText) return;
+
+    // Calculate progress
+    // Task 8.0.0/8.1.0: Count blocks that are NOT removed, NOT animating, NOT exploding, and NOT falling as "remaining"
+    const currentActiveBlocks = blocks.filter(b => !b.isRemoved && !b.isAnimating && !b.isExploding && !b.isFalling).length;
+    const removedBlocks = Math.max(0, levelInitialBlockCount - currentActiveBlocks);
+    
+    let progressPercent = 0;
+    if (levelInitialBlockCount > 0) {
+        progressPercent = Math.min(100, Math.round((removedBlocks / levelInitialBlockCount) * 100));
+    }
+
+    // Debug log to help identify why dial might not be updating
+    if (removedBlocks > 0 || levelInitialBlockCount > 0) {
+        console.log(`[Progress] Update: ${progressPercent}% (${removedBlocks}/${levelInitialBlockCount} blocks removed)`);
+    }
+
+    // Update progress circle (stroke-dasharray: percent, 100)
+    progressFill.setAttribute('stroke-dasharray', `${progressPercent}, 100`);
+    progressText.textContent = `${progressPercent}%`;
+
+    // Update special counts
+    const bombsRemaining = blocks.filter(b => b.isBomb && !b.isRemoved && !b.isAnimating && !b.isExploding && !b.isFalling).length;
+    const spinsRemaining = blocks.filter(b => b.isSpinGem && !b.isRemoved && !b.isAnimating && !b.isExploding && !b.isFalling).length;
+
+    if (bombCountEl) {
+        bombCountEl.textContent = bombsRemaining;
+        const item = document.getElementById('bomb-count-item');
+        if (item) item.classList.toggle('empty', bombsRemaining === 0);
+    }
+    if (spinCountEl) {
+        spinCountEl.textContent = spinsRemaining;
+        const item = document.getElementById('spin-gem-count-item');
+        if (item) item.classList.toggle('empty', spinsRemaining === 0);
+    }
+}
+window.updateProgressDial = updateProgressDial;
 

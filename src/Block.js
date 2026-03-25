@@ -43,28 +43,29 @@ function createBombStripeTexture() {
 }
 
 /**
- * Creates a procedural radial glow texture for "hazing" effect. (Task 3.4)
+ * Creates a procedural radial glow texture with very soft falloff for organic glow.
  */
-function createGlowTexture() {
-    if (TextureCache.has('glow')) return TextureCache.get('glow');
+function createOrganicGlowTexture() {
+    if (TextureCache.has('organicGlow')) return TextureCache.get('organicGlow');
 
     const canvas = document.createElement('canvas');
-    canvas.width = 64;
-    canvas.height = 64;
+    canvas.width = 128; // Higher resolution for smoother falloff
+    canvas.height = 128;
     const ctx = canvas.getContext('2d');
 
-    // Strong radial gradient for haze
-    const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    // Multi-stop radial gradient for extremely soft edges
+    const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
     gradient.addColorStop(0.0, 'rgba(255, 255, 255, 1.0)');
-    gradient.addColorStop(0.3, 'rgba(255, 255, 255, 0.6)');
-    gradient.addColorStop(0.7, 'rgba(255, 255, 255, 0.1)');
+    gradient.addColorStop(0.2, 'rgba(255, 255, 255, 0.8)');
+    gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.3)');
+    gradient.addColorStop(0.8, 'rgba(255, 255, 255, 0.1)');
     gradient.addColorStop(1.0, 'rgba(255, 255, 255, 0.0)');
 
     ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, 64, 64);
+    ctx.fillRect(0, 0, 128, 128);
 
     const texture = new THREE.CanvasTexture(canvas);
-    TextureCache.set('glow', texture);
+    TextureCache.set('organicGlow', texture);
     return texture;
 }
 
@@ -226,8 +227,8 @@ function isHeadOnCollision(movingBlock, otherBlock, collisionX, collisionZ, curr
 }
 
 export class Block {
-    constructor(length, gridX, gridZ, direction, isVertical, arrowStyle, scene, physics, gridSize, cubeSize, yOffset = 0, level = 1, isBomb = false, isKey = false, isPuzzleLocked = false, lockedByKey = null, blockInstanceManager = null) {
-        this.blockInstanceManager = null;
+    constructor(length, gridX, gridZ, direction, isVertical, arrowStyle, scene, physics, gridSize, cubeSize, yOffset = 0, level = 1, isBomb = false, isSpinGem = false, isKey = false, isPuzzleLocked = false, lockedByKey = null, blockInstanceManager = null) {
+        this.blockInstanceManager = blockInstanceManager;
         this.isDirty = false; // Mark as dirty for initial matrix update
         this.length = length;
         this.gridX = gridX;
@@ -238,6 +239,7 @@ export class Block {
         this.isFalling = false;
         this.isExploding = false;
         this.isBomb = isBomb;
+        this.isSpinGem = isSpinGem;
         this.isKey = isKey;
         this.isPuzzleLocked = isPuzzleLocked;
         this.lockedByKey = lockedByKey;
@@ -316,7 +318,11 @@ export class Block {
             ? window.useColoredBlocksDefault
             : false; // Default to white blocks
 
+        this.pulseOffset = Math.random() * Math.PI * 2; // Unique offset for non-simultaneous pulsing (Task 3.4)
+
         let blockColor = useColored ? colors[length - 1] : whiteColor;
+        
+        // Spin Gem override removed (Task 1.3 Refinement)
         
         // Bomb override: Keep original color but add stripes (Task 2.2, 2.4)
         // (Removed Orangered override)
@@ -327,12 +333,16 @@ export class Block {
         // Check if this is a filler block (blocks used to fill empty cells)
         this.isFiller = false; // Can be set after construction if needed
 
+        // Spin Gem highlights are now handled solely by indicators (Task 1.3 Refinement)
+        let materialColor = blockColor;
+
+
         const blockMaterial = new THREE.MeshStandardMaterial({
-            color: blockColor,
-            roughness: 0.1, // Low roughness for shiny plastic
-            metalness: 0.0, // No metalness for plastic
-            opacity: 1.0, // Explicitly set opacity
-            transparent: false // Will be set to true when locked
+            color: materialColor,
+            roughness: 0.1, // Single standardized value
+            metalness: 0.0, // Single standardized value
+            opacity: 1.0, 
+            transparent: false 
         });
 
         // Apply bomb styling: Indicators glow (Task 2.3, 3.2, 3.4)
@@ -343,6 +353,9 @@ export class Block {
             this.bombIndicatorMaterials = []; 
             this.bombGlowSprites = []; // For "hazing" effect (Task 3.4)
         }
+
+        // Spin Gem styling removed to match normal blocks (Task 1.3 Refinement)
+
 
         // Apply filler block styling if this is a filler
         if (this.isFiller) {
@@ -372,6 +385,9 @@ export class Block {
         // Store mesh for raycasting
         this.cubes = [blockMesh];
         this.group.add(blockMesh);
+
+        // Spin Gem: Internal visual removed; moved to surface (Task 1.3 Refinement)
+
 
         // Support for InstancedMesh optimization
         this.cubes[0].visible = true;
@@ -421,9 +437,13 @@ export class Block {
     // Animates bomb indicator glow and other per-frame effects (Task 2.3, 3.2, 3.4)
     update(time) {
         if (this.isBomb) {
-            // Pulsating intensity (Task 2.3)
-            const pulse = Math.sin(time * 0.005);
-            const intensity = 0.8 + pulse * 0.6; // Strong oscillation: 0.2 to 1.4
+            // Organic breathing (Task 3.4 Rewrite)
+            // Use pulseOffset for non-simultaneous, unique rhythms per block
+            const t = (time * 0.001) + (this.pulseOffset || 0); 
+            const breath = Math.sin(t * 3.0) * 0.7 + Math.sin(t * 7.0) * 0.3; // Rapid, non-linear pulse
+            
+            // Base intensity for indicator materials (Increased range for higher glow: 0.1 to 0.4)
+            const intensity = 0.1 + (breath + 1) * 0.15; 
             
             // Update emissive materials (Task 3.2)
             if (this.bombIndicatorMaterials) {
@@ -432,22 +452,43 @@ export class Block {
                 }
             }
             
-            // Update hazing sprites (Task 3.4)
+            // Update organic glow core (Task 3.4 Rewrite)
             if (this.bombGlowSprites) {
-                const spriteScaleMult = 0.8 + pulse * 0.4; // Pulsates between 0.4 and 1.2 relative to base
-                const opacity = 0.4 + pulse * 0.3; // Opacity also pulses
-                
-                for (const sprite of this.bombGlowSprites) {
-                    // Update opacity
-                    if (sprite.material) {
-                        sprite.material.opacity = Math.max(0.1, opacity);
+                for (const group of this.bombGlowSprites) {
+                    if (group.isOrganicGlow) {
+                        const base = group._baseScale || 1.0;
+                        group.children.forEach(child => {
+                            if (child.isGlowCore) {
+                                // Core: More intense pulsing and scaling oscillation
+                                const s = base * 1.1 * (1.0 + breath * 0.25); // Pronounced oscillation
+                                child.scale.set(s, s, 1);
+                                child.material.opacity = 0.35 + (breath + 1) * 0.125; // Pulsates between 0.35 and 0.6
+                            }
+                        });
                     }
-                    // Update scale proportionally (assuming base scale is saved or using a standard multiplier)
-                    // Since sprites have different base scales (1.2, 0.6, 0.8), we'll apply a multiplier
-                    if (!sprite._baseScale) sprite._baseScale = sprite.scale.x;
-                    const s = sprite._baseScale * spriteScaleMult;
-                    sprite.scale.set(s, s, s);
                 }
+            }
+        }
+
+        if (this.isSpinGem) {
+            // Pulsating intensity (Allowed for Spin Gems)
+            const pulse = Math.sin(time * 0.005);
+            const intensity = 0.6 + pulse * 0.4;
+            
+            // Emissive shell pulsing removed for Spin Gems to match normal blocks (Task 1.3 Refinement)
+
+
+            // Animate external circular arrows (Task 1.3 Refinement)
+            if (this.directionIndicators) {
+                this.directionIndicators.traverse(child => {
+                    // Rotate the spin-specific mesh parts
+                    if (child.isSpinIndicator && child.rotation) {
+                        child.rotation.z += 0.05;
+                        if (child.material) {
+                            child.material.emissiveIntensity = intensity;
+                        }
+                    }
+                });
             }
         }
     }
@@ -581,6 +622,90 @@ export class Block {
         // Initial state will be set in updateFromPhysics after creation
     }
 
+    /**
+     * Create an organic dual-layer glow group (Core + Haze) (Task 3.4 Flush Rewrite)
+     * Replaced Sprites with flush Meshes to avoid "angled" billboarding artifacts.
+     */
+    createGlowGroup(color, baseScale) {
+        const group = new THREE.Group();
+        group.isOrganicGlow = true; // Use for update loop detection
+        
+        const texture = createOrganicGlowTexture();
+        const planeGeom = new THREE.PlaneGeometry(1, 1);
+        
+        // Inner Core: Main intense glow (Haze removed for cleaner look)
+        const coreMat = new THREE.MeshBasicMaterial({
+            map: texture,
+            color: color,
+            transparent: true,
+            opacity: 0.5, // Increased from 0.3
+            blending: THREE.AdditiveBlending,
+            side: THREE.DoubleSide,
+            depthWrite: false
+        });
+        const core = new THREE.Mesh(planeGeom, coreMat);
+        core.scale.set(baseScale * 1.1, baseScale * 1.1, 1); // Increased base scale
+        core.position.z = 0.001; 
+        core.isGlowCore = true;
+        
+        group.add(core);
+        group._baseScale = baseScale;
+        
+        return group;
+    }
+    createSpinIndicator(color, isSmall = false) {
+        const group = new THREE.Group();
+        group.isSpinIndicator = true; 
+        
+        const radius = isSmall ? 0.12 : 0.25;
+        const thickness = isSmall ? 0.03 : 0.06;
+        const headWidth = isSmall ? 0.08 : 0.15;
+        
+        const createArcArrow = (startAngle, endAngle, tipAngle) => {
+            const shape = new THREE.Shape();
+            const innerRadius = radius - thickness;
+            
+            // Outer arc (Counter-clockwise)
+            shape.absarc(0, 0, radius, startAngle, endAngle, false);
+            
+            // Arrowhead at endAngle
+            const tipX = Math.cos(tipAngle) * (radius - thickness/2);
+            const tipY = Math.sin(tipAngle) * (radius - thickness/2);
+            
+            shape.lineTo(Math.cos(endAngle) * (radius + headWidth/2), Math.sin(endAngle) * (radius + headWidth/2));
+            shape.lineTo(tipX, tipY);
+            shape.lineTo(Math.cos(endAngle) * (innerRadius - headWidth/2), Math.sin(endAngle) * (innerRadius - headWidth/2));
+            
+            // Inner arc (backwards, clockwise)
+            shape.absarc(0, 0, innerRadius, endAngle, startAngle, true);
+            shape.closePath();
+            
+            const extrudeSettings = {
+                depth: 0.03,
+                bevelEnabled: true,
+                bevelThickness: 0.01,
+                bevelSize: 0.01,
+                bevelSegments: 2
+            };
+            
+            const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+            const material = new THREE.MeshStandardMaterial({
+                color: color,
+                emissive: color,
+                emissiveIntensity: 0.8,
+                metalness: 0.6,
+                roughness: 0.3
+            });
+            
+            return new THREE.Mesh(geometry, material);
+        };
+
+        group.add(createArcArrow(0.1, Math.PI * 0.8, Math.PI * 0.95));
+        group.add(createArcArrow(Math.PI + 0.1, Math.PI * 1.8, Math.PI * 1.95));
+        
+        return group;
+    }
+    
     createArrow(style = 1, blockColor = 0xffffff) {
         const arrowGroup = new THREE.Group();
 
@@ -864,23 +989,15 @@ export class Block {
             
             // Match indicator color (red, yellow, or green) (Task 3.2)
             topArrowData.material.emissive = new THREE.Color(blockColor);
-            topArrowData.material.emissiveIntensity = 0.5;
+            topArrowData.material.emissiveIntensity = 0.3; // Reduced for organic look
 
-            // Add hazing glow sprite (Task 3.4)
-            const glowTexture = createGlowTexture();
-            const glowMaterial = new THREE.SpriteMaterial({
-                map: glowTexture,
-                color: blockColor,
-                transparent: true,
-                opacity: 0.5,
-                blending: THREE.AdditiveBlending
-            });
-            const glowSprite = new THREE.Sprite(glowMaterial);
-            glowSprite.scale.set(1.2, 1.2, 1.2);
-            glowSprite.position.copy(topArrowMesh.position);
-            glowSprite.position.z += 0.05; // Slightly in front
-            topArrow.add(glowSprite);
-            this.bombGlowSprites.push(glowSprite);
+            // Add organic glow core
+            const glowGroup = this.createGlowGroup(blockColor, 1.2);
+            glowGroup.position.copy(topArrowMesh.position);
+            glowGroup.rotation.copy(topArrowMesh.rotation); // Fix: Adapt to arrow orientation (Task 3.4)
+            glowGroup.position.z += 0.05; // Slightly in front
+            topArrow.add(glowGroup);
+            this.bombGlowSprites.push(glowGroup);
         }
 
         // Store original emissiveIntensity for later color updates
@@ -1045,28 +1162,25 @@ export class Block {
             
             // Match indicator color (Task 3.2)
             dotMaterial.emissive = new THREE.Color(indicatorColor);
-            dotMaterial.emissiveIntensity = 0.5;
+            dotMaterial.emissiveIntensity = 0.3; // Reduced for organic look
 
-            const glowTexture = createGlowTexture();
-            const glowMaterial = new THREE.SpriteMaterial({
-                map: glowTexture,
-                color: indicatorColor,
-                transparent: true,
-                opacity: 0.5,
-                blending: THREE.AdditiveBlending
-            });
-            const glowSprite = new THREE.Sprite(glowMaterial);
-            glowSprite.scale.set(0.6, 0.6, 0.6);
-            this.bombGlowSprites.push(glowSprite);
+            // Add organic dual-layer glow (Core + Haze) (Task 3.4 Rewrite)
+            const glowGroup = this.createGlowGroup(indicatorColor, 0.6);
+            this.bombGlowSprites.push(glowGroup);
             
             // We'll add this to the same group/parent as dotMesh later
-            this._pendingDotGlow = glowSprite; 
+            this._pendingDotGlow = glowGroup; 
         }
 
-        const dotMesh = new THREE.Mesh(dotGeometry, dotMaterial);
-        // Battery/perf: receive only (avoid extra shadow casters for tiny details)
-        dotMesh.castShadow = false;
-        dotMesh.receiveShadow = true;
+        let dotMesh;
+        if (this.isSpinGem) {
+            dotMesh = this.createSpinIndicator(indicatorColor, true); // Small for dot
+        } else {
+            dotMesh = new THREE.Mesh(dotGeometry, dotMaterial);
+            // Battery/perf: receive only (avoid extra shadow casters for tiny details)
+            dotMesh.castShadow = false;
+            dotMesh.receiveShadow = true;
+        }
 
         // Get Z offset to push indicators away from surface
         const zOffset = 0.01;
@@ -1097,28 +1211,26 @@ export class Block {
             
             // Match indicator color (Task 3.2)
             circleMaterial.emissive = new THREE.Color(indicatorColor);
-            circleMaterial.emissiveIntensity = 0.5;
+            circleMaterial.emissiveIntensity = 0.3; // Reduced for organic look
 
-            const glowTexture = createGlowTexture();
-            const glowMaterial = new THREE.SpriteMaterial({
-                map: glowTexture,
-                color: indicatorColor,
-                transparent: true,
-                opacity: 0.5,
-                blending: THREE.AdditiveBlending
-            });
-            const glowSprite = new THREE.Sprite(glowMaterial);
-            glowSprite.scale.set(0.8, 0.8, 0.8);
-            this.bombGlowSprites.push(glowSprite);
+            // Add organic dual-layer glow (Core + Haze) (Task 3.4 Rewrite)
+            const glowGroup = this.createGlowGroup(indicatorColor, 0.8);
+            this.bombGlowSprites.push(glowGroup);
             
             // We'll add this to the same group/parent as circleMesh later
-            this._pendingCircleGlow = glowSprite;
+            this._pendingCircleGlow = glowGroup;
         }
 
-        const circleMesh = new THREE.Mesh(circleGeometry, circleMaterial);
-        // Battery/perf: receive only (avoid extra shadow casters for tiny details)
-        circleMesh.castShadow = false;
-        circleMesh.receiveShadow = true;
+        let circleMesh;
+        if (this.isSpinGem) {
+            circleMesh = this.createSpinIndicator(indicatorColor);
+            // Opposite rotation for the other face? No, let's keep it same.
+        } else {
+            circleMesh = new THREE.Mesh(circleGeometry, circleMaterial);
+            // Battery/perf: receive only (avoid extra shadow casters for tiny details)
+            circleMesh.castShadow = false;
+            circleMesh.receiveShadow = true;
+        }
 
         // Apply Z offset to make the circle stand out from the surface
         circleMesh.position.z = zOffset;
@@ -1215,7 +1327,9 @@ export class Block {
         indicatorsGroup.add(dotMesh);
         if (this._pendingDotGlow) {
             this._pendingDotGlow.position.copy(dotMesh.position);
-            // Push sprite slightly more towards the viewer relative to the surface
+            this._pendingDotGlow.rotation.copy(dotMesh.rotation); // Fix: Adapt to block orientation (Task 3.4)
+            
+            // Push slightly more towards the viewer relative to the surface
             const dotDirection = dotMesh.position.clone().normalize();
             this._pendingDotGlow.position.add(dotDirection.multiplyScalar(0.04));
             indicatorsGroup.add(this._pendingDotGlow);
@@ -1225,6 +1339,8 @@ export class Block {
         indicatorsGroup.add(circleMesh);
         if (this._pendingCircleGlow) {
             this._pendingCircleGlow.position.copy(circleMesh.position);
+            this._pendingCircleGlow.rotation.copy(circleMesh.rotation); // Fix: Adapt to block orientation (Task 3.4)
+            
             const circleDirection = circleMesh.position.clone().normalize();
             this._pendingCircleGlow.position.add(circleDirection.multiplyScalar(0.04));
             indicatorsGroup.add(this._pendingCircleGlow);
@@ -1247,8 +1363,11 @@ export class Block {
     // Update block color (material and arrow)
     updateBlockColor(newColor, arrowColor = null) {
         // Update block material color
+        let materialColor = newColor;
+
+
         if (this.originalMaterial) {
-            this.originalMaterial.color.setHex(newColor);
+            this.originalMaterial.color.setHex(materialColor);
             // Keep shiny plastic properties for all blocks
             this.originalMaterial.roughness = 0.1; // Shiny plastic
             this.originalMaterial.metalness = 0.0; // Plastic, not metal
@@ -4565,6 +4684,11 @@ export class Block {
             this.isExploding = true;
             this.isAnimating = true;
 
+            // Task 8.1.0: Update progress dial immediately when explosion starts
+            if (typeof window.updateProgressDial === 'function') {
+                window.updateProgressDial();
+            }
+
             const explode = () => {
                 // Get block center position
                 const blockCenter = new THREE.Vector3();
@@ -4677,6 +4801,14 @@ export class Block {
                         this.isExploding = false;
                         this.isAnimating = false;
 
+                        // Task 7.9.0: Track removal and update progress dial
+                        if (typeof window.trackBlockRemoved === 'function') {
+                            window.trackBlockRemoved();
+                        }
+                        if (typeof window.updateProgressDial === 'function') {
+                            window.updateProgressDial();
+                        }
+
                         // Remove physics body
                         if (this.physicsBody) {
                             removePhysicsBody(this.physics, this.physicsBody, true);
@@ -4712,7 +4844,7 @@ export class Block {
      * @param {number} delay - Delay in milliseconds before explosion
      * @returns {Promise} Promise that resolves when explosion animation completes
      */
-    explodeWithParticles(particleSystem, delay = 0) {
+    explodeWithParticles(particleSystem, delay = 0, isBlasted = false) {
         return new Promise((resolve) => {
             if (this.isRemoved || this.isExploding) {
                 resolve();
@@ -4721,6 +4853,22 @@ export class Block {
 
             this.isExploding = true;
             this.isAnimating = true;
+
+            // Task 8.1.0: Update progress dial immediately when explosion starts
+            if (typeof window.updateProgressDial === 'function') {
+                window.updateProgressDial();
+            }
+            // Task 1.3 & 7.7.3 & 7.7.6 & 7.7.7: Handle spin gem feedback
+            // Success feedback is handled by melt completion in main.js or detonate()
+            // Blasted feedback (failure) now awards time in v7.7.7
+            if (this.isSpinGem && isBlasted) {
+                if (typeof window.awardSpinGemBlastedTime === 'function') {
+                    window.awardSpinGemBlastedTime(10);
+                } else if (typeof window.showSpinFeedback === 'function') {
+                    // Fallback if awardSpinGemBlastedTime is not yet available
+                    window.showSpinFeedback(false);
+                }
+            }
 
             const explode = () => {
                 // Get block center position
@@ -4852,11 +5000,103 @@ export class Block {
         });
     }
 
+    /**
+     * Perform a strong, violent shake animation (Task 1.2)
+     * @param {number} duration - Animation duration in ms
+     * @param {number} intensity - Max shake distance
+     * @returns {Promise} Resolves when animation completes
+     */
+    shakeViolently(duration = 140, intensity = 0.5) {
+        return new Promise((resolve) => {
+            const startTime = performance.now();
+            const originalPos = this.group.position.clone();
+            const shakeCount = 8; // Faster: 8 oscillations in 140ms
+
+            const animateShake = () => {
+                if (this.isRemoved) {
+                    resolve();
+                    return;
+                }
+
+                const elapsed = performance.now() - startTime;
+                const progress = Math.min(elapsed / duration, 1.0);
+
+                // Violent oscillating shake
+                const shakePhase = progress * Math.PI * shakeCount;
+                const shakeAmount = intensity * (1 - progress);
+                
+                // Add some radial chaos
+                const angle = shakePhase + (Math.random() * 0.2);
+                const shakeX = Math.sin(angle) * shakeAmount;
+                const shakeZ = Math.cos(angle * 1.3) * shakeAmount;
+
+                this.group.position.x = originalPos.x + shakeX;
+                this.group.position.z = originalPos.z + shakeZ;
+
+                if (progress < 1.0) {
+                    requestAnimationFrame(animateShake);
+                } else {
+                    this.group.position.copy(originalPos);
+                    resolve();
+                }
+            };
+
+            requestAnimationFrame(animateShake);
+        });
+    }
+
+    /**
+     * Handle block being crushed by a high-impact fall (Task 1.2)
+     * @param {Object} particleSystem - The particle system to use for effects
+     */
+    onCrushed(particleSystem) {
+        if (this.isRemoved || this.isExploding) return;
+
+        // Task 1.2 Revision: Stronger, faster shake
+        this.shakeViolently(150, 0.5).then(() => {
+            if (this.isRemoved || this.isExploding) return;
+
+            // Stronger crushing sound
+            if (typeof window.playSound === 'function') {
+                window.playSound('syntheticCrush', 0.8);
+            }
+
+            if (this.isBomb) {
+                // Bombs detonate when crushed
+                this.detonate();
+            } else {
+                // Normal blocks explode into particles
+                // Task 7.7.3: Crushing is a failure case (isBlasted=true)
+                if (particleSystem) {
+                    this.explodeWithParticles(particleSystem, 0, true);
+                } else {
+                    this.remove();
+                }
+            }
+        });
+    }
+
     detonate() {
         if (this.isExploding) return;
         this.isExploding = true;
+        this.isAnimating = true; // Task 8.1.0: Consistency for progress dial
+
+        // Task 8.1.0: Update progress dial immediately when detonation starts
+        if (typeof window.updateProgressDial === 'function') {
+            window.updateProgressDial();
+        }
         this.isRemoved = true;
 
+        // Task 1.3 & 7.7.3 & 7.7.6: Recharge spin and show success feedback (Detonation = Success)
+        if (this.isSpinGem) {
+            console.log('[Spin] Spin Gem detonated - triggering SUCCESS feedback');
+            if (typeof window.rechargeSpin === 'function') {
+                window.rechargeSpin();
+            }
+            if (typeof window.showSpinFeedback === 'function') {
+                window.showSpinFeedback(true);
+            }
+        }
         // Get world position for radius calculation
         this.group.updateMatrixWorld(true);
         const bombPos = new THREE.Vector3();
@@ -4880,8 +5120,9 @@ export class Block {
                     block.detonate(); 
                 } else {
                     // Use explodeWithParticles for faster, cleaner removal (Task 6.2)
+                    // Task 7.7.3: Pass isBlasted = true to indicate this is a collateral explosion
                     if (window.particleSystem) {
-                        block.explodeWithParticles(window.particleSystem, 0);
+                        block.explodeWithParticles(window.particleSystem, 0, true);
                     } else if (typeof window.removeBlockWithAnimation === 'function') {
                         window.removeBlockWithAnimation(block);
                     } else {
