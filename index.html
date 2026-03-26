@@ -1558,44 +1558,45 @@
 
         /* Cleaned up duplicate stats-bar rule */
 
-        /* Combined controls inside stats-bar */
+        /* All control buttons in the stats bar — consistent, no box */
         .stats-control-btn {
             background: transparent;
             border: none;
-            color: rgba(255, 255, 255, 0.9);
+            color: rgba(255, 255, 255, 0.75);
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            padding: 6px;
+            padding: 8px;
             border-radius: 12px;
             transition: all 0.2s;
             position: relative;
-            pointer-events: auto; /* Explicitly enable on desktop */
+            pointer-events: auto;
         }
 
         .stats-control-btn:hover {
-            background: rgba(255, 255, 255, 0.1);
-            color: #fff;
+            color: rgba(255, 255, 255, 1);
         }
 
+        /* Unified icon size for all bar icons */
         .stats-control-btn .btn-icon {
-            width: 24px;
-            height: 24px;
+            width: 26px;
+            height: 26px;
             stroke: currentColor;
-            stroke-width: 2;
+            stroke-width: 1.8;
             fill: none;
         }
 
+        /* Dice button — no box, same visual weight as settings */
         #dice-button.stats-control-btn {
-            background: rgba(255, 255, 255, 0.15);
-            padding: 10px;
-            border-radius: 16px;
+            background: transparent;
+            padding: 8px;
+            border-radius: 12px;
         }
 
         #dice-button.stats-control-btn .btn-icon {
-            width: 32px;
-            height: 32px;
+            width: 26px;
+            height: 26px;
         }
 
 
