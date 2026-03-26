@@ -2219,7 +2219,7 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
     for (let i = 0; i < deckSize; i++) {
         const rand = Math.random();
         if (rand < bombBaseProb * heightMod) specialDeck.push('bomb');
-        else if (rand < (bombBaseProb + spinBaseProb) * heightMod) specialDeck.push('spin');
+        else if (rand < (bombBaseProb + spinBaseProb) * heightMod) specialDeck.push('normal'); // Task 9.1: Disable spin gems
         else specialDeck.push('normal');
     }
     shuffleArray(specialDeck);
@@ -3467,7 +3467,7 @@ function placeBlocksBatch(blocksToPlace, batchSize = 10, delayBetweenBatches = 1
 }
 
 // Create blocks with many head-on collisions for testing
-function createHeadOnCollisionBlocks(targetBlockCount = 10) {
+function createHeadOnCollisionBlocks(targetBlockCount = 10, level = 1) {
     const blocksToPlace = [];
     const occupiedCells = new Set();
 
@@ -3620,7 +3620,7 @@ function createHeadOnCollisionBlocks(targetBlockCount = 10) {
                 const isBomb = (level >= 31 && Math.random() < (0.075 * length));
 
                 // Task 1.3: Spin Gems appear from Level 11+
-                const isSpinGem = !isBomb && (level >= 11 && Math.random() < 0.10);
+                const isSpinGem = false; // Task 9.1: Disable spin gems
 
                 const block = new Block(length, x, z, direction, isVertical, currentArrowStyle, scene, physics, gridSize, cubeSize, 0, 1, isBomb, isSpinGem);
                 scene.remove(block.group);
@@ -3641,14 +3641,15 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
     // Get target block count for this level
     const targetBlockCount = getBlocksForLevel(level);
 
-    // Calculate dynamic gridSize for cube-like tower shape
+    // Calculate dynamic gridSize for 1:1:1.5 tower shape
+    // Volume = W * W * 1.5 * W = 1.5 * W^3
+    // W = (Volume / 1.5)^(1/3)
     // estimatedVolume = targetBlockCount * avgBlockLength(1.8)
     const estimatedVolume = targetBlockCount * 1.8;
-    const targetSide = Math.ceil(Math.pow(estimatedVolume, 1 / 3));
+    const targetSide = Math.ceil(Math.pow(estimatedVolume / 1.5, 1 / 3));
     
-    // Ensure gridSize is at least 7 (standard size) and at most 20 (performance limit)
-    // Use Math.max(7, ...) to preserve the standard feel for early levels
-    const dynamicGridSize = Math.max(7, Math.min(20, targetSide));
+    // Ensure gridSize is at least 5 (standard minimum for playability) and at most 20
+    const dynamicGridSize = Math.max(5, Math.min(20, targetSide));
     
     // Apply the dynamic grid size
     console.log(`[Tower Gen] Level ${level}, Target blocks: ${targetBlockCount}, Dynamic Grid Size: ${dynamicGridSize}`);
@@ -3817,7 +3818,7 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
 
     // Special case: Level 1 with head-on collisions for testing
     if (level === 1) {
-        const headOnBlocks = createHeadOnCollisionBlocks(targetBlockCount);
+        const headOnBlocks = createHeadOnCollisionBlocks(targetBlockCount, level);
 
         // Use the same animation system as normal generation
         await placeBlocksBatch(headOnBlocks);
@@ -3863,8 +3864,8 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
             const heightRatio = Math.min(1.0, currentLayer / totalEstimatedLayers);
 
             // For layer 1: Use longer blocks to minimize block count (prefer 2-3 cell blocks)
-            // This leaves more room for layer 2
-            // For layer 2+: Fill remaining blocks
+            // For high block counts, allow more blocks in layer 1 to reduce total layers needed
+            // Limit to gridCells to ensure we don't exceed capacity
             let blocksForThisLayer;
             let preferLongBlocks = false;
 
@@ -6798,6 +6799,48 @@ function spinRandomBlocks() {
         showSpinCostToast(cost);
     }
 
+    updateIdleTimers(); // Reset idle timers on spin
+
+    // Task 9.2: Animate spin button (rotation)
+    const diceButton = document.getElementById('dice-button');
+    if (diceButton) {
+        diceButton.classList.remove('btn-rotating');
+        void diceButton.offsetWidth; // Trigger reflow
+        diceButton.classList.add('btn-rotating');
+        // Remove after animation (1s matches CSS)
+        setTimeout(() => {
+            if (diceButton) diceButton.classList.remove('btn-rotating');
+        }, 1000);
+
+        // Task 9.2: Display time cost feedback
+        if (isTimeBasedMode() && remainingSpins <= 0) {
+            const multiplier = getSpinCostMultiplier(currentLevel);
+            const cost = Math.max(1, Math.ceil(timeLeftSec * multiplier));
+            
+            const rect = diceButton.getBoundingClientRect();
+            const x = rect.left + rect.width / 2;
+            const y = rect.top;
+            
+            const floatText = document.createElement('div');
+            floatText.textContent = `-${formatTime(cost)}`;
+            floatText.style.cssText = `
+                position: fixed;
+                left: ${x}px;
+                top: ${y}px;
+                transform: translate(-50%, -100%);
+                font-size: 20px;
+                font-weight: 800;
+                color: #ff4d4d;
+                text-shadow: 0 0 10px rgba(255, 77, 77, 0.5);
+                pointer-events: none;
+                z-index: 5000;
+                animation: cost-float 1.5s ease-out forwards;
+                font-family: 'Inter', sans-serif;
+            `;
+            document.body.appendChild(floatText);
+            setTimeout(() => { if (floatText.parentNode) floatText.remove(); }, 1500);
+        }
+    }
     // Play spin sound with sufficient volume (Task 7.7.1)
     playSound('syntheticSpin', 0.7);
 

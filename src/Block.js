@@ -239,7 +239,7 @@ export class Block {
         this.isFalling = false;
         this.isExploding = false;
         this.isBomb = isBomb;
-        this.isSpinGem = isSpinGem;
+        this.isSpinGem = false; // Task 9.1: Disable spin gems
         this.isKey = isKey;
         this.isPuzzleLocked = isPuzzleLocked;
         this.lockedByKey = lockedByKey;
@@ -470,27 +470,7 @@ export class Block {
             }
         }
 
-        if (this.isSpinGem) {
-            // Pulsating intensity (Allowed for Spin Gems)
-            const pulse = Math.sin(time * 0.005);
-            const intensity = 0.6 + pulse * 0.4;
-            
-            // Emissive shell pulsing removed for Spin Gems to match normal blocks (Task 1.3 Refinement)
-
-
-            // Animate external circular arrows (Task 1.3 Refinement)
-            if (this.directionIndicators) {
-                this.directionIndicators.traverse(child => {
-                    // Rotate the spin-specific mesh parts
-                    if (child.isSpinIndicator && child.rotation) {
-                        child.rotation.z += 0.05;
-                        if (child.material) {
-                            child.material.emissiveIntensity = intensity;
-                        }
-                    }
-                });
-            }
-        }
+        // Spin Gem update logic disabled (Task 9.1)
     }
 
     // Mark as dirty when moved/rotated
@@ -2929,15 +2909,16 @@ export class Block {
         // Check if block is off grid and should start falling
         // Only trigger if not already falling, not animating, and off grid
         if (!this.isFalling && !this.isAnimating && this.isOffGrid(this.gridSize)) {
-            // Block has left the tower - trigger falling with direction-based velocity
-            const dirX = this.direction.x;
-            const dirZ = this.direction.z;
-            const fallSpeed = 3.5; // Moderate horizontal speed
-            const velX = dirX * fallSpeed;
-            const velZ = dirZ * fallSpeed;
-            const velY = 0; // Start with zero vertical velocity, let gravity take over
-            this.fall(velX, velZ, velY);
-            return; // Will be called again next frame when isFalling is true
+            // Block has left the tower - trigger blast effect instead of falling
+            console.log(`[Blast Exit] Block at (${this.gridX}, ${this.gridZ}) left grid unexpectedly - triggering blast`);
+            if (window.debrisManager && window.particleSystem) {
+                this.explodeIntoDebris(window.debrisManager, window.particleSystem, 0);
+            } else if (window.particleSystem) {
+                this.explodeWithParticles(window.particleSystem, 0, false);
+            } else {
+                this.fall(); // Fallback if no effects system
+            }
+            return;
         }
 
         if (!this.isFalling) return;
@@ -4304,47 +4285,27 @@ export class Block {
                     this.updateWorldPosition();
                     this.addBounceEffect(blocks);
                 } else if (hitEdge) {
-                    // Hit edge - start falling immediately without snapping to grid
-                    // Position is already correct from animation, don't recalculate
-                    this.isAnimating = false;
-                    if (typeof window !== 'undefined' && typeof window.updateUndoButtonState === 'function') {
-                        window.updateUndoButtonState();
-                    }
+                    // Hit edge - trigger blast effect instead of falling away
+                    // Position is already correct from animation (at the edge)
+                    this.isAnimating = true; // Stay animating while exploding
 
-                    let velX, velZ, velY;
-
-                    // Use this.direction directly - it represents the arrow direction
-                    // Direction values: {x: 1, z: 0} = East, {x: -1, z: 0} = West, {x: 0, z: 1} = South, {x: 0, z: -1} = North
-                    // These are direction vectors in grid space, which map directly to world space velocities
-                    const dirX = this.direction.x;
-                    const dirZ = this.direction.z;
-
-                    if (isCatapult) {
-                        // CATAPULT: explosive launch with high horizontal velocity
-                        // Negative velocity to ensure immediate falling (gravity will accelerate it)
-                        const mobileBoost = (typeof window !== 'undefined' && window.isMobileLike) ? 1.5 : 1.0;
-                        const catapultSpeed = 65.0 * mobileBoost; // Increased from 45.0, with mobile boost
-
-                        // Apply velocity in the direction of the arrow
-                        velX = dirX * catapultSpeed;
-                        velZ = dirZ * catapultSpeed;
-                        velY = -1.0; // Gentle downward velocity for flatter trajectory
-
-                        console.warn('[Catapult] Launching block with velocity:', { velX, velY, velZ }, 'Direction:', { dirX, dirZ });
-                        // #region agent log
-                        safeTelemetry({ location: 'Block.js:3306', message: 'Catapult fall() called', data: { velX, velY, velZ, dirX, dirZ, gridX: this.gridX, gridZ: this.gridZ, yOffset: this.yOffset }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' });
-                        // #endregion
-                        this.fall(velX, velZ, velY);
+                    console.log(`[Blast Exit] Block at (${this.gridX}, ${this.gridZ}) reached edge - triggering blast`);
+                    
+                    if (window.debrisManager && window.particleSystem) {
+                        this.explodeIntoDebris(window.debrisManager, window.particleSystem, 0);
+                    } else if (window.particleSystem) {
+                        this.explodeWithParticles(window.particleSystem, 0, false);
                     } else {
-                        // Normal fall: use direction with moderate speed
+                        // Fallback: original falling behavior if managers aren't present
+                        this.isAnimating = false;
+                        const dirX = this.direction.x;
+                        const dirZ = this.direction.z;
                         const mobileBoost = (typeof window !== 'undefined' && window.isMobileLike) ? 1.5 : 1.0;
-                        const fallSpeed = 35.0 * mobileBoost; // Increased from 20.0, with mobile boost
-
-                        // Apply velocity in the direction of the arrow
-                        velX = dirX * fallSpeed;
-                        velZ = dirZ * fallSpeed;
-
-                        this.fall(velX, velZ);
+                        const catapultSpeed = isCatapult ? 65.0 * mobileBoost : 35.0 * mobileBoost;
+                        const velX = dirX * catapultSpeed;
+                        const velZ = dirZ * catapultSpeed;
+                        const velY = isCatapult ? -1.0 : 0;
+                        this.fall(velX, velZ, velY);
                     }
                 } else {
                     // Normal completion - snap to exact grid position

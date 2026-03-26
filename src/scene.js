@@ -73,21 +73,20 @@ export function createLights(scene) {
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.43);
     scene.add(ambientLight);
     
-    // Key Light (Main Light) - primary light source, casts dramatic shadows
-    // Default intensity: 1, position: (22.5, 26, 19.5)
+    // Default intensity: 1, position: (22.5, 35.5, 19.5) - Raised for taller towers
     const keyLight = new THREE.DirectionalLight(0xffffff, 1);
-    keyLight.position.set(22.5, 26, 19.5);
+    keyLight.position.set(22.5, 35.5, 19.5);
     keyLight.castShadow = true;
     // Shadow camera bounds: keep tight for better precision + less wasted shadow-map area.
     // The board is ~7x7 centered around (3.5, 0, 3.5). These values are tuned to cover
     // typical tower height without wasting a huge frustum (which makes shadows blurrier AND more costly).
     // Slightly looser than the previous tight bounds to reduce shadow clipping/popping as the tower grows.
-    keyLight.shadow.camera.left = -12;
-    keyLight.shadow.camera.right = 12;
-    keyLight.shadow.camera.top = 14;
-    keyLight.shadow.camera.bottom = -14;
+    keyLight.shadow.camera.left = -15;
+    keyLight.shadow.camera.right = 15;
+    keyLight.shadow.camera.top = 22;
+    keyLight.shadow.camera.bottom = -22;
     keyLight.shadow.camera.near = 1.0;
-    keyLight.shadow.camera.far = isIOS ? 60.0 : 50.0;
+    keyLight.shadow.camera.far = isIOS ? 75.0 : 65.0;
     // Position shadow camera to look at the scene center
     keyLight.shadow.camera.position.set(0, 25, 0);
     keyLight.shadow.camera.lookAt(0, 0, 0);
