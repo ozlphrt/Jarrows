@@ -9184,6 +9184,12 @@ function updateProgressDial() {
         const item = document.getElementById('spin-gem-count-item');
         if (item) item.classList.toggle('empty', spinsRemaining === 0);
     }
+
+    // Update blocks remaining count (new label in v8.3.3)
+    const blockRemainingEl = document.getElementById('block-remaining-count');
+    if (blockRemainingEl) {
+        blockRemainingEl.textContent = ' ' + currentActiveBlocks;
+    }
 }
 window.updateProgressDial = updateProgressDial;
 
