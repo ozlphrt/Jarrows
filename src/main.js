@@ -3852,7 +3852,9 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
         // For high block counts, need more buffer since layers generate fewer blocks than requested
         const blocksPerLayerEstimate = gridCells * 0.6; // Assume 60% fill rate per layer
         const maxLayersNeeded = Math.ceil(targetBlockCount / blocksPerLayerEstimate) + 3; // More buffer
-        const maxLayers = Math.max(15, maxLayersNeeded); // At least 15, but more if needed
+        // v8.4.0: Portrait tower ratio - H = 1.5 × W. Raise maxLayers to accommodate extra height.
+        const TOWER_HEIGHT_RATIO = 1.5;
+        const maxLayers = Math.max(Math.ceil(15 * TOWER_HEIGHT_RATIO), maxLayersNeeded); // At least 22, but more if needed
         // Calculate estimated total layers for distribution balancing (Task 7.7.4)
         const totalEstimatedLayers = Math.max(1, Math.ceil(estimatedVolume / (dynamicGridSize * dynamicGridSize * cubeSize)));
         
@@ -3867,10 +3869,9 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
             let preferLongBlocks = false;
 
             if (currentLayer === 0) {
-                // Layer 1: Use longer blocks to minimize block count (prefer 2-3 cell blocks)
-                // For high block counts, allow more blocks in layer 1 to reduce total layers needed
-                // Limit to gridCells to ensure we don't exceed capacity
-                blocksForThisLayer = Math.min(remainingBlocks, gridCells);
+                // Layer 1: Use longer blocks but cap at 1/TOWER_HEIGHT_RATIO of gridCells
+                // This forces blocks into more layers → taller tower (1:1:1.5 portrait shape)
+                blocksForThisLayer = Math.min(remainingBlocks, Math.floor(gridCells / TOWER_HEIGHT_RATIO));
                 preferLongBlocks = true;
             } else {
                 // Layer 2+: Recalculate remaining blocks based on actual blocks placed so far
@@ -3881,7 +3882,8 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
                 // Request blocks based on available support - be more aggressive
                 // Use 98% instead of 95% to maximize block placement
                 const maxBlocksBasedOnSupport = Math.floor(supportedCells * 0.98); // Use 98% of supported cells
-                const maxBlocksPerUpperLayer = Math.min(gridCells, maxBlocksBasedOnSupport);
+                // v8.4.0: Also cap upper layers by portrait ratio so upper layers stay thin too
+                const maxBlocksPerUpperLayer = Math.min(Math.floor(gridCells / TOWER_HEIGHT_RATIO), maxBlocksBasedOnSupport);
                 blocksForThisLayer = Math.min(remainingBlocks, maxBlocksPerUpperLayer);
                 preferLongBlocks = false;
 
