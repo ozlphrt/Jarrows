@@ -6792,6 +6792,8 @@ function spinRandomBlocks() {
         flashTimerDelta(-cost);
         updateTimerDisplay();
         updateSpinCounterDisplay();
+        // Show cost toast near spin button (v8.3.4)
+        showSpinCostToast(cost);
     }
 
     // Play spin sound with sufficient volume (Task 7.7.1)
@@ -9137,6 +9139,55 @@ function shuffleArray(array) {
         [array[i], array[j]] = [array[j], array[i]];
     }
     return array;
+}
+
+/**
+ * Show a brief floating toast near the spin button displaying the time cost (v8.3.4)
+ * @param {number} costSec - seconds deducted
+ */
+function showSpinCostToast(costSec) {
+    const btn = document.getElementById('dice-button');
+    if (!btn) return;
+
+    const mins = Math.floor(costSec / 60);
+    const secs = costSec % 60;
+    let label = '';
+    if (mins > 0 && secs > 0) label = `-${mins}m ${secs}s`;
+    else if (mins > 0) label = `-${mins}m`;
+    else label = `-${secs}s`;
+
+    const toast = document.createElement('div');
+    toast.textContent = label;
+    Object.assign(toast.style, {
+        position: 'fixed',
+        fontFamily: "'Rajdhani', sans-serif",
+        fontSize: '16px',
+        fontWeight: '700',
+        color: 'rgba(255, 100, 100, 0.95)',
+        letterSpacing: '0.5px',
+        pointerEvents: 'none',
+        zIndex: '9999',
+        transition: 'opacity 0.4s ease, transform 0.8s ease',
+        opacity: '1',
+        transform: 'translateY(0)',
+    });
+
+    // Position above the spin button
+    const rect = btn.getBoundingClientRect();
+    toast.style.left = `${rect.left + rect.width / 2}px`;
+    toast.style.top = `${rect.top - 8}px`;
+    toast.style.transform = 'translate(-50%, -100%)';
+
+    document.body.appendChild(toast);
+
+    // Animate upward + fade out
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            toast.style.transform = 'translate(-50%, -200%)';
+            toast.style.opacity = '0';
+        });
+    });
+    setTimeout(() => toast.remove(), 1200);
 }
 
 /**
