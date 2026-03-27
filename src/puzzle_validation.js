@@ -103,8 +103,8 @@ export function canBlockExit(block, occupiedCells, gridSize) {
 function buildOccupiedCells(blocks, excludeBlock = null) {
     const occupied = new Set();
     for (const block of blocks) {
-        // Skip blocks that are falling, animating, removed, or being removed
-        if (block === excludeBlock || block.isFalling || block.isAnimating || block.isRemoved || block.removalStartTime) continue;
+        // Skip blocks that are falling, animating, removed, exploding, or being removed
+        if (block === excludeBlock || block.isFalling || block.isAnimating || block.isRemoved || block.isExploding || block.removalStartTime) continue;
         for (const cell of getBlockCells(block)) {
             occupied.add(`${cell.x},${cell.z}`);
         }
@@ -121,8 +121,8 @@ export function validateStructure(blocks, gridSize) {
     const occupiedCells = new Map(); // key: "x,z" -> array of {block, yBottom, yTop}
     
     for (const block of blocks) {
-        // Skip blocks that are falling, animating, removed, or being removed
-        if (block.isFalling || block.isAnimating || block.isRemoved || block.removalStartTime) continue;
+        // Skip blocks that are falling, animating, removed, exploding, or being removed
+        if (block.isFalling || block.isAnimating || block.isRemoved || block.isExploding || block.removalStartTime) continue;
         
         const cells = getBlockCells(block);
         
@@ -194,7 +194,7 @@ export function fixOverlappingBlocks(blocks, gridSize) {
         const moveCellSet = cellsToKeySet(moveCells);
 
         for (const other of allBlocks) {
-            if (!other || other === blockToMove || other.isFalling || other.isAnimating || other.isRemoved || other.removalStartTime) continue;
+            if (!other || other === blockToMove || other.isFalling || other.isAnimating || other.isRemoved || other.isExploding || other.removalStartTime) continue;
             const otherCells = getBlockCells(other);
             let sharesCell = false;
             for (const c of otherCells) {
@@ -217,7 +217,7 @@ export function fixOverlappingBlocks(blocks, gridSize) {
     const overlaps = [];
     const occupiedCells = new Map(); // key: "x,z" -> array of {block, yBottom, yTop}
     for (const block of blocks) {
-        if (block.isFalling || block.isAnimating || block.isRemoved || block.removalStartTime) continue;
+        if (block.isFalling || block.isAnimating || block.isRemoved || block.isExploding || block.removalStartTime) continue;
         const { yBottom, yTop } = getBlockYRange(block);
         const cells = getBlockCells(block);
 
@@ -340,7 +340,7 @@ export function validateSolvability(blocks, gridSize) {
     
     // Create a working copy of blocks (simulate removal)
     // Exclude blocks that are falling, animating, removed, or being removed
-    const remainingBlocks = blocks.filter(b => !b.isFalling && !b.isAnimating && !b.isRemoved && !b.removalStartTime);
+    const remainingBlocks = blocks.filter(b => !b.isFalling && !b.isAnimating && !b.isRemoved && !b.isExploding && !b.removalStartTime);
     const solution = [];
     const maxIterations = remainingBlocks.length * 2; // Safety limit
     let iterations = 0;

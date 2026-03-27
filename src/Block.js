@@ -3552,7 +3552,7 @@ export class Block {
 
             for (const other of blocks) {
                 // Skip blocks that are falling, removed, or being removed
-                if (other === this || other.isFalling || other.isRemoved || other.removalStartTime) continue;
+                if (other === this || other.isFalling || other.isRemoved || other.isExploding || other.removalStartTime) continue;
 
                 // Calculate Y ranges for both blocks to check for 3D overlap
                 const thisHeight = this.isVertical ? this.length * this.cubeSize : this.cubeSize;
@@ -3833,7 +3833,7 @@ export class Block {
                     const currentYTop = this.yOffset + thisHeight;
 
                     for (const other of blocks) {
-                        if (other === this || other === collidedBlock || other.isFalling || other.isRemoved || other.removalStartTime) continue;
+                        if (other === this || other === collidedBlock || other.isFalling || other.isRemoved || other.isExploding || other.removalStartTime) continue;
 
                         // Check if other block overlaps with this block's cells at the current position
                         // Use this.gridX and this.gridZ since those are the actual position after the head-on collision
@@ -4637,10 +4637,12 @@ export class Block {
      */
     explodeIntoDebris(debrisManager, particleSystem, delay = 0) {
         return new Promise((resolve) => {
-            if (this.isRemoved || this.isExploding) {
+            if (this.isRemoved || this._explosionAnimationStarted) {
                 resolve();
                 return;
             }
+
+            this._explosionAnimationStarted = true;
 
             this.isExploding = true;
             this.isAnimating = true;
@@ -4807,10 +4809,12 @@ export class Block {
      */
     explodeWithParticles(particleSystem, delay = 0, isBlasted = false) {
         return new Promise((resolve) => {
-            if (this.isRemoved || this.isExploding) {
+            if (this.isRemoved || this._explosionAnimationStarted) {
                 resolve();
                 return;
             }
+
+            this._explosionAnimationStarted = true;
 
             this.isExploding = true;
             this.isAnimating = true;
@@ -5038,7 +5042,8 @@ export class Block {
     }
 
     detonate() {
-        if (this.isExploding) return;
+        if (this.isRemoved || this._explosionAnimationStarted) return;
+        this._explosionAnimationStarted = true;
         this.isExploding = true;
         this.isAnimating = true; // Task 8.1.0: Consistency for progress dial
 
@@ -5072,10 +5077,14 @@ export class Block {
 
         // Detonate/Remove affected blocks
         affectedBlocks.forEach((block, index) => {
+            // Task 9.2: Mark affected blocks as exploding IMMEDIATELY 
+            // This prevents them from being solid blockers during the chain reaction delay.
+            block.isExploding = true;
+            
             const delay = index * 30; 
             
             setTimeout(() => {
-                if (block.isRemoved || block.isExploding) return;
+                if (block.isRemoved || block._explosionAnimationStarted) return;
 
                 if (block.isBomb) {
                     block.detonate(); 
