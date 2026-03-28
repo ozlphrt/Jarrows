@@ -86,8 +86,48 @@ window.shakeCamera = shakeCamera;
 window.isMobileLike = false;
 window.autoZoomEnabled = true;
 window.autoFallEnabled = (function() { try { return localStorage.getItem('jarrows_autofall') === 'true'; } catch(e) { return false; } })();
-window.jarrows_debug = false;
 window.qualityPreset = 'balanced';
+
+// --- Engagement & Hint System ---
+let spinNudgeActive = false;
+const shownHints = new Set();
+const humorMessages = [
+    "Wow, you didn't even break a sweat. Or did you?",
+    "Physics called. It wants its dignity back.",
+    "That was suspiciously fast. Are you a robot?",
+    "Nice work! Even the sheep were impressed.",
+    "You cleared that tower like a wrecking ball.",
+    "Legend says Noam Jarrow himself couldn't do better.",
+    "Tower: 0, You: 1. Keep it up!",
+    "Is it just me, or was that level too easy for you?",
+    "Gravity is just a suggestion when you're around.",
+    "Clean. Efficient. Slightly terrifying. I love it!"
+];
+
+/**
+ * Show a temporary hint/toast message (Task 2.3)
+ * @param {string} text - The message to display
+ * @param {string} id - Unique ID for this hint to prevent repeats
+ */
+function showGameHint(text, id = null) {
+    if (id && shownHints.has(id)) return;
+    if (id) shownHints.add(id);
+
+    const container = document.getElementById('game-hint-container');
+    if (!container) return;
+
+    const hint = document.createElement('div');
+    hint.className = 'game-hint';
+    hint.textContent = text;
+    container.appendChild(hint);
+
+    // Auto-remove after 4.4 seconds (4s display + 0.4s fade out)
+    setTimeout(() => {
+        hint.classList.add('fade-out');
+        setTimeout(() => hint.remove(), 400);
+    }, 4000);
+}
+window.showGameHint = showGameHint;
 
 
 // Constants
@@ -485,6 +525,12 @@ let isRightDraggingFraming = false;
 
 // Mouse controls for camera orbit
 renderer.domElement.addEventListener('mousedown', (event) => {
+    updateIdleTimers(); // Reset idle timers
+    if (spinNudgeActive) {
+        const diceBtn = document.getElementById('dice-button');
+        if (diceBtn) diceBtn.classList.remove('spin-nudge');
+        spinNudgeActive = false;
+    }
     // Left-click: orbit (azimuth/elevation)
     if (event.button === 0) {
         // CRITICAL: Sync current values to target values when user starts dragging
@@ -2574,7 +2620,11 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
 
                 // Cells are now reserved - create the block
                 const block = new Block(length, cell.x, cell.z, randomDir, isVertical, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level, isBomb, isSpinGem);
-
+                
+                // Show hints for special blocks
+                if (isBomb) showGameHint("Careful with that bomb! It clears everything in its path.", "hint-bomb");
+                if (isSpinGem) showGameHint("Spin Gems give you extra turns. Grab them!", "hint-spingem");
+                
                 // Move block from scene to towerGroup
                 scene.remove(block.group);
 
@@ -4547,6 +4597,11 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
     } else {
         console.warn(`✓ BLOCK COUNT: ${blocks.length}/${targetBlockCount}`);
     }
+
+    // Trigger hints for Level 1 (Tutorial)
+    if (currentLevel === 1) {
+        showGameHint("First time? Try swiping to rotate the camera!", "hint-level-1");
+    }
 }
 
 // Move history for undo functionality
@@ -5710,8 +5765,15 @@ function showLevelCompleteModal(completedLevel) {
     const blocksElement = document.getElementById('level-complete-blocks');
 
     if (modal) {
-        // Per request: remove the "Outstanding performance" line.
-        if (message) message.textContent = '';
+        // Humorous messaging (Task 2.2)
+        if (message) {
+            const randomHumor = humorMessages[Math.floor(Math.random() * humorMessages.length)];
+            message.textContent = randomHumor;
+            message.style.fontSize = '20px';
+            message.style.fontWeight = '700';
+            message.style.color = 'rgba(255, 255, 255, 0.9)';
+            message.style.marginTop = '10px';
+        }
 
         // Update title to include level number: "Level X Complete!" with styled number
         if (title) {
@@ -6960,6 +7022,12 @@ function setupDiceButton() {
         // Create handler function if it doesn't exist
         if (!diceButtonClickHandler) {
             diceButtonClickHandler = (e) => {
+                updateIdleTimers(); // Reset idle timers
+                if (spinNudgeActive) {
+                    diceButton.classList.remove('spin-nudge');
+                    spinNudgeActive = false;
+                }
+                showGameHint("Mixing it up? Bold move!", "spin-used");
                 // #region agent log
                 debugTelemetry({ location: 'main.js:setupDiceButton:clickHandler', message: 'Dice button click event fired', data: { disabled: diceButton.disabled, timeChallengeActive: timeChallengeActive }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H1' });
                 // #endregion
@@ -8027,6 +8095,12 @@ let touchState = {
 
 // Touch start handler
 renderer.domElement.addEventListener('touchstart', (event) => {
+    updateIdleTimers(); // Reset idle timers
+    if (spinNudgeActive) {
+        const diceBtn = document.getElementById('dice-button');
+        if (diceBtn) diceBtn.classList.remove('spin-nudge');
+        spinNudgeActive = false;
+    }
     event.preventDefault(); // Always prevent default to enable proper touch handling
 
     touchState.touches = Array.from(event.touches);
@@ -8328,6 +8402,13 @@ function onTouchEnd(event) {
         block.detonate();
         updateUndoButtonState();
         return;
+    }
+
+    if (block.isKey) {
+        showGameHint("That's a Key! Clear it to unlock matching metal blocks.", "hint-key");
+    }
+    if (block.isPuzzleLocked) {
+        showGameHint("These metal blocks are locked. You need a key to clear them!", "hint-locked");
     }
 
     // Prevent locked blocks from being moved (they can still intercept taps)
@@ -8645,6 +8726,19 @@ function animate() {
 
     // 3. Physics & Interaction Metadata
     autoUnlockIfFewBlocksRemaining();
+    
+    // Spin Nudge Logic (Task 2.8)
+    if (!isGeneratingLevel && !levelCompleteShown && !timeUpShown && !isPaused) {
+        if (currentTime - lastInteractionTime > 3000 && !spinNudgeActive) {
+            const diceBtn = document.getElementById('dice-button');
+            if (diceBtn && !diceBtn.classList.contains('spin-nudge')) {
+                diceBtn.classList.add('spin-nudge');
+                spinNudgeActive = true;
+                console.log('[Hint] 💡 Nudging spin button due to inactivity');
+            }
+        }
+    }
+
     const isBatteryQuality = qualityPreset === 'battery';
     const interacting = isDraggingCamera || (touchState && touchState.isActive);
     const isAutoZoomDisabled = currentTime < autoZoomDisabledUntilMs;
@@ -9241,50 +9335,42 @@ function showSpinCostToast(costSec) {
  */
 function updateProgressDial() {
     const progressFill = document.getElementById('progress-fill');
-    const progressText = document.getElementById('progress-text');
+    const progressNumber = document.getElementById('progress-number');
     const bombCountEl = document.getElementById('bomb-count');
     const spinCountEl = document.getElementById('spin-count');
-    
-    if (!progressFill || !progressText) return;
+    const blockRemainingEl = document.getElementById('block-remaining-count');
 
-    // Calculate progress
-    // Task 8.0.0/8.1.0: Count blocks that are NOT removed, NOT animating, NOT exploding, and NOT falling as "remaining"
+    // Calculate common stats
     const currentActiveBlocks = blocks.filter(b => !b.isRemoved && !b.isAnimating && !b.isExploding && !b.isFalling).length;
-    const removedBlocks = Math.max(0, levelInitialBlockCount - currentActiveBlocks);
     
-    let progressPercent = 0;
-    if (levelInitialBlockCount > 0) {
-        progressPercent = Math.min(100, Math.round((removedBlocks / levelInitialBlockCount) * 100));
+    // Update Progress Dial only if elements exist (it's removed in current UI)
+    if (progressFill && progressNumber) {
+        const removedBlocks = Math.max(0, levelInitialBlockCount - currentActiveBlocks);
+        let progressPercent = 0;
+        if (levelInitialBlockCount > 0) {
+            progressPercent = Math.min(100, Math.round((removedBlocks / levelInitialBlockCount) * 100));
+        }
+        progressFill.setAttribute('stroke-dasharray', `${progressPercent}, 100`);
+        progressNumber.textContent = `${progressPercent}`;
     }
 
-    // Debug log to help identify why dial might not be updating
-    if (removedBlocks > 0 || levelInitialBlockCount > 0) {
-        console.log(`[Progress] Update: ${progressPercent}% (${removedBlocks}/${levelInitialBlockCount} blocks removed)`);
-    }
-
-    // Update progress circle (stroke-dasharray: percent, 100)
-    progressFill.setAttribute('stroke-dasharray', `${progressPercent}, 100`);
-    progressText.textContent = `${progressPercent}%`;
-
-    // Update special counts
+    // Update Special Counts (Bombs, etc.)
     const bombsRemaining = blocks.filter(b => b.isBomb && !b.isRemoved && !b.isAnimating && !b.isExploding && !b.isFalling).length;
     const spinsRemaining = blocks.filter(b => b.isSpinGem && !b.isRemoved && !b.isAnimating && !b.isExploding && !b.isFalling).length;
 
     if (bombCountEl) {
         bombCountEl.textContent = bombsRemaining;
-        const item = document.getElementById('bomb-count-item');
+        const item = document.getElementById('bomb-count-item') || document.getElementById('bomb-container');
         if (item) item.classList.toggle('empty', bombsRemaining === 0);
     }
+    
     if (spinCountEl) {
         spinCountEl.textContent = spinsRemaining;
-        const item = document.getElementById('spin-gem-count-item');
-        if (item) item.classList.toggle('empty', spinsRemaining === 0);
     }
 
-    // Update blocks remaining count (new label in v8.3.3)
-    const blockRemainingEl = document.getElementById('block-remaining-count');
+    // Update Blocks Remaining
     if (blockRemainingEl) {
-        blockRemainingEl.textContent = ' ' + currentActiveBlocks;
+        blockRemainingEl.textContent = currentActiveBlocks;
     }
 }
 window.updateProgressDial = updateProgressDial;

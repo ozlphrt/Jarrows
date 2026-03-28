@@ -246,16 +246,28 @@ function storeLocalStats(stats) {
         // Add new completion
         existing.push({
             ...stats,
-            // Keep provided timestamp if present; fall back for older callers.
             timestamp: typeof stats.timestamp === 'number' ? stats.timestamp : Date.now(),
         });
 
-        // Keep only last 10 completions per level
-        if (existing.length > 10) {
+        // Keep a larger history of completions for the graph (Task 2.0.0)
+        if (existing.length > 50) {
             existing.shift();
         }
 
         localStorage.setItem(key, JSON.stringify(existing));
+
+        // Track Personal Best time for this level
+        const bestKey = `jarrows_level_${stats.level}_best_time`;
+        const currentBest = localStorage.getItem(bestKey);
+        
+        if (currentBest === null || stats.time < parseFloat(currentBest)) {
+            localStorage.setItem(bestKey, stats.time.toString());
+            console.log(`[Stats] NEW PERSONAL BEST for Level ${stats.level}: ${stats.time.toFixed(2)}s`);
+            // Mark stats object as a PB for the UI
+            stats.isNewPersonalBest = true;
+        } else {
+            stats.isNewPersonalBest = false;
+        }
     } catch (error) {
         console.error('Failed to store local stats:', error);
     }

@@ -806,6 +806,49 @@ export function updateLevelCompleteModal(userStats, comparison) {
     // Add comparison section to modal if it doesn't exist
     let comparisonSection = document.getElementById('stats-comparison-section');
 
+    // Add Personal Best badge if applicable
+    if (userStats.isNewPersonalBest) {
+        let pbBadge = document.getElementById('personal-best-badge');
+        if (!pbBadge) {
+            pbBadge = document.createElement('div');
+            pbBadge.id = 'personal-best-badge';
+            pbBadge.textContent = 'NEW PERSONAL BEST!';
+            pbBadge.style.cssText = `
+                background: linear-gradient(135deg, #FBBF24, #F59E0B);
+                color: #000;
+                font-weight: 950;
+                font-size: 14px;
+                padding: 6px 12px;
+                border-radius: 99px;
+                margin: 0 auto 16px auto;
+                text-align: center;
+                display: block;
+                width: fit-content;
+                box-shadow: 0 0 15px rgba(251, 191, 36, 0.4);
+                animation: pb-pulse 1.5s infinite;
+            `;
+            
+            // Add pulse animation if not exists
+            if (!document.getElementById('pb-badge-style')) {
+                const style = document.createElement('style');
+                style.id = 'pb-badge-style';
+                style.textContent = `
+                    @keyframes pb-pulse {
+                        0% { transform: scale(1); box-shadow: 0 0 15px rgba(251, 191, 36, 0.4); }
+                        50% { transform: scale(1.05); box-shadow: 0 0 25px rgba(251, 191, 36, 0.7); }
+                        100% { transform: scale(1); box-shadow: 0 0 15px rgba(251, 191, 36, 0.4); }
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+
+            const title = document.getElementById('level-complete-title');
+            if (title && title.parentElement) {
+                title.parentElement.insertBefore(pbBadge, title.nextSibling);
+            }
+        }
+    }
+
     if (!comparisonSection) {
         comparisonSection = createComparisonSection();
         const modalContent = document.querySelector('.modal-content');
@@ -813,7 +856,6 @@ export function updateLevelCompleteModal(userStats, comparison) {
 
         if (modalContent && statsGrid) {
             // Insert after stats grid, before the modal actions container.
-            // NOTE: insertBefore() requires the reference node to be a *direct child* of modalContent.
             const actions = document.querySelector('.modal-actions');
             if (actions && actions.parentElement === modalContent) {
                 modalContent.insertBefore(comparisonSection, actions);
@@ -1282,14 +1324,35 @@ function createCarriedOverGraph(history) {
             ctx.textAlign = 'center';
             ctx.fillText(point.level.toString(), x + barWidth / 2, padding + graphHeight + 18);
 
-            // Draw carried over value label at the top of the bar (if positive) or bottom (if negative)
-            if (Math.abs(carriedOver) > 0) {
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-                ctx.font = '9px sans-serif';
-                const labelY = carriedOver >= 0
-                    ? currentY - 6  // Above the bar
-                    : currentY + 14; // Below the bar
-                ctx.fillText(formatTime(carriedOver), x + barWidth / 2, labelY);
+            // Draw only the latest level's time label, vertically over the bar (per request)
+            if (index === history.length - 1 && Math.abs(carriedOver) > 0) {
+                ctx.save();
+                // Position in the middle of the bar horizontally, 
+                // and vertically centered on the active part of the bar
+                const labelX = x + barWidth / 2;
+                const labelY = carriedOver >= 0 ? (baselineY - barHeight / 2) : (baselineY + Math.abs(barHeight) / 2);
+                
+                ctx.translate(labelX, labelY);
+                ctx.rotate(-Math.PI / 2);
+                
+                ctx.fillStyle = '#FFFFFF';
+                // Use a reliable system font stack for Windows/Mobile that is cleaner than basic sans-serif
+                const responsiveFontSize = Math.max(12, Math.min(40, barWidth * 0.5));
+                ctx.font = `900 ${responsiveFontSize}px "Segoe UI", "Tahoma", "Verdana", sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                
+                // Draw a thick black outline first for maximum separation from the gradient background
+                ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+                ctx.lineWidth = responsiveFontSize * 0.15; // Proportional stroke
+                ctx.lineJoin = 'round';
+                ctx.strokeText(formatTime(carriedOver), 0, 0);
+                
+                // Then fill with pure white
+                ctx.shadowColor = 'transparent'; // Disable shadow when using outline for cleaner look
+                ctx.fillText(formatTime(carriedOver), 0, 0);
+                
+                ctx.restore();
             }
         });
     }
@@ -1546,7 +1609,7 @@ function checkFreePlayMode() {
 function getRecentFreePlayLevelStats(currentLevel, currentStats = null) {
     try {
         const stats = [];
-        const maxLevels = 10;
+        const maxLevels = 50; // Increased from 10 to show more history
         const startLevel = Math.max(1, currentLevel - maxLevels + 1);
 
         // Build a map to ensure we use currentStats for the current level if provided
@@ -1601,7 +1664,7 @@ function getRecentFreePlayLevelStats(currentLevel, currentStats = null) {
 function getRecentInfernoLevelStats(currentLevel, currentStats = null) {
     try {
         const stats = [];
-        const maxLevels = 10;
+        const maxLevels = 50; // Increased from 10 to match history limits
         const startLevel = Math.max(1, currentLevel - maxLevels + 1);
 
         // Build a map to ensure we use currentStats for the current level if provided
