@@ -4295,58 +4295,9 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
         allBlocks = createSolvableBlocks(0, null, targetBlockCount, level, false, difficultyConfig, 0);
     }
 
-    // ============================================
-    // KEY & LOCK SPAWNING LOGIC (Level 61+)
-    // ============================================
-    if (level >= 61 && allBlocks.length >= 10) {
-        // Determine how many Key/Lock pairs to spawn based on level
-        // 1 pair at 61, 2 pairs at 81, max 3 pairs at 100+
-        let pairCount = 1;
-        if (level >= 80) pairCount = 2;
-        if (level >= 100) pairCount = 3;
-        
-        // Safety check: ensure we have enough blocks to pick from
-        if (allBlocks.length < pairCount * 4) pairCount = 1;
-
-        for (let p = 0; p < pairCount; p++) {
-            // allBlocks[] contains outer blocks early, inner blocks late.
-            // Pick Key from first 30% of blocks (outer layers, easier to reach)
-            // Pick Lock from last 30% of blocks (inner layers, harder to reach)
-            const keySearchEnd = Math.max(1, Math.floor(allBlocks.length * 0.3));
-            const lockSearchStart = Math.min(allBlocks.length - 1, Math.floor(allBlocks.length * 0.7));
-            
-            // Find unassigned blocks for Key
-            let keyBlock = null;
-            for (let attempt = 0; attempt < 20; attempt++) {
-                const kIdx = Math.floor(Math.random() * keySearchEnd);
-                const b = allBlocks[kIdx];
-                if (b && !b.isBomb && !b.isKey && !b.isPuzzleLocked && !b.isFiller && b.length <= 3) {
-                    keyBlock = b;
-                    break;
-                }
-            }
-            
-            // Find unassigned blocks for Lock
-            let lockBlock = null;
-            for (let attempt = 0; attempt < 20; attempt++) {
-                // Randomize within the last 30%
-                const length = allBlocks.length - lockSearchStart;
-                const lIdx = lockSearchStart + Math.floor(Math.random() * length);
-                const b = allBlocks[lIdx];
-                if (b && !b.isBomb && !b.isKey && !b.isPuzzleLocked && !b.isFiller && b.length <= 3) {
-                    lockBlock = b;
-                    break;
-                }
-            }
-            
-            // Convert them if we found valid targets
-            if (keyBlock && lockBlock) {
-                keyBlock.convertToKey();
-                lockBlock.convertToLock(keyBlock);
-                console.log(`[Puzzle Gen] Spawning Key at index ${allBlocks.indexOf(keyBlock)} and Lock at index ${allBlocks.indexOf(lockBlock)}`);
-            }
-        }
-    }
+     // ============================================
+     // END SPECIAL MECHANICS
+     // ============================================
 
     // Place all blocks in batches
     await placeBlocksBatch(allBlocks, 10, 10); // 10 blocks per batch, 10ms between batches
@@ -4435,43 +4386,6 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
             }
 
             // Key/Lock regeneration
-            if (level >= 61 && allBlocks.length >= 10) {
-                let pairCount = 1;
-                if (level >= 80) pairCount = 2;
-                if (level >= 100) pairCount = 3;
-                if (allBlocks.length < pairCount * 4) pairCount = 1;
-
-                for (let p = 0; p < pairCount; p++) {
-                    const keySearchEnd = Math.max(1, Math.floor(allBlocks.length * 0.3));
-                    const lockSearchStart = Math.min(allBlocks.length - 1, Math.floor(allBlocks.length * 0.7));
-                    
-                    let keyBlock = null;
-                    for (let attempt = 0; attempt < 20; attempt++) {
-                        const kIdx = Math.floor(Math.random() * keySearchEnd);
-                        const b = allBlocks[kIdx];
-                        if (b && !b.isBomb && !b.isKey && !b.isPuzzleLocked && !b.isFiller && b.length <= 3) {
-                            keyBlock = b;
-                            break;
-                        }
-                    }
-                    
-                    let lockBlock = null;
-                    for (let attempt = 0; attempt < 20; attempt++) {
-                        const length = allBlocks.length - lockSearchStart;
-                        const lIdx = lockSearchStart + Math.floor(Math.random() * length);
-                        const b = allBlocks[lIdx];
-                        if (b && !b.isBomb && !b.isKey && !b.isPuzzleLocked && !b.isFiller && b.length <= 3) {
-                            lockBlock = b;
-                            break;
-                        }
-                    }
-                    
-                    if (keyBlock && lockBlock) {
-                        keyBlock.convertToKey();
-                        lockBlock.convertToLock(keyBlock);
-                    }
-                }
-            }
 
             // Place blocks
             await placeBlocksBatch(allBlocks, 10, 10);
@@ -7578,21 +7492,6 @@ function highlightNextBlock() {
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 
-// Key & Lock system event listener
-window.addEventListener('jarrows-key-unlocked', (event) => {
-    const keyBlock = event.detail.keyBlock;
-    if (!keyBlock || !blocks) return;
-    
-    // Find any block locked by this key and unlock it
-    for (const block of blocks) {
-        if (block && block.isPuzzleLocked && block.lockedByKey === keyBlock) {
-            if (typeof block.unlock === 'function') {
-                block.unlock();
-            }
-        }
-    }
-});
-
 function onMouseClick(event) {
     // Don't process block clicks if camera was being dragged
     if (isCameraDragging) {
@@ -7664,16 +7563,8 @@ function onMouseClick(event) {
     }
 
     // Prevent locked blocks from being moved
-    if (block.isLocked || block.isPuzzleLocked) {
-        if (block.isLocked) {
-            showLockTimeRemaining(block);
-        } else {
-            // Puzzle lock (Key required)
-            if (typeof block.shake === 'function') block.shake();
-            if (window.soundManager && window.soundManager.playSound) {
-                window.soundManager.playSound('clink');
-            }
-        }
+    if (block.isLocked) {
+        showLockTimeRemaining(block);
         return;
     }
 
@@ -8404,25 +8295,12 @@ function onTouchEnd(event) {
         return;
     }
 
-    if (block.isKey) {
-        showGameHint("That's a Key! Clear it to unlock matching metal blocks.", "hint-key");
-    }
-    if (block.isPuzzleLocked) {
-        showGameHint("These metal blocks are locked. You need a key to clear them!", "hint-locked");
-    }
+
 
     // Prevent locked blocks from being moved (they can still intercept taps)
-    if (block.isLocked || block.isPuzzleLocked) {
-        if (block.isLocked) {
-            // Show remaining lock time when user taps on locked block
-            showLockTimeRemaining(block);
-        } else {
-            // Puzzle lock (Key required)
-            if (typeof block.shake === 'function') block.shake();
-            if (window.soundManager && window.soundManager.playSound) {
-                window.soundManager.playSound('clink');
-            }
-        }
+    if (block.isLocked) {
+        // Show remaining lock time when user taps on locked block
+        showLockTimeRemaining(block);
         return; // Block intercepts tap but doesn't move
     }
 
@@ -9005,9 +8883,7 @@ function animate() {
         // Update block animations and per-frame logic (Task 2.3)
         block.update(currentTime);
         if (block.isRemoved) {
-            if (block.isKey && typeof block.triggerUnlock === 'function') {
-                block.triggerUnlock();
-            }
+
             if (!block.removalStartTime) { trackBlockRemoved(); timeChallengeAwardForBlockRemoved(block.length); }
             if (block.group.parent) block.group.parent.remove(block.group);
             if (block.physicsBody && block.physicsBody.body) {

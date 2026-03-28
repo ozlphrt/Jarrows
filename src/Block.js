@@ -227,7 +227,7 @@ function isHeadOnCollision(movingBlock, otherBlock, collisionX, collisionZ, curr
 }
 
 export class Block {
-    constructor(length, gridX, gridZ, direction, isVertical, arrowStyle, scene, physics, gridSize, cubeSize, yOffset = 0, level = 1, isBomb = false, isSpinGem = false, isKey = false, isPuzzleLocked = false, lockedByKey = null, blockInstanceManager = null) {
+    constructor(length, gridX, gridZ, direction, isVertical, arrowStyle, scene, physics, gridSize, cubeSize, yOffset = 0, level = 1, isBomb = false, isSpinGem = false, blockInstanceManager = null) {
         this.blockInstanceManager = blockInstanceManager;
         this.isDirty = false; // Mark as dirty for initial matrix update
         this.length = length;
@@ -240,9 +240,6 @@ export class Block {
         this.isExploding = false;
         this.isBomb = isBomb;
         this.isSpinGem = false; // Task 9.1: Disable spin gems
-        this.isKey = isKey;
-        this.isPuzzleLocked = isPuzzleLocked;
-        this.lockedByKey = lockedByKey;
         this.needsTransitionToFalling = false;
         this.needsStop = false;
         // Catapult shadow policy (Battery preset only): suppress shadows only while a catapulted block is moving.
@@ -407,12 +404,8 @@ export class Block {
         this.createDirectionIndicators(arrowColor, arrowStyle);
 
         // Add Key and Lock visual icons
-        if (this.isKey) {
-            this.createKeyIcon(blockColor);
-        }
-        if (this.isPuzzleLocked) {
-            this.createLockIcon(blockColor);
-        }        // Position block on grid
+
+        // Position block on grid
         this.updateWorldPosition();
 
         // Don't create physics body yet - only create when block falls
@@ -1545,153 +1538,7 @@ export class Block {
         this.createLockFillMesh(tintColorObj);
     }
 
-    createKeyIcon(blockColor) {
-        // Create an emissive golden/yellow keyhole shape
-        const shape = new THREE.Shape();
-        
-        // Keyhole: Circle at top, trapezoid at bottom
-        shape.absarc(0, 0.1, 0.15, 0, Math.PI * 2, false);
-        shape.moveTo(0.08, 0.05);
-        shape.lineTo(0.12, -0.2);
-        shape.lineTo(-0.12, -0.2);
-        shape.lineTo(-0.08, 0.05);
 
-        const extrudeSettings = { depth: 0.06, bevelEnabled: true, bevelThickness: 0.02, bevelSize: 0.02, bevelSegments: 2 };
-        const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
-        
-        // Golden glowing material
-        const material = new THREE.MeshStandardMaterial({
-            color: 0xffd700,
-            emissive: 0xffaa00,
-            emissiveIntensity: 0.6,
-            roughness: 0.2,
-            metalness: 0.8
-        });
-
-        const mesh = new THREE.Mesh(geometry, material);
-        mesh.castShadow = false;
-        mesh.receiveShadow = true;
-
-        this._positionIndicatorOnTop(mesh);
-        
-        this.group.add(mesh);
-        this.keyIconMesh = mesh; // Save for animation
-    }
-
-    createLockIcon(blockColor) {
-        // Metallic grey shield/lock shape
-        const shape = new THREE.Shape();
-        
-        // Shield body
-        shape.moveTo(0, -0.25);
-        shape.quadraticCurveTo(0.2, -0.15, 0.2, 0.05);
-        shape.lineTo(0.2, 0.2);
-        shape.lineTo(-0.2, 0.2);
-        shape.lineTo(-0.2, 0.05);
-        shape.quadraticCurveTo(-0.2, -0.15, 0, -0.25);
-
-        // Small keyhole inside lock
-        const hole = new THREE.Path();
-        hole.absarc(0, 0.05, 0.04, 0, Math.PI * 2, false);
-        hole.moveTo(0.02, 0.02);
-        hole.lineTo(0.03, -0.05);
-        hole.lineTo(-0.03, -0.05);
-        hole.lineTo(-0.02, 0.02);
-        shape.holes.push(hole);
-
-        const extrudeSettings = { depth: 0.1, bevelEnabled: true, bevelThickness: 0.03, bevelSize: 0.03, bevelSegments: 3 };
-        const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
-        
-        // Heavy metal material
-        const material = new THREE.MeshStandardMaterial({
-            color: 0x888888,
-            roughness: 0.4,
-            metalness: 0.9
-        });
-
-        const mesh = new THREE.Mesh(geometry, material);
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
-
-        this._positionIndicatorOnTop(mesh);
-        
-        this.group.add(mesh);
-        this.lockIconMesh = mesh; // Save to remove/animate later if unlocked
-    }
-
-    _positionIndicatorOnTop(mesh) {
-        let blockHeight;
-        const isXAligned = Math.abs(this.direction.x) > 0;
-        
-        if (this.isVertical) {
-            blockHeight = this.length * this.cubeSize;
-            mesh.position.set(0, blockHeight / 2 + 0.02, 0);
-            mesh.rotation.set(-Math.PI / 2, 0, 0);
-        } else {
-            blockHeight = this.cubeSize;
-            mesh.position.set(0, blockHeight / 2 + 0.02, 0);
-            mesh.rotation.set(-Math.PI / 2, 0, 0);
-            if (isXAligned) {
-                mesh.rotation.z = this.direction.x > 0 ? -Math.PI / 2 : Math.PI / 2;
-            } else {
-                mesh.rotation.z = this.direction.z > 0 ? 0 : Math.PI;
-            }
-        }
-    }
-
-    convertToKey() {
-        if (this.isKey || this.isPuzzleLocked || this.isBomb || this.isFiller) return false;
-        this.isKey = true;
-        this.createKeyIcon(this.originalColor);
-        return true;
-    }
-
-    convertToLock(keyBlock) {
-        if (this.isKey || this.isPuzzleLocked || this.isBomb || this.isFiller) return false;
-        this.isPuzzleLocked = true;
-        this.lockedByKey = keyBlock;
-        this.createLockIcon(this.originalColor);
-        return true;
-    }
-
-    triggerUnlock() {
-        const event = new CustomEvent('jarrows-key-unlocked', { detail: { keyBlock: this } });
-        window.dispatchEvent(event);
-    }
-
-    unlock() {
-        if (!this.isPuzzleLocked) return;
-        this.isPuzzleLocked = false;
-        this.lockedByKey = null;
-        
-        // Visual effect: break the lock icon, fade it out
-        if (this.lockIconMesh) {
-            const startTime = performance.now();
-            const startScale = this.lockIconMesh.scale.clone();
-            const animateUnlock = () => {
-                if (this.isRemoved) return;
-                const elapsed = performance.now() - startTime;
-                const progress = Math.min(elapsed / 300, 1.0);
-                const scale = 1.0 - progress;
-                this.lockIconMesh.scale.set(startScale.x * scale, startScale.y * scale, startScale.z * scale);
-                
-                if (progress < 1.0) {
-                    requestAnimationFrame(animateUnlock);
-                } else {
-                    this.group.remove(this.lockIconMesh);
-                    this.lockIconMesh = null;
-                }
-            };
-            requestAnimationFrame(animateUnlock);
-        }
-        
-        // Spawn unlock particles
-        const center = new THREE.Vector3();
-        this.group.getWorldPosition(center);
-        if (window.particleSystem) {
-             window.particleSystem.addExplosion(center, new THREE.Color(0xaaaaaa), 20, 3.0);
-        }
-    }
 
     shake() {
         if (this.isShaking) return;
