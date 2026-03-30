@@ -8765,12 +8765,12 @@ function animate() {
          }
     }
 
-    // Always include the base plate in the zoom bounding box to ensure the bottom layer/ground stays visible
+    // Ground the bounding box to the base plate's height to ensure the bottom layer doesn't get clipped.
+    // By only modifying the Y axis, we prevent excessive horizontal padding when the blocks shrink.
     if (isAutoZoomEnabled && !isAutoZoomDisabled && hasNonCatapultedBlocksForZoom) {
-        const halfGrid = (gridSize * cubeSize) / 2; // 3.5 for 7x7
-        _tempBox.min.set(-halfGrid, -0.1, -halfGrid);
-        _tempBox.max.set(halfGrid, 0, halfGrid);
-        _towerSpaceZoomBox.union(_tempBox);
+        if (_towerSpaceZoomBox.min.y > -0.1) {
+            _towerSpaceZoomBox.min.y = -0.1;
+        }
     }
 
     lastBlockStateCheckTime = currentTime;
