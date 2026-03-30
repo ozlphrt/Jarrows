@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { initPhysics, createPhysicsBlock, updatePhysics, isPhysicsStepping, hasPendingOperations, isPhysicsProcessing, removePhysicsBody } from './physics.js';
 import { Block } from './Block.js';
-import { createLights, createGrid, setGradientBackground, setupFog } from './scene.js';
+import { createLights, createGrid, setGradientBackground, setupFog, applyLightPreset, LIGHT_PRESETS } from './scene.js';
 import { validateStructure, validateSolvability, calculateDifficulty, getBlockCells, fixOverlappingBlocks, checkAndFixAllOverlaps, canBlockExit } from './puzzle_validation.js';
 import { initStats, startLevelStats, trackMove, trackSpin, trackBlockRemoved, completeLevel, getLevelComparison, getElapsedTime } from './stats/stats.js';
 import { updateLevelCompleteModal, showOfflineIndicator, hideOfflineIndicator, showPersonalHistoryModal, showProfileModal } from './stats/statsUI.js';
@@ -698,9 +698,11 @@ renderer.domElement.addEventListener('wheel', (event) => {
 
 // Setup scene elements
 const lights = createLights(scene);
-// Make lights globally accessible for debug panel
+// Make lights globally accessible for UI and debug
 if (typeof window !== 'undefined') {
     window.lights = lights;
+    window.applyLightPreset = applyLightPreset;
+    window.LIGHT_PRESETS = LIGHT_PRESETS;
 }
 // Create grid and base plate
 const gridData = createGrid(scene);

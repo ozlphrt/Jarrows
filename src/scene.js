@@ -69,8 +69,8 @@ export function createLights(scene) {
     // Dramatic lighting setup: low ambient, strong key light, minimal fill
     
     // Ambient Light
-    // Default intensity: 0.43
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.43);
+    // Default intensity: 0.45 (Balanced Default)
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.45);
     scene.add(ambientLight);
     
     // Default intensity: 1, position: (22.5, 35.5, 19.5) - Raised for taller towers
@@ -101,8 +101,8 @@ export function createLights(scene) {
     keyLight.shadow.normalBias = 0.02; // Reduce shadow acne
     scene.add(keyLight);
     
-    // Fill Light - default intensity: 0.73, position: (-17.5, 12.5, -11)
-    const fillLight = new THREE.DirectionalLight(0xffffff, 0.73);
+    // Fill Light - default intensity: 0.75, position: (-17.5, 12.5, -11)
+    const fillLight = new THREE.DirectionalLight(0xffffff, 0.75);
     fillLight.position.set(-17.5, 12.5, -11);
     scene.add(fillLight);
     
@@ -111,6 +111,110 @@ export function createLights(scene) {
         keyLight,      // Main directional light (casts shadows)
         fillLight      // Fill light (minimal for dramatic contrast)
     };
+}
+
+/**
+ * Professional Lighting Presets - Optimized for depth and subtle, dramatic shadows
+ * These presets DO NOT modify background or fog, only lights.
+ */
+export const LIGHT_PRESETS = {
+    'default': {
+        name: 'Balanced',
+        ambient: { color: 0xffffff, intensity: 0.45 },
+        key: { color: 0xffffff, intensity: 1.0, pos: [22.5, 35.5, 19.5] },
+        fill: { color: 0xffffff, intensity: 0.75, pos: [-17.5, 12.5, -11] }
+    },
+    'desert-dawn': {
+        name: 'Desert Dawn',
+        variant: 'warm',
+        ambient: { color: 0xfff4e0, intensity: 0.35 },
+        key: { color: 0xffd1a4, intensity: 1.4, pos: [30, 20, 10] }, 
+        fill: { color: 0xffe0b2, intensity: 0.5, pos: [-15, 10, -15] }
+    },
+    'golden-hour': {
+        name: 'Golden Hour',
+        variant: 'warm',
+        ambient: { color: 0xffefcc, intensity: 0.38 },
+        key: { color: 0xffcc33, intensity: 1.6, pos: [25, 25, 25] },
+        fill: { color: 0xffd966, intensity: 0.55, pos: [-20, 15, -10] }
+    },
+    'misty-morning': {
+        name: 'Misty Morning',
+        variant: 'cool',
+        ambient: { color: 0xf0f7ff, intensity: 0.42 },
+        key: { color: 0xd9eaff, intensity: 1.1, pos: [15, 35, 15] },
+        fill: { color: 0xc4daff, intensity: 0.65, pos: [-15, 20, -15] }
+    },
+    'moonlight-glow': {
+        name: 'Moonlight',
+        variant: 'cool',
+        ambient: { color: 0xe8f1ff, intensity: 0.32 },
+        key: { color: 0xaec6ff, intensity: 1.3, pos: [-25, 40, 10] },
+        fill: { color: 0x7c9eff, intensity: 0.45, pos: [20, 15, -20] }
+    },
+    'arctic-cool': {
+        name: 'Arctic Cool',
+        variant: 'cool',
+        ambient: { color: 0xffffff, intensity: 0.45 },
+        key: { color: 0xe3f2fd, intensity: 0.9, pos: [10, 45, 10] },
+        fill: { color: 0xbbdefb, intensity: 0.7, pos: [-20, 20, -20] }
+    },
+    'soft-studio': {
+        name: 'Soft Studio',
+        variant: 'neutral',
+        ambient: { color: 0xffffff, intensity: 0.4 },
+        key: { color: 0xffffff, intensity: 1.25, pos: [20, 30, 20] },
+        fill: { color: 0xeeeeee, intensity: 0.8, pos: [-20, 15, -20] }
+    },
+    'warm-indoor': {
+        name: 'Warm Indoor',
+        variant: 'warm',
+        ambient: { color: 0xfff8e1, intensity: 0.48 },
+        key: { color: 0xffecb3, intensity: 1.1, pos: [15, 35, -5] },
+        fill: { color: 0xffcc80, intensity: 0.65, pos: [-10, 10, 20] }
+    },
+    'cool-quartz': {
+        name: 'Cool Quartz',
+        variant: 'cool',
+        ambient: { color: 0xf3e5f5, intensity: 0.4 },
+        key: { color: 0xe1bee7, intensity: 1.3, pos: [25, 25, 0] },
+        fill: { color: 0xce93d8, intensity: 0.5, pos: [-15, 15, 15] }
+    },
+    'eventide': {
+        name: 'Eventide',
+        variant: 'neutral',
+        ambient: { color: 0xf5f5f5, intensity: 0.35 },
+        key: { color: 0xe0e0e0, intensity: 1.2, pos: [35, 15, 35] },
+        fill: { color: 0xbdbdbd, intensity: 0.4, pos: [-25, 5, -25] }
+    }
+};
+
+/**
+ * Apply a specific lighting preset to the scene with optional smooth transition
+ * Note: Only affects lights, preserves background/fog
+ */
+export function applyLightPreset(scene, lights, presetId, instant = false) {
+    const preset = LIGHT_PRESETS[presetId] || LIGHT_PRESETS['default'];
+    
+    // 1. Update Lights
+    if (lights.ambientLight) {
+        lights.ambientLight.color.setHex(preset.ambient.color);
+        lights.ambientLight.intensity = preset.ambient.intensity;
+    }
+    
+    if (lights.keyLight) {
+        lights.keyLight.color.setHex(preset.key.color);
+        lights.keyLight.intensity = preset.key.intensity;
+        lights.keyLight.position.set(...preset.key.pos);
+    }
+    
+    if (lights.fillLight) {
+        lights.fillLight.color.setHex(preset.fill.color);
+        lights.fillLight.intensity = preset.fill.intensity;
+        lights.fillLight.position.set(...preset.fill.pos);
+    }
+    
+    return preset.name;
 }
 
 export function createGrid(scene) {

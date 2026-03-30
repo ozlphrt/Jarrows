@@ -1691,6 +1691,10 @@
             border-radius: 12px;
         }
 
+        #dice-button.stats-control-btn:hover {
+            color: rgba(255, 255, 255, 1);
+        }
+
         #dice-button.stats-control-btn .btn-icon {
             width: 26px;
             height: 26px;
@@ -1818,6 +1822,35 @@
             width: 20px;
             height: 20px;
             pointer-events: none;
+        }
+
+        /* Preset Name Popup - appears to the left of the button */
+        .preset-popup {
+            position: absolute;
+            right: 100%;
+            top: 50%;
+            transform: translateY(-50%) translateX(10px);
+            margin-right: 12px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #fff;
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-size: 11px;
+            font-weight: 700;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            z-index: 100;
+        }
+
+        .preset-popup.show {
+            opacity: 1;
+            transform: translateY(-50%) translateX(0);
         }
 
         .toggle-icon span {
@@ -1986,6 +2019,14 @@
                             font-weight="700" fill="currentColor" text-anchor="middle" dominant-baseline="central"
                             style="pointer-events: none;">A</text>
                     </svg>
+                </button>
+                <button class="toggle-icon active" id="lighting-toggle" title="Cycle Lighting Presets">
+                    <svg id="lighting-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+                        <circle cx="12" cy="12" r="5" />
+                    </svg>
+                    <div id="light-preset-popup" class="preset-popup">Balanced</div>
                 </button>
                 <button class="toggle-icon" id="mode-toggle" title="Game Mode" style="display: none;">
                     <span style="font-size: 11px; font-weight: 900; letter-spacing: 0.8px;">MODE</span>
@@ -2581,12 +2622,14 @@
                 const savedColors = localStorage.getItem('jarrows_colors');
                 const savedQuality = localStorage.getItem('jarrows_quality'); // 'battery' | 'balanced' | 'performance'
                 const savedAutoZoom = localStorage.getItem('jarrows_auto_zoom');
+                const savedLightPreset = localStorage.getItem('jarrows_light_preset');
 
                 return {
                     isDarkTheme: savedTheme !== null ? savedTheme === 'dark' : true,
                     useColoredBlocks: savedColors !== null ? savedColors === 'colored' : false,
                     qualityPreset: savedQuality || 'balanced',
-                    autoZoomEnabled: savedAutoZoom !== null ? savedAutoZoom === 'true' : true // Default to enabled
+                    autoZoomEnabled: savedAutoZoom !== null ? savedAutoZoom === 'true' : true, // Default to enabled
+                    lightPreset: savedLightPreset || 'default'
                 };
             } catch (e) {
                 console.warn('Failed to load preferences:', e);
@@ -2606,6 +2649,7 @@
                 localStorage.setItem('jarrows_colors', useColoredBlocks ? 'colored' : 'white');
                 localStorage.setItem('jarrows_quality', qualityPreset);
                 localStorage.setItem('jarrows_auto_zoom', autoZoomEnabled.toString());
+                localStorage.setItem('jarrows_light_preset', lightPreset);
                 // Mystical view is saved in toggleMysticalView function in main.js
             } catch (e) {
                 console.warn('Failed to save preferences:', e);
@@ -2618,6 +2662,7 @@
         let useColoredBlocks = preferences.useColoredBlocks || false;
         let qualityPreset = preferences.qualityPreset || 'balanced';
         let autoZoomEnabled = preferences.autoZoomEnabled !== undefined ? preferences.autoZoomEnabled : true;
+        let lightPreset = preferences.lightPreset || 'default';
         let handlersSetup = false;
 
         // Expose settings globally so blocks can check on creation
@@ -2630,6 +2675,19 @@
         }
 
         await import('./src/main.js');
+
+        // Apply initial light preset
+        function applyInitialLighting() {
+            if (window.applyLightPreset && window.gameScene && window.lights) {
+                console.log('Applying initial lighting:', lightPreset);
+                const name = window.applyLightPreset(window.gameScene, window.lights, lightPreset, true);
+                const popup = document.getElementById('light-preset-popup');
+                if (popup) popup.textContent = name;
+            } else {
+                setTimeout(applyInitialLighting, 100);
+            }
+        }
+        applyInitialLighting();
 
         // Wait for main.js to load and expose scene/blocks
         let blocks;
@@ -2787,6 +2845,43 @@
                         settingsMenu.classList.remove('show');
                     }, { passive: true });
                 }
+            }
+
+
+            // Lighting Cycles toggle handler
+            const lightingToggle = document.getElementById('lighting-toggle');
+            if (lightingToggle) {
+                lightingToggle.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (window.updateIdleTimers) window.updateIdleTimers();
+                    
+                    if (!window.LIGHT_PRESETS || !window.applyLightPreset) return;
+                    
+                    const presetIds = Object.keys(window.LIGHT_PRESETS);
+                    let currentIndex = presetIds.indexOf(lightPreset);
+                    let nextIndex = (currentIndex + 1) % presetIds.length;
+                    lightPreset = presetIds[nextIndex];
+                    
+                    console.log('Switching light preset to:', lightPreset);
+                    const name = window.applyLightPreset(window.gameScene, window.lights, lightPreset);
+                    
+                    const popup = document.getElementById('light-preset-popup');
+                    if (popup) {
+                        popup.textContent = name;
+                        popup.classList.add('show');
+                        
+                        // Clear existing timeout if any
+                        if (window.lightPopupTimeout) clearTimeout(window.lightPopupTimeout);
+                        
+                        // Hide after 1.5 seconds
+                        window.lightPopupTimeout = setTimeout(() => {
+                            popup.classList.remove('show');
+                        }, 1500);
+                    }
+                    
+                    savePreferences();
+                });
             }
 
 
