@@ -455,10 +455,10 @@ function getQualityCaps(preset) {
     if (preset === 'battery') {
         // Battery mode: avoid the very noticeable "30fps drag" feeling; instead reduce internal resolution a bit
         // and rely on idle downclock + shadow gating for battery savings.
-        return { activeFps: isIOS ? 60 : 60, idleFps: isIOS ? 10 : 30, dprCap: isIOS ? 1.45 : 2 };
+        return { activeFps: isIOS ? 60 : 60, idleFps: isIOS ? 10 : 20, dprCap: isIOS ? 1.25 : 1.5 };
     }
     // balanced (default)
-    return { activeFps: isIOS ? 60 : 60, idleFps: isIOS ? 24 : 30, dprCap: isIOS ? 1.6 : 2 };
+    return { activeFps: isIOS ? 60 : 60, idleFps: isIOS ? 15 : 24, dprCap: isIOS ? 1.45 : 1.8 };
 }
 
 let qualityPreset = loadQualityPreset();
