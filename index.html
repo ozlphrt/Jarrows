@@ -1961,12 +1961,6 @@
             </button>
             <div id="settings-menu"
                 style="position: absolute; bottom: 100%; right: 0; margin-bottom: 20px; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; padding: 8px; display: none; flex-direction: column; gap: 6px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3); pointer-events: auto;">
-                <button class="toggle-icon active" id="theme-toggle" title="Dark/Light Theme">
-                    <svg id="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                        stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" fill="none"></path>
-                    </svg>
-                </button>
                 <button class="toggle-icon" id="colors-toggle" title="Colored/White Blocks">
                     <svg id="colors-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                         stroke-linecap="round" stroke-linejoin="round">
@@ -1993,9 +1987,6 @@
                             style="pointer-events: none;">A</text>
                     </svg>
                 </button>
-                <button class="toggle-icon" id="quality-toggle" title="Quality Preset">
-                    <span id="quality-label">BAL</span>
-                </button>
                 <button class="toggle-icon" id="mode-toggle" title="Game Mode" style="display: none;">
                     <span style="font-size: 11px; font-weight: 900; letter-spacing: 0.8px;">MODE</span>
                 </button>
@@ -2009,13 +2000,6 @@
                         <polyline points="16 6 12 2 8 6"></polyline>
                         <line x1="12" y1="2" x2="12" y2="15"></line>
                     </svg>
-                </button>
-                <button class="toggle-icon" id="fps-toggle" title="Show FPS">
-                    <span style="font-size: 11px; font-weight: 900; letter-spacing: 0.8px;">FPS</span>
-                </button>
-                <button class="toggle-icon" id="autofall-toggle" title="Auto Fall (30s) On/Off" style="position: relative;">
-                    <span style="font-size: 11px; font-weight: 900; letter-spacing: 0.8px;">FALL</span>
-                    <div class="status-dot" style="position: absolute; top: 4px; right: 4px; width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.1);"></div>
                 </button>
                 <div style="height: 1px; background: rgba(255,255,255,0.1); margin: 4px 0;"></div>
                 <button class="toggle-icon" id="select-level-btn" title="Select Level">
@@ -2656,8 +2640,7 @@
             const themeIcon = document.getElementById('theme-icon');
             const themeToggle = document.getElementById('theme-toggle');
 
-            if (!scene || !THREE || !themeIcon || !themeToggle) {
-                console.log('updateThemeIcon: Missing dependencies', { scene: !!scene, THREE: !!THREE, themeIcon: !!themeIcon, themeToggle: !!themeToggle });
+            if (!scene || !THREE) {
                 return;
             }
 
@@ -2679,22 +2662,30 @@
                 window.setGradientBackground(scene, 0x0f0f0f, 0x050505);
                 window.setupFog(scene, true);
                 // Show minimalist outlined moon icon
-                themeIcon.setAttribute('fill', 'none');
-                themeIcon.setAttribute('stroke', 'currentColor');
-                themeIcon.setAttribute('stroke-width', '2');
-                themeIcon.innerHTML = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" fill="none"></path>';
-                themeToggle.classList.add('active'); // Active for dark theme
+                if (themeIcon) {
+                    themeIcon.setAttribute('fill', 'none');
+                    themeIcon.setAttribute('stroke', 'currentColor');
+                    themeIcon.setAttribute('stroke-width', '2');
+                    themeIcon.innerHTML = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" fill="none"></path>';
+                }
+                if (themeToggle) {
+                    themeToggle.classList.add('active'); // Active for dark theme
+                }
             } else {
                 // Light theme: much darker sky blue gradient
                 // Top: dark blue-gray, Bottom: darker blue
                 window.setGradientBackground(scene, 0x5a7f98, 0x3a5a7a);
                 window.setupFog(scene, false);
                 // Show sun icon (normal stroke)
-                themeIcon.setAttribute('fill', 'none');
-                themeIcon.setAttribute('stroke', 'currentColor');
-                themeIcon.setAttribute('stroke-width', '2');
-                themeIcon.innerHTML = '<circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>';
-                themeToggle.classList.remove('active');
+                if (themeIcon) {
+                    themeIcon.setAttribute('fill', 'none');
+                    themeIcon.setAttribute('stroke', 'currentColor');
+                    themeIcon.setAttribute('stroke-width', '2');
+                    themeIcon.innerHTML = '<circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>';
+                }
+                if (themeToggle) {
+                    themeToggle.classList.remove('active');
+                }
             }
         }
 
@@ -2751,18 +2742,15 @@
             if (handlersSetup) return; // Prevent duplicate handlers
             handlersSetup = true;
 
-            const themeToggle = document.getElementById('theme-toggle');
             const colorsToggle = document.getElementById('colors-toggle');
             const settingsToggle = document.getElementById('settings-toggle');
             const settingsMenu = document.getElementById('settings-menu');
             const settingsContainer = document.getElementById('settings-container');
-            const qualityToggle = document.getElementById('quality-toggle');
-            const qualityLabel = document.getElementById('quality-label');
 
-            console.log('Setting up toggle handlers...', { themeToggle, colorsToggle, settingsToggle });
+            console.log('Setting up toggle handlers...', { colorsToggle, settingsToggle });
 
-            if (!themeToggle || !colorsToggle || !settingsToggle) {
-                console.warn('Toggle buttons not found, retrying...', { themeToggle, colorsToggle, settingsToggle });
+            if (!colorsToggle || !settingsToggle) {
+                console.warn('Toggle buttons not found, retrying...', { colorsToggle, settingsToggle });
                 handlersSetup = false;
                 setTimeout(setupToggleHandlers, 100);
                 return;
@@ -2801,16 +2789,6 @@
                 }
             }
 
-            // Theme toggle handler (sun = light theme, moon = dark theme)
-            themeToggle.addEventListener('click', function (e) {
-                e.preventDefault();
-                e.stopPropagation();
-                if (window.updateIdleTimers) window.updateIdleTimers();
-                console.log('Theme toggle clicked, current state:', isDarkTheme);
-                isDarkTheme = !isDarkTheme;
-                updateThemeIcon();
-                savePreferences();
-            });
 
             // Colors toggle handler (colored blocks vs white blocks)
             colorsToggle.addEventListener('click', function (e) {
@@ -2895,89 +2873,6 @@
                 });
             }
 
-            // FPS toggle handler
-            const fpsToggle = document.getElementById('fps-toggle');
-            const fpsDisplay = document.getElementById('fps-display');
-
-            // Load FPS preference from localStorage
-            try {
-                const savedFpsEnabled = localStorage.getItem('jarrows_fps_enabled');
-                if (savedFpsEnabled === 'true') {
-                    if (window.fpsEnabled !== undefined) {
-                        window.fpsEnabled = true;
-                    }
-                    if (fpsDisplay) fpsDisplay.style.display = 'flex';
-                    if (fpsToggle) fpsToggle.classList.add('active');
-                }
-            } catch (e) {
-                console.warn('Failed to load FPS preference:', e);
-            }
-
-            function updateFpsDisplay() {
-                if (!fpsDisplay) return;
-                const enabled = window.fpsEnabled || false;
-                if (enabled) {
-                    fpsDisplay.style.display = 'flex';
-                } else {
-                    fpsDisplay.style.display = 'none';
-                }
-            }
-
-            if (fpsToggle) {
-                // Initialize state
-                updateFpsDisplay();
-
-                fpsToggle.addEventListener('click', function (e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    if (window.updateIdleTimers) window.updateIdleTimers();
-                    const currentState = window.fpsEnabled || false;
-                    const newState = !currentState;
-                    if (window.fpsEnabled !== undefined) {
-                        window.fpsEnabled = newState;
-                    }
-                    updateFpsDisplay();
-
-                    // Update toggle active state
-                    if (newState) {
-                        fpsToggle.classList.add('active');
-                    } else {
-                        fpsToggle.classList.remove('active');
-                    }
-
-                    // Save preference
-                    try {
-                        localStorage.setItem('jarrows_fps_enabled', String(newState));
-                    } catch (e) {
-                        console.warn('Failed to save FPS preference:', e);
-                    }
-                });
-            }
-
-            // Auto-fall toggle handler
-            const autofallToggle = document.getElementById('autofall-toggle');
-            if (autofallToggle) {
-                const statusDot = autofallToggle.querySelector('.status-dot');
-                // Initialize state
-                const currentAutoFall = localStorage.getItem('jarrows_autofall') === 'true';
-                if (currentAutoFall) {
-                    autofallToggle.classList.add('active');
-                    if (statusDot) statusDot.classList.add('active');
-                }
-                window.autoFallEnabled = currentAutoFall;
-
-                autofallToggle.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    if (window.updateIdleTimers) window.updateIdleTimers();
-                    const newState = !autofallToggle.classList.contains('active');
-                    autofallToggle.classList.toggle('active', newState);
-                    if (statusDot) statusDot.classList.toggle('active', newState);
-                    localStorage.setItem('jarrows_autofall', newState);
-                    window.autoFallEnabled = newState;
-                    console.log('Auto-fall enabled:', newState);
-                });
-            }
 
             // Select Level handler
             const selectLevelBtn = document.getElementById('select-level-btn');
@@ -3017,15 +2912,6 @@
 
 
 
-            // Quality preset toggle handler (cycles Balanced → Performance → Battery)
-            function updateQualityUI() {
-                if (!qualityLabel) return;
-                qualityLabel.textContent =
-                    qualityPreset === 'performance' ? 'PERF' :
-                        qualityPreset === 'battery' ? 'BATT' : 'BAL';
-                // Keep brightness consistent with other "active" toggles (icons use opacity rules).
-                if (qualityToggle) qualityToggle.classList.add('active');
-            }
 
             // Version label (set by main.js via window.jarrowsVersion)
             function getBuildIdString() {
@@ -3044,26 +2930,6 @@
                 versionEl.textContent = getBuildIdString();
             }
 
-            if (qualityToggle) {
-                qualityToggle.addEventListener('click', function (e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    if (window.updateIdleTimers) window.updateIdleTimers();
-
-                    qualityPreset =
-                        qualityPreset === 'balanced' ? 'performance' :
-                            qualityPreset === 'performance' ? 'battery' : 'balanced';
-
-                    window.jarrowsQualityPreset = qualityPreset;
-                    updateQualityUI();
-                    savePreferences();
-
-                    // Apply live if main.js exposed a handler
-                    if (typeof window.applyQualityPreset === 'function') {
-                        window.applyQualityPreset(qualityPreset);
-                    }
-                });
-            }
 
             // VER button: reveal version/build id for quick copy/reference.
             const verToggle = document.getElementById('ver-toggle');
@@ -3246,7 +3112,6 @@
             updateThemeIcon();
             updateColorsIcon();
             updateAudioIcon();
-            updateQualityUI();
             updateVersionUI(); // prepares text; hidden until VER is pressed
             updateBlockColors(); // Apply white blocks on initial load
 

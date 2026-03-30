@@ -681,7 +681,8 @@ renderer.domElement.addEventListener('wheel', (event) => {
     const zoomSpeed = 0.05;
     const zoomFactor = 1 + (event.deltaY > 0 ? zoomSpeed : -zoomSpeed);
     targetRadius *= zoomFactor;
-    targetRadius = Math.max(MIN_RADIUS, Math.min(MAX_RADIUS, targetRadius));
+    const minRadius = isMobileLike ? MIN_RADIUS_MOBILE : MIN_RADIUS_DESKTOP;
+    targetRadius = Math.max(minRadius, Math.min(MAX_RADIUS, targetRadius));
     // Sync smoothed auto-zoom radius to manual zoom so auto-zoom doesn't fight when it re-enables
     smoothedAutoZoomRadius = targetRadius;
 
@@ -1016,11 +1017,12 @@ function centerTowerVertically() {
 }
 
 // Camera system constants
-const MIN_RADIUS = 5;
+const MIN_RADIUS_DESKTOP = 11.0; // Prevent "in-your-face" zoom on desktop when few blocks remain
+const MIN_RADIUS_MOBILE = 5.0; // Keep tight for mobile
 const MAX_RADIUS = 50;
 const MIN_ELEVATION = -Math.PI / 2 + 0.1;
 const MAX_ELEVATION = Math.PI / 2 - 0.1;
-const ZOOM_PADDING = 4.0; // Increased from 1.5 to prevent "too near" zoom on desktop
+const ZOOM_PADDING = 0.2; // Matched to mobile for tighter desktop zoom
 const ZOOM_PADDING_MOBILE = 0.2; // Minimal padding for mobile
 const AUTO_ZOOM_MIN_BOUNDING_SIZE = 3; // Minimum bounding box size to prevent zooming in too much with few blocks
 const SPAWN_ZOOM_PADDING = 1; // Minimal extra padding during spawn
@@ -1028,7 +1030,7 @@ const SPAWN_ZOOM_MULTIPLIER = 1.05; // Minimal additional multiplier for spawn z
 // Auto-zoom multiplier: platform-aware - larger on desktop (zoom out more), smaller on mobile (zoom in more)
 // Desktop needs more zoom-out to prevent blocks going out of frame
 // Mobile can zoom in more to reduce wasted space on sides
-const AUTO_ZOOM_MULTIPLIER_DESKTOP = 1.25; // Increased from 1.12 for more comfortable fit above UI
+const AUTO_ZOOM_MULTIPLIER_DESKTOP = 1.02; // Matched to mobile for tighter desktop zoom
 const AUTO_ZOOM_MULTIPLIER_MOBILE = 1.02; // Mobile: very tight fit (2% margin)
 // Desktop-specific padding multiplier to ensure all blocks stay visible
 const DESKTOP_ZOOM_PADDING_MULTIPLIER = 1.0; // No extra multiplier needed
@@ -1087,7 +1089,8 @@ function calculateInitialCameraPosition() {
     const requiredDistance = Math.max(horizontalDistance, verticalDistance) * 1.05; // 5% safety margin (minimal padding)
 
     // Set initial values
-    cameraRadius = Math.max(MIN_RADIUS, Math.min(MAX_RADIUS, requiredDistance));
+    const minRadius = isMobileLike ? MIN_RADIUS_MOBILE : MIN_RADIUS_DESKTOP;
+    cameraRadius = Math.max(minRadius, Math.min(MAX_RADIUS, requiredDistance));
     cameraElevation = Math.PI / 4; // 45°
     cameraAzimuth = Math.PI / 4; // 45° (diagonal view)
 
@@ -7493,6 +7496,13 @@ const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 
 function onMouseClick(event) {
+    // Task: Prevent UI clicks from bleeding through to 3D scene
+    // Only process clicks that originate directly on the 3D canvas.
+    // This ensures buttons, menus, and other UI overlays block interaction with blocks.
+    if (event.target !== renderer.domElement) {
+        return;
+    }
+
     // Don't process block clicks if camera was being dragged
     if (isCameraDragging) {
         isCameraDragging = false; // Reset for next interaction
@@ -7898,8 +7908,8 @@ function startBlockFallingToTarget(block, targetYOffset) {
             block.isAnimating = false;
             fallAnimationId = null;
 
-            // Task 1.2: Trigger crushing effect upon landing
-            if (isCrushingFall && !block.isRemoved) {
+            // Task: Trace 1.2: Trigger crushing effect only for non-locked blocks
+            if (isCrushingFall && !block.isRemoved && !block.isLocked) {
                 (async () => {
                     // Task 1.2 Revision: Crush blocks beneath sequentially FIRST
                     await crushBlocksBelow(block, targetYOffset);
@@ -7938,7 +7948,7 @@ async function crushBlocksBelow(crushingBlock, landY) {
     const blocksToCrush = [];
 
     blocks.forEach(other => {
-        if (other === crushingBlock || other.isRemoved || other.isExploding) return;
+        if (other === crushingBlock || other.isRemoved || other.isExploding || other.isLocked) return;
 
         const otherCells = other.getOccupiedCells();
         const isDirectlyBelow = otherCells.some(oc => 
@@ -8096,7 +8106,8 @@ renderer.domElement.addEventListener('touchmove', (event) => {
 
             const zoomFactor = currentDistance / touchState.startDistance;
             targetRadius /= zoomFactor;
-            targetRadius = Math.max(MIN_RADIUS, Math.min(MAX_RADIUS, targetRadius));
+            const minRadius = isMobileLike ? MIN_RADIUS_MOBILE : MIN_RADIUS_DESKTOP;
+            targetRadius = Math.max(minRadius, Math.min(MAX_RADIUS, targetRadius));
             // Sync smoothed auto-zoom radius to manual zoom so auto-zoom doesn't fight when it re-enables
             smoothedAutoZoomRadius = targetRadius;
             touchState.startDistance = currentDistance;
@@ -8754,7 +8765,8 @@ function animate() {
                 const wDist = (effectiveWidth + padding * 2) / (2 * Math.tan(fov / 2) * aspect);
                 const multiplier = isMobileLike ? AUTO_ZOOM_MULTIPLIER_MOBILE : AUTO_ZOOM_MULTIPLIER_DESKTOP;
                 const requiredDistance = Math.max(hDist, wDist) * multiplier;
-                const clampedDist = Math.max(MIN_RADIUS, Math.min(MAX_RADIUS, requiredDistance));
+                const minRadius = isMobileLike ? MIN_RADIUS_MOBILE : MIN_RADIUS_DESKTOP;
+                const clampedDist = Math.max(minRadius, Math.min(MAX_RADIUS, requiredDistance));
 
                 if (isGeneratingLevel) smoothedAutoZoomRadius = clampedDist;
                 else smoothedAutoZoomRadius += (clampedDist - smoothedAutoZoomRadius) * 0.3;

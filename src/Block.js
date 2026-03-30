@@ -1403,6 +1403,12 @@ export class Block {
      * Applies dark grey tint with smooth color transition
      */
     lockBlock(level, remainingTime = null) {
+        // Task: Bottom layer blocks (yOffset < 0.1) should not become semi-transparent/locked
+        if (this.yOffset < 0.1) {
+            console.log('[Lock] Bottom layer block at', this.gridX, this.gridZ, 'skipping lock');
+            return;
+        }
+
         console.log('[Lock] lockBlock called for block at', this.gridX, this.gridZ, 'isLocked:', this.isLocked, 'isFalling:', this.isFalling, 'isRemoved:', this.isRemoved);
 
         if (this.isLocked || this.isFalling || this.isRemoved) {
@@ -1534,8 +1540,9 @@ export class Block {
             console.log('[Lock] WARNING: No cubes found, cannot apply transparency effect');
         }
 
-        // Create fill mesh for lock time visualization
-        this.createLockFillMesh(tintColorObj);
+        // Task: Progress bar removal
+        // Replaced timer-based fill mesh with static semi-transparency for a cleaner look.
+        // this.createLockFillMesh(tintColorObj);
     }
 
 
@@ -2057,24 +2064,29 @@ export class Block {
 
         // Update fill progress before checking expiration
         if (this.isLocked) {
-            this.updateLockFillProgress();
-
-            // Check if we should start flashing (5 seconds remaining)
-            const remainingMs = this.lockEndTime - now;
-            const remainingSeconds = remainingMs / 1000;
-
-            // Start flashing at 5 seconds remaining
-            if (remainingSeconds <= 5.0 && remainingSeconds > 0) {
-                if (!this.isFlashing) {
-                    this.startCountdownFlash();
-                }
-                // Update flash speed based on remaining time (faster as time runs out)
-                this.updateCountdownFlash(remainingSeconds);
-            }
+            // Task: Progress bar removal
+            // this.updateLockFillProgress();
         }
 
-        if (this.isLocked && performance.now() >= this.lockEndTime) {
+        // Task: Persistent Semi-Transparency
+        // Collided blocks stay transparent until they reach the base plate.
+        // They no longer return to solid state automatically.
+        /* if (this.isLocked && performance.now() >= this.lockEndTime) {
             this.unlockBlock();
+        } */
+
+        // Task: Automatic Floor Blast for Locked Blocks
+        // If a block is semi-transparent and sitting on the bottom layer (yOffset < 0.1),
+        // it should blast automatically (it's debris, not a solid tower floor block).
+        if (this.isLocked && this.yOffset < 0.1 && !this.isRemoved && !this.removalStartTime) {
+            console.log(`[FloorBlast] Locked block at level 0 (x=${this.gridX}, z=${this.gridZ}) blasting with debris`);
+            if (window.debrisManager && window.particleSystem) {
+                this.explodeIntoDebris(window.debrisManager, window.particleSystem, 0);
+            } else if (window.particleSystem) {
+                this.explodeWithParticles(window.particleSystem, 0, true);
+            } else {
+                this.remove();
+            }
         }
     }
 
@@ -2768,7 +2780,9 @@ export class Block {
             return;
         }
 
-        if (!this.isFalling) return;
+        // Task: Modified block removal logic - allow isLocked blocks to be checked for removal
+        // so that they blast automatically when reaching the base plate.
+        if (!this.isFalling && !this.isLocked) return;
 
         // Create physics body if needed - defer to safe time
         if (this.needsPhysicsBody && !this.physicsBody) {
@@ -2983,11 +2997,30 @@ export class Block {
                 Math.pow(x - gridCenterWorld, 2) + Math.pow(z - gridCenterWorld, 2)
             );
 
-            const shouldRemove = y < -2 || distanceFromCenter > maxDistanceFromGrid || (Date.now() - this.fallingStartTime > 5000);
+            // Task: Remove 5-second timeout and implement base plate settling removal
+            // Base plate top is at world y=0.0 (translation -0.1 + half-height 0.1)
+            const halfHeight = sizeY / 2;
+            const bottomY = y - halfHeight;
+            const linSpeed = Math.sqrt(lvx * lvx + lvy * lvy + lvz * lvz);
+            const angSpeed = Math.sqrt(avx * avx + avy * avy + avz * avz);
+            
+            // Clear if it reaches the floor/base plate (y=0) and settles.
+            // Locked blocks on the floor also blast automatically.
+            const isOnBasePlate = bottomY < 0.1 && bottomY > -0.5;
+            const isSettled = linSpeed < 1.0 && angSpeed < 2.0;
+
+            const shouldRemove = (isOnBasePlate && isSettled) || y < -2 || distanceFromCenter > maxDistanceFromGrid;
 
             if (shouldRemove && !this.isRemoved) {
-                console.log(`Removing block: y=${y.toFixed(2)}, distance=${distanceFromCenter.toFixed(2)}, maxDist=${maxDistanceFromGrid.toFixed(2)}, time=${Date.now() - this.fallingStartTime}ms`);
-                this.remove();
+                console.log(`[BasePlate] Blasting block with full effects: y=${y.toFixed(2)}, bottom=${bottomY.toFixed(2)}, speed=${linSpeed.toFixed(2)}`);
+                // Use standard debris-based blast for consistency ("same as others")
+                if (window.debrisManager && window.particleSystem) {
+                    this.explodeIntoDebris(window.debrisManager, window.particleSystem, 0);
+                } else if (window.particleSystem) {
+                    this.explodeWithParticles(window.particleSystem, 0, true);
+                } else {
+                    this.remove();
+                }
             }
 
             // Apply state transitions that were detected during read phase
@@ -4862,7 +4895,7 @@ export class Block {
      * @param {Object} particleSystem - The particle system to use for effects
      */
     onCrushed(particleSystem) {
-        if (this.isRemoved || this.isExploding) return;
+        if (this.isRemoved || this.isExploding || this.isLocked) return;
 
         // Task 1.2 Revision: Stronger, faster shake
         this.shakeViolently(150, 0.5).then(() => {
@@ -4988,7 +5021,7 @@ export class Block {
         const bombCells = this.getOccupiedCells();
 
         return allBlocks.filter(block => {
-            if (block === this || block.isRemoved || block.isExploding) return false;
+            if (block === this || block.isRemoved || block.isExploding || block.isLocked) return false;
             
             const targetCells = block.getOccupiedCells();
             
