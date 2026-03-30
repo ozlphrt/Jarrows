@@ -1142,8 +1142,8 @@ let smoothedAutoZoomRadius = cameraRadius;
 // - towerCenter/towerPositionOffset: world
 // - lookAt target: world
 // - Matrix trace: vec_ndc = projection * view * model * vec_local
-const DEFAULT_FRAMING_OFFSET_Y = 4.8;
-const MIN_FRAMING_OFFSET_Y = 2.0;
+const DEFAULT_FRAMING_OFFSET_Y = 0.5; // Lower target raises the tower up
+const MIN_FRAMING_OFFSET_Y = -5.0;
 const MAX_FRAMING_OFFSET_Y = 10.0;
 // Two-finger drag (non-pinch): pixels → world-Y offset mapping:
 // value_next = clamp(value_prev + sensitivity * delta_pixels, min, max)
@@ -1155,7 +1155,7 @@ function clampFramingOffsetY(value) {
 
 function loadFramingOffsetY() {
     try {
-        const saved = localStorage.getItem('jarrows_framing');
+        const saved = localStorage.getItem('jarrows_framing_v2'); // bumped to override old 4.8 value
         const parsed = saved !== null ? parseFloat(saved) : NaN;
         if (!Number.isFinite(parsed)) return DEFAULT_FRAMING_OFFSET_Y;
         return clampFramingOffsetY(parsed);
@@ -7222,7 +7222,7 @@ function setupFramingSlider() {
                 updateCameraPosition(); // Update camera immediately
                 // Save framing preference to localStorage
                 try {
-                    localStorage.setItem('jarrows_framing', newOffset.toString());
+                    localStorage.setItem('jarrows_framing_v2', newOffset.toString());
                 } catch (e) {
                     console.warn('Failed to save framing preference:', e);
                 }
@@ -7278,7 +7278,7 @@ function setupFramingSlider() {
         // Load framing preference from localStorage if not already set
         if (window.framingOffsetY === undefined || window.framingOffsetY === null) {
             try {
-                const savedFraming = localStorage.getItem('jarrows_framing');
+                const savedFraming = localStorage.getItem('jarrows_framing_v2');
                 if (savedFraming !== null) {
                     const parsedFraming = parseFloat(savedFraming);
                     if (!isNaN(parsedFraming)) {
@@ -8187,7 +8187,7 @@ renderer.domElement.addEventListener('touchmove', (event) => {
                 if (typeof window !== 'undefined') window.framingOffsetY = framingOffsetY;
                 updateCameraPosition(); // apply immediately; light/shadow updates are gated elsewhere
                 try {
-                    localStorage.setItem('jarrows_framing', framingOffsetY.toString());
+                    localStorage.setItem('jarrows_framing_v2', framingOffsetY.toString());
                 } catch {
                     // ignore
                 }
