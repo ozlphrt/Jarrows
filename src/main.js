@@ -1022,8 +1022,8 @@ function centerTowerVertically() {
 const MIN_RADIUS_DESKTOP = 11.0; // Prevent "in-your-face" zoom on desktop when few blocks remain
 const MIN_RADIUS_MOBILE = 5.0; // Keep tight for mobile
 const MAX_RADIUS = 50;
-const MIN_ELEVATION = -Math.PI / 2 + 0.1;
-const MAX_ELEVATION = Math.PI / 2 - 0.1;
+const MIN_ELEVATION = -Math.PI / 2; // Lock exactly to base plate horizon
+const MAX_ELEVATION = Math.PI / 2; // Lock exactly to base plate horizon
 const ZOOM_PADDING = 0.2; // Matched to mobile for tighter desktop zoom
 const ZOOM_PADDING_MOBILE = 0.2; // Minimal padding for mobile
 const AUTO_ZOOM_MIN_BOUNDING_SIZE = 3; // Minimum bounding box size to prevent zooming in too much with few blocks
@@ -1170,9 +1170,68 @@ if (typeof window !== 'undefined') {
     window.framingOffsetY = framingOffsetY;
 }
 
+// Target offsets for dynamic camera tracking based on remaining blocks
+const targetBlockCenterOffset = new THREE.Vector3(0, 0, 0);
+const currentBlockCenterOffset = new THREE.Vector3(0, 0, 0);
+let isFirstCenterCalculation = true;
+
+function updateTargetBlockCenter() {
+    if (!blocks || blocks.length === 0) {
+        targetBlockCenterOffset.set(0, 0, 0);
+        return;
+    }
+
+    let minX = Infinity, minY = Infinity, minZ = Infinity;
+    let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+    let validBlocks = 0;
+
+    for (const block of blocks) {
+        if (!block || !block.group) continue;
+        
+        // Skip blocks that are exploding, falling, or flagged for removal
+        if (block.isRemoved || block.isFalling || block.isAnimating || block.removalStartTime) continue;
+
+        const pos = block.group.position;
+        if (pos.x < minX) minX = pos.x;
+        if (pos.y < minY) minY = pos.y;
+        if (pos.z < minZ) minZ = pos.z;
+        if (pos.x > maxX) maxX = pos.x;
+        if (pos.y > maxY) maxY = pos.y;
+        if (pos.z > maxZ) maxZ = pos.z;
+        validBlocks++;
+    }
+
+    // If no static valid blocks left (all are exploding/falling), default to center
+    if (validBlocks === 0 || minX === Infinity) {
+        targetBlockCenterOffset.set(0, 0, 0);
+        return;
+    }
+
+    // block.group.position is already offset relative to towerCenter (e.g. 0,0 is grid center)
+    const centerX = (minX + maxX) / 2;
+    // For Y, we track the average height but dampen it slightly so the camera doesn't jerk
+    const centerY = (minY + maxY) / 2;
+    const centerZ = (minZ + maxZ) / 2;
+
+    targetBlockCenterOffset.set(centerX, centerY, centerZ);
+
+    if (isFirstCenterCalculation) {
+        currentBlockCenterOffset.copy(targetBlockCenterOffset);
+        isFirstCenterCalculation = false;
+    }
+}
+
 function updateCameraPosition() {
-    // Calculate effective tower center (with offset)
-    _effectiveTowerCenter.copy(towerCenter).add(towerPositionOffset);
+    // Continuously calculate the target center based on remaining blocks
+    updateTargetBlockCenter();
+
+    // Smoothly shift current tracking offset towards the target offset
+    currentBlockCenterOffset.lerp(targetBlockCenterOffset, 0.05);
+
+    // Calculate effective tower center (with offset and dynamic block tracking)
+    _effectiveTowerCenter.copy(towerCenter)
+        .add(towerPositionOffset)
+        .add(currentBlockCenterOffset);
 
     // Convert spherical to Cartesian coordinates
     const x = currentRadius * Math.sin(currentElevation) * Math.cos(currentAzimuth);
@@ -3861,6 +3920,7 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
         }
     }
     blocks.length = 0;
+    isFirstCenterCalculation = true; // Snap camera instantly to new puzzle
 
     // Framing control removed: no framing animation frames to cancel
 
@@ -8697,13 +8757,22 @@ function animate() {
         if (isAutoZoomEnabled && !isAutoZoomDisabled && !block.wasCatapulted) {
              const zoomUpdateInterval = isGeneratingLevel ? SPAWN_ZOOM_UPDATE_INTERVAL_MS : AUTO_ZOOM_UPDATE_INTERVAL_MS;
              const lastUpdate = isGeneratingLevel ? lastSpawnZoomUpdateMs : lastAutoZoomUpdateMs;
-             if (currentTime - lastUpdate > zoomUpdateInterval) {
+              if (currentTime - lastUpdate > zoomUpdateInterval) {
                   block.getTowerSpaceBounds(_tempBox);
                   _towerSpaceZoomBox.union(_tempBox);
                   hasNonCatapultedBlocksForZoom = true;
-             }
-        }
+              }
+         }
     }
+
+    // Always include the base plate in the zoom bounding box to ensure the bottom layer/ground stays visible
+    if (isAutoZoomEnabled && !isAutoZoomDisabled && hasNonCatapultedBlocksForZoom) {
+        const halfGrid = (gridSize * cubeSize) / 2; // 3.5 for 7x7
+        _tempBox.min.set(-halfGrid, -0.1, -halfGrid);
+        _tempBox.max.set(halfGrid, 0, halfGrid);
+        _towerSpaceZoomBox.union(_tempBox);
+    }
+
     lastBlockStateCheckTime = currentTime;
 
     // Update InstancedMesh matrices
@@ -8725,7 +8794,10 @@ function animate() {
                 if (size.y < AUTO_ZOOM_MIN_BOUNDING_SIZE) size.y = AUTO_ZOOM_MIN_BOUNDING_SIZE;
                 if (size.z < AUTO_ZOOM_MIN_BOUNDING_SIZE) size.z = AUTO_ZOOM_MIN_BOUNDING_SIZE;
 
-                _effectiveTowerCenter.copy(towerCenter).add(towerPositionOffset);
+                _effectiveTowerCenter.copy(towerCenter)
+                    .add(towerPositionOffset)
+                    .add(currentBlockCenterOffset);
+
                 _lookAtTarget.copy(_effectiveTowerCenter).add(new THREE.Vector3(0, framingOffsetY, 0));
 
                 const cx = currentRadius * Math.sin(currentElevation) * Math.cos(currentAzimuth);
