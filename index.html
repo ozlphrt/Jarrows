@@ -1664,11 +1664,16 @@
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            padding: 8px;
-            border-radius: 12px;
+            padding: 0;
+            width: 42px; /* Fixed width mapping roughly 26+8+8 */
+            height: 42px; /* Fixed height for perfect circle */
+            border-radius: 50%;
             transition: all 0.2s;
             position: relative;
             pointer-events: auto;
+            /* DEBUG HIGHLIGHT: Visualize hit area */
+            border: 1px solid rgba(180, 180, 180, 0.5) !important;
+            background-color: rgba(180, 180, 180, 0.2) !important;
         }
 
         .stats-control-btn:hover {
@@ -1810,6 +1815,9 @@
             position: relative;
             -webkit-tap-highlight-color: transparent;
             outline: none;
+            /* DEBUG HIGHLIGHT: Visualize hit area */
+            border: 1px solid rgba(180, 180, 180, 0.5) !important;
+            background-color: rgba(180, 180, 180, 0.2) !important;
         }
 
         /* ON state - bright */

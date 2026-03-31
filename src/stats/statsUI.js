@@ -1288,35 +1288,50 @@ function createCarriedOverGraph(history) {
             // Longest bar = max carried over value
 
             // Calculate the bar height based on carried over value
+            // Scale to 82% to guarantee headroom for horizontal text above the bar
+            const maxBarHeight = graphHeight * 0.82;
             const barHeight = maxCarriedOver > 0
-                ? (carriedOver / maxCarriedOver) * graphHeight
+                ? (carriedOver / maxCarriedOver) * maxBarHeight
                 : 0;
 
             // Draw single bar representing carried over value
             // Positive values go above baseline, negative values go below
             if (carriedOver >= 0) {
-                // Positive: draw bar upward from baseline
-                // Use Inferno orange/red gradient if in Inferno mode, otherwise green
-                const isInferno = checkInfernoMode();
-                if (isInferno) {
-                    // Inferno-themed color - orange/red gradient
-                    const gradient = ctx.createLinearGradient(x, baselineY - barHeight, x, baselineY);
-                    gradient.addColorStop(0, '#FF6B35'); // Orange-red at top
-                    gradient.addColorStop(1, '#F7931E'); // Orange at bottom
-                    ctx.fillStyle = gradient;
+                // Modern grey/silver gradient
+                const gradient = ctx.createLinearGradient(x, baselineY - barHeight, x, baselineY);
+                // Last bar (current level) is slightly brighter to stand out
+                const isCurrent = (index === history.length - 1);
+                
+                if (isCurrent) {
+                    gradient.addColorStop(0, 'rgba(255, 255, 255, 0.65)');
+                    gradient.addColorStop(1, 'rgba(255, 255, 255, 0.15)');
                 } else {
-                    ctx.fillStyle = '#4ADE80'; // Green - same as "carried over" color in formula
+                    gradient.addColorStop(0, 'rgba(255, 255, 255, 0.25)');
+                    gradient.addColorStop(1, 'rgba(255, 255, 255, 0.05)');
                 }
+                
+                ctx.fillStyle = gradient;
                 const barY = baselineY - barHeight;
-                ctx.fillRect(x, barY, barWidth, barHeight);
+                
+                // Draw rounded top rect if supported, else fallback to standard
+                if (typeof ctx.roundRect === 'function') {
+                    ctx.beginPath();
+                    ctx.roundRect(x, barY, barWidth, barHeight, [4, 4, 0, 0]);
+                    ctx.fill();
+                } else {
+                    ctx.fillRect(x, barY, barWidth, barHeight);
+                }
             } else {
-                // Negative: draw bar downward from baseline
-                ctx.fillStyle = '#FF6B6B'; // Red
-                ctx.fillRect(x, baselineY, barWidth, Math.abs(barHeight));
+                // Negative (red tint for visual error state, but modern/muted)
+                ctx.fillStyle = 'rgba(255, 90, 90, 0.35)';
+                if (typeof ctx.roundRect === 'function') {
+                    ctx.beginPath();
+                    ctx.roundRect(x, baselineY, barWidth, Math.abs(barHeight), [0, 0, 4, 4]);
+                    ctx.fill();
+                } else {
+                    ctx.fillRect(x, baselineY, barWidth, Math.abs(barHeight));
+                }
             }
-
-            // Store for label positioning
-            const currentY = carriedOver >= 0 ? baselineY - barHeight : baselineY + Math.abs(barHeight);
 
             // Draw level label below bar
             ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
@@ -1324,33 +1339,37 @@ function createCarriedOverGraph(history) {
             ctx.textAlign = 'center';
             ctx.fillText(point.level.toString(), x + barWidth / 2, padding + graphHeight + 18);
 
-            // Draw only the latest level's time label, vertically over the bar (per request)
+            // Draw only the latest level's time label, horizontally above the bar (per request)
             if (index === history.length - 1 && Math.abs(carriedOver) > 0) {
                 ctx.save();
-                // Position in the middle of the bar horizontally, 
-                // and vertically centered on the active part of the bar
-                const labelX = x + barWidth / 2;
-                const labelY = carriedOver >= 0 ? (baselineY - barHeight / 2) : (baselineY + Math.abs(barHeight) / 2);
                 
-                ctx.translate(labelX, labelY);
-                ctx.rotate(-Math.PI / 2);
+                // Significantly larger, highly legible font
+                const responsiveFontSize = Math.max(16, Math.min(24, graphWidth * 0.08));
+                ctx.font = `900 ${responsiveFontSize}px "Inter", "Segoe UI", sans-serif`;
+                
+                const timeText = formatTime(carriedOver);
+                const textWidth = ctx.measureText(timeText).width;
+                
+                // Position above the active bar
+                let labelX = x + barWidth / 2;
+                const labelY = carriedOver >= 0 ? (baselineY - barHeight - 8) : (baselineY + Math.abs(barHeight) + 16);
+                
+                // Shift text leftward towards the center if it threatens to clip off the right edge
+                const maxRight = padding + graphWidth - 4; // 4px safe margin
+                if (labelX + textWidth / 2 > maxRight) {
+                    labelX = maxRight - textWidth / 2;
+                }
                 
                 ctx.fillStyle = '#FFFFFF';
-                // Use a reliable system font stack for Windows/Mobile that is cleaner than basic sans-serif
-                const responsiveFontSize = Math.max(12, Math.min(40, barWidth * 0.5));
-                ctx.font = `900 ${responsiveFontSize}px "Segoe UI", "Tahoma", "Verdana", sans-serif`;
                 ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
+                ctx.textBaseline = carriedOver >= 0 ? 'bottom' : 'top';
                 
-                // Draw a thick black outline first for maximum separation from the gradient background
-                ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
-                ctx.lineWidth = responsiveFontSize * 0.15; // Proportional stroke
-                ctx.lineJoin = 'round';
-                ctx.strokeText(formatTime(carriedOver), 0, 0);
+                // Stronger shadow for readability when horizontally shifting over adjacent bars
+                ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
+                ctx.shadowBlur = 6;
+                ctx.shadowOffsetY = 2;
                 
-                // Then fill with pure white
-                ctx.shadowColor = 'transparent'; // Disable shadow when using outline for cleaner look
-                ctx.fillText(formatTime(carriedOver), 0, 0);
+                ctx.fillText(timeText, labelX, labelY);
                 
                 ctx.restore();
             }
@@ -1907,17 +1926,34 @@ function createInfernoBarChart(levelStats) {
                 const x = padding + (graphWidth / levelStats.length) * index + barSpacing / 2;
                 const time = stat.time || 0;
 
-                // Calculate bar height
+                // Calculate bar height 
+                // Scale bounds to 82% to give room for horizontal top text
+                const maxBarHeight = graphHeight * 0.82;
                 const barHeight = maxTime > 0
-                    ? (time / maxTime) * graphHeight
+                    ? (time / maxTime) * maxBarHeight
                     : 0;
 
-                // Draw bar (using inferno-themed color - orange/red gradient)
+                // Draw bar (Modern grey/silver gradient)
                 const gradient = ctx.createLinearGradient(x, baselineY - barHeight, x, baselineY);
-                gradient.addColorStop(0, '#FF6B35'); // Orange-red at top
-                gradient.addColorStop(1, '#F7931E'); // Orange at bottom
+                const isCurrent = (index === levelStats.length - 1);
+                
+                if (isCurrent) {
+                    gradient.addColorStop(0, 'rgba(255, 255, 255, 0.65)');
+                    gradient.addColorStop(1, 'rgba(255, 255, 255, 0.15)');
+                } else {
+                    gradient.addColorStop(0, 'rgba(255, 255, 255, 0.25)');
+                    gradient.addColorStop(1, 'rgba(255, 255, 255, 0.05)');
+                }
                 ctx.fillStyle = gradient;
-                ctx.fillRect(x, baselineY - barHeight, barWidth, barHeight);
+                
+                // Draw rounded top rect if supported, else fallback
+                if (typeof ctx.roundRect === 'function') {
+                    ctx.beginPath();
+                    ctx.roundRect(x, baselineY - barHeight, barWidth, barHeight, [4, 4, 0, 0]);
+                    ctx.fill();
+                } else {
+                    ctx.fillRect(x, baselineY - barHeight, barWidth, barHeight);
+                }
 
                 // Draw level label below bar (only if in labelsToShow)
                 if (labelsToShow.has(index)) {
@@ -1927,19 +1963,55 @@ function createInfernoBarChart(levelStats) {
                     ctx.fillText(stat.level.toString(), x + barWidth / 2, padding + graphHeight + 18);
                 }
 
-                // Draw time label at the top of the bar
-                // Show for: labels that are selected AND (bar is tall enough OR it's min/max)
+                // Draw time label horizontally at the top of the bar
                 if (time > 0 && labelsToShow.has(index)) {
                     const isMinOrMax = index === minTimeIndex || index === maxTimeIndex;
-                    const hasEnoughSpace = barHeight > 20;
+                    const hasEnoughSpace = barWidth > 15 || isCurrent;
 
                     if (hasEnoughSpace || isMinOrMax) {
-                        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-                        ctx.font = '9px sans-serif';
-                        const labelY = baselineY - barHeight - 6;
-                        // For very short bars (min), place label above with a bit more space
-                        const adjustedY = barHeight < 15 ? baselineY - barHeight - 12 : labelY;
-                        ctx.fillText(formatTime(time), x + barWidth / 2, adjustedY);
+                        ctx.save();
+                        
+                        // If it's the current level, use the large shifted label format from the primary view
+                        const isCurrentActive = isCurrent && !isMinOrMax; 
+                        
+                        let responsiveFontSize, fontStr, timeText, textWidth;
+                        
+                        if (isCurrent) {
+                            responsiveFontSize = Math.max(16, Math.min(24, graphWidth * 0.08));
+                            fontStr = `900 ${responsiveFontSize}px "Inter", "Segoe UI", sans-serif`;
+                        } else {
+                            responsiveFontSize = Math.max(9, Math.min(12, barWidth * 0.8));
+                            fontStr = `800 ${responsiveFontSize}px "Inter", "Segoe UI", sans-serif`;
+                        }
+                        
+                        ctx.font = fontStr;
+                        timeText = formatTime(time);
+                        textWidth = ctx.measureText(timeText).width;
+                        
+                        let labelX = x + barWidth / 2;
+                        
+                        // Shift leftward toward the center to avoid cutting off right edge if it's large text
+                        if (isCurrent) {
+                            const maxRight = padding + graphWidth - 4;
+                            if (labelX + textWidth / 2 > maxRight) {
+                                labelX = maxRight - textWidth / 2;
+                            }
+                        }
+                        
+                        ctx.fillStyle = '#FFFFFF';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'bottom';
+                        
+                        const labelY = baselineY - barHeight - 4;
+                        const adjustedY = barHeight < 15 ? baselineY - barHeight - 8 : labelY;
+                        
+                        // Stronger shadow for readability when horizontally shifting over adjacent bars
+                        ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
+                        ctx.shadowBlur = isCurrent ? 6 : 4;
+                        ctx.shadowOffsetY = 2;
+                        
+                        ctx.fillText(timeText, labelX, adjustedY);
+                        ctx.restore();
                     }
                 }
             });
