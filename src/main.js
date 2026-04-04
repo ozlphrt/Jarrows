@@ -5878,34 +5878,149 @@ function toggleDebugPanel() {
     }
 }
 
+// Promotional Modal for Cross-Promotion (FlowFree Cube)
+function showPromoModal(onClose) {
+    const overlay = document.createElement('div');
+    overlay.id = 'promo-modal';
+    overlay.className = 'extended-stats-modal-overlay';
+    overlay.style.cssText = `
+        position: fixed;
+        inset: 0;
+        z-index: 5000;
+        background: rgba(0, 0, 0, 0.85);
+        backdrop-filter: blur(15px);
+        -webkit-backdrop-filter: blur(15px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+    `;
+
+    const panel = document.createElement('div');
+    panel.className = 'extended-stats-modal-panel';
+    panel.style.cssText = `
+        width: 100%;
+        max-width: 400px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 28px;
+        padding: 24px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 20px;
+        text-align: center;
+        box-shadow: 0 30px 60px rgba(0,0,0,0.5);
+        animation: promo-appear 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+    `;
+
+    // Add animation style if not exists
+    if (!document.getElementById('promo-style')) {
+        const style = document.createElement('style');
+        style.id = 'promo-style';
+        style.textContent = `
+            @keyframes promo-appear {
+                from { opacity: 0; transform: scale(0.9) translateY(20px); }
+                to { opacity: 1; transform: scale(1) translateY(0); }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    const img = document.createElement('img');
+    img.src = 'advertorial.png';
+    img.style.cssText = `
+        width: 100%;
+        border-radius: 18px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        margin-bottom: 10px;
+    `;
+
+    const btnContainer = document.createElement('div');
+    btnContainer.className = 'modal-actions';
+    btnContainer.style.cssText = `
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        width: 100%;
+    `;
+
+    const tryNowBtn = document.createElement('button');
+    tryNowBtn.className = 'game-button';
+    tryNowBtn.innerHTML = 'TRY NOW!';
+    tryNowBtn.style.cssText = `
+        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        border: none;
+        color: white;
+        font-weight: 900;
+        font-size: 22px;
+        padding: 16px;
+        text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    `;
+    tryNowBtn.onclick = () => {
+        window.open('https://ozlphrt.github.io/flowfree-cube/', '_blank');
+    };
+
+    const maybeLaterBtn = document.createElement('button');
+    maybeLaterBtn.className = 'game-button secondary';
+    maybeLaterBtn.textContent = 'Maybe Later!';
+    maybeLaterBtn.style.cssText = `
+        background: rgba(255,255,255,0.1);
+        font-size: 16px;
+        opacity: 0.8;
+        padding: 12px;
+    `;
+    maybeLaterBtn.onclick = () => {
+        overlay.remove();
+        if (onClose) onClose();
+    };
+
+    btnContainer.appendChild(tryNowBtn);
+    btnContainer.appendChild(maybeLaterBtn);
+    panel.appendChild(img);
+    panel.appendChild(btnContainer);
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+}
+
 // Next level button handler
 const nextLevelButton = document.getElementById('next-level-button');
 if (nextLevelButton) {
     nextLevelButton.addEventListener('click', async () => {
-        hideLevelCompleteModal();
-        const previousLevel = currentLevel;
-        currentLevel++;
-        console.log(`[Next Level] Incremented from ${previousLevel} to ${currentLevel}`);
-        moveHistory = []; // Clear move history for new level
-        totalMoves = 0; // Reset move counter
-        debugMoveHistory = []; // Clear debug move history
-        debugCollisionEvents = []; // Clear collision events
-        debugMovementCalculations = []; // Clear movement calculations for new level
-        debugCollisionEvents = []; // Clear collision events for new level
-        debugMovementCalculations = []; // Clear movement calculations for new level
-        // CRITICAL: Save progress IMMEDIATELY after incrementing
-        // This ensures localStorage always has the correct level
-        saveProgress();
-        // Verify save was successful
-        const storageKey = getStorageKey();
-        const savedLevel = parseInt(localStorage.getItem(storageKey) || '0', 10);
-        if (savedLevel !== currentLevel) {
-            console.error(`[Next Level] Save verification failed! Saved ${savedLevel}, expected ${currentLevel}. Retrying...`);
-            currentLevel = savedLevel > currentLevel ? savedLevel : currentLevel; // Use higher value
+        const proceed = async () => {
+            hideLevelCompleteModal();
+            const previousLevel = currentLevel;
+            currentLevel++;
+            console.log(`[Next Level] Incremented from ${previousLevel} to ${currentLevel}`);
+            moveHistory = []; // Clear move history for new level
+            totalMoves = 0; // Reset move counter
+            debugMoveHistory = []; // Clear debug move history
+            debugCollisionEvents = []; // Clear collision events
+            debugMovementCalculations = []; // Clear movement calculations for new level
+            debugCollisionEvents = []; // Clear collision events for new level
+            debugMovementCalculations = []; // Clear movement calculations for new level
+            // CRITICAL: Save progress IMMEDIATELY after incrementing
+            // This ensures localStorage always has the correct level
             saveProgress();
+            // Verify save was successful
+            const storageKey = getStorageKey();
+            const savedLevel = parseInt(localStorage.getItem(storageKey) || '0', 10);
+            if (savedLevel !== currentLevel) {
+                console.error(`[Next Level] Save verification failed! Saved ${savedLevel}, expected ${currentLevel}. Retrying...`);
+                currentLevel = savedLevel > currentLevel ? savedLevel : currentLevel; // Use higher value
+                saveProgress();
+            }
+            console.log(`[Next Level] Starting level ${currentLevel} (saved: ${savedLevel})`);
+            await generateSolvablePuzzle(currentLevel);
+        };
+
+        // Every 5 levels, show the promotional modal
+        if (currentLevel > 0 && currentLevel % 5 === 0) {
+            hideLevelCompleteModal(); // Hide Success UI before showing promo
+            showPromoModal(proceed);
+        } else {
+            await proceed();
         }
-        console.log(`[Next Level] Starting level ${currentLevel} (saved: ${savedLevel})`);
-        await generateSolvablePuzzle(currentLevel);
     });
 }
 
