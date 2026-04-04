@@ -64,7 +64,13 @@ npm run build
 
 ## Releases
 
-### v7.4.0 - Dynamic Cube Towers ⭐ FEATURE UPDATE
+### v8.18.4 - Cross-Promotion Modal
+- **Tree**: https://github.com/ozlphrt/Jarrows/tree/v8.18.4 (once pushed)
+- **Live**: https://ozlphrt.github.io/Jarrows/
+- **Promo**: Added "FlowFree Cube" cross-promotion modal that appears every 5 levels.
+- **Visuals**: Features high-fidelity advertorial image with action redirection.
+
+### v8.18.3 - Previous Version
 - **Tree**: https://github.com/ozlphrt/Jarrows/tree/v7.4.0 (once pushed)
 - **Live**: https://ozlphrt.github.io/Jarrows/
 - **Generation**: Towers are now generated as "cube-like" structures
