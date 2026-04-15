@@ -2400,6 +2400,24 @@
                 </div>
             </div>
 
+            <!-- Blast Cell Controls -->
+            <div style="margin-bottom: 16px;">
+                <div
+                    style="font-size: 11px; font-weight: bold; margin-bottom: 8px; padding: 4px 6px; background: #2d2d2d; border-radius: 2px; color: #fff; font-family: 'Lucida Grande', 'Lucida Sans Unicode', 'Arial', sans-serif;">
+                    💥 Blast Cell
+                </div>
+                <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                    <label style="font-size: 11px; opacity: 0.85; min-width: 100px; flex-shrink: 0;">Spawn %</label>
+                    <input type="range" id="blast-cell-slider" min="0" max="20" step="1" value="8"
+                        style="flex: 1; height: 4px; border-radius: 0px; background: #252525; border: 1px solid #3a3a3a; outline: none; cursor: pointer; -webkit-appearance: none; appearance: none;" />
+                    <span id="blast-cell-value"
+                        style="font-size: 11px; opacity: 0.7; min-width: 35px; text-align: right; flex-shrink: 0;">8%</span>
+                </div>
+                <div style="font-size: 10px; opacity: 0.65;">
+                    Live: updates current tower + level 31+ generation.
+                </div>
+            </div>
+
             <!-- Light Controls (Collapsible) -->
             <div style="margin-bottom: 16px;">
                 <div id="light-controls-header"
@@ -2414,20 +2432,36 @@
                     <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
                         <label style="font-size: 11px; opacity: 0.85; min-width: 100px; flex-shrink: 0;">Ambient
                             Intensity</label>
-                        <input type="range" id="ambient-intensity-slider" min="0" max="1" step="0.01" value="0.43"
+                        <input type="range" id="ambient-intensity-slider" min="0" max="1" step="0.01" value="0.40"
                             style="flex: 1; height: 4px; border-radius: 0px; background: #252525; border: 1px solid #3a3a3a; outline: none; cursor: pointer; -webkit-appearance: none; appearance: none;" />
                         <span id="ambient-intensity-value"
-                            style="font-size: 11px; opacity: 0.7; min-width: 35px; text-align: right; flex-shrink: 0;">0.43</span>
+                            style="font-size: 11px; opacity: 0.7; min-width: 35px; text-align: right; flex-shrink: 0;">0.40</span>
+                    </div>
+                    <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                        <label style="font-size: 11px; opacity: 0.85; min-width: 100px; flex-shrink: 0;">Ambient
+                            Color</label>
+                        <input type="color" id="ambient-color-picker" value="#ffffff"
+                            style="width: 34px; height: 24px; border: 1px solid #3a3a3a; background: #252525; cursor: pointer; padding: 0;" />
+                        <span id="ambient-color-value"
+                            style="font-size: 11px; opacity: 0.7; min-width: 60px; text-align: right; flex-shrink: 0;">#FFFFFF</span>
                     </div>
 
                     <!-- Key Light Intensity -->
                     <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
                         <label style="font-size: 11px; opacity: 0.85; min-width: 100px; flex-shrink: 0;">Key
                             Intensity</label>
-                        <input type="range" id="key-intensity-slider" min="0" max="5" step="0.1" value="1"
+                        <input type="range" id="key-intensity-slider" min="0" max="5" step="0.1" value="2.9"
                             style="flex: 1; height: 4px; border-radius: 0px; background: #252525; border: 1px solid #3a3a3a; outline: none; cursor: pointer; -webkit-appearance: none; appearance: none;" />
                         <span id="key-intensity-value"
-                            style="font-size: 11px; opacity: 0.7; min-width: 35px; text-align: right; flex-shrink: 0;">1.00</span>
+                            style="font-size: 11px; opacity: 0.7; min-width: 35px; text-align: right; flex-shrink: 0;">2.90</span>
+                    </div>
+                    <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                        <label style="font-size: 11px; opacity: 0.85; min-width: 100px; flex-shrink: 0;">Key
+                            Color</label>
+                        <input type="color" id="key-color-picker" value="#cacac9"
+                            style="width: 34px; height: 24px; border: 1px solid #3a3a3a; background: #252525; cursor: pointer; padding: 0;" />
+                        <span id="key-color-value"
+                            style="font-size: 11px; opacity: 0.7; min-width: 60px; text-align: right; flex-shrink: 0;">#CACAC9</span>
                     </div>
 
                     <!-- Key Light Position X -->
@@ -2464,40 +2498,48 @@
                     <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
                         <label style="font-size: 11px; opacity: 0.85; min-width: 100px; flex-shrink: 0;">Fill
                             Intensity</label>
-                        <input type="range" id="fill-intensity-slider" min="0" max="2" step="0.01" value="0.73"
+                        <input type="range" id="fill-intensity-slider" min="0" max="2" step="0.01" value="1.57"
                             style="flex: 1; height: 4px; border-radius: 0px; background: #252525; border: 1px solid #3a3a3a; outline: none; cursor: pointer; -webkit-appearance: none; appearance: none;" />
                         <span id="fill-intensity-value"
-                            style="font-size: 11px; opacity: 0.7; min-width: 35px; text-align: right; flex-shrink: 0;">0.73</span>
+                            style="font-size: 11px; opacity: 0.7; min-width: 35px; text-align: right; flex-shrink: 0;">1.57</span>
+                    </div>
+                    <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                        <label style="font-size: 11px; opacity: 0.85; min-width: 100px; flex-shrink: 0;">Fill
+                            Color</label>
+                        <input type="color" id="fill-color-picker" value="#b5bae8"
+                            style="width: 34px; height: 24px; border: 1px solid #3a3a3a; background: #252525; cursor: pointer; padding: 0;" />
+                        <span id="fill-color-value"
+                            style="font-size: 11px; opacity: 0.7; min-width: 60px; text-align: right; flex-shrink: 0;">#B5BAE8</span>
                     </div>
 
                     <!-- Fill Light Position X -->
                     <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
                         <label style="font-size: 11px; opacity: 0.85; min-width: 100px; flex-shrink: 0;">Fill Pos
                             X</label>
-                        <input type="range" id="fill-x-slider" min="-30" max="30" step="0.5" value="-17.5"
+                        <input type="range" id="fill-x-slider" min="-30" max="30" step="0.5" value="-5.5"
                             style="flex: 1; height: 4px; border-radius: 0px; background: #252525; border: 1px solid #3a3a3a; outline: none; cursor: pointer; -webkit-appearance: none; appearance: none;" />
                         <span id="fill-x-value"
-                            style="font-size: 11px; opacity: 0.7; min-width: 35px; text-align: right; flex-shrink: 0;">-17.5</span>
+                            style="font-size: 11px; opacity: 0.7; min-width: 35px; text-align: right; flex-shrink: 0;">-5.5</span>
                     </div>
 
                     <!-- Fill Light Position Y -->
                     <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
                         <label style="font-size: 11px; opacity: 0.85; min-width: 100px; flex-shrink: 0;">Fill Pos
                             Y</label>
-                        <input type="range" id="fill-y-slider" min="0" max="50" step="0.5" value="12.5"
+                        <input type="range" id="fill-y-slider" min="0" max="50" step="0.5" value="8.5"
                             style="flex: 1; height: 4px; border-radius: 0px; background: #252525; border: 1px solid #3a3a3a; outline: none; cursor: pointer; -webkit-appearance: none; appearance: none;" />
                         <span id="fill-y-value"
-                            style="font-size: 11px; opacity: 0.7; min-width: 35px; text-align: right; flex-shrink: 0;">12.5</span>
+                            style="font-size: 11px; opacity: 0.7; min-width: 35px; text-align: right; flex-shrink: 0;">8.5</span>
                     </div>
 
                     <!-- Fill Light Position Z -->
                     <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
                         <label style="font-size: 11px; opacity: 0.85; min-width: 100px; flex-shrink: 0;">Fill Pos
                             Z</label>
-                        <input type="range" id="fill-z-slider" min="-30" max="30" step="0.5" value="-11"
+                        <input type="range" id="fill-z-slider" min="-30" max="30" step="0.5" value="-4"
                             style="flex: 1; height: 4px; border-radius: 0px; background: #252525; border: 1px solid #3a3a3a; outline: none; cursor: pointer; -webkit-appearance: none; appearance: none;" />
                         <span id="fill-z-value"
-                            style="font-size: 11px; opacity: 0.7; min-width: 35px; text-align: right; flex-shrink: 0;">-11.0</span>
+                            style="font-size: 11px; opacity: 0.7; min-width: 35px; text-align: right; flex-shrink: 0;">-4.0</span>
                     </div>
 
                     <!-- Load Light Values (JSON) -->

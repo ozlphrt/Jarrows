@@ -69,13 +69,13 @@ export function createLights(scene) {
     // Dramatic lighting setup: low ambient, strong key light, minimal fill
     
     // Ambient Light
-    // Default intensity: 0.45 (Balanced Default)
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.45);
+    // Default intensity/color: 0.40, #FFFFFF
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.40);
     scene.add(ambientLight);
     
-    // Default intensity: 1, position: (22.5, 35.5, 19.5) - Raised for taller towers
-    const keyLight = new THREE.DirectionalLight(0xffffff, 1);
-    keyLight.position.set(22.5, 35.5, 19.5);
+    // Default intensity/color/position: 2.9, #CACAC9, (22.5, 26.0, 19.5)
+    const keyLight = new THREE.DirectionalLight(0xCACAC9, 2.9);
+    keyLight.position.set(22.5, 26.0, 19.5);
     keyLight.castShadow = true;
     // Shadow camera bounds: keep tight for better precision + less wasted shadow-map area.
     // The board is ~7x7 centered around (3.5, 0, 3.5). These values are tuned to cover
@@ -101,9 +101,9 @@ export function createLights(scene) {
     keyLight.shadow.normalBias = 0.02; // Reduce shadow acne
     scene.add(keyLight);
     
-    // Fill Light - default intensity: 0.75, position: (-17.5, 12.5, -11)
-    const fillLight = new THREE.DirectionalLight(0xffffff, 0.75);
-    fillLight.position.set(-17.5, 12.5, -11);
+    // Fill Light - default intensity/color/position: 1.57, #B5BAE8, (-5.5, 8.5, -4.0)
+    const fillLight = new THREE.DirectionalLight(0xB5BAE8, 1.57);
+    fillLight.position.set(-5.5, 8.5, -4.0);
     scene.add(fillLight);
     
     return { 
@@ -120,9 +120,9 @@ export function createLights(scene) {
 export const LIGHT_PRESETS = {
     'default': {
         name: 'Balanced',
-        ambient: { color: 0xffffff, intensity: 0.45 },
-        key: { color: 0xffffff, intensity: 1.0, pos: [22.5, 35.5, 19.5] },
-        fill: { color: 0xffffff, intensity: 0.75, pos: [-17.5, 12.5, -11] }
+        ambient: { color: 0xffffff, intensity: 0.40 },
+        key: { color: 0xCACAC9, intensity: 2.9, pos: [22.5, 26.0, 19.5] },
+        fill: { color: 0xB5BAE8, intensity: 1.57, pos: [-5.5, 8.5, -4.0] }
     },
     'desert-dawn': {
         name: 'Desert Dawn',

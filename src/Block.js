@@ -2277,6 +2277,53 @@ export class Block {
         }
     }
 
+    disposeObject3DResources(object3D) {
+        if (!object3D) return;
+        object3D.traverse((child) => {
+            if (child.geometry && typeof child.geometry.dispose === 'function') {
+                child.geometry.dispose();
+            }
+            if (child.material) {
+                if (Array.isArray(child.material)) {
+                    for (const material of child.material) {
+                        if (material && typeof material.dispose === 'function') {
+                            material.dispose();
+                        }
+                    }
+                } else if (typeof child.material.dispose === 'function') {
+                    child.material.dispose();
+                }
+            }
+        });
+    }
+
+    setBombState(enabled) {
+        const nextState = !!enabled;
+        if (this.isBomb === nextState) return;
+
+        this.isBomb = nextState;
+        this.bombIndicatorMaterials = nextState ? [] : null;
+        this.bombGlowSprites = nextState ? [] : null;
+
+        if (this.arrow) {
+            this.group.remove(this.arrow);
+            this.disposeObject3DResources(this.arrow);
+            this.arrow = null;
+        }
+
+        if (this.directionIndicators) {
+            this.group.remove(this.directionIndicators);
+            this.disposeObject3DResources(this.directionIndicators);
+            this.directionIndicators = null;
+        }
+
+        const colors = [0xff6b6b, 0x4ecdc4, 0xffc125];
+        const arrowColor = colors[this.length - 1] || colors[0];
+        this.createArrow(this.arrowStyle, arrowColor);
+        this.createDirectionIndicators(arrowColor, this.arrowStyle);
+        this.updateArrowRotation();
+    }
+
     // Animate random spin: fast rotation that slows down and stops at random direction
     animateRandomSpin(duration = 1800, callback = null) {
         // Vertical blocks, single-cell blocks, and horizontal multi-cell blocks can spin

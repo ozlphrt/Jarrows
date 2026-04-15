@@ -1036,6 +1036,9 @@ const AUTO_ZOOM_MULTIPLIER_DESKTOP = 1.02; // Matched to mobile for tighter desk
 const AUTO_ZOOM_MULTIPLIER_MOBILE = 1.02; // Mobile: very tight fit (2% margin)
 // Desktop-specific padding multiplier to ensure all blocks stay visible
 const DESKTOP_ZOOM_PADDING_MULTIPLIER = 1.0; // No extra multiplier needed
+const DESKTOP_FULL_TOWER_VISIBILITY_LEVEL = 100;
+const DESKTOP_HIGH_LEVEL_VERTICAL_FIT_MULTIPLIER = 1.18;
+const DESKTOP_HIGH_LEVEL_MIN_RADIUS = 14.0;
 // During generation, computing a world-space bounding box by expanding each block object
 // (updateMatrixWorld + expandByObject) is expensive. Throttle it to avoid long rAF frames.
 const SPAWN_ZOOM_UPDATE_INTERVAL_MS = 120;
@@ -2294,6 +2297,85 @@ function getBlocksForLevel(level) {
 
 // Validation functions are now imported from puzzle_validation.js
 
+const DEFAULT_BLAST_CELL_PERCENT = 8;
+const MAX_BLAST_CELL_PERCENT = 20;
+let blastCellPercent = DEFAULT_BLAST_CELL_PERCENT;
+
+function getBlastCellProbabilityForLevel(level) {
+    if (level < 31) {
+        return 0;
+    }
+    return Math.max(0, Math.min(MAX_BLAST_CELL_PERCENT, blastCellPercent)) / 100;
+}
+
+function getBlockFootprintCellCount(block) {
+    if (!block) return 0;
+    if (block.isVertical) return 1;
+    return Math.max(1, block.length || 1);
+}
+
+function getEligibleBlocksForBlastTuning() {
+    if (!Array.isArray(blocks)) return [];
+    return blocks.filter((block) => {
+        if (!block) return false;
+        if (block.isRemoved || block.isFalling || block.removalStartTime) return false;
+        return true;
+    });
+}
+
+function computeBlastCellStats(eligibleBlocks) {
+    const totalCells = eligibleBlocks.reduce((sum, block) => sum + getBlockFootprintCellCount(block), 0);
+    const bombCells = eligibleBlocks.reduce((sum, block) => (
+        sum + (block.isBomb ? getBlockFootprintCellCount(block) : 0)
+    ), 0);
+    const actualPercent = totalCells > 0 ? (bombCells / totalCells) * 100 : 0;
+    return { totalCells, bombCells, actualPercent };
+}
+
+function applyBlastCellPercentToCurrentTower(targetPercent) {
+    const eligibleBlocks = getEligibleBlocksForBlastTuning();
+    if (eligibleBlocks.length === 0) return null;
+
+    const { totalCells } = computeBlastCellStats(eligibleBlocks);
+    if (totalCells <= 0) return null;
+
+    const clampedPercent = Math.max(0, Math.min(MAX_BLAST_CELL_PERCENT, targetPercent));
+    const targetBombCells = Math.round((clampedPercent / 100) * totalCells);
+    let currentBombCells = eligibleBlocks.reduce((sum, block) => (
+        sum + (block.isBomb ? getBlockFootprintCellCount(block) : 0)
+    ), 0);
+
+    if (currentBombCells < targetBombCells) {
+        const candidatesToEnable = eligibleBlocks
+            .filter((block) => !block.isBomb)
+            .sort((a, b) => getBlockFootprintCellCount(a) - getBlockFootprintCellCount(b));
+
+        for (const block of candidatesToEnable) {
+            if (currentBombCells >= targetBombCells) break;
+            if (typeof block.setBombState === 'function') block.setBombState(true);
+            else block.isBomb = true;
+            currentBombCells += getBlockFootprintCellCount(block);
+        }
+    } else if (currentBombCells > targetBombCells) {
+        const candidatesToDisable = eligibleBlocks
+            .filter((block) => block.isBomb)
+            .sort((a, b) => getBlockFootprintCellCount(a) - getBlockFootprintCellCount(b));
+
+        for (const block of candidatesToDisable) {
+            if (currentBombCells <= targetBombCells) break;
+            if (typeof block.setBombState === 'function') block.setBombState(false);
+            else block.isBomb = false;
+            currentBombCells -= getBlockFootprintCellCount(block);
+        }
+    }
+
+    if (renderer && scene && camera) {
+        renderer.render(scene, camera);
+    }
+
+    return computeBlastCellStats(eligibleBlocks);
+}
+
 /**
  * Reverse Generation: Start from solved state (blocks at edges) and work backward
  * This guarantees 100% solvable puzzles
@@ -2320,7 +2402,7 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
     // Task 7.7.4: Height-based probability modulation and shuffled deck
     // Calculate expected special block counts for this layer to ensure even distribution
     const heightMod = 1.6 - (heightRatio * 1.2);
-    const bombBaseProb = (level >= 31) ? 0.08 : 0;
+    const bombBaseProb = getBlastCellProbabilityForLevel(level);
     const spinBaseProb = (level >= 11) ? 0.12 : 0;
     
     // Create a "deck" of special types to ensure guaranteed distribution even in sparse layers
@@ -2940,7 +3022,7 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                 const reservation = tryReserveCells(x, 0, length, isVertical, direction);
                 if (reservation) {
                     // Determine if this should be a bomb block (Task 1.1)
-                    const isBomb = (level >= 31 && Math.random() < (0.075 * length));
+                    const isBomb = (level >= 31 && Math.random() < (getBlastCellProbabilityForLevel(level) * length));
                     
                     // Cells reserved - create block
                     const block = new Block(length, x, 0, direction, isVertical, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level, isBomb);
@@ -2980,7 +3062,7 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                 const reservation = tryReserveCells(x, gridSize - 1, length, isVertical, direction);
                 if (reservation) {
                     // Determine if this should be a bomb block (Task 1.1)
-                    const isBomb = (level >= 31 && Math.random() < (0.075 * length));
+                    const isBomb = (level >= 31 && Math.random() < (getBlastCellProbabilityForLevel(level) * length));
                     
                     // Cells reserved - create block
                     const block = new Block(length, x, gridSize - 1, direction, isVertical, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level, isBomb);
@@ -3020,7 +3102,7 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                 const reservation = tryReserveCells(0, z, length, isVertical, direction);
                 if (reservation) {
                     // Determine if this should be a bomb block (Task 1.1)
-                    const isBomb = (level >= 31 && Math.random() < (0.075 * length));
+                    const isBomb = (level >= 31 && Math.random() < (getBlastCellProbabilityForLevel(level) * length));
                     
                     // Cells reserved - create block
                     const block = new Block(length, 0, z, direction, isVertical, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level, isBomb);
@@ -3060,7 +3142,7 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                 const reservation = tryReserveCells(gridSize - 1, z, length, isVertical, direction);
                 if (reservation) {
                     // Determine if this should be a bomb block (Task 1.1)
-                    const isBomb = (level >= 31 && Math.random() < (0.075 * length));
+                    const isBomb = (level >= 31 && Math.random() < (getBlastCellProbabilityForLevel(level) * length));
                     
                     // Cells reserved - create block
                     const block = new Block(length, gridSize - 1, z, direction, isVertical, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level, isBomb);
@@ -3387,7 +3469,7 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
 
                     // Determine if this should be a bomb block (Task 1.1)
                     // Slated for levels 31-40 in roadmap
-                    const isBomb = (level >= 31 && Math.random() < (0.075 * tryLength)); // scaled by length
+                    const isBomb = (level >= 31 && Math.random() < (getBlastCellProbabilityForLevel(level) * tryLength)); // scaled by length
                     
                     // Cells reserved - create block
                     const testBlock = new Block(tryLength, cell.x, cell.z, dir, false, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level, isBomb);
@@ -3497,86 +3579,141 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
     return blocksToPlace;
 }
 
-// Place blocks in batches with fast animation
-function placeBlocksBatch(blocksToPlace, batchSize = 10, delayBetweenBatches = 10) {
-    return new Promise((resolve) => {
-        let batchIndex = 0;
+const FAST_SPAWN_LEVEL_THRESHOLD = 51;
 
-        const placeBatch = () => {
+function getSpawnPlacementConfig(level, totalBlocks) {
+    // Level 1-5: Classic Slow Build
+    if (level <= 5) {
+        return {
+            batchSize: 10,
+            delayBetweenBatches: 10,
+            animationDuration: 50
+        };
+    }
+
+    // Level 6-50: Snappy Build
+    if (level <= 50) {
+        return {
+            batchSize: 25,
+            delayBetweenBatches: 4,
+            animationDuration: 30
+        };
+    }
+
+    // Level 51-100: Aggressive Build
+    if (level <= 100) {
+        return {
+            batchSize: 50,
+            delayBetweenBatches: 0,
+            animationDuration: 20
+        };
+    }
+
+    // Level 101+: Sleek Turbo Mode
+    return {
+        batchSize: Math.max(80, Math.min(250, Math.ceil(totalBlocks / 6))),
+        delayBetweenBatches: 0,
+        animationDuration: 15
+    };
+}
+
+// Place blocks in batches with optional animation
+function placeBlocksBatch(blocksToPlace, batchSize = 10, delayBetweenBatches = 10, animationDuration = 50) {
+    return new Promise((resolve) => {
+        let batchesStarted = 0;
+        const totalBatches = Math.ceil(blocksToPlace.length / batchSize);
+
+        if (totalBatches === 0) {
+            resolve();
+            return;
+        }
+
+        const spawnBatch = (batchIndex) => {
             const startIdx = batchIndex * batchSize;
             const endIdx = Math.min(startIdx + batchSize, blocksToPlace.length);
-
-            if (startIdx >= blocksToPlace.length) {
-                resolve();
-                return;
-            }
 
             // Add all blocks in this batch to towerGroup immediately
             for (let i = startIdx; i < endIdx; i++) {
                 const block = blocksToPlace[i];
-                if (!block) {
-                    console.warn(`⚠️ Null block at index ${i} in batch starting at ${startIdx}`);
-                    continue;
+                if (!block) continue;
+                
+                if (animationDuration > 0) {
+                    block.group.scale.set(0, 0, 0);
+                } else {
+                    block.group.scale.set(1, 1, 1);
                 }
-                block.group.scale.set(0, 0, 0);
                 towerGroup.add(block.group);
                 blocks.push(block);
             }
 
-            // Animate all blocks in batch simultaneously - very fast
+            // If no animation, move to next immediately
+            if (animationDuration <= 0) {
+                batchesStarted++;
+                if (batchesStarted < totalBatches) {
+                    if (delayBetweenBatches > 0) {
+                        setTimeout(() => spawnBatch(batchesStarted), delayBetweenBatches);
+                    } else {
+                        spawnBatch(batchesStarted);
+                    }
+                } else {
+                    resolve();
+                }
+                return;
+            }
+
+            // Animate batch
             const startTime = performance.now();
-            const duration = 50; // Very fast animation
-            let batchAnimationId = null;
+            let nextBatchTriggered = false;
 
             const animate = () => {
-                // Check if level generation was cancelled
-                const startIdx = batchIndex * batchSize;
-                if (!isGeneratingLevel || blocksToPlace.length === 0 || startIdx >= blocksToPlace.length) {
-                    if (batchAnimationId !== null) {
-                        cancelAnimationFrame(batchAnimationId);
-                        batchAnimationId = null;
-                    }
-                    return;
-                }
+                if (!isGeneratingLevel || blocksToPlace.length === 0) return;
 
                 const elapsed = performance.now() - startTime;
-                const progress = Math.min(elapsed / duration, 1);
-
-                // Ease-out cubic for smooth animation
+                const progress = Math.min(elapsed / animationDuration, 1);
                 const eased = 1 - Math.pow(1 - progress, 3);
 
-                // Update all blocks in batch
-                for (let i = startIdx; i < endIdx && i < blocksToPlace.length; i++) {
-                    if (blocksToPlace[i] && blocksToPlace[i].group) {
+                // Update scales
+                for (let i = startIdx; i < endIdx; i++) {
+                    if (blocksToPlace[i]?.group) {
                         blocksToPlace[i].group.scale.set(eased, eased, eased);
                     }
                 }
 
+                // OVERLAP LOGIC: Start next batch when current is 40% through
+                // This creates a smooth wave/fountain effect
+                if (progress >= 0.4 && !nextBatchTriggered) {
+                    nextBatchTriggered = true;
+                    batchesStarted++;
+                    if (batchesStarted < totalBatches) {
+                        if (delayBetweenBatches > 0) {
+                            setTimeout(() => spawnBatch(batchesStarted), delayBetweenBatches);
+                        } else {
+                            spawnBatch(batchesStarted);
+                        }
+                    }
+                }
+
                 if (progress < 1) {
-                    batchAnimationId = requestAnimationFrame(animate);
+                    requestAnimationFrame(animate);
                 } else {
-                    // Finalize scale
-                    for (let i = startIdx; i < endIdx && i < blocksToPlace.length; i++) {
-                        if (blocksToPlace[i] && blocksToPlace[i].group) {
+                    // Finalize scales
+                    for (let i = startIdx; i < endIdx; i++) {
+                        if (blocksToPlace[i]?.group) {
                             blocksToPlace[i].group.scale.set(1, 1, 1);
                         }
                     }
-
-                    if (batchAnimationId !== null) {
-                        cancelAnimationFrame(batchAnimationId);
-                        batchAnimationId = null;
+                    
+                    // Resolve if this was the last batch to finish animating
+                    if (batchIndex === totalBatches - 1) {
+                        resolve();
                     }
-
-                    // Move to next batch
-                    batchIndex++;
-                    setTimeout(placeBatch, delayBetweenBatches);
                 }
             };
-
-            batchAnimationId = requestAnimationFrame(animate);
+            requestAnimationFrame(animate);
         };
 
-        placeBatch();
+        // Start first batch
+        spawnBatch(0);
     });
 }
 
@@ -3652,7 +3789,7 @@ function createHeadOnCollisionBlocks(targetBlockCount = 10, level = 1) {
             }
             const isVertical1 = pair.vert1 === true;
             console.log(`Creating block1 at (${pair.x1}, ${pair.z1}), vert1=${pair.vert1}, isVertical1=${isVertical1}, length=${pair.len1}`);
-            const isBomb = (level >= 31 && Math.random() < (0.075 * pair.len1));
+            const isBomb = (level >= 31 && Math.random() < (getBlastCellProbabilityForLevel(level) * pair.len1));
             const block1 = new Block(pair.len1, pair.x1, pair.z1, pair.dir1, isVertical1, currentArrowStyle, scene, physics, gridSize, cubeSize, 0, 1, isBomb);
             console.log(`Block1 created, isVertical=${block1.isVertical}`);
             scene.remove(block1.group);
@@ -3687,7 +3824,7 @@ function createHeadOnCollisionBlocks(targetBlockCount = 10, level = 1) {
                 }
                 const isVertical2 = pair.vert2 === true;
                 console.log(`Creating block2 at (${pair.x2}, ${pair.z2}), vert2=${pair.vert2}, isVertical2=${isVertical2}, length=${pair.len2}`);
-                const isBomb = (level >= 31 && Math.random() < (0.075 * pair.len2));
+                const isBomb = (level >= 31 && Math.random() < (getBlastCellProbabilityForLevel(level) * pair.len2));
                 const block2 = new Block(pair.len2, pair.x2, pair.z2, pair.dir2, isVertical2, currentArrowStyle, scene, physics, gridSize, cubeSize, 0, 1, isBomb);
                 console.log(`Block2 created, isVertical=${block2.isVertical}`);
                 scene.remove(block2.group);
@@ -3731,7 +3868,7 @@ function createHeadOnCollisionBlocks(targetBlockCount = 10, level = 1) {
                     occupyCells(x, z, length, isXAligned);
                 }
                 // Determine if this should be a bomb block (Task 1.1)
-                const isBomb = (level >= 31 && Math.random() < (0.075 * length));
+                const isBomb = (level >= 31 && Math.random() < (getBlastCellProbabilityForLevel(level) * length));
 
                 // Task 1.3: Spin Gems appear from Level 11+
                 const isSpinGem = false; // Task 9.1: Disable spin gems
@@ -3934,9 +4071,15 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
     // Special case: Level 1 with head-on collisions for testing
     if (level === 1) {
         const headOnBlocks = createHeadOnCollisionBlocks(targetBlockCount, level);
+        const spawnConfig = getSpawnPlacementConfig(level, headOnBlocks.length);
 
         // Use the same animation system as normal generation
-        await placeBlocksBatch(headOnBlocks);
+        await placeBlocksBatch(
+            headOnBlocks,
+            spawnConfig.batchSize,
+            spawnConfig.delayBetweenBatches,
+            spawnConfig.animationDuration
+        );
 
         // Time-based modes: calculate initial time for this level based on actual block lengths
         if (isTimeBasedMode()) {
@@ -4364,8 +4507,14 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
      // END SPECIAL MECHANICS
      // ============================================
 
-    // Place all blocks in batches
-    await placeBlocksBatch(allBlocks, 10, 10); // 10 blocks per batch, 10ms between batches
+    // Place all blocks in batches (turbo placement for very high levels)
+    const spawnConfig = getSpawnPlacementConfig(level, allBlocks.length);
+    await placeBlocksBatch(
+        allBlocks,
+        spawnConfig.batchSize,
+        spawnConfig.delayBetweenBatches,
+        spawnConfig.animationDuration
+    );
 
     // Time-based modes: calculate initial time for this level based on actual block lengths
     // NOTE: This must happen AFTER blocks are created and placed
@@ -4452,8 +4601,14 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
 
             // Key/Lock regeneration
 
-            // Place blocks
-            await placeBlocksBatch(allBlocks, 10, 10);
+            // Place blocks (turbo placement for very high levels)
+            const regenSpawnConfig = getSpawnPlacementConfig(level, allBlocks.length);
+            await placeBlocksBatch(
+                allBlocks,
+                regenSpawnConfig.batchSize,
+                regenSpawnConfig.delayBetweenBatches,
+                regenSpawnConfig.animationDuration
+            );
 
             // Re-validate structure
             const newStructureCheck = validateStructure(blocks, gridSize);
@@ -4616,7 +4771,7 @@ function dropPenaltyTile() {
     const targetX = Math.floor(Math.random() * (maxX + 1));
     const targetZ = Math.floor(Math.random() * (maxZ + 1));
 
-    const isBomb = (currentLevel >= 31 && Math.random() < (0.05 * length));
+    const isBomb = (currentLevel >= 31 && Math.random() < (getBlastCellProbabilityForLevel(currentLevel) * length));
     const block = new Block(
         length,            // length
         targetX,           // gridX
@@ -6052,6 +6207,44 @@ if (debugCloseButton) {
     });
 }
 
+function setupBlastCellControls() {
+    const blastCellSlider = document.getElementById('blast-cell-slider');
+    const blastCellValue = document.getElementById('blast-cell-value');
+    if (!blastCellSlider || !blastCellValue) return;
+
+    let pendingPercent = blastCellPercent;
+    let pendingRafId = null;
+
+    const updateBlastReadout = (targetPercent, appliedStats = null) => {
+        if (!appliedStats || !Number.isFinite(appliedStats.actualPercent)) {
+            blastCellValue.textContent = `${targetPercent}%`;
+            return;
+        }
+        blastCellValue.textContent = `${targetPercent}% (${appliedStats.actualPercent.toFixed(1)}%)`;
+    };
+
+    const applyPendingBlastUpdate = () => {
+        pendingRafId = null;
+        const appliedStats = applyBlastCellPercentToCurrentTower(pendingPercent);
+        updateBlastReadout(blastCellPercent, appliedStats);
+    };
+
+    blastCellSlider.value = String(blastCellPercent);
+    updateBlastReadout(blastCellPercent, applyBlastCellPercentToCurrentTower(blastCellPercent));
+
+    blastCellSlider.addEventListener('input', (e) => {
+        const nextValue = parseInt(e.target.value, 10);
+        if (Number.isNaN(nextValue)) return;
+        blastCellPercent = Math.max(0, Math.min(MAX_BLAST_CELL_PERCENT, nextValue));
+        pendingPercent = blastCellPercent;
+        if (pendingRafId === null) {
+            pendingRafId = requestAnimationFrame(applyPendingBlastUpdate);
+        }
+    });
+}
+
+setupBlastCellControls();
+
 // Investigation function to capture bug report
 async function investigateBug() {
     // Capture current game state
@@ -6188,6 +6381,7 @@ function setupLightControls() {
     if (!window.lights) return;
 
     const { ambientLight, keyLight, fillLight } = window.lights;
+    const toHexColor = (color) => `#${color.getHexString().toUpperCase()}`;
 
     // Helper function to force immediate shadow map update and render
     const forceShadowUpdate = () => {
@@ -6226,6 +6420,23 @@ function setupLightControls() {
         });
     }
 
+    // Ambient Light Color
+    const ambientColorPicker = document.getElementById('ambient-color-picker');
+    const ambientColorValue = document.getElementById('ambient-color-value');
+    if (ambientColorPicker && ambientColorValue) {
+        const currentAmbientHex = toHexColor(ambientLight.color);
+        ambientColorPicker.value = currentAmbientHex;
+        ambientColorValue.textContent = currentAmbientHex;
+        ambientColorPicker.oninput = (e) => {
+            const value = e.target.value;
+            ambientLight.color.set(value);
+            ambientColorValue.textContent = value.toUpperCase();
+            if (renderer && scene && camera) {
+                renderer.render(scene, camera);
+            }
+        };
+    }
+
     // Key Light Intensity
     const keyIntensitySlider = document.getElementById('key-intensity-slider');
     const keyIntensityValue = document.getElementById('key-intensity-value');
@@ -6236,6 +6447,21 @@ function setupLightControls() {
             keyIntensityValue.textContent = value.toFixed(2);
             forceShadowUpdate();
         });
+    }
+
+    // Key Light Color
+    const keyColorPicker = document.getElementById('key-color-picker');
+    const keyColorValue = document.getElementById('key-color-value');
+    if (keyColorPicker && keyColorValue) {
+        const currentKeyHex = toHexColor(keyLight.color);
+        keyColorPicker.value = currentKeyHex;
+        keyColorValue.textContent = currentKeyHex;
+        keyColorPicker.oninput = (e) => {
+            const value = e.target.value;
+            keyLight.color.set(value);
+            keyColorValue.textContent = value.toUpperCase();
+            forceShadowUpdate();
+        };
     }
 
     // Key Light Position X
@@ -6287,6 +6513,23 @@ function setupLightControls() {
                 renderer.render(scene, camera);
             }
         });
+    }
+
+    // Fill Light Color
+    const fillColorPicker = document.getElementById('fill-color-picker');
+    const fillColorValue = document.getElementById('fill-color-value');
+    if (fillColorPicker && fillColorValue) {
+        const currentFillHex = toHexColor(fillLight.color);
+        fillColorPicker.value = currentFillHex;
+        fillColorValue.textContent = currentFillHex;
+        fillColorPicker.oninput = (e) => {
+            const value = e.target.value;
+            fillLight.color.set(value);
+            fillColorValue.textContent = value.toUpperCase();
+            if (renderer && scene && camera) {
+                renderer.render(scene, camera);
+            }
+        };
     }
 
     // Fill Light Position X
@@ -6386,12 +6629,22 @@ if (debugLoadLightsButton) {
             const { ambientLight, keyLight, fillLight } = window.lights;
 
             // Apply ambient light
-            if (lightValues.ambient && typeof lightValues.ambient.intensity === 'number') {
-                ambientLight.intensity = lightValues.ambient.intensity;
-                const slider = document.getElementById('ambient-intensity-slider');
-                const valueDisplay = document.getElementById('ambient-intensity-value');
-                if (slider) slider.value = lightValues.ambient.intensity;
-                if (valueDisplay) valueDisplay.textContent = lightValues.ambient.intensity.toFixed(2);
+            if (lightValues.ambient) {
+                if (typeof lightValues.ambient.intensity === 'number') {
+                    ambientLight.intensity = lightValues.ambient.intensity;
+                    const slider = document.getElementById('ambient-intensity-slider');
+                    const valueDisplay = document.getElementById('ambient-intensity-value');
+                    if (slider) slider.value = lightValues.ambient.intensity;
+                    if (valueDisplay) valueDisplay.textContent = lightValues.ambient.intensity.toFixed(2);
+                }
+                if (typeof lightValues.ambient.color === 'string') {
+                    ambientLight.color.set(lightValues.ambient.color);
+                    const colorPicker = document.getElementById('ambient-color-picker');
+                    const colorValue = document.getElementById('ambient-color-value');
+                    const normalizedColor = toHexColor(ambientLight.color);
+                    if (colorPicker) colorPicker.value = normalizedColor;
+                    if (colorValue) colorValue.textContent = normalizedColor;
+                }
             }
 
             // Apply key light
@@ -6402,6 +6655,14 @@ if (debugLoadLightsButton) {
                     const valueDisplay = document.getElementById('key-intensity-value');
                     if (slider) slider.value = lightValues.key.intensity;
                     if (valueDisplay) valueDisplay.textContent = lightValues.key.intensity.toFixed(2);
+                }
+                if (typeof lightValues.key.color === 'string') {
+                    keyLight.color.set(lightValues.key.color);
+                    const colorPicker = document.getElementById('key-color-picker');
+                    const colorValue = document.getElementById('key-color-value');
+                    const normalizedColor = toHexColor(keyLight.color);
+                    if (colorPicker) colorPicker.value = normalizedColor;
+                    if (colorValue) colorValue.textContent = normalizedColor;
                 }
                 if (lightValues.key.position) {
                     if (typeof lightValues.key.position.x === 'number') {
@@ -6436,6 +6697,14 @@ if (debugLoadLightsButton) {
                     const valueDisplay = document.getElementById('fill-intensity-value');
                     if (slider) slider.value = lightValues.fill.intensity;
                     if (valueDisplay) valueDisplay.textContent = lightValues.fill.intensity.toFixed(2);
+                }
+                if (typeof lightValues.fill.color === 'string') {
+                    fillLight.color.set(lightValues.fill.color);
+                    const colorPicker = document.getElementById('fill-color-picker');
+                    const colorValue = document.getElementById('fill-color-value');
+                    const normalizedColor = toHexColor(fillLight.color);
+                    if (colorPicker) colorPicker.value = normalizedColor;
+                    if (colorValue) colorValue.textContent = normalizedColor;
                 }
                 if (lightValues.fill.position) {
                     if (typeof lightValues.fill.position.x === 'number') {
@@ -6494,10 +6763,12 @@ if (debugCaptureLightsButton) {
 
         const lightValues = {
             ambient: {
-                intensity: ambientLight.intensity
+                intensity: ambientLight.intensity,
+                color: toHexColor(ambientLight.color)
             },
             key: {
                 intensity: keyLight.intensity,
+                color: toHexColor(keyLight.color),
                 position: {
                     x: keyLight.position.x,
                     y: keyLight.position.y,
@@ -6506,6 +6777,7 @@ if (debugCaptureLightsButton) {
             },
             fill: {
                 intensity: fillLight.intensity,
+                color: toHexColor(fillLight.color),
                 position: {
                     x: fillLight.position.x,
                     y: fillLight.position.y,
@@ -8952,9 +9224,14 @@ function animate() {
                 const padding = isMobileLike ? ZOOM_PADDING_MOBILE : ZOOM_PADDING;
                 const hDist = (effectiveHeight + padding * 2) / (2 * Math.tan(fov / 2));
                 const wDist = (effectiveWidth + padding * 2) / (2 * Math.tan(fov / 2) * aspect);
+                const isDesktopHighLevel = !isMobileLike && currentLevel >= DESKTOP_FULL_TOWER_VISIBILITY_LEVEL;
+                const verticalFitDist = isDesktopHighLevel ? (hDist * DESKTOP_HIGH_LEVEL_VERTICAL_FIT_MULTIPLIER) : hDist;
                 const multiplier = isMobileLike ? AUTO_ZOOM_MULTIPLIER_MOBILE : AUTO_ZOOM_MULTIPLIER_DESKTOP;
-                const requiredDistance = Math.max(hDist, wDist) * multiplier;
+                let requiredDistance = Math.max(verticalFitDist, wDist) * multiplier;
                 const minRadius = isMobileLike ? MIN_RADIUS_MOBILE : MIN_RADIUS_DESKTOP;
+                if (isDesktopHighLevel) {
+                    requiredDistance = Math.max(requiredDistance, DESKTOP_HIGH_LEVEL_MIN_RADIUS);
+                }
                 const clampedDist = Math.max(minRadius, Math.min(MAX_RADIUS, requiredDistance));
 
                 if (isGeneratingLevel) smoothedAutoZoomRadius = clampedDist;
