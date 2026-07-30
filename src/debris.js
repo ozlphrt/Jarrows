@@ -220,7 +220,7 @@ export class DebrisManager {
      * @param {number} thresholdY - Y position below which pieces are considered settled
      * @param {number} minAge - Minimum age in seconds before cleanup
      */
-    cleanupSettled(thresholdY = -0.5, minAge = 10) {
+    cleanupSettled(thresholdY = 0.2, minAge = 2.5) {
         const now = performance.now() / 1000;
         const piecesToRemove = [];
         
@@ -228,18 +228,16 @@ export class DebrisManager {
             const piece = this.pieces[i];
             if (!piece || !piece.mesh) continue;
             
-            // Check if piece has settled below threshold
-            if (piece.mesh.position.y < thresholdY) {
-                // Check if enough time has passed
-                if (!piece.settleTime) {
-                    piece.settleTime = now;
-                } else if (now - piece.settleTime > minAge) {
-                    piecesToRemove.push(i);
-                }
+            // Track creation time if not set
+            if (!piece.spawnTime) piece.spawnTime = now;
+            
+            // Clean up pieces falling off board into the void (Y < -1.0) or exceeding lifespan
+            if (piece.mesh.position.y < -1.0 || (now - piece.spawnTime > minAge)) {
+                piecesToRemove.push(i);
             }
         }
         
-        // Remove settled pieces
+        // Remove settled / fallen pieces
         for (const index of piecesToRemove) {
             const piece = this.pieces[index];
             if (piece) {

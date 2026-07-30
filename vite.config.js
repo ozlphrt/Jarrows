@@ -95,7 +95,7 @@ export default ({ command }) => {
       __JARROWS_GIT_SHA__: JSON.stringify(gitSha),
     },
     server: {
-      port: 3000,
+      port: 3001,
       open: true,
       fs: {
         allow: ['..']

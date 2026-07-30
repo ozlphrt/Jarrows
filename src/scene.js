@@ -66,50 +66,52 @@ export function createLights(scene) {
         }
     })();
 
-    // Dramatic lighting setup: low ambient, strong key light, minimal fill
+    // Exact user light controls setup
     
-    // Ambient Light
-    // Default intensity/color: 0.40, #FFFFFF
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.40);
+    // New Default Light Controls setup (from user tuning)
+    
+    // Ambient Light: Intensity 0.53, Color #FFFFFF
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.53);
     scene.add(ambientLight);
     
-    // Default intensity/color/position: 2.9, #CACAC9, (22.5, 26.0, 19.5)
-    const keyLight = new THREE.DirectionalLight(0xCACAC9, 2.9);
+    // Key Light: Intensity 2.70, Color #FFFFFF, Position (22.5, 26.0, 19.5)
+    const keyLight = new THREE.DirectionalLight(0xffffff, 2.70);
     keyLight.position.set(22.5, 26.0, 19.5);
     keyLight.castShadow = true;
-    // Shadow camera bounds: keep tight for better precision + less wasted shadow-map area.
-    // The board is ~7x7 centered around (3.5, 0, 3.5). These values are tuned to cover
-    // typical tower height without wasting a huge frustum (which makes shadows blurrier AND more costly).
-    // Slightly looser than the previous tight bounds to reduce shadow clipping/popping as the tower grows.
-    keyLight.shadow.camera.left = -15;
-    keyLight.shadow.camera.right = 15;
-    keyLight.shadow.camera.top = 22;
-    keyLight.shadow.camera.bottom = -22;
+    
+    // Shadow camera bounds
+    keyLight.shadow.camera.left = -20;
+    keyLight.shadow.camera.right = 20;
+    keyLight.shadow.camera.top = 28;
+    keyLight.shadow.camera.bottom = -28;
     keyLight.shadow.camera.near = 1.0;
-    keyLight.shadow.camera.far = isIOS ? 75.0 : 65.0;
-    // Position shadow camera to look at the scene center
-    keyLight.shadow.camera.position.set(0, 25, 0);
+    keyLight.shadow.camera.far = isIOS ? 90.0 : 80.0;
+    keyLight.shadow.camera.position.set(0, 26.0, 0);
     keyLight.shadow.camera.lookAt(0, 0, 0);
-    // Shadow map size tier: iOS gets a smaller map for battery/thermals.
-    const shadowSize = isIOS ? 1024 : 2048;
+
+    const shadowSize = isIOS ? 1024 : 2048; // Mobile gets 1024 for battery efficiency & thermals
     keyLight.shadow.mapSize.width = shadowSize;
     keyLight.shadow.mapSize.height = shadowSize;
-    keyLight.shadow.bias = -0.0001;
-    // Soften edges a bit (effective when using PCFSoftShadowMap).
-    // iOS Balanced/Battery may use PCFShadowMap (radius ignored), but Performance switches to PCFSoft.
-    keyLight.shadow.radius = isIOS ? 2 : 3;
-    keyLight.shadow.normalBias = 0.02; // Reduce shadow acne
+    keyLight.shadow.bias = -0.00015;
+    keyLight.shadow.radius = 6.0; // Soft penumbra shadow edges
+    keyLight.shadow.normalBias = 0.025;
     scene.add(keyLight);
     
-    // Fill Light - default intensity/color/position: 1.57, #B5BAE8, (-5.5, 8.5, -4.0)
-    const fillLight = new THREE.DirectionalLight(0xB5BAE8, 1.57);
+    // Fill Light: Intensity 1.57, Color #B0B4D8, Position (-5.5, 8.5, -4.0)
+    const fillLight = new THREE.DirectionalLight(0xB0B4D8, 1.57);
     fillLight.position.set(-5.5, 8.5, -4.0);
     scene.add(fillLight);
+
+    // Rim Light: Intensity 2.00, Color #DBE6FF, Position (-10.0, 30.0, -25.0)
+    const rimLight = new THREE.DirectionalLight(0xDBE6FF, 2.00);
+    rimLight.position.set(-10.0, 30.0, -25.0);
+    scene.add(rimLight);
     
     return { 
         ambientLight, 
-        keyLight,      // Main directional light (casts shadows)
-        fillLight      // Fill light (minimal for dramatic contrast)
+        keyLight,
+        fillLight,
+        rimLight
     };
 }
 
@@ -119,10 +121,12 @@ export function createLights(scene) {
  */
 export const LIGHT_PRESETS = {
     'default': {
-        name: 'Balanced',
-        ambient: { color: 0xffffff, intensity: 0.40 },
-        key: { color: 0xCACAC9, intensity: 2.9, pos: [22.5, 26.0, 19.5] },
-        fill: { color: 0xB5BAE8, intensity: 1.57, pos: [-5.5, 8.5, -4.0] }
+        name: 'Default Studio Settings',
+        ambient: { color: 0xffffff, intensity: 0.53 },
+        key: { color: 0xffffff, intensity: 2.70, pos: [22.5, 26.0, 19.5] },
+        fill: { color: 0xB0B4D8, intensity: 1.57, pos: [-5.5, 8.5, -4.0] },
+        rim: { color: 0xDBE6FF, intensity: 2.00, pos: [-10.0, 30.0, -25.0] },
+        shadowRadius: 6.0
     },
     'desert-dawn': {
         name: 'Desert Dawn',

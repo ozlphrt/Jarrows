@@ -42,64 +42,65 @@ export function createParticleSystem(maxParticles = 1000, scene) {
     scene.add(points);
     
     let nextParticleIndex = 0;
-    const GRAVITY = -9.8; // Gravity constant
-    const PARTICLE_LIFETIME = 2.0; // 2 seconds
-    
-    /**
-     * Add an explosion effect
-     * @param {THREE.Vector3} position - Center position of explosion
-     * @param {THREE.Color} color - Base color for particles
-     * @param {number} count - Number of particles to spawn
-     * @param {number} velocity - Base velocity magnitude
-     */
-    function addExplosion(position, color, count = 30, velocity = 3.0) {
-        // Task 11.1: Reuse oldest slots indefinitely
+    const GRAVITY = -20.0; // Medium gravity — heavier arc
+
+    function addExplosion(position, color, count = 50, velocity = 5.0) {
+        const clampedVelocity = Math.min(velocity, 9.0);
+
         for (let i = 0; i < count; i++) {
             const index = nextParticleIndex;
             nextParticleIndex = (nextParticleIndex + 1) % maxParticles;
             
-            // If slot is empty, initialize it
             if (!particles[index]) {
-                particles[index] = {
-                    index: index
-                };
+                particles[index] = { index };
             }
             
             const particle = particles[index];
             particle.active = true;
             particle.isGrounded = false;
+            particle.bounces = 0;
+            particle.maxBounces = 0;
             particle.groundedAge = 0;
-            particle.lifetime = PARTICLE_LIFETIME;
             particle.age = 0;
-            particle.startSize = 0.08 + Math.random() * 0.15; // Track start size for linear shrink
+            particle.startSize = 0.08 + Math.random() * 0.12;
+            particle.drag = 0.992; // Low drag for wide travel
             
-            // Set position
-            positions[index * 3] = position.x;
-            positions[index * 3 + 1] = position.y;
-            positions[index * 3 + 2] = position.z;
-            
-            // Random velocity direction (outward cone)
-            const angle = Math.random() * Math.PI * 2;
-            const elevation = (Math.random() - 0.5) * Math.PI * 0.5; // -45 to +45 degrees
-            const speed = velocity * (0.5 + Math.random() * 0.5); // 0.5x to 1.0x base velocity
+            const theta = Math.random() * Math.PI * 2; // Full 360° horizontal
+            const phi = Math.random() * Math.PI * 0.45; // Upper hemisphere only (0° to 81°)
+            const speed = clampedVelocity * (1.0 + Math.random() * 1.4); // Wide horizontal range
             
             particle.velocity = new THREE.Vector3(
-                Math.cos(angle) * Math.cos(elevation) * speed,
-                Math.sin(elevation) * speed + Math.abs(elevation) * 0.5, // Slight upward bias
-                Math.sin(angle) * Math.cos(elevation) * speed
+                Math.cos(theta) * Math.cos(phi) * speed,
+                Math.sin(phi) * speed + 2.0, // Upward pop then heavier fall
+                Math.sin(theta) * Math.cos(phi) * speed
             );
             
-            // Color variation (slightly lighter/darker)
-            const colorVariation = 0.7 + Math.random() * 0.3;
-            colors[index * 3] = color.r * colorVariation;
-            colors[index * 3 + 1] = color.g * colorVariation;
-            colors[index * 3 + 2] = color.b * colorVariation;
+            const isSpark = Math.random() < 0.15;
+            const brightness = isSpark ? 1.6 : (0.8 + Math.random() * 0.4);
             
-            // Size variation - slightly bigger particles for better visibility
+            if (isSpark) {
+                colors[index * 3] = Math.min(1.0, color.r * 1.4 + 0.2);
+                colors[index * 3 + 1] = Math.min(1.0, color.g * 1.4 + 0.2);
+                colors[index * 3 + 2] = Math.min(1.0, color.b * 1.4 + 0.2);
+                particle.startSize *= 1.2;
+            } else {
+                colors[index * 3] = Math.min(1.0, color.r * brightness);
+                colors[index * 3 + 1] = Math.min(1.0, color.g * brightness);
+                colors[index * 3 + 2] = Math.min(1.0, color.b * brightness);
+            }
+            
+            positions[index * 3] = position.x + (Math.random() - 0.5) * 0.2;
+            positions[index * 3 + 1] = position.y + (Math.random() - 0.5) * 0.2;
+            positions[index * 3 + 2] = position.z + (Math.random() - 0.5) * 0.2;
+            
+            // Store original color for fade
+            particle.colorR = colors[index * 3];
+            particle.colorG = colors[index * 3 + 1];
+            particle.colorB = colors[index * 3 + 2];
+            
             sizes[index] = particle.startSize;
         }
         
-        // Update geometry attributes
         geometry.attributes.position.needsUpdate = true;
         geometry.attributes.color.needsUpdate = true;
         geometry.attributes.size.needsUpdate = true;
@@ -110,26 +111,31 @@ export function createParticleSystem(maxParticles = 1000, scene) {
      * @param {number} deltaTime - Time delta in seconds
      */
     function updateParticles(deltaTime) {
-        const KILL_Y = -10.0; // Deep cleanup for particles falling into void
-        const BASE_HALF_SIZE = 10.5; // Half of 21x21 plate
+        const KILL_Y = -10.0;
         
-        // Get dynamic base plate world position
         let baseWorldY = 0;
-        let baseWorldX = 0;
-        let baseWorldZ = 0;
+        let baseWorldX = 3.5;
+        let baseWorldZ = 3.5;
+        let baseHalfSize = 5.5; // Default half-size for 11x11 base plate (7 + 2*margin)
+
         if (window.gameGrid && window.gameGrid.base) {
             const basePos = new THREE.Vector3();
             window.gameGrid.base.getWorldPosition(basePos);
-            // The BoxGeometry is 0.2 units thick. If its center is at basePos.y, the top surface is basePos.y + 0.1.
             baseWorldY = basePos.y + 0.1; 
             baseWorldX = basePos.x;
             baseWorldZ = basePos.z;
+            
+            // Derive actual size from geometry & scale (21 * base.scale.x / 2 = 11 / 2 = 5.5)
+            if (window.gameGrid.base.geometry && window.gameGrid.base.geometry.parameters) {
+                const baseWidth = window.gameGrid.base.geometry.parameters.width || 21;
+                baseHalfSize = (baseWidth * window.gameGrid.base.scale.x) / 2;
+            }
         }
 
-        const BASE_MIN_X = baseWorldX - BASE_HALF_SIZE;
-        const BASE_MAX_X = baseWorldX + BASE_HALF_SIZE;
-        const BASE_MIN_Z = baseWorldZ - BASE_HALF_SIZE;
-        const BASE_MAX_Z = baseWorldZ + BASE_HALF_SIZE;
+        const BASE_MIN_X = baseWorldX - baseHalfSize;
+        const BASE_MAX_X = baseWorldX + baseHalfSize;
+        const BASE_MIN_Z = baseWorldZ - baseHalfSize;
+        const BASE_MAX_Z = baseWorldZ + baseHalfSize;
         
         for (let i = 0; i < maxParticles; i++) {
             if (!particles[i] || !particles[i].active) continue;
@@ -137,73 +143,63 @@ export function createParticleSystem(maxParticles = 1000, scene) {
             const particle = particles[i];
             
             if (particle.isGrounded) {
-                // Grounded particle settling logic
                 particle.groundedAge += deltaTime;
-                if (particle.groundedAge >= 3.0) {
+                if (particle.groundedAge >= 2.0) {
+                    // Dead: push off-screen and deactivate
                     particle.active = false;
-                    sizes[i] = 0;
+                    positions[i * 3 + 1] = -9999;
+                    colors[i * 3] = 0; colors[i * 3 + 1] = 0; colors[i * 3 + 2] = 0;
+                    geometry.attributes.color.needsUpdate = true;
                 } else {
-                    // Start fading out in the last 0.5s of the 3s lifetime
-                    const timeRemaining = 3.0 - particle.groundedAge;
-                    if (timeRemaining < 0.5) {
-                        sizes[i] = particle.startSize * (timeRemaining / 0.5);
-                    } else {
-                        sizes[i] = particle.startSize; // Restore size when grounded
-                    }
+                    // Fade color to black (invisible with AdditiveBlending)
+                    const fade = 1.0 - (particle.groundedAge / 2.0);
+                    colors[i * 3]     = (particle.colorR || 0) * fade;
+                    colors[i * 3 + 1] = (particle.colorG || 0) * fade;
+                    colors[i * 3 + 2] = (particle.colorB || 0) * fade;
                 }
-                
-                // Stick to the ground even if the tower wobbles
                 positions[i * 3 + 1] = baseWorldY + 0.01;
                 continue;
             }
 
             particle.age += deltaTime;
             
-            // Apply gravity
+            particle.velocity.x *= particle.drag;
+            particle.velocity.z *= particle.drag;
             particle.velocity.y += GRAVITY * deltaTime;
             
-            // Calculate next position
             const nextX = positions[i * 3] + particle.velocity.x * deltaTime;
             const nextY = positions[i * 3 + 1] + particle.velocity.y * deltaTime;
             const nextZ = positions[i * 3 + 2] + particle.velocity.z * deltaTime;
 
-            // Ground collision check
-            // Hit ground/base plate with epsilon threshold (+0.05)
             const isOnBasePlate = nextX >= BASE_MIN_X && nextX <= BASE_MAX_X && 
                                  nextZ >= BASE_MIN_Z && nextZ <= BASE_MAX_Z;
             
-            if (nextY <= baseWorldY + 0.05 && isOnBasePlate) {
-                // Particle "landed" on the plate - stay put for 3 seconds
-                particle.isGrounded = true;
-                if (particle.velocity) particle.velocity.set(0, 0, 0); // Stop moving
-                
-                // Snap to ground level
-                positions[i * 3] = nextX;
-                positions[i * 3 + 1] = baseWorldY + 0.01; // Slightly above ground to avoid z-fighting
-                positions[i * 3 + 2] = nextZ;
-                continue; // Skip the rest of the update
+            // Kill immediately: off-board or void
+            if (nextY < KILL_Y || !isOnBasePlate) {
+                particle.active = false;
+                positions[i * 3 + 1] = -9999; // Push off-screen
+                colors[i * 3] = 0; colors[i * 3 + 1] = 0; colors[i * 3 + 2] = 0;
+                continue;
             }
 
-            // Update position
+            if (nextY <= baseWorldY + 0.05 && isOnBasePlate) {
+                // Land on the base plate
+                particle.isGrounded = true;
+                if (particle.velocity) particle.velocity.set(0, 0, 0);
+                positions[i * 3] = nextX;
+                positions[i * 3 + 1] = baseWorldY + 0.01;
+                positions[i * 3 + 2] = nextZ;
+                continue;
+            }
+
+            // Still airborne
             positions[i * 3] = nextX;
             positions[i * 3 + 1] = nextY;
             positions[i * 3 + 2] = nextZ;
-            
-            // Update lifetime and fade
-            const lifetimeProgress = particle.age / particle.lifetime;
-            if (lifetimeProgress >= 1.0 || positions[i * 3 + 1] < KILL_Y) {
-                // Particle dissipated in air or fell deep into void
-                particle.active = false;
-                sizes[i] = 0;
-            } else {
-                // Fade out slightly over lifetime in air, but keep visible enough to see them land
-                const fade = Math.max(0.3, 1.0 - lifetimeProgress);
-                sizes[i] = particle.startSize * fade; 
-            }
         }
         
-        // Update geometry
         geometry.attributes.position.needsUpdate = true;
+        geometry.attributes.color.needsUpdate = true;
         geometry.attributes.size.needsUpdate = true;
     }
     

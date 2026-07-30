@@ -3038,25 +3038,25 @@ export class Block {
             // 3. It has been falling for too long (safety timeout)
             // Note: x, y, z are world coordinates from physics body
             // Grid center in world coordinates is at (3.5, 0, 3.5) due to towerGroup position
-            const gridCenterWorld = (this.gridSize * this.cubeSize) / 2; // 3.5 for 7x7 grid
-            const maxDistanceFromGrid = 30.0; // Extend boundary to allow for high-speed flight
+            const gridCenterWorld = (this.gridSize * this.cubeSize) / 2;
+            const margin = 1; // BASE_PLATE_MARGIN: base plate extends 1 unit beyond main grid on all sides
+            const basePlateHalfSize = (this.gridSize * this.cubeSize) / 2 + margin;
+            const isWithinBasePlateXZ = Math.abs(x - gridCenterWorld) <= basePlateHalfSize && Math.abs(z - gridCenterWorld) <= basePlateHalfSize;
             const distanceFromCenter = Math.sqrt(
                 Math.pow(x - gridCenterWorld, 2) + Math.pow(z - gridCenterWorld, 2)
             );
 
-            // Task: Remove 5-second timeout and implement base plate settling removal
-            // Base plate top is at world y=0.0 (translation -0.1 + half-height 0.1)
             const halfHeight = sizeY / 2;
             const bottomY = y - halfHeight;
             const linSpeed = Math.sqrt(lvx * lvx + lvy * lvy + lvz * lvz);
             const angSpeed = Math.sqrt(avx * avx + avy * avy + avz * avz);
-            
-            // Clear if it reaches the floor/base plate (y=0) and settles.
-            // Locked blocks on the floor also blast automatically.
-            const isOnBasePlate = bottomY < 0.1 && bottomY > -0.5;
+
+            // Clear if it settles on the base plate or falls off the edge into the void
+            const isOnBasePlate = bottomY < 0.1 && bottomY > -0.5 && isWithinBasePlateXZ;
+            const isOffBasePlateEdge = (bottomY < 0.1 || y < -2) && !isWithinBasePlateXZ;
             const isSettled = linSpeed < 1.0 && angSpeed < 2.0;
 
-            const shouldRemove = (isOnBasePlate && isSettled) || y < -2 || distanceFromCenter > maxDistanceFromGrid;
+            const shouldRemove = (isOnBasePlate && isSettled) || isOffBasePlateEdge || y < -10 || distanceFromCenter > 40.0;
 
             if (shouldRemove && !this.isRemoved) {
                 console.log(`[BasePlate] Blasting block with full effects: y=${y.toFixed(2)}, bottom=${bottomY.toFixed(2)}, speed=${linSpeed.toFixed(2)}`);
@@ -3443,8 +3443,12 @@ export class Block {
             // This prevents blocks from stopping at the edge when they should fall
             let anyCubeOff = false;
 
+            const margin = 1; // BASE_PLATE_MARGIN (gridlines extend 1 cell beyond main tower grid)
+            const minBound = -margin;
+            const maxBound = gridSize + margin;
+
             if (this.isVertical) {
-                if (nextGridX < 0 || nextGridX >= gridSize || nextGridZ < 0 || nextGridZ >= gridSize) {
+                if (nextGridX < minBound || nextGridX >= maxBound || nextGridZ < minBound || nextGridZ >= maxBound) {
                     anyCubeOff = true;
                 }
             } else {
@@ -3452,7 +3456,7 @@ export class Block {
                 for (let i = 0; i < this.length; i++) {
                     const checkX = nextGridX + (isXAligned ? i : 0);
                     const checkZ = nextGridZ + (isXAligned ? 0 : i);
-                    if (checkX < 0 || checkX >= gridSize || checkZ < 0 || checkZ >= gridSize) {
+                    if (checkX < minBound || checkX >= maxBound || checkZ < minBound || checkZ >= maxBound) {
                         anyCubeOff = true;
                         break;
                     }

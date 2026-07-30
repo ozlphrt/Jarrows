@@ -166,7 +166,7 @@ const TIME_CHALLENGE_START_SECONDS = 30;
 
 // State Variables
 let gridSize = 7;
-const BASE_PLATE_MARGIN = 2; // Extra margin on each side of the grid
+const BASE_PLATE_MARGIN = 1; // Extra margin on each side of the grid (1 cell margin on all 4 sides)
 const cubeSize = 1;
 const towerCenter = new THREE.Vector3(3.5, 0, 3.5);
 let blocks = [];
@@ -1019,12 +1019,12 @@ function centerTowerVertically() {
 }
 
 // Camera system constants
-const MIN_RADIUS_DESKTOP = 11.0; // Prevent "in-your-face" zoom on desktop when few blocks remain
+const MIN_RADIUS_DESKTOP = 13.5; // Prevent clipping on desktop when tower is tall or few blocks remain
 const MIN_RADIUS_MOBILE = 5.0; // Keep tight for mobile
 const MAX_RADIUS = 50;
 const MIN_ELEVATION = -Math.PI / 2; // Lock exactly to base plate horizon
 const MAX_ELEVATION = Math.PI / 2; // Lock exactly to base plate horizon
-const ZOOM_PADDING = 0.2; // Matched to mobile for tighter desktop zoom
+const ZOOM_PADDING = 1.2; // Extra breathing room for desktop to prevent clipping top/bottom
 const ZOOM_PADDING_MOBILE = 0.2; // Minimal padding for mobile
 const AUTO_ZOOM_MIN_BOUNDING_SIZE = 3; // Minimum bounding box size to prevent zooming in too much with few blocks
 const SPAWN_ZOOM_PADDING = 1; // Minimal extra padding during spawn
@@ -1032,7 +1032,7 @@ const SPAWN_ZOOM_MULTIPLIER = 1.05; // Minimal additional multiplier for spawn z
 // Auto-zoom multiplier: platform-aware - larger on desktop (zoom out more), smaller on mobile (zoom in more)
 // Desktop needs more zoom-out to prevent blocks going out of frame
 // Mobile can zoom in more to reduce wasted space on sides
-const AUTO_ZOOM_MULTIPLIER_DESKTOP = 1.02; // Matched to mobile for tighter desktop zoom
+const AUTO_ZOOM_MULTIPLIER_DESKTOP = 1.22; // Desktop: 22% margin so top/bottom UI elements don't overlap blocks
 const AUTO_ZOOM_MULTIPLIER_MOBILE = 1.02; // Mobile: very tight fit (2% margin)
 // Desktop-specific padding multiplier to ensure all blocks stay visible
 const DESKTOP_ZOOM_PADDING_MULTIPLIER = 1.0; // No extra multiplier needed
@@ -2302,7 +2302,7 @@ const MAX_BLAST_CELL_PERCENT = 20;
 let blastCellPercent = DEFAULT_BLAST_CELL_PERCENT;
 
 function getBlastCellProbabilityForLevel(level) {
-    if (level < 31) {
+    if (level < 10) {
         return 0;
     }
     return Math.max(0, Math.min(MAX_BLAST_CELL_PERCENT, blastCellPercent)) / 100;
@@ -2399,9 +2399,8 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
     const blocksToPlace = []; // Store blocks to be placed sequentially
     const isUpperLayer = yOffset > 0; // Declare once for use throughout function
 
-    // Task 7.7.4: Height-based probability modulation and shuffled deck
-    // Calculate expected special block counts for this layer to ensure even distribution
-    const heightMod = 1.6 - (heightRatio * 1.2);
+    // Height-based probability modulation (even distribution across all tower layers)
+    const heightMod = 1.0;
     const bombBaseProb = getBlastCellProbabilityForLevel(level);
     const spinBaseProb = (level >= 11) ? 0.12 : 0;
     
@@ -2696,7 +2695,7 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                         length = 3;
                     }
                 } else if (preferLongBlocks) {
-                    // Prefer longer blocks: 20% length 1, 50% length 2, 30% length 3
+                    // Prefer longer blocks for base: 20% length 1, 50% length 2, 30% length 3
                     if (rand < 0.2) {
                         length = 1;
                     } else if (rand < 0.7) {
@@ -2704,8 +2703,17 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                     } else {
                         length = 3;
                     }
+                } else if (heightRatio > 0.6) {
+                    // Top level layers: Favor 2-cell and 3-cell tiles (20% length 1, 45% length 2, 35% length 3)
+                    if (rand < 0.20) {
+                        length = 1;
+                    } else if (rand < 0.65) {
+                        length = 2;
+                    } else {
+                        length = 3;
+                    }
                 } else if (remaining <= 5) {
-                    // Very close to target - prefer single blocks (80% chance)
+                    // Very close to target completion - prefer single blocks (80% chance)
                     if (rand < 0.8) {
                         length = 1;
                     } else if (rand < 0.95) {
@@ -2714,10 +2722,10 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
                         length = 3;
                     }
                 } else {
-                    // Normal distribution: 40% length 1, 40% length 2, 20% length 3
-                    if (rand < 0.4) {
+                    // Standard distribution: Equal ~33.3% distribution for length 1, 2, and 3
+                    if (rand < 0.333) {
                         length = 1;
-                    } else if (rand < 0.8) {
+                    } else if (rand < 0.666) {
                         length = 2;
                     } else {
                         length = 3;
@@ -5413,6 +5421,7 @@ function removeBlockWithAnimation(block) {
             // Clear animation function
             this.updateMeltAnimation = null;
             updateProgressDial(); // Update progress dial after block removal
+            checkAndTriggerFalling(blocks);
         }
     };
 
@@ -6033,149 +6042,34 @@ function toggleDebugPanel() {
     }
 }
 
-// Promotional Modal for Cross-Promotion (FlowFree Cube)
-function showPromoModal(onClose) {
-    const overlay = document.createElement('div');
-    overlay.id = 'promo-modal';
-    overlay.className = 'extended-stats-modal-overlay';
-    overlay.style.cssText = `
-        position: fixed;
-        inset: 0;
-        z-index: 5000;
-        background: rgba(0, 0, 0, 0.85);
-        backdrop-filter: blur(15px);
-        -webkit-backdrop-filter: blur(15px);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 20px;
-    `;
-
-    const panel = document.createElement('div');
-    panel.className = 'extended-stats-modal-panel';
-    panel.style.cssText = `
-        width: 100%;
-        max-width: 400px;
-        background: rgba(255, 255, 255, 0.05);
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        border-radius: 28px;
-        padding: 24px;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 20px;
-        text-align: center;
-        box-shadow: 0 30px 60px rgba(0,0,0,0.5);
-        animation: promo-appear 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-    `;
-
-    // Add animation style if not exists
-    if (!document.getElementById('promo-style')) {
-        const style = document.createElement('style');
-        style.id = 'promo-style';
-        style.textContent = `
-            @keyframes promo-appear {
-                from { opacity: 0; transform: scale(0.9) translateY(20px); }
-                to { opacity: 1; transform: scale(1) translateY(0); }
-            }
-        `;
-        document.head.appendChild(style);
-    }
-
-    const img = document.createElement('img');
-    img.src = 'advertorial.png';
-    img.style.cssText = `
-        width: 100%;
-        border-radius: 18px;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-        margin-bottom: 10px;
-    `;
-
-    const btnContainer = document.createElement('div');
-    btnContainer.className = 'modal-actions';
-    btnContainer.style.cssText = `
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-        width: 100%;
-    `;
-
-    const tryNowBtn = document.createElement('button');
-    tryNowBtn.className = 'game-button';
-    tryNowBtn.innerHTML = 'TRY NOW!';
-    tryNowBtn.style.cssText = `
-        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-        border: none;
-        color: white;
-        font-weight: 900;
-        font-size: 22px;
-        padding: 16px;
-        text-shadow: 0 2px 4px rgba(0,0,0,0.2);
-    `;
-    tryNowBtn.onclick = () => {
-        window.open('https://ozlphrt.github.io/flowfree-cube/', '_blank');
-    };
-
-    const maybeLaterBtn = document.createElement('button');
-    maybeLaterBtn.className = 'game-button secondary';
-    maybeLaterBtn.textContent = 'Maybe Later!';
-    maybeLaterBtn.style.cssText = `
-        background: rgba(255,255,255,0.1);
-        font-size: 16px;
-        opacity: 0.8;
-        padding: 12px;
-    `;
-    maybeLaterBtn.onclick = () => {
-        overlay.remove();
-        if (onClose) onClose();
-    };
-
-    btnContainer.appendChild(tryNowBtn);
-    btnContainer.appendChild(maybeLaterBtn);
-    panel.appendChild(img);
-    panel.appendChild(btnContainer);
-    overlay.appendChild(panel);
-    document.body.appendChild(overlay);
-}
-
 // Next level button handler
 const nextLevelButton = document.getElementById('next-level-button');
 if (nextLevelButton) {
     nextLevelButton.addEventListener('click', async () => {
-        const proceed = async () => {
-            hideLevelCompleteModal();
-            const previousLevel = currentLevel;
-            currentLevel++;
-            console.log(`[Next Level] Incremented from ${previousLevel} to ${currentLevel}`);
-            moveHistory = []; // Clear move history for new level
-            totalMoves = 0; // Reset move counter
-            debugMoveHistory = []; // Clear debug move history
-            debugCollisionEvents = []; // Clear collision events
-            debugMovementCalculations = []; // Clear movement calculations for new level
-            debugCollisionEvents = []; // Clear collision events for new level
-            debugMovementCalculations = []; // Clear movement calculations for new level
-            // CRITICAL: Save progress IMMEDIATELY after incrementing
-            // This ensures localStorage always has the correct level
+        hideLevelCompleteModal();
+        const previousLevel = currentLevel;
+        currentLevel++;
+        console.log(`[Next Level] Incremented from ${previousLevel} to ${currentLevel}`);
+        moveHistory = []; // Clear move history for new level
+        totalMoves = 0; // Reset move counter
+        debugMoveHistory = []; // Clear debug move history
+        debugCollisionEvents = []; // Clear collision events
+        debugMovementCalculations = []; // Clear movement calculations for new level
+        debugCollisionEvents = []; // Clear collision events for new level
+        debugMovementCalculations = []; // Clear movement calculations for new level
+        // CRITICAL: Save progress IMMEDIATELY after incrementing
+        // This ensures localStorage always has the correct level
+        saveProgress();
+        // Verify save was successful
+        const storageKey = getStorageKey();
+        const savedLevel = parseInt(localStorage.getItem(storageKey) || '0', 10);
+        if (savedLevel !== currentLevel) {
+            console.error(`[Next Level] Save verification failed! Saved ${savedLevel}, expected ${currentLevel}. Retrying...`);
+            currentLevel = savedLevel > currentLevel ? savedLevel : currentLevel; // Use higher value
             saveProgress();
-            // Verify save was successful
-            const storageKey = getStorageKey();
-            const savedLevel = parseInt(localStorage.getItem(storageKey) || '0', 10);
-            if (savedLevel !== currentLevel) {
-                console.error(`[Next Level] Save verification failed! Saved ${savedLevel}, expected ${currentLevel}. Retrying...`);
-                currentLevel = savedLevel > currentLevel ? savedLevel : currentLevel; // Use higher value
-                saveProgress();
-            }
-            console.log(`[Next Level] Starting level ${currentLevel} (saved: ${savedLevel})`);
-            await generateSolvablePuzzle(currentLevel);
-        };
-
-        // Every 5 levels, show the promotional modal
-        if (currentLevel > 0 && currentLevel % 5 === 0) {
-            hideLevelCompleteModal(); // Hide Success UI before showing promo
-            showPromoModal(proceed);
-        } else {
-            await proceed();
         }
+        console.log(`[Next Level] Starting level ${currentLevel} (saved: ${savedLevel})`);
+        await generateSolvablePuzzle(currentLevel);
     });
 }
 
@@ -6380,7 +6274,7 @@ let lightsManuallyControlled = false;
 function setupLightControls() {
     if (!window.lights) return;
 
-    const { ambientLight, keyLight, fillLight } = window.lights;
+    const { ambientLight, keyLight, fillLight, rimLight } = window.lights;
     const toHexColor = (color) => `#${color.getHexString().toUpperCase()}`;
 
     // Helper function to force immediate shadow map update and render
@@ -6570,10 +6464,98 @@ function setupLightControls() {
             const value = parseFloat(e.target.value);
             fillLight.position.z = value;
             fillZValue.textContent = value.toFixed(1);
-            // Force immediate render
             if (renderer && scene && camera) {
                 renderer.render(scene, camera);
             }
+        });
+    }
+
+    // Rim Light Intensity
+    const rimIntensitySlider = document.getElementById('rim-intensity-slider');
+    const rimIntensityValue = document.getElementById('rim-intensity-value');
+    if (rimIntensitySlider && rimIntensityValue) {
+        rimIntensitySlider.addEventListener('input', (e) => {
+            const value = parseFloat(e.target.value);
+            if (rimLight) rimLight.intensity = value;
+            rimIntensityValue.textContent = value.toFixed(2);
+            if (renderer && scene && camera) {
+                renderer.render(scene, camera);
+            }
+        });
+    }
+
+    // Rim Light Color
+    const rimColorPicker = document.getElementById('rim-color-picker');
+    const rimColorValue = document.getElementById('rim-color-value');
+    if (rimColorPicker && rimColorValue) {
+        if (rimLight) {
+            const currentRimHex = toHexColor(rimLight.color);
+            rimColorPicker.value = currentRimHex;
+            rimColorValue.textContent = currentRimHex;
+        }
+        rimColorPicker.oninput = (e) => {
+            const value = e.target.value;
+            if (rimLight) rimLight.color.set(value);
+            rimColorValue.textContent = value.toUpperCase();
+            if (renderer && scene && camera) {
+                renderer.render(scene, camera);
+            }
+        };
+    }
+
+    // Rim Light Position X
+    const rimXSlider = document.getElementById('rim-x-slider');
+    const rimXValue = document.getElementById('rim-x-value');
+    if (rimXSlider && rimXValue) {
+        rimXSlider.addEventListener('input', (e) => {
+            const value = parseFloat(e.target.value);
+            if (rimLight) rimLight.position.x = value;
+            rimXValue.textContent = value.toFixed(1);
+            if (renderer && scene && camera) {
+                renderer.render(scene, camera);
+            }
+        });
+    }
+
+    // Rim Light Position Y
+    const rimYSlider = document.getElementById('rim-y-slider');
+    const rimYValue = document.getElementById('rim-y-value');
+    if (rimYSlider && rimYValue) {
+        rimYSlider.addEventListener('input', (e) => {
+            const value = parseFloat(e.target.value);
+            if (rimLight) rimLight.position.y = value;
+            rimYValue.textContent = value.toFixed(1);
+            if (renderer && scene && camera) {
+                renderer.render(scene, camera);
+            }
+        });
+    }
+
+    // Rim Light Position Z
+    const rimZSlider = document.getElementById('rim-z-slider');
+    const rimZValue = document.getElementById('rim-z-value');
+    if (rimZSlider && rimZValue) {
+        rimZSlider.addEventListener('input', (e) => {
+            const value = parseFloat(e.target.value);
+            if (rimLight) rimLight.position.z = value;
+            rimZValue.textContent = value.toFixed(1);
+            if (renderer && scene && camera) {
+                renderer.render(scene, camera);
+            }
+        });
+    }
+
+    // Shadow Softness (Radius)
+    const shadowRadiusSlider = document.getElementById('shadow-radius-slider');
+    const shadowRadiusValue = document.getElementById('shadow-radius-value');
+    if (shadowRadiusSlider && shadowRadiusValue) {
+        shadowRadiusSlider.addEventListener('input', (e) => {
+            const value = parseFloat(e.target.value);
+            if (keyLight && keyLight.shadow) {
+                keyLight.shadow.radius = value;
+            }
+            shadowRadiusValue.textContent = value.toFixed(1);
+            forceShadowUpdate();
         });
     }
 }
@@ -7896,6 +7878,7 @@ updateCameraPosition(); // Position camera immediately to avoid default (0,0,0) 
     remainingSpins = 0; // Task 7.8.0
     updateSpinCounterDisplay();
     updateTimerDisplay();
+
     await generateSolvablePuzzle(currentLevel);
 })();
 
@@ -8319,8 +8302,8 @@ function startBlockFallingToTarget(block, targetYOffset) {
     const startTime = performance.now();
     const fallDistance = startY - targetYOffset;
 
-    // Task 1.2: Detect high-impact falls (distance > 2.0 units) at Level 21+
-    const isCrushingFall = (currentLevel >= 21) && (fallDistance > 2.0);
+    // Task 1.2: Detect high-impact falls (distance > 2.0 units) at Level 10+
+    const isCrushingFall = (currentLevel >= 10) && (fallDistance > 2.0);
 
     // Fast slam: higher effective gravity and tighter caps, with acceleration curve.
     const SUPPORT_FALL_EFFECTIVE_G = 85;
@@ -8775,6 +8758,7 @@ function onTouchEnd(event) {
         removeBlockWithAnimation(block);
         toggleRemoveMode();
         updateUndoButtonState();
+        setTimeout(() => checkAndTriggerFalling(blocks), 100);
         return;
     }
 
@@ -8825,8 +8809,8 @@ function onTouchEnd(event) {
         checkAndTriggerFalling(blocks);
         setTimeout(() => {
             checkAndTriggerFalling(blocks);
-        }, 500);
-    }, 400);
+        }, 400);
+    }, 200);
 
     // Update button states after move
     updateUndoButtonState();
@@ -8870,19 +8854,25 @@ let lastSupportCheckTime = 0;
 let fpsFrameCount = 0;
 let fpsLastUpdate = performance.now();
 let fpsUpdateInterval = 500; // Update FPS display every 500ms
-let fpsEnabled = false; // Controlled by settings toggle
+let fpsEnabled = true; // Enabled by default
 
 // Expose fpsEnabled to window for settings toggle
 if (typeof window !== 'undefined') {
     Object.defineProperty(window, 'fpsEnabled', {
         get: () => fpsEnabled,
-        set: (value) => { fpsEnabled = value; }
+        set: (value) => { 
+            fpsEnabled = value; 
+            const fpsDisplay = document.getElementById('fps-display');
+            if (fpsDisplay) fpsDisplay.style.display = value ? 'block' : 'none';
+        }
     });
 
     // Load FPS preference from localStorage on initialization
     try {
         const savedFpsEnabled = localStorage.getItem('jarrows_fps_enabled');
-        if (savedFpsEnabled === 'true') {
+        if (savedFpsEnabled === 'false') {
+            fpsEnabled = false;
+        } else {
             fpsEnabled = true;
         }
     } catch (e) {
@@ -9031,6 +9021,7 @@ function animate() {
             const fpsDisplay = document.getElementById('fps-display');
             if (fpsValue) fpsValue.textContent = String(fps);
             if (fpsDisplay) {
+                fpsDisplay.style.display = 'block';
                 fpsDisplay.style.color = fps < 30 ? '#ff6b6b' : (fps >= 50 ? '#51cf66' : '#ffd43b');
             }
             fpsFrameCount = 0;
@@ -9349,7 +9340,7 @@ function animate() {
     if (blockValueElement) blockValueElement.textContent = blocks.length;
 
     // 10. Support Check & Cleanup
-    const supportCheckInterval = isBatteryQuality ? 400 : 200;
+    const supportCheckInterval = isBatteryQuality ? 250 : 150;
     if (currentTime - lastSupportCheckTime > supportCheckInterval) {
         lastSupportCheckTime = currentTime;
         checkAndTriggerFalling(blocks);
@@ -9728,4 +9719,44 @@ function updateProgressDial() {
     }
 }
 window.updateProgressDial = updateProgressDial;
+
+
+// ==========================================
+// INTERACTIVE PLAYABLE TUTORIAL SYSTEM
+// ==========================================
+
+function showTutorialOverlay(stepIndicator, messageText, btnText = null, btnCallback = null) {
+    const existing = document.getElementById('tutorial-overlay-container');
+    if (existing) existing.remove();
+
+    const container = document.createElement('div');
+    container.id = 'tutorial-overlay-container';
+    container.className = 'tutorial-overlay';
+    
+    const stepEl = document.createElement('div');
+    stepEl.className = 'tutorial-step-indicator';
+    stepEl.textContent = stepIndicator;
+    container.appendChild(stepEl);
+
+    const msgEl = document.createElement('div');
+    msgEl.className = 'tutorial-message';
+    msgEl.innerHTML = messageText;
+    container.appendChild(msgEl);
+
+    if (btnText && btnCallback) {
+        const btn = document.createElement('button');
+        btn.className = 'tutorial-next-btn';
+        btn.textContent = btnText;
+        btn.style.marginTop = '10px';
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            btnCallback();
+        });
+        container.appendChild(btn);
+    }
+
+    document.body.appendChild(container);
+}
+
 

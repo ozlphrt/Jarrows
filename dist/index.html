@@ -1944,7 +1944,7 @@
             }
         }
     </style>
-  <script type="module" crossorigin src="/Jarrows/assets/index-BuaNOyjr.js"></script>
+  <script type="module" crossorigin src="/Jarrows/assets/index-B4tRhLQ8.js"></script>
   <link rel="modulepreload" crossorigin href="/Jarrows/assets/preload-helper-Si1OKCYg.js">
 <link rel="manifest" href="/Jarrows/manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="/Jarrows/registerSW.js"></script></head>
 
@@ -2055,6 +2055,7 @@
                 <button class="toggle-icon" id="select-level-btn" title="Select Level">
                     <span style="font-size: 11px; font-weight: 900; letter-spacing: 0.8px;">LVL</span>
                 </button>
+            </div>
             </div>
         </div>
     </div>
@@ -2542,6 +2543,63 @@
                             style="flex: 1; height: 4px; border-radius: 0px; background: #252525; border: 1px solid #3a3a3a; outline: none; cursor: pointer; -webkit-appearance: none; appearance: none;" />
                         <span id="fill-z-value"
                             style="font-size: 11px; opacity: 0.7; min-width: 35px; text-align: right; flex-shrink: 0;">-4.0</span>
+                    </div>
+
+                    <!-- Rim Light Intensity -->
+                    <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                        <label style="font-size: 11px; opacity: 0.85; min-width: 100px; flex-shrink: 0;">Rim
+                            Intensity</label>
+                        <input type="range" id="rim-intensity-slider" min="0" max="3" step="0.05" value="0.55"
+                            style="flex: 1; height: 4px; border-radius: 0px; background: #252525; border: 1px solid #3a3a3a; outline: none; cursor: pointer; -webkit-appearance: none; appearance: none;" />
+                        <span id="rim-intensity-value"
+                            style="font-size: 11px; opacity: 0.7; min-width: 35px; text-align: right; flex-shrink: 0;">0.55</span>
+                    </div>
+                    <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                        <label style="font-size: 11px; opacity: 0.85; min-width: 100px; flex-shrink: 0;">Rim
+                            Color</label>
+                        <input type="color" id="rim-color-picker" value="#dbe6ff"
+                            style="width: 34px; height: 24px; border: 1px solid #3a3a3a; background: #252525; cursor: pointer; padding: 0;" />
+                        <span id="rim-color-value"
+                            style="font-size: 11px; opacity: 0.7; min-width: 60px; text-align: right; flex-shrink: 0;">#DBE6FF</span>
+                    </div>
+
+                    <!-- Rim Light Position X -->
+                    <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                        <label style="font-size: 11px; opacity: 0.85; min-width: 100px; flex-shrink: 0;">Rim Pos
+                            X</label>
+                        <input type="range" id="rim-x-slider" min="-30" max="30" step="0.5" value="-10.0"
+                            style="flex: 1; height: 4px; border-radius: 0px; background: #252525; border: 1px solid #3a3a3a; outline: none; cursor: pointer; -webkit-appearance: none; appearance: none;" />
+                        <span id="rim-x-value"
+                            style="font-size: 11px; opacity: 0.7; min-width: 35px; text-align: right; flex-shrink: 0;">-10.0</span>
+                    </div>
+
+                    <!-- Rim Light Position Y -->
+                    <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                        <label style="font-size: 11px; opacity: 0.85; min-width: 100px; flex-shrink: 0;">Rim Pos
+                            Y</label>
+                        <input type="range" id="rim-y-slider" min="0" max="50" step="0.5" value="30.0"
+                            style="flex: 1; height: 4px; border-radius: 0px; background: #252525; border: 1px solid #3a3a3a; outline: none; cursor: pointer; -webkit-appearance: none; appearance: none;" />
+                        <span id="rim-y-value"
+                            style="font-size: 11px; opacity: 0.7; min-width: 35px; text-align: right; flex-shrink: 0;">30.0</span>
+                    </div>
+
+                    <!-- Rim Light Position Z -->
+                    <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                        <label style="font-size: 11px; opacity: 0.85; min-width: 100px; flex-shrink: 0;">Rim Pos
+                            Z</label>
+                        <input type="range" id="rim-z-slider" min="-40" max="10" step="0.5" value="-25.0"
+                            style="flex: 1; height: 4px; border-radius: 0px; background: #252525; border: 1px solid #3a3a3a; outline: none; cursor: pointer; -webkit-appearance: none; appearance: none;" />
+                        <span id="rim-z-value"
+                            style="font-size: 11px; opacity: 0.7; min-width: 35px; text-align: right; flex-shrink: 0;">-25.0</span>
+                    </div>
+
+                    <!-- Shadow Softness (Radius) -->
+                    <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                        <label style="font-size: 11px; opacity: 0.85; min-width: 100px; flex-shrink: 0;">Shadow Softness</label>
+                        <input type="range" id="shadow-radius-slider" min="0" max="15" step="0.5" value="6.0"
+                            style="flex: 1; height: 4px; border-radius: 0px; background: #252525; border: 1px solid #3a3a3a; outline: none; cursor: pointer; -webkit-appearance: none; appearance: none;" />
+                        <span id="shadow-radius-value"
+                            style="font-size: 11px; opacity: 0.7; min-width: 35px; text-align: right; flex-shrink: 0;">6.0</span>
                     </div>
 
                     <!-- Load Light Values (JSON) -->

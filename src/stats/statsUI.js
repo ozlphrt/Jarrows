@@ -1628,8 +1628,7 @@ function checkFreePlayMode() {
 function getRecentFreePlayLevelStats(currentLevel, currentStats = null) {
     try {
         const stats = [];
-        const maxLevels = 50; // Increased from 10 to show more history
-        const startLevel = Math.max(1, currentLevel - maxLevels + 1);
+        const startLevel = 1; // Always start from Level 1
 
         // Build a map to ensure we use currentStats for the current level if provided
         const levelStatsMap = new Map();
@@ -1683,8 +1682,7 @@ function getRecentFreePlayLevelStats(currentLevel, currentStats = null) {
 function getRecentInfernoLevelStats(currentLevel, currentStats = null) {
     try {
         const stats = [];
-        const maxLevels = 50; // Increased from 10 to match history limits
-        const startLevel = Math.max(1, currentLevel - maxLevels + 1);
+        const startLevel = 1; // Always start from Level 1
 
         // Build a map to ensure we use currentStats for the current level if provided
         const levelStatsMap = new Map();
