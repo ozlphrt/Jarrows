@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { initPhysics, createPhysicsBlock, updatePhysics, isPhysicsStepping, hasPendingOperations, isPhysicsProcessing, removePhysicsBody } from './physics.js';
 import { Block } from './Block.js';
-import { createLights, createGrid, setGradientBackground, setupFog, applyLightPreset, LIGHT_PRESETS } from './scene.js';
+import { createLights, createGrid, setGradientBackground, setupFog, applyLightPreset, LIGHT_PRESETS, globalUniforms } from './scene.js';
 import { validateStructure, validateSolvability, calculateDifficulty, getBlockCells, fixOverlappingBlocks, checkAndFixAllOverlaps, canBlockExit } from './puzzle_validation.js';
 import { initStats, startLevelStats, trackMove, trackSpin, trackBlockRemoved, completeLevel, getLevelComparison, getElapsedTime } from './stats/stats.js';
 import { updateLevelCompleteModal, showOfflineIndicator, hideOfflineIndicator, showPersonalHistoryModal, showProfileModal } from './stats/statsUI.js';
@@ -81,7 +81,36 @@ function shakeCamera(intensity, duration) {
 }
 window.shakeCamera = shakeCamera;
 
-// Initialize BlockInstanceManager (initialized after scene is created below)
+// Active blocks subset tracking (avoids full-array iteration when blocks are at rest)
+const activeBlocks = new Set();
+let renderKeepAliveUntilMs = 0;
+let settleFramesRemaining = 5;
+let towerBoundsDirty = true;
+
+/**
+ * Request frames to be rendered (wake-on-demand)
+ * @param {number} durationMs - Duration in milliseconds to keep rendering active
+ */
+export function markNeedsRender(durationMs = 100) {
+    const now = performance.now();
+    renderKeepAliveUntilMs = Math.max(renderKeepAliveUntilMs, now + durationMs);
+    settleFramesRemaining = 5;
+}
+window.markNeedsRender = markNeedsRender;
+
+/**
+ * Register a block that is in motion or requires per-frame updates
+ * @param {Block} block - The active block
+ */
+export function registerActiveBlock(block) {
+    if (block && !block.isRemoved) {
+        activeBlocks.add(block);
+        towerBoundsDirty = true;
+        markNeedsRender(500);
+    }
+}
+window.registerActiveBlock = registerActiveBlock;
+
 
 window.isMobileLike = false;
 window.autoZoomEnabled = true;
@@ -4065,6 +4094,9 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
         }
     }
     blocks.length = 0;
+    activeBlocks.clear();
+    towerBoundsDirty = true;
+    markNeedsRender(1000);
     isFirstCenterCalculation = true; // Snap camera instantly to new puzzle
 
     // Framing control removed: no framing animation frames to cancel
@@ -4583,6 +4615,9 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
                 }
             }
             blocks.length = 0;
+            activeBlocks.clear();
+            towerBoundsDirty = true;
+            markNeedsRender(1000);
 
             // Regenerate with slightly adjusted parameters
             // Increase outward percentage reduction and length preference
@@ -9012,6 +9047,11 @@ function animate() {
     const deltaTime = (currentTime - lastTime) / 1000;
     lastTime = currentTime;
 
+    // Update global shader time uniform for GPU animations
+    if (globalUniforms && globalUniforms.uTime) {
+        globalUniforms.uTime.value = currentTime * 0.001;
+    }
+
     // 1. Update FPS Counter
     if (fpsEnabled) {
         fpsFrameCount++;
@@ -9110,8 +9150,12 @@ function animate() {
     cachedHasActiveAnimations = false;
     cachedHasPhysicsBlocks = false;
 
-    for (const block of blocks) {
-        if (!block || block.isRemoved) continue;
+    // Process only active blocks (in motion, falling, or undergoing physics/removal)
+    for (const block of activeBlocks) {
+        if (!block || block.isRemoved) {
+            activeBlocks.delete(block);
+            continue;
+        }
 
         if (typeof block.updateLockState === 'function') block.updateLockState();
         
@@ -9132,24 +9176,41 @@ function animate() {
             block.updateMeltAnimation(deltaTime);
         }
 
-        if (isAutoZoomEnabled && !isAutoZoomDisabled && !block.wasCatapulted) {
-             const zoomUpdateInterval = isGeneratingLevel ? SPAWN_ZOOM_UPDATE_INTERVAL_MS : AUTO_ZOOM_UPDATE_INTERVAL_MS;
-             const lastUpdate = isGeneratingLevel ? lastSpawnZoomUpdateMs : lastAutoZoomUpdateMs;
-              if (currentTime - lastUpdate > zoomUpdateInterval) {
-                  block.getTowerSpaceBounds(_tempBox);
-                  _towerSpaceZoomBox.union(_tempBox);
-                  hasNonCatapultedBlocksForZoom = true;
-              }
-         }
-    }
-
-    // Ground the bounding box to the base plate's height to ensure the bottom layer doesn't get clipped.
-    // By only modifying the Y axis, we prevent excessive horizontal padding when the blocks shrink.
-    if (isAutoZoomEnabled && !isAutoZoomDisabled && hasNonCatapultedBlocksForZoom) {
-        if (_towerSpaceZoomBox.min.y > -0.1) {
-            _towerSpaceZoomBox.min.y = -0.1;
+        const isStillActive = block.isAnimating || 
+                              block.isFalling || 
+                              block.isExploding || 
+                              (block.removalStartTime && !block.isRemoved) || 
+                              block.isLocked;
+        if (!isStillActive) {
+            activeBlocks.delete(block);
         }
     }
+
+    // Auto-zoom bounding box: recompute only when level generates, active blocks move, or dirty flag is set
+    if (isAutoZoomEnabled && !isAutoZoomDisabled) {
+        const zoomUpdateInterval = isGeneratingLevel ? SPAWN_ZOOM_UPDATE_INTERVAL_MS : AUTO_ZOOM_UPDATE_INTERVAL_MS;
+        const lastUpdate = isGeneratingLevel ? lastSpawnZoomUpdateMs : lastAutoZoomUpdateMs;
+        if (currentTime - lastUpdate > zoomUpdateInterval) {
+            if (towerBoundsDirty || isGeneratingLevel || activeBlocks.size > 0 || _towerSpaceZoomBox.isEmpty()) {
+                _towerSpaceZoomBox.makeEmpty();
+                towerGroup.updateMatrixWorld(true);
+                for (const block of blocks) {
+                    if (!block || block.isRemoved || block.wasCatapulted) continue;
+                    block.getTowerSpaceBounds(_tempBox);
+                    _towerSpaceZoomBox.union(_tempBox);
+                    hasNonCatapultedBlocksForZoom = true;
+                }
+                // Ground the bounding box to the base plate's height
+                if (_towerSpaceZoomBox.min.y > -0.1) {
+                    _towerSpaceZoomBox.min.y = -0.1;
+                }
+                towerBoundsDirty = false;
+            } else {
+                hasNonCatapultedBlocksForZoom = !_towerSpaceZoomBox.isEmpty();
+            }
+        }
+    }
+
 
     lastBlockStateCheckTime = currentTime;
 
@@ -9251,11 +9312,29 @@ function animate() {
     cameraStillMoving = (dr >= SNAP_EPS) || (da >= SNAP_EPS) || (de >= SNAP_EPS);
     if (cameraStillMoving) updateCameraPosition();
 
-    // 7. Idle & Battery Logic
+    // 7. Idle & Battery Logic (Wake-on-Demand State Check)
     const hasFallingBlocks = cachedHasFallingBlocks;
     const hasActiveAnimations = cachedHasActiveAnimations;
-    const isActiveFrame = interacting || hasFallingBlocks || cameraStillMoving || hasActiveAnimations || isGeneratingLevel;
+    const hasMovingTower = Math.abs(towerPositionOffset.y - targetTowerPositionOffset.y) > 0.005;
+    const hasActiveTimeChallenge = isTimeBasedMode() && timeChallengeActive && !timeUpShown && !isPaused && !isTimeFrozen();
+    const hasCameraShake = (currentTime - cameraShakeStartTime) < cameraShakeDuration;
+
+    const isActiveFrame = interacting || 
+                          hasFallingBlocks || 
+                          cameraStillMoving || 
+                          hasActiveAnimations || 
+                          isGeneratingLevel || 
+                          hasDebris || 
+                          hasMovingTower ||
+                          hasCameraShake ||
+                          hasActiveTimeChallenge ||
+                          (activeBlocks.size > 0) ||
+                          (currentTime < renderKeepAliveUntilMs);
+
     nextFrameDelayMs = isActiveFrame ? ACTIVE_FRAME_MS : IDLE_FRAME_MS;
+    if (isActiveFrame) {
+        settleFramesRemaining = 5;
+    }
 
     const canCheckIdle = !isTimeFrozen() && !isGeneratingLevel && !isPaused && blocks.length > 0;
     if (canCheckIdle) {
@@ -9348,11 +9427,9 @@ function animate() {
 
     for (let i = blocks.length - 1; i >= 0; i--) {
         const block = blocks[i];
+        if (!block) continue;
         
-        // Update block animations and per-frame logic (Task 2.3)
-        block.update(currentTime);
         if (block.isRemoved) {
-
             if (!block.removalStartTime) { trackBlockRemoved(); timeChallengeAwardForBlockRemoved(block.length); }
             if (block.group.parent) block.group.parent.remove(block.group);
             if (block.physicsBody && block.physicsBody.body) {
@@ -9362,6 +9439,9 @@ function animate() {
                 window.solutionStep++;
                 setTimeout(() => highlightNextBlock(), 100);
             }
+            activeBlocks.delete(block);
+            towerBoundsDirty = true;
+            markNeedsRender(500);
             blocks.splice(i, 1);
         }
     }
@@ -9398,8 +9478,17 @@ function animate() {
         })();
     }
 
-    // 12. Render
-    if (isActiveFrame || !isBatteryQuality) renderer.render(scene, camera);
+    // 12. Render (Wake-on-Demand Invalidation Guard)
+    const shouldRender = isActiveFrame || (settleFramesRemaining > 0) || (qualityPreset === 'performance');
+
+    if (shouldRender) {
+        if (!isActiveFrame && settleFramesRemaining > 0) {
+            settleFramesRemaining--;
+        }
+        renderer.render(scene, camera);
+    }
+
+
 }
 
 // Test function to verify block counts across levels

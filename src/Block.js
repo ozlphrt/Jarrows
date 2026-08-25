@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { createPhysicsBlock, removePhysicsBody, isPhysicsStepping, deferBodyCreation, deferBodyModification } from './physics.js';
 import { playSound, isAudioEnabled } from './audio.js';
+import { setupPulsingMaterial, setupGlowQuadMaterial } from './scene.js';
+
 
 // Global geometry pool to reuse RoundedBoxGeometry instances
 const GeometryPool = new Map();
@@ -427,43 +429,9 @@ export class Block {
         this.matrix.multiply(offsetMatrix);
     }
 
-    // Animates bomb indicator glow and other per-frame effects (Task 2.3, 3.2, 3.4)
+    // Per-frame animations (now offloaded to GPU shaders via setupPulsingMaterial & setupGlowQuadMaterial)
     update(time) {
-        if (this.isBomb) {
-            // Organic breathing (Task 3.4 Rewrite)
-            // Use pulseOffset for non-simultaneous, unique rhythms per block
-            const t = (time * 0.001) + (this.pulseOffset || 0); 
-            const breath = Math.sin(t * 3.0) * 0.7 + Math.sin(t * 7.0) * 0.3; // Rapid, non-linear pulse
-            
-            // Base intensity for indicator materials (Increased range for higher glow: 0.1 to 0.4)
-            const intensity = 0.1 + (breath + 1) * 0.15; 
-            
-            // Update emissive materials (Task 3.2)
-            if (this.bombIndicatorMaterials) {
-                for (const mat of this.bombIndicatorMaterials) {
-                    mat.emissiveIntensity = intensity;
-                }
-            }
-            
-            // Update organic glow core (Task 3.4 Rewrite)
-            if (this.bombGlowSprites) {
-                for (const group of this.bombGlowSprites) {
-                    if (group.isOrganicGlow) {
-                        const base = group._baseScale || 1.0;
-                        group.children.forEach(child => {
-                            if (child.isGlowCore) {
-                                // Core: More intense pulsing and scaling oscillation
-                                const s = base * 1.1 * (1.0 + breath * 0.25); // Pronounced oscillation
-                                child.scale.set(s, s, 1);
-                                child.material.opacity = 0.35 + (breath + 1) * 0.125; // Pulsates between 0.35 and 0.6
-                            }
-                        });
-                    }
-                }
-            }
-        }
-
-        // Spin Gem update logic disabled (Task 9.1)
+        // GPU accelerated via uTime uniform
     }
 
     // Mark as dirty when moved/rotated
@@ -616,6 +584,7 @@ export class Block {
             side: THREE.DoubleSide,
             depthWrite: false
         });
+        setupGlowQuadMaterial(coreMat, { pulseOffset: this.pulseOffset || 0.0 });
         const core = new THREE.Mesh(planeGeom, coreMat);
         core.scale.set(baseScale * 1.1, baseScale * 1.1, 1); // Increased base scale
         core.position.z = 0.001; 
@@ -963,6 +932,7 @@ export class Block {
             // Match indicator color (red, yellow, or green) (Task 3.2)
             topArrowData.material.emissive = new THREE.Color(blockColor);
             topArrowData.material.emissiveIntensity = 0.3; // Reduced for organic look
+            setupPulsingMaterial(topArrowData.material, { isBomb: true, pulseOffset: this.pulseOffset || 0.0 });
 
             // Add organic glow core
             const glowGroup = this.createGlowGroup(blockColor, 1.2);
@@ -1136,6 +1106,7 @@ export class Block {
             // Match indicator color (Task 3.2)
             dotMaterial.emissive = new THREE.Color(indicatorColor);
             dotMaterial.emissiveIntensity = 0.3; // Reduced for organic look
+            setupPulsingMaterial(dotMaterial, { isBomb: true, pulseOffset: this.pulseOffset || 0.0 });
 
             // Add organic dual-layer glow (Core + Haze) (Task 3.4 Rewrite)
             const glowGroup = this.createGlowGroup(indicatorColor, 0.6);
@@ -1185,6 +1156,7 @@ export class Block {
             // Match indicator color (Task 3.2)
             circleMaterial.emissive = new THREE.Color(indicatorColor);
             circleMaterial.emissiveIntensity = 0.3; // Reduced for organic look
+            setupPulsingMaterial(circleMaterial, { isBomb: true, pulseOffset: this.pulseOffset || 0.0 });
 
             // Add organic dual-layer glow (Core + Haze) (Task 3.4 Rewrite)
             const glowGroup = this.createGlowGroup(indicatorColor, 0.8);
@@ -4532,11 +4504,11 @@ export class Block {
             highlightMaterial.emissiveIntensity = 2.0; // Very bright
             highlightMaterial.color = new THREE.Color(0xffc125); // Change base color to golden yellow
             highlightMaterial.roughness = 0.1; // Make it shiny
+            setupPulsingMaterial(highlightMaterial, { isHighlight: true });
             mesh.material = highlightMaterial;
 
-            // Add pulsing animation
-            if (!this.highlightAnimation) {
-                this.highlightAnimation = { time: 0 };
+            if (typeof window !== 'undefined' && typeof window.registerActiveBlock === 'function') {
+                window.registerActiveBlock(this);
             }
 
             console.log(`Block at (${this.gridX}, ${this.gridZ}) highlighted - material updated`);
@@ -4548,15 +4520,7 @@ export class Block {
     }
 
     updateHighlightAnimation(deltaTime) {
-        if (this.isHighlighted && this.cubes && this.cubes[0] && this.cubes[0].material) {
-            if (!this.highlightAnimation) {
-                this.highlightAnimation = { time: 0 };
-            }
-
-            this.highlightAnimation.time += deltaTime;
-            const pulse = Math.sin(this.highlightAnimation.time * 3) * 0.3 + 0.7; // Pulse between 0.4 and 1.0
-            this.cubes[0].material.emissiveIntensity = pulse;
-        }
+        // Handled directly on GPU via setupPulsingMaterial shader hook
     }
 
     /**

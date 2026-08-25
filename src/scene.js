@@ -349,3 +349,94 @@ export function createCameraPivotHelpers(scene, pivotX, pivotY, pivotZ, gridSize
         }
     };
 }
+
+/**
+ * Global shader uniforms shared across all GPU-accelerated materials
+ */
+export const globalUniforms = {
+    uTime: { value: 0.0 }
+};
+
+/**
+ * Configure shader hook for materials that pulse on the GPU (bombs, highlights)
+ */
+export function setupPulsingMaterial(material, options = {}) {
+    const pulseOffset = options.pulseOffset || 0.0;
+    const isBomb = options.isBomb || false;
+    const isHighlight = options.isHighlight || false;
+
+    material.onBeforeCompile = (shader) => {
+        shader.uniforms.uTime = globalUniforms.uTime;
+        shader.uniforms.uPulseOffset = { value: pulseOffset };
+
+        shader.fragmentShader = `
+            uniform float uTime;
+            uniform float uPulseOffset;
+            ${shader.fragmentShader}
+        `;
+
+        if (isBomb) {
+            shader.fragmentShader = shader.fragmentShader.replace(
+                '#include <emissivemap_fragment>',
+                `
+                #include <emissivemap_fragment>
+                float t = uTime + uPulseOffset;
+                float breath = sin(t * 3.0) * 0.7 + sin(t * 7.0) * 0.3;
+                float pulseFactor = 0.33 + (breath + 1.0) * 0.5;
+                totalEmissiveRadiance *= pulseFactor;
+                `
+            );
+        } else if (isHighlight) {
+            shader.fragmentShader = shader.fragmentShader.replace(
+                '#include <emissivemap_fragment>',
+                `
+                #include <emissivemap_fragment>
+                float pulseFactor = sin(uTime * 3.0) * 0.3 + 0.7;
+                totalEmissiveRadiance *= pulseFactor;
+                `
+            );
+        }
+    };
+}
+
+/**
+ * Configure GPU vertex oscillation and opacity breathing for glow quad meshes
+ */
+export function setupGlowQuadMaterial(material, options = {}) {
+    const pulseOffset = options.pulseOffset || 0.0;
+    material.onBeforeCompile = (shader) => {
+        shader.uniforms.uTime = globalUniforms.uTime;
+        shader.uniforms.uPulseOffset = { value: pulseOffset };
+
+        shader.vertexShader = `
+            uniform float uTime;
+            uniform float uPulseOffset;
+            ${shader.vertexShader}
+        `;
+        shader.vertexShader = shader.vertexShader.replace(
+            '#include <begin_vertex>',
+            `
+            float t = uTime + uPulseOffset;
+            float breath = sin(t * 3.0) * 0.7 + sin(t * 7.0) * 0.3;
+            float scaleFactor = 1.0 + breath * 0.25;
+            vec3 transformed = vec3( position.xy * scaleFactor, position.z );
+            `
+        );
+
+        shader.fragmentShader = `
+            uniform float uTime;
+            uniform float uPulseOffset;
+            ${shader.fragmentShader}
+        `;
+        shader.fragmentShader = shader.fragmentShader.replace(
+            '#include <color_fragment>',
+            `
+            #include <color_fragment>
+            float t = uTime + uPulseOffset;
+            float breath = sin(t * 3.0) * 0.7 + sin(t * 7.0) * 0.3;
+            diffuseColor.a *= (0.7 + (breath + 1.0) * 0.25);
+            `
+        );
+    };
+}
+

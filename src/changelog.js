@@ -4,6 +4,16 @@
  */
 
 export const changelog = {
+    "8.19.0": {
+        title: "Single Draw-Call Instanced Rendering & GPU Shader Acceleration",
+        date: "2026-08-26",
+        changes: [
+            "Debris explosion instanced rendering: Reduced debris draw calls from 500 down to 1",
+            "GPU shader acceleration: Offloaded bomb breathing, indicators, and highlight pulsing to vertex/fragment shaders",
+            "Active subset tracking: Replaced 1,000-block per-frame iterations with active moving block tracking",
+            "Wake-on-demand rendering: Scene automatically sleeps at 0% GPU load when motionless, saving battery and preventing thermal throttling"
+        ]
+    },
     "5.0.0": {
         title: "Major Update: Enhanced Lighting System & Debug Tools",
         date: "2026-01-13",
