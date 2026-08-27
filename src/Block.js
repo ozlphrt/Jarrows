@@ -2055,10 +2055,8 @@ export class Block {
         // If a block is semi-transparent and sitting on the bottom layer (yOffset < 0.1),
         // it should blast automatically (it's debris, not a solid tower floor block).
         if (this.isLocked && this.yOffset < 0.1 && !this.isRemoved && !this.removalStartTime) {
-            console.log(`[FloorBlast] Locked block at level 0 (x=${this.gridX}, z=${this.gridZ}) blasting with debris`);
-            if (window.debrisManager && window.particleSystem) {
-                this.explodeIntoDebris(window.debrisManager, window.particleSystem, 0);
-            } else if (window.particleSystem) {
+            console.log(`[FloorBlast] Locked block at level 0 (x=${this.gridX}, z=${this.gridZ}) blasting`);
+            if (window.particleSystem) {
                 this.explodeWithParticles(window.particleSystem, 0, true);
             } else {
                 this.remove();
@@ -2793,9 +2791,7 @@ export class Block {
         if (!this.isFalling && !this.isAnimating && this.isOffGrid(this.gridSize)) {
             // Block has left the tower - trigger blast effect instead of falling
             console.log(`[Blast Exit] Block at (${this.gridX}, ${this.gridZ}) left grid unexpectedly - triggering blast`);
-            if (window.debrisManager && window.particleSystem) {
-                this.explodeIntoDebris(window.debrisManager, window.particleSystem, 0);
-            } else if (window.particleSystem) {
+            if (window.particleSystem) {
                 this.explodeWithParticles(window.particleSystem, 0, false);
             } else {
                 this.fall(); // Fallback if no effects system
@@ -3036,10 +3032,7 @@ export class Block {
 
             if (shouldRemove && !this.isRemoved) {
                 console.log(`[BasePlate] Blasting block with full effects: y=${y.toFixed(2)}, bottom=${bottomY.toFixed(2)}, speed=${linSpeed.toFixed(2)}`);
-                // Use standard debris-based blast for consistency ("same as others")
-                if (window.debrisManager && window.particleSystem) {
-                    this.explodeIntoDebris(window.debrisManager, window.particleSystem, 0);
-                } else if (window.particleSystem) {
+                if (window.particleSystem) {
                     this.explodeWithParticles(window.particleSystem, 0, true);
                 } else {
                     this.remove();
@@ -4201,9 +4194,7 @@ export class Block {
 
                     console.log(`[Blast Exit] Block at (${this.gridX}, ${this.gridZ}) reached edge - triggering blast`);
                     
-                    if (window.debrisManager && window.particleSystem) {
-                        this.explodeIntoDebris(window.debrisManager, window.particleSystem, 0);
-                    } else if (window.particleSystem) {
+                    if (window.particleSystem) {
                         this.explodeWithParticles(window.particleSystem, 0, false);
                     } else {
                         // Fallback: original falling behavior if managers aren't present

@@ -2050,7 +2050,11 @@ function triggerGameOverExplosion() {
         const baseDelay = index * 150; // Base progression
         const randomDelay = Math.random() * 300; // 0-300ms random variation
         const delay = baseDelay + randomDelay;
-        block.explodeIntoDebris(debrisManager, particleSystem, delay);
+        if (particleSystem) {
+            block.explodeWithParticles(particleSystem, delay, true);
+        } else {
+            block.remove();
+        }
     });
 
     console.log(`[Game Over] Exploding ${shuffled.length} blocks sequentially`);
@@ -8384,10 +8388,8 @@ function startBlockFallingToTarget(block, targetYOffset) {
 
             // Task: Automatic Floor Blast for Locked Blocks when landing on level 0
             if (block.isLocked && block.yOffset < 0.1 && !block.isRemoved && !block.removalStartTime) {
-                console.log(`[FloorBlast] Landed locked block at level 0 (x=${block.gridX}, z=${block.gridZ}) blasting with debris`);
-                if (window.debrisManager && window.particleSystem) {
-                    block.explodeIntoDebris(window.debrisManager, window.particleSystem, 0);
-                } else if (window.particleSystem) {
+                console.log(`[FloorBlast] Landed locked block at level 0 (x=${block.gridX}, z=${block.gridZ}) blasting`);
+                if (window.particleSystem) {
                     block.explodeWithParticles(window.particleSystem, 0, true);
                 } else {
                     block.remove();

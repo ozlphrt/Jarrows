@@ -104,6 +104,10 @@ export function createParticleSystem(maxParticles = 1000, scene) {
         geometry.attributes.position.needsUpdate = true;
         geometry.attributes.color.needsUpdate = true;
         geometry.attributes.size.needsUpdate = true;
+
+        if (typeof window !== 'undefined' && typeof window.markNeedsRender === 'function') {
+            window.markNeedsRender(2000);
+        }
     }
     
     /**
