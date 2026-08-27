@@ -1380,6 +1380,7 @@ try {
 let debrisManager = null;
 try {
     debrisManager = new DebrisManager(physics, scene);
+    window.debrisManager = debrisManager;
 } catch (e) {
     console.warn('Failed to create debris manager:', e);
 }
@@ -8197,6 +8198,8 @@ function checkAndTriggerFalling(blocks) {
     for (const [block, targetYOffset] of targets.entries()) {
         if (targetYOffset >= block.yOffset) continue;
         console.log(`Block at (${block.gridX}, ${block.gridZ}) yOffset=${block.yOffset} lost support, falling to yOffset=${targetYOffset}`);
+        if (typeof registerActiveBlock === 'function') registerActiveBlock(block);
+        if (typeof markNeedsRender === 'function') markNeedsRender(1000);
         startBlockFallingToTarget(block, targetYOffset);
     }
 }
@@ -8333,6 +8336,8 @@ function startBlockFallingToTarget(block, targetYOffset) {
     if (targetYOffset >= block.yOffset) return;
 
     block.isAnimating = true;
+    if (typeof registerActiveBlock === 'function') registerActiveBlock(block);
+
     const startY = block.yOffset;
     const startTime = performance.now();
     const fallDistance = startY - targetYOffset;
@@ -8351,6 +8356,8 @@ function startBlockFallingToTarget(block, targetYOffset) {
             Math.sqrt((2 * Math.max(0.0001, fallDistance)) / SUPPORT_FALL_EFFECTIVE_G) * 1000
         )
     );
+
+    if (typeof markNeedsRender === 'function') markNeedsRender(fallDuration + 500);
 
     let fallAnimationId = null;
     const animateFall = () => {
@@ -8374,6 +8381,18 @@ function startBlockFallingToTarget(block, targetYOffset) {
             block.updateWorldPosition();
             block.isAnimating = false;
             fallAnimationId = null;
+
+            // Task: Automatic Floor Blast for Locked Blocks when landing on level 0
+            if (block.isLocked && block.yOffset < 0.1 && !block.isRemoved && !block.removalStartTime) {
+                console.log(`[FloorBlast] Landed locked block at level 0 (x=${block.gridX}, z=${block.gridZ}) blasting with debris`);
+                if (window.debrisManager && window.particleSystem) {
+                    block.explodeIntoDebris(window.debrisManager, window.particleSystem, 0);
+                } else if (window.particleSystem) {
+                    block.explodeWithParticles(window.particleSystem, 0, true);
+                } else {
+                    block.remove();
+                }
+            }
 
             // Task: Trace 1.2: Trigger crushing effect only for non-locked blocks
             if (isCrushingFall && !block.isRemoved && !block.isLocked) {
@@ -9423,7 +9442,15 @@ function animate() {
     if (currentTime - lastSupportCheckTime > supportCheckInterval) {
         lastSupportCheckTime = currentTime;
         checkAndTriggerFalling(blocks);
+
+        // Also check any locked blocks on the bottom floor
+        for (const block of blocks) {
+            if (block && !block.isRemoved && block.isLocked && block.yOffset < 0.1 && !block.removalStartTime) {
+                if (typeof block.updateLockState === 'function') block.updateLockState();
+            }
+        }
     }
+
 
     for (let i = blocks.length - 1; i >= 0; i--) {
         const block = blocks[i];

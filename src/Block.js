@@ -1418,6 +1418,10 @@ export class Block {
         this.lockStartTime = performance.now();
         this.lockEndTime = performance.now() + (lockDuration * 1000);
 
+        if (typeof window !== 'undefined' && typeof window.registerActiveBlock === 'function') {
+            window.registerActiveBlock(this);
+        }
+
         // Ensure original color is stored (should be set in constructor, but fallback here)
         if (this.originalColor === null && this.originalMaterial) {
             this.originalColor = this.originalMaterial.color.getHex();
@@ -3852,6 +3856,9 @@ export class Block {
         }
 
         this.isAnimating = true;
+        if (typeof window !== 'undefined' && typeof window.registerActiveBlock === 'function') {
+            window.registerActiveBlock(this);
+        }
 
         let finalGridX = tempGridX;
         let finalGridZ = tempGridZ;
@@ -4480,6 +4487,9 @@ export class Block {
 
         // Mark that we need a physics body - will be created safely in updatePhysics
         this.needsPhysicsBody = true;
+        if (typeof window !== 'undefined' && typeof window.registerActiveBlock === 'function') {
+            window.registerActiveBlock(this);
+        }
     }
 
     setHighlight(highlighted) {

@@ -53,6 +53,10 @@ export class DebrisManager {
         const actualCount = Math.min(pieceCount, availableSlots);
         if (actualCount <= 0) return [];
 
+        if (typeof window !== 'undefined' && typeof window.markNeedsRender === 'function') {
+            window.markNeedsRender(2500);
+        }
+
         const created = [];
         const now = performance.now() / 1000;
 
