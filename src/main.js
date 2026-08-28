@@ -192,6 +192,115 @@ export function markNeedsRender(durationMs = 100) {
 }
 window.markNeedsRender = markNeedsRender;
 
+// --- Soft Localized 3D Sign Light Pool (Illuminates adjacent neighboring blocks naturally) ---
+const MAX_SIGN_LIGHTS = 6;
+let signLightsPool = [];
+
+function initSignLights(targetScene) {
+    if (signLightsPool.length > 0) return;
+    for (let i = 0; i < MAX_SIGN_LIGHTS; i++) {
+        const light = new THREE.PointLight(0xff2252, 0, 2.4, 2.0);
+        light.visible = false;
+        targetScene.add(light);
+        signLightsPool.push(light);
+    }
+}
+
+const _signWorldPos = new THREE.Vector3();
+const _signCamDir = new THREE.Vector3();
+const _signToCam = new THREE.Vector3();
+
+function updateSignLights(allBlocks, targetCamera, targetScene) {
+    if (!targetScene || !targetCamera || !Array.isArray(allBlocks)) return;
+    if (signLightsPool.length === 0) {
+        initSignLights(targetScene);
+    }
+
+    targetCamera.getWorldDirection(_signCamDir);
+
+    const candidates = [];
+    const maxColors = [0xff2252, 0x00e5ff, 0xffa000];
+
+    for (let i = 0; i < allBlocks.length; i++) {
+        const b = allBlocks[i];
+        if (b.isBomb && !b.isRemoved && !b.isTranslucent && !b.isLocked && b.group) {
+            const colorHex = maxColors[b.length - 1] || maxColors[0];
+
+            // Top arrow sign
+            if (b.arrow && b.arrow.children.length > 0) {
+                b.arrow.children[0].getWorldPosition(_signWorldPos);
+                const dist = _signWorldPos.distanceTo(targetCamera.position);
+                _signToCam.subVectors(targetCamera.position, _signWorldPos).normalize();
+                if (_signToCam.y > -0.2) {
+                    candidates.push({
+                        pos: _signWorldPos.clone().add(new THREE.Vector3(0, 0.08, 0)),
+                        color: colorHex,
+                        dist: dist,
+                        priority: 1.0 / (dist + 0.1)
+                    });
+                }
+            }
+
+            // Direction indicators (Dot & Circle)
+            if (b.directionIndicators && b.directionIndicators.children.length >= 2) {
+                const dotMesh = b.directionIndicators.children[0];
+                const circleMesh = b.directionIndicators.children[1];
+
+                if (dotMesh) {
+                    dotMesh.getWorldPosition(_signWorldPos);
+                    const dist = _signWorldPos.distanceTo(targetCamera.position);
+                    _signToCam.subVectors(targetCamera.position, _signWorldPos).normalize();
+                    const dotFacing = -_signToCam.dot(_signCamDir);
+                    if (dotFacing > 0.1) {
+                        candidates.push({
+                            pos: _signWorldPos.clone().addScaledVector(_signCamDir, -0.08),
+                            color: colorHex,
+                            dist: dist,
+                            priority: dotFacing / (dist + 0.1)
+                        });
+                    }
+                }
+
+                if (circleMesh) {
+                    circleMesh.getWorldPosition(_signWorldPos);
+                    const dist = _signWorldPos.distanceTo(targetCamera.position);
+                    _signToCam.subVectors(targetCamera.position, _signWorldPos).normalize();
+                    const circleFacing = -_signToCam.dot(_signCamDir);
+                    if (circleFacing > 0.1) {
+                        candidates.push({
+                            pos: _signWorldPos.clone().addScaledVector(_signCamDir, -0.08),
+                            color: colorHex,
+                            dist: dist,
+                            priority: circleFacing / (dist + 0.1)
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    candidates.sort((a, b) => b.priority - a.priority);
+
+    const now = performance.now() * 0.001;
+    const breath = Math.sin(now * 2.4) * 0.15 + 1.0;
+
+    for (let i = 0; i < MAX_SIGN_LIGHTS; i++) {
+        const light = signLightsPool[i];
+        if (i < candidates.length) {
+            const cand = candidates[i];
+            light.color.setHex(cand.color);
+            light.position.copy(cand.pos);
+            light.intensity = 0.35 * breath;
+            light.distance = 1.5;
+            light.decay = 2.0;
+            light.visible = true;
+        } else {
+            light.visible = false;
+            light.intensity = 0;
+        }
+    }
+}
+
 /**
  * Register a block that is in motion or requires per-frame updates
  * @param {Block} block - The active block
@@ -5554,7 +5663,8 @@ function removeBlockWithAnimation(block) {
             // Clear animation function
             this.updateMeltAnimation = null;
             updateProgressDial(); // Update progress dial after block removal
-            checkAndTriggerFalling(blocks);
+            markSupportCheckDirty();
+            checkAndTriggerFalling(blocks, true);
         }
     };
 
@@ -8253,6 +8363,9 @@ function blockHasSupport(block, allBlocks) {
 let supportCheckDirty = true;
 export function markSupportCheckDirty() {
     supportCheckDirty = true;
+    if (typeof markNeedsRender === 'function') {
+        markNeedsRender(1000);
+    }
 }
 window.markSupportCheckDirty = markSupportCheckDirty;
 
@@ -8260,32 +8373,17 @@ window.markSupportCheckDirty = markSupportCheckDirty;
  * Check all blocks and trigger falling for those that lost support
  * Blocks fall until they reach the base (yOffset = 0) or another supporting block
  */
-function checkAndTriggerFalling(blocks) {
+function checkAndTriggerFalling(blocks, force = false) {
     if (isGeneratingLevel || window.supportCheckingEnabled === false) {
         return;
     }
 
-    // Fast-exit if no blocks moved or removed (crucial 60 FPS optimization for 1000+ blocks)
-    if (!supportCheckDirty && activeBlocks.size === 0) {
-        return;
-    }
-    supportCheckDirty = false;
-
     // Update global grid before check
     updateSupportGrid();
 
-    // IMPORTANT: Batch detect unsupported blocks so chain reactions happen simultaneously.
-    // Without batching, the simulation becomes "stepped" (lower blocks fall first, then above),
-    // because support evaluation is done against the current state and only discovers the next
-    // unsupported block after the previous one lands.
-    //
-    // We treat blocks that are *also going to fall in this batch* as NOT providing support.
-    // Then we compute final landing targets bottom→top and animate all affected blocks together.
-
     const eligible = blocks.filter(b => {
         if (b.isRemoved || b.isFalling) return false;
-        if (b.isAnimating) return false; // don't fight other animations (move, etc.)
-        return b.yOffset > 0; // only upper-layer blocks can lose support
+        return b.yOffset > 0.01; // only upper-layer blocks can lose support
     });
 
     // Compute closure of blocks that become unsupported if we remove all blocks already selected to fall.
@@ -8504,9 +8602,10 @@ function startBlockFalling(block) {
  * Used both for single-block support loss and batched chain reactions.
  */
 function startBlockFallingToTarget(block, targetYOffset) {
-    if (block.isFalling || block.isRemoved || block.isAnimating) return;
+    if (block.isFalling || block.isRemoved) return;
     if (targetYOffset >= block.yOffset) return;
 
+    block.isFalling = true;
     block.isAnimating = true;
     if (typeof registerActiveBlock === 'function') registerActiveBlock(block);
 
@@ -8535,6 +8634,7 @@ function startBlockFallingToTarget(block, targetYOffset) {
     const animateFall = () => {
         if (block.isRemoved || !blocks.includes(block) || isGeneratingLevel) {
             if (fallAnimationId !== null) cancelAnimationFrame(fallAnimationId);
+            block.isFalling = false;
             block.isAnimating = false;
             return;
         }
@@ -8551,8 +8651,10 @@ function startBlockFallingToTarget(block, targetYOffset) {
         } else {
             block.yOffset = targetYOffset;
             block.updateWorldPosition();
+            block.isFalling = false;
             block.isAnimating = false;
             fallAnimationId = null;
+            markSupportCheckDirty();
 
             // Translucent blocks / welded clusters revert to standard non-translucent blocks when landing on the base plate (level 0)
             if ((block.isLocked || block.isTranslucent) && block.yOffset < 0.1 && !block.isRemoved && !block.removalStartTime) {
@@ -9707,6 +9809,8 @@ function animate() {
     }
 
     // 12. Render (Wake-on-Demand Invalidation Guard)
+    updateSignLights(blocks, camera, scene);
+
     const shouldRender = isActiveFrame || (settleFramesRemaining > 0) || (qualityPreset === 'performance');
 
     if (shouldRender) {

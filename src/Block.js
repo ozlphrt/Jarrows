@@ -45,31 +45,32 @@ function createBombStripeTexture() {
 }
 
 /**
- * Creates a procedural radial glow texture with very soft falloff for organic glow.
+ * Creates a procedural silky-smooth radial halo texture for emissive indicators.
  */
-function createOrganicGlowTexture() {
-    if (TextureCache.has('organicGlow')) return TextureCache.get('organicGlow');
+function createIndicatorHaloTexture() {
+    if (TextureCache.has('indicatorHaloTexture')) return TextureCache.get('indicatorHaloTexture');
 
     const canvas = document.createElement('canvas');
-    canvas.width = 128; // Higher resolution for smoother falloff
+    canvas.width = 128;
     canvas.height = 128;
     const ctx = canvas.getContext('2d');
 
-    // Multi-stop radial gradient for extremely soft edges
+    // High quality smooth feathered radial halo (soft ambient glow)
     const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
     gradient.addColorStop(0.0, 'rgba(255, 255, 255, 1.0)');
-    gradient.addColorStop(0.2, 'rgba(255, 255, 255, 0.8)');
-    gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.3)');
-    gradient.addColorStop(0.8, 'rgba(255, 255, 255, 0.1)');
+    gradient.addColorStop(0.20, 'rgba(255, 255, 255, 0.90)');
+    gradient.addColorStop(0.50, 'rgba(255, 255, 255, 0.45)');
+    gradient.addColorStop(0.80, 'rgba(255, 255, 255, 0.12)');
     gradient.addColorStop(1.0, 'rgba(255, 255, 255, 0.0)');
 
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, 128, 128);
 
     const texture = new THREE.CanvasTexture(canvas);
-    TextureCache.set('organicGlow', texture);
+    TextureCache.set('indicatorHaloTexture', texture);
     return texture;
 }
+
 
 /**
  * Get a pooled RoundedBoxGeometry or create a new one if it doesn't exist.
@@ -577,37 +578,134 @@ export class Block {
     }
 
     /**
-     * Create an organic dual-layer glow group (Core + Haze) (Task 3.4 Flush Rewrite)
-     * Replaced Sprites with flush Meshes to avoid "angled" billboarding artifacts.
+     * Create 3D Volumetric Glow for Dot (3D glowing dome + soft ambient aura)
      */
-    createGlowGroup(color, baseScale) {
+    create3DDotGlow(colorHex) {
         const group = new THREE.Group();
-        group.isOrganicGlow = true; // Use for update loop detection
-        
-        const texture = createOrganicGlowTexture();
-        const planeGeom = new THREE.PlaneGeometry(1, 1);
-        
-        // Inner Core: Main intense glow (Haze removed for cleaner look)
-        const coreMat = new THREE.MeshBasicMaterial({
-            map: texture,
-            color: color,
+        group.isOrganicGlow = true;
+
+        // 1. 3D Volumetric Glowing Dome (Spherical hemisphere protruding in 3D)
+        const domeGeom = new THREE.SphereGeometry(0.24, 18, 12, 0, Math.PI * 2, 0, Math.PI / 2);
+        const domeMat = new THREE.MeshBasicMaterial({
+            color: colorHex,
             transparent: true,
-            opacity: 0.5, // Increased from 0.3
+            opacity: 0.25,
             blending: THREE.AdditiveBlending,
             side: THREE.DoubleSide,
             depthWrite: false
         });
-        setupGlowQuadMaterial(coreMat, { pulseOffset: this.pulseOffset || 0.0 });
-        const core = new THREE.Mesh(planeGeom, coreMat);
-        core.scale.set(baseScale * 1.1, baseScale * 1.1, 1); // Increased base scale
-        core.position.z = 0.001; 
-        core.isGlowCore = true;
-        
-        group.add(core);
-        group._baseScale = baseScale;
-        
+        setupGlowQuadMaterial(domeMat, { pulseOffset: this.pulseOffset || 0.0 });
+        const domeMesh = new THREE.Mesh(domeGeom, domeMat);
+        domeMesh.rotation.x = Math.PI / 2; // Protrude outwards along +Z in 3D
+        domeMesh.position.z = 0.02;
+        group.add(domeMesh);
+
+        // 2. Soft 3D Ambient Halo behind it
+        const texture = createIndicatorHaloTexture();
+        const haloMat = new THREE.MeshBasicMaterial({
+            map: texture,
+            color: colorHex,
+            transparent: true,
+            opacity: 0.20,
+            blending: THREE.AdditiveBlending,
+            side: THREE.DoubleSide,
+            depthWrite: false
+        });
+        setupGlowQuadMaterial(haloMat, { pulseOffset: this.pulseOffset || 0.0 });
+        const haloMesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), haloMat);
+        haloMesh.scale.set(0.70, 0.70, 1);
+        haloMesh.position.z = -0.002;
+        group.add(haloMesh);
+
         return group;
     }
+
+    /**
+     * Create 3D Volumetric Glow for Ring / Circle (3D glowing Torus + soft ambient aura)
+     */
+    create3DCircleGlow(colorHex) {
+        const group = new THREE.Group();
+        group.isOrganicGlow = true;
+
+        // 1. 3D Volumetric Glowing Torus (Curved glowing ring wrapping the geometry in 3D)
+        const torusGeom = new THREE.TorusGeometry(0.22, 0.07, 14, 28);
+        const torusMat = new THREE.MeshBasicMaterial({
+            color: colorHex,
+            transparent: true,
+            opacity: 0.25,
+            blending: THREE.AdditiveBlending,
+            side: THREE.DoubleSide,
+            depthWrite: false
+        });
+        setupGlowQuadMaterial(torusMat, { pulseOffset: this.pulseOffset || 0.0 });
+        const torusMesh = new THREE.Mesh(torusGeom, torusMat);
+        torusMesh.position.z = 0.025; // Sits in 3D space wrapping the extruded ring
+        group.add(torusMesh);
+
+        // 2. Soft 3D Ambient Halo behind it
+        const texture = createIndicatorHaloTexture();
+        const haloMat = new THREE.MeshBasicMaterial({
+            map: texture,
+            color: colorHex,
+            transparent: true,
+            opacity: 0.20,
+            blending: THREE.AdditiveBlending,
+            side: THREE.DoubleSide,
+            depthWrite: false
+        });
+        setupGlowQuadMaterial(haloMat, { pulseOffset: this.pulseOffset || 0.0 });
+        const haloMesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), haloMat);
+        haloMesh.scale.set(0.85, 0.85, 1);
+        haloMesh.position.z = -0.002;
+        group.add(haloMesh);
+
+        return group;
+    }
+
+    /**
+     * Create 3D Volumetric Glow for Top Arrow (Expanded 3D glowing shell + ambient aura)
+     */
+    create3DArrowGlow(colorHex, arrowGeometry) {
+        const group = new THREE.Group();
+        group.isOrganicGlow = true;
+
+        // 1. 3D Volumetric Glowing Shell wrapping arrow in 3D
+        if (arrowGeometry) {
+            const shellMat = new THREE.MeshBasicMaterial({
+                color: colorHex,
+                transparent: true,
+                opacity: 0.25,
+                blending: THREE.AdditiveBlending,
+                side: THREE.DoubleSide,
+                depthWrite: false
+            });
+            setupGlowQuadMaterial(shellMat, { pulseOffset: this.pulseOffset || 0.0 });
+            const shellMesh = new THREE.Mesh(arrowGeometry, shellMat);
+            shellMesh.scale.set(1.15, 1.15, 1.3);
+            shellMesh.position.z = 0.005;
+            group.add(shellMesh);
+        }
+
+        // 2. Soft 3D Ambient Halo behind it
+        const texture = createIndicatorHaloTexture();
+        const haloMat = new THREE.MeshBasicMaterial({
+            map: texture,
+            color: colorHex,
+            transparent: true,
+            opacity: 0.20,
+            blending: THREE.AdditiveBlending,
+            side: THREE.DoubleSide,
+            depthWrite: false
+        });
+        setupGlowQuadMaterial(haloMat, { pulseOffset: this.pulseOffset || 0.0 });
+        const haloMesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), haloMat);
+        haloMesh.scale.set(0.95, 0.95, 1);
+        haloMesh.position.z = -0.002;
+        group.add(haloMesh);
+
+        return group;
+    }
+
     createSpinIndicator(color, isSmall = false) {
         const group = new THREE.Group();
         group.isSpinIndicator = true; 
@@ -938,22 +1036,21 @@ export class Block {
         const topArrowData = createArrowGeometry(style);
         const topArrowMesh = new THREE.Mesh(topArrowData.geometry, topArrowData.material);
 
-        // Bomb styling: Add indicator material and glow sprite (Task 3.2, 3.4)
-        if (this.isBomb && this.bombIndicatorMaterials) {
-            this.bombIndicatorMaterials.push(topArrowData.material);
+        // Bomb styling: Add indicator material with emissive luminescence & halo
+        if (this.isBomb) {
+            if (this.bombIndicatorMaterials) this.bombIndicatorMaterials.push(topArrowData.material);
             
-            // Match indicator color (red, yellow, or green) (Task 3.2)
-            topArrowData.material.emissive = new THREE.Color(blockColor);
-            topArrowData.material.emissiveIntensity = 0.3; // Reduced for organic look
+            const maxColors = [0xff2252, 0x00e5ff, 0xffa000];
+            const bombColorHex = maxColors[this.length - 1] || maxColors[0];
+            topArrowData.material.color.setHex(bombColorHex);
+            topArrowData.material.emissive = new THREE.Color(bombColorHex);
+            topArrowData.material.emissiveIntensity = this.length === 1 ? 0.70 : 0.55;
             setupPulsingMaterial(topArrowData.material, { isBomb: true, pulseOffset: this.pulseOffset || 0.0 });
 
-            // Add organic glow core
-            const glowGroup = this.createGlowGroup(blockColor, 1.2);
-            glowGroup.position.copy(topArrowMesh.position);
-            glowGroup.rotation.copy(topArrowMesh.rotation); // Fix: Adapt to arrow orientation (Task 3.4)
-            glowGroup.position.z += 0.05; // Slightly in front
-            topArrow.add(glowGroup);
-            this.bombGlowSprites.push(glowGroup);
+            const halo = this.create3DArrowGlow(bombColorHex, topArrowData.geometry);
+            halo.position.copy(topArrowMesh.position);
+            topArrow.add(halo);
+            if (this.bombGlowSprites) this.bombGlowSprites.push(halo);
         }
 
         // Store original emissiveIntensity for later color updates
@@ -1112,23 +1209,6 @@ export class Block {
             side: THREE.DoubleSide
         });
 
-        // Bomb styling: Add indicator material and glow sprite (Task 3.2, 3.4)
-        if (this.isBomb && this.bombIndicatorMaterials) {
-            this.bombIndicatorMaterials.push(dotMaterial);
-            
-            // Match indicator color (Task 3.2)
-            dotMaterial.emissive = new THREE.Color(indicatorColor);
-            dotMaterial.emissiveIntensity = 0.3; // Reduced for organic look
-            setupPulsingMaterial(dotMaterial, { isBomb: true, pulseOffset: this.pulseOffset || 0.0 });
-
-            // Add organic dual-layer glow (Core + Haze) (Task 3.4 Rewrite)
-            const glowGroup = this.createGlowGroup(indicatorColor, 0.6);
-            this.bombGlowSprites.push(glowGroup);
-            
-            // We'll add this to the same group/parent as dotMesh later
-            this._pendingDotGlow = glowGroup; 
-        }
-
         let dotMesh;
         if (this.isSpinGem) {
             dotMesh = this.createSpinIndicator(indicatorColor, true); // Small for dot
@@ -1137,6 +1217,22 @@ export class Block {
             // Battery/perf: receive only (avoid extra shadow casters for tiny details)
             dotMesh.castShadow = false;
             dotMesh.receiveShadow = true;
+        }
+
+        // Bomb styling: Add indicator material with emissive luminescence & halo
+        if (this.isBomb) {
+            if (this.bombIndicatorMaterials) this.bombIndicatorMaterials.push(dotMaterial);
+            
+            const maxColors = [0xff2252, 0x00e5ff, 0xffa000];
+            const bombColorHex = maxColors[this.length - 1] || maxColors[0];
+            dotMaterial.color.setHex(bombColorHex);
+            dotMaterial.emissive = new THREE.Color(bombColorHex);
+            dotMaterial.emissiveIntensity = this.length === 1 ? 0.70 : 0.55;
+            setupPulsingMaterial(dotMaterial, { isBomb: true, pulseOffset: this.pulseOffset || 0.0 });
+
+            const halo = this.create3DDotGlow(bombColorHex);
+            dotMesh.add(halo);
+            if (this.bombGlowSprites) this.bombGlowSprites.push(halo);
         }
 
         // Get Z offset to push indicators away from surface
@@ -1162,23 +1258,6 @@ export class Block {
             side: THREE.DoubleSide
         });
 
-        // Bomb styling: Add indicator material and glow sprite (Task 3.2, 3.4)
-        if (this.isBomb && this.bombIndicatorMaterials) {
-            this.bombIndicatorMaterials.push(circleMaterial);
-            
-            // Match indicator color (Task 3.2)
-            circleMaterial.emissive = new THREE.Color(indicatorColor);
-            circleMaterial.emissiveIntensity = 0.3; // Reduced for organic look
-            setupPulsingMaterial(circleMaterial, { isBomb: true, pulseOffset: this.pulseOffset || 0.0 });
-
-            // Add organic dual-layer glow (Core + Haze) (Task 3.4 Rewrite)
-            const glowGroup = this.createGlowGroup(indicatorColor, 0.8);
-            this.bombGlowSprites.push(glowGroup);
-            
-            // We'll add this to the same group/parent as circleMesh later
-            this._pendingCircleGlow = glowGroup;
-        }
-
         let circleMesh;
         if (this.isSpinGem) {
             circleMesh = this.createSpinIndicator(indicatorColor);
@@ -1188,6 +1267,22 @@ export class Block {
             // Battery/perf: receive only (avoid extra shadow casters for tiny details)
             circleMesh.castShadow = false;
             circleMesh.receiveShadow = true;
+        }
+
+        // Bomb styling: Add indicator material with emissive luminescence & halo
+        if (this.isBomb) {
+            if (this.bombIndicatorMaterials) this.bombIndicatorMaterials.push(circleMaterial);
+            
+            const maxColors = [0xff2252, 0x00e5ff, 0xffa000];
+            const bombColorHex = maxColors[this.length - 1] || maxColors[0];
+            circleMaterial.color.setHex(bombColorHex);
+            circleMaterial.emissive = new THREE.Color(bombColorHex);
+            circleMaterial.emissiveIntensity = this.length === 1 ? 0.70 : 0.55;
+            setupPulsingMaterial(circleMaterial, { isBomb: true, pulseOffset: this.pulseOffset || 0.0 });
+
+            const halo = this.create3DCircleGlow(bombColorHex);
+            circleMesh.add(halo);
+            if (this.bombGlowSprites) this.bombGlowSprites.push(halo);
         }
 
         // Apply Z offset to make the circle stand out from the surface
@@ -1283,27 +1378,7 @@ export class Block {
         }
 
         indicatorsGroup.add(dotMesh);
-        if (this._pendingDotGlow) {
-            this._pendingDotGlow.position.copy(dotMesh.position);
-            this._pendingDotGlow.rotation.copy(dotMesh.rotation); // Fix: Adapt to block orientation (Task 3.4)
-            
-            // Push slightly more towards the viewer relative to the surface
-            const dotDirection = dotMesh.position.clone().normalize();
-            this._pendingDotGlow.position.add(dotDirection.multiplyScalar(0.04));
-            indicatorsGroup.add(this._pendingDotGlow);
-            delete this._pendingDotGlow;
-        }
-        
         indicatorsGroup.add(circleMesh);
-        if (this._pendingCircleGlow) {
-            this._pendingCircleGlow.position.copy(circleMesh.position);
-            this._pendingCircleGlow.rotation.copy(circleMesh.rotation); // Fix: Adapt to block orientation (Task 3.4)
-            
-            const circleDirection = circleMesh.position.clone().normalize();
-            this._pendingCircleGlow.position.add(circleDirection.multiplyScalar(0.04));
-            indicatorsGroup.add(this._pendingCircleGlow);
-            delete this._pendingCircleGlow;
-        }
 
         this.group.add(indicatorsGroup);
         this.directionIndicators = indicatorsGroup;
@@ -4233,10 +4308,12 @@ export class Block {
                     // Grid positions and direction are already set correctly before animation started
                     // updateWorldPosition() will recalculate based on current gridX/gridZ/direction
                     this.updateWorldPosition();
-
                     this.isAnimating = false;
                     if (typeof window !== 'undefined' && typeof window.updateUndoButtonState === 'function') {
                         window.updateUndoButtonState();
+                    }
+                    if (typeof window !== 'undefined' && typeof window.markSupportCheckDirty === 'function') {
+                        window.markSupportCheckDirty();
                     }
                 }
             }
@@ -4392,6 +4469,9 @@ export class Block {
                 this.isAnimating = false;
                 if (typeof window !== 'undefined' && typeof window.updateUndoButtonState === 'function') {
                     window.updateUndoButtonState();
+                }
+                if (typeof window !== 'undefined' && typeof window.markSupportCheckDirty === 'function') {
+                    window.markSupportCheckDirty();
                 }
 
                 // Snap back surrounding blocks
@@ -4696,6 +4776,10 @@ export class Block {
                             this.group.parent.remove(this.group);
                         } else {
                             this.scene.remove(this.group);
+                        }
+
+                        if (typeof window.markSupportCheckDirty === 'function') {
+                            window.markSupportCheckDirty();
                         }
 
                         resolve();
@@ -5016,6 +5100,14 @@ export class Block {
 
         // Finally remove the bomb itself
         this.remove();
+        if (typeof window.markSupportCheckDirty === 'function') {
+            window.markSupportCheckDirty();
+        }
+        setTimeout(() => {
+            if (typeof window.markSupportCheckDirty === 'function') {
+                window.markSupportCheckDirty();
+            }
+        }, affectedBlocks.length * 30 + 100);
     }
 
     /**
@@ -5146,6 +5238,16 @@ export class Block {
                     child.material.opacity = 0.8;
                     child.material.roughness = 0.08;
                     child.material.metalness = 0.05;
+                } else if (this.isBomb) {
+                    const maxColors = [0xff2252, 0x00e5ff, 0xffa000];
+                    const bombColorHex = maxColors[this.length - 1] || maxColors[0];
+                    child.material.color.setHex(bombColorHex);
+                    child.material.emissive.setHex(bombColorHex);
+                    child.material.emissiveIntensity = this.length === 1 ? 1.4 : 1.2;
+                    child.material.transparent = false;
+                    child.material.opacity = 1.0;
+                    child.material.roughness = 0.1;
+                    child.material.metalness = 0.0;
                 } else {
                     // Restore original indicator colors (red, teal, yellow)
                     child.material.color.copy(child.material.userData.originalIndicatorColor);
@@ -5182,9 +5284,15 @@ export class Block {
                 mat.needsUpdate = true;
 
                 this.setIndicatorsFrosted(true);
+                if (this.bombGlowSprites) {
+                    this.bombGlowSprites.forEach(h => { if (h) h.visible = false; });
+                }
             } else if (this.isLocked) {
                 this.applyLockedStyle();
                 this.setIndicatorsFrosted(false);
+                if (this.bombGlowSprites) {
+                    this.bombGlowSprites.forEach(h => { if (h) h.visible = false; });
+                }
             } else {
                 mat.transparent = false;
                 mat.opacity = mat.userData.originalOpacity || 1.0;
@@ -5200,6 +5308,9 @@ export class Block {
                 mat.needsUpdate = true;
 
                 this.setIndicatorsFrosted(false);
+                if (this.bombGlowSprites && this.isBomb) {
+                    this.bombGlowSprites.forEach(h => { if (h) h.visible = true; });
+                }
             }
         }
     }
@@ -5218,6 +5329,10 @@ export class Block {
             this.group.parent.remove(this.group);
         } else if (typeof window.scene !== 'undefined') {
             window.scene.remove(this.group);
+        }
+
+        if (typeof window.markSupportCheckDirty === 'function') {
+            window.markSupportCheckDirty();
         }
     }
 }
@@ -5477,6 +5592,10 @@ export function moveTranslucentCluster(cluster, direction, allBlocks, gridSize) 
                 m.block.gridZ = m.finalGridZ;
                 m.block.isAnimating = false;
             });
+
+            if (typeof window !== 'undefined' && typeof window.markSupportCheckDirty === 'function') {
+                window.markSupportCheckDirty();
+            }
 
             if (hitEdge) {
                 cluster.forEach(b => {
