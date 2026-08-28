@@ -330,6 +330,7 @@ export class Block {
 
         // Arrow color always uses length-based colors (for visibility)
         const arrowColor = colors[length - 1];
+        this.baseIndicatorColor = arrowColor;
 
         // Check if this is a filler block (blocks used to fill empty cells)
         this.isFiller = false; // Can be set after construction if needed
@@ -5218,15 +5219,14 @@ export class Block {
     }
 
     setIndicatorsFrosted(frosted = true) {
+        const defaultColor = this.baseIndicatorColor || [0xff6b6b, 0x4ecdc4, 0xffc125][this.length - 1] || 0xff6b6b;
+
         this.group.traverse((child) => {
             if (child.isMesh && this.cubes && !this.cubes.includes(child)) {
                 if (!child.material) return;
 
                 if (!child.material.userData.originalIndicatorColor) {
-                    child.material.userData.originalIndicatorColor = child.material.color.clone();
-                }
-                if (child.material.userData.originalOpacity === undefined) {
-                    child.material.userData.originalOpacity = child.material.opacity !== undefined ? child.material.opacity : 1.0;
+                    child.material.userData.originalIndicatorColor = new THREE.Color(defaultColor);
                 }
 
                 if (frosted) {
@@ -5243,24 +5243,30 @@ export class Block {
                     const bombColorHex = maxColors[this.length - 1] || maxColors[0];
                     child.material.color.setHex(bombColorHex);
                     child.material.emissive.setHex(bombColorHex);
-                    child.material.emissiveIntensity = this.length === 1 ? 1.4 : 1.2;
+                    child.material.emissiveIntensity = this.length === 1 ? 0.70 : 0.55;
                     child.material.transparent = false;
                     child.material.opacity = 1.0;
                     child.material.roughness = 0.1;
                     child.material.metalness = 0.0;
                 } else {
-                    // Restore original indicator colors (red, teal, yellow)
-                    child.material.color.copy(child.material.userData.originalIndicatorColor);
+                    // Restore original indicator colors (red, teal, yellow) based on block length/palette
+                    child.material.color.setHex(defaultColor);
                     child.material.emissive.setHex(0x000000);
                     child.material.emissiveIntensity = 0.0;
                     child.material.transparent = false;
-                    child.material.opacity = child.material.userData.originalOpacity || 1.0;
+                    child.material.opacity = 1.0;
                     child.material.roughness = 0.1;
                     child.material.metalness = 0.0;
                 }
                 child.material.needsUpdate = true;
             }
         });
+
+        if (this.bombGlowSprites) {
+            this.bombGlowSprites.forEach(h => {
+                if (h) h.visible = !frosted && !!this.isBomb;
+            });
+        }
     }
 
     setTranslucent(isTranslucent = true) {
