@@ -803,9 +803,6 @@ function showMetricInfoModal({ label, currentValue, baselineValue, scope = null,
  * Update level complete modal with comparison stats
  */
 export function updateLevelCompleteModal(userStats, comparison) {
-    // Add comparison section to modal if it doesn't exist
-    let comparisonSection = document.getElementById('stats-comparison-section');
-
     // Add Personal Best badge if applicable
     if (userStats.isNewPersonalBest) {
         let pbBadge = document.getElementById('personal-best-badge');
@@ -849,29 +846,10 @@ export function updateLevelCompleteModal(userStats, comparison) {
         }
     }
 
-    if (!comparisonSection) {
-        comparisonSection = createComparisonSection();
-        const modalContent = document.querySelector('.modal-content');
-        const statsGrid = document.querySelector('.modal-stats-grid');
-
-        if (modalContent && statsGrid) {
-            // Insert after stats grid, before the modal actions container.
-            const actions = document.querySelector('.modal-actions');
-            if (actions && actions.parentElement === modalContent) {
-                modalContent.insertBefore(comparisonSection, actions);
-            } else {
-                modalContent.appendChild(comparisonSection);
-            }
-        }
-    }
-
-    // Update comparison data
-    updateComparisonDisplay(comparisonSection, userStats, comparison);
-
-    const historyBtn = document.getElementById('history-button');
-    if (historyBtn && !historyBtn.dataset.bound) {
-        historyBtn.dataset.bound = '1';
-        historyBtn.addEventListener('click', () => showPersonalHistoryModal());
+    // Keep modal super clean and simple (remove comparison chart)
+    const existingComparison = document.getElementById('stats-comparison-section');
+    if (existingComparison) {
+        existingComparison.remove();
     }
 }
 

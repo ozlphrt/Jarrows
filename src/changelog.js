@@ -4,6 +4,17 @@
  */
 
 export const changelog = {
+    "8.20.0": {
+        title: "Welded Translucent Ice Clusters & Radial Tower Physics",
+        date: "2026-08-28",
+        changes: [
+            "Welded Crystal Ice Clusters: Adjacent locked translucent blocks weld together when 3+ blocks connect, adopting a unified frosted crystal ice aesthetic and icy indicators",
+            "Individual Locked Translucency: 1-2 colliding locked blocks maintain their individual translucent color styling",
+            "Rigid Cluster Support & Dissolution: Welded clusters calculate support as rigid bodies and dissolve back into normal blocks upon landing on the base plate",
+            "Radial Tower Shockwave: Attempting to push locked/translucent blocks triggers a distance-attenuated chaotic vibration across the entire tower",
+            "Translucent Explosive Guard: Explosive blocks are safely deactivated while in translucent mode"
+        ]
+    },
     "8.19.0": {
         title: "Single Draw-Call Instanced Rendering & GPU Shader Acceleration",
         date: "2026-08-26",

@@ -229,7 +229,7 @@ function isHeadOnCollision(movingBlock, otherBlock, collisionX, collisionZ, curr
 }
 
 export class Block {
-    constructor(length, gridX, gridZ, direction, isVertical, arrowStyle, scene, physics, gridSize, cubeSize, yOffset = 0, level = 1, isBomb = false, isSpinGem = false, blockInstanceManager = null) {
+    constructor(length, gridX, gridZ, direction, isVertical, arrowStyle, scene, physics, gridSize, cubeSize, yOffset = 0, level = 1, isBomb = false, isSpinGem = false, blockInstanceManager = null, isTranslucent = false) {
         this.blockInstanceManager = blockInstanceManager;
         this.isDirty = false; // Mark as dirty for initial matrix update
         this.length = length;
@@ -242,6 +242,7 @@ export class Block {
         this.isExploding = false;
         this.isBomb = isBomb;
         this.isSpinGem = false; // Task 9.1: Disable spin gems
+        this.isTranslucent = isTranslucent;
         this.needsTransitionToFalling = false;
         this.needsStop = false;
         // Catapult shadow policy (Battery preset only): suppress shadows only while a catapulted block is moving.
@@ -335,14 +336,26 @@ export class Block {
         // Spin Gem highlights are now handled solely by indicators (Task 1.3 Refinement)
         let materialColor = blockColor;
 
-
-        const blockMaterial = new THREE.MeshStandardMaterial({
-            color: materialColor,
-            roughness: 0.1, // Single standardized value
-            metalness: 0.0, // Single standardized value
-            opacity: 1.0, 
-            transparent: false 
-        });
+        let blockMaterial;
+        if (this.isTranslucent) {
+            blockMaterial = new THREE.MeshStandardMaterial({
+                color: 0xa5f3fc,
+                roughness: 0.08,
+                metalness: 0.05,
+                opacity: 0.65,
+                transparent: true,
+                emissive: new THREE.Color(0x38bdf8),
+                emissiveIntensity: 0.15
+            });
+        } else {
+            blockMaterial = new THREE.MeshStandardMaterial({
+                color: materialColor,
+                roughness: 0.1, // Single standardized value
+                metalness: 0.0, // Single standardized value
+                opacity: 1.0, 
+                transparent: false 
+            });
+        }
 
         // Apply bomb styling: Indicators glow (Task 2.3, 3.2, 3.4)
         if (this.isBomb) {
@@ -1415,6 +1428,7 @@ export class Block {
         }
 
         this.isLocked = true;
+        this.isTranslucent = true;
         this.lockStartTime = performance.now();
         this.lockEndTime = performance.now() + (lockDuration * 1000);
 
@@ -1516,9 +1530,10 @@ export class Block {
             console.log('[Lock] WARNING: No cubes found, cannot apply transparency effect');
         }
 
-        // Task: Progress bar removal
-        // Replaced timer-based fill mesh with static semi-transparency for a cleaner look.
-        // this.createLockFillMesh(tintColorObj);
+        // Check if this newly locked block touches any other locked/translucent blocks to weld them
+        if (typeof window !== 'undefined' && window.gameBlocks) {
+            updateWeldedTranslucentClusters(window.gameBlocks);
+        }
     }
 
 
@@ -1729,6 +1744,7 @@ export class Block {
         this.stopCountdownFlash();
 
         this.isLocked = false;
+        this.isTranslucent = false;
         this.lockEndTime = 0;
         this.isUnlocking = true;
 
@@ -4922,8 +4938,8 @@ export class Block {
                 window.playSound('syntheticCrush', 0.8);
             }
 
-            if (this.isBomb) {
-                // Bombs detonate when crushed
+            if (this.isBomb && !this.isLocked && !this.isTranslucent) {
+                // Bombs detonate when crushed (if not in translucent mode)
                 this.detonate();
             } else {
                 // Normal blocks explode into particles
@@ -4938,7 +4954,7 @@ export class Block {
     }
 
     detonate() {
-        if (this.isRemoved || this._explosionAnimationStarted) return;
+        if (this.isRemoved || this._explosionAnimationStarted || this.isLocked || this.isTranslucent) return;
         this._explosionAnimationStarted = true;
         this.isExploding = true;
         this.isAnimating = true; // Task 8.1.0: Consistency for progress dial
@@ -4982,7 +4998,7 @@ export class Block {
             setTimeout(() => {
                 if (block.isRemoved || block._explosionAnimationStarted) return;
 
-                if (block.isBomb) {
+                if (block.isBomb && !block.isLocked && !block.isTranslucent) {
                     block.detonate(); 
                 } else {
                     // Use explodeWithParticles for faster, cleaner removal (Task 6.2)
@@ -5008,8 +5024,8 @@ export class Block {
      */
     getOccupiedCells() {
         const cells = [];
-        // Normalize yOffset to layer index (layers are at 1.2 unit intervals)
-        const layerY = Math.round(this.yOffset / 1.2);
+        const layerY = Math.round(this.yOffset / (this.cubeSize || 1));
+        const isXAligned = Math.abs(this.direction.x) > 0;
         
         for (let i = 0; i < this.length; i++) {
             if (this.isVertical) {
@@ -5018,9 +5034,9 @@ export class Block {
             } else {
                 // Horizontal blocks span multiple grid cells in one layer
                 cells.push({
-                    x: this.gridX + this.direction.x * i,
+                    x: this.gridX + (isXAligned ? i : 0),
                     y: layerY,
-                    z: this.gridZ + this.direction.z * i
+                    z: this.gridZ + (isXAligned ? 0 : i)
                 });
             }
         }
@@ -5037,7 +5053,7 @@ export class Block {
         const bombCells = this.getOccupiedCells();
 
         return allBlocks.filter(block => {
-            if (block === this || block.isRemoved || block.isExploding || block.isLocked) return false;
+            if (block === this || block.isRemoved || block.isExploding || block.isLocked || block.isTranslucent) return false;
             
             const targetCells = block.getOccupiedCells();
             
@@ -5078,6 +5094,116 @@ export class Block {
         });
     }
 
+    applyLockedStyle() {
+        if (!this.cubes || this.cubes.length === 0) return;
+        const colors = [0xff6b6b, 0x4ecdc4, 0xffc125];
+        const tintColorHex = colors[this.length - 1] || colors[0];
+        const tintColorObj = new THREE.Color(tintColorHex);
+
+        const staticOpacity = 0.7;
+        const brightnessFactor = 0.5;
+
+        for (const cube of this.cubes) {
+            if (cube.material) {
+                if (!cube.material.userData.originalColor) {
+                    cube.material.userData.originalColor = cube.material.color.clone();
+                }
+                const originalColorObj = cube.material.userData.originalColor.clone();
+                const isWhite = originalColorObj.r > 0.95 && originalColorObj.g > 0.95 && originalColorObj.b > 0.95;
+                const tintMix = isWhite ? 0.50 : 0.35;
+                const tintedColor = originalColorObj.clone().lerp(tintColorObj, tintMix);
+
+                cube.material.transparent = true;
+                cube.material.opacity = staticOpacity;
+                cube.material.color.copy(tintedColor).multiplyScalar(brightnessFactor);
+                cube.material.emissive.copy(tintColorObj);
+                cube.material.emissiveIntensity = 0.2;
+                cube.material.roughness = 0.1;
+                cube.material.metalness = 0.0;
+                cube.material.needsUpdate = true;
+            }
+        }
+    }
+
+    setIndicatorsFrosted(frosted = true) {
+        this.group.traverse((child) => {
+            if (child.isMesh && this.cubes && !this.cubes.includes(child)) {
+                if (!child.material) return;
+
+                if (!child.material.userData.originalIndicatorColor) {
+                    child.material.userData.originalIndicatorColor = child.material.color.clone();
+                }
+                if (child.material.userData.originalOpacity === undefined) {
+                    child.material.userData.originalOpacity = child.material.opacity !== undefined ? child.material.opacity : 1.0;
+                }
+
+                if (frosted) {
+                    // Frosting implied colors: icy polar blue/white with glowing crystal cyan core
+                    child.material.color.setHex(0xe0f2fe); // Soft glacier frost white-blue
+                    child.material.emissive.setHex(0x38bdf8); // Cyan ice glow
+                    child.material.emissiveIntensity = 0.35;
+                    child.material.transparent = true;
+                    child.material.opacity = 0.8;
+                    child.material.roughness = 0.08;
+                    child.material.metalness = 0.05;
+                } else {
+                    // Restore original indicator colors (red, teal, yellow)
+                    child.material.color.copy(child.material.userData.originalIndicatorColor);
+                    child.material.emissive.setHex(0x000000);
+                    child.material.emissiveIntensity = 0.0;
+                    child.material.transparent = false;
+                    child.material.opacity = child.material.userData.originalOpacity || 1.0;
+                    child.material.roughness = 0.1;
+                    child.material.metalness = 0.0;
+                }
+                child.material.needsUpdate = true;
+            }
+        });
+    }
+
+    setTranslucent(isTranslucent = true) {
+        this.isTranslucent = isTranslucent;
+        if (this.cubes && this.cubes[0] && this.cubes[0].material) {
+            const mat = this.cubes[0].material;
+            if (isTranslucent) {
+                if (!mat.userData.originalColor) {
+                    mat.userData.originalColor = mat.color.clone();
+                }
+                if (mat.userData.originalOpacity === undefined) {
+                    mat.userData.originalOpacity = mat.opacity !== undefined ? mat.opacity : 1.0;
+                }
+                mat.transparent = true;
+                mat.opacity = 0.65;
+                mat.roughness = 0.08;
+                mat.metalness = 0.05;
+                mat.color.setHex(0xa5f3fc);
+                mat.emissive.setHex(0x38bdf8);
+                mat.emissiveIntensity = 0.25;
+                mat.needsUpdate = true;
+
+                this.setIndicatorsFrosted(true);
+            } else if (this.isLocked) {
+                this.applyLockedStyle();
+                this.setIndicatorsFrosted(false);
+            } else {
+                mat.transparent = false;
+                mat.opacity = mat.userData.originalOpacity || 1.0;
+                mat.roughness = 0.1;
+                mat.metalness = 0.0;
+                if (mat.userData.originalColor) {
+                    mat.color.copy(mat.userData.originalColor);
+                } else {
+                    mat.color.setHex(this.originalColor || 0xffffff);
+                }
+                mat.emissive.setHex(0x000000);
+                mat.emissiveIntensity = 0.0;
+                mat.needsUpdate = true;
+
+                this.setIndicatorsFrosted(false);
+            }
+        }
+    }
+
     remove() {
         this.isRemoved = true;
 
@@ -5095,4 +5221,300 @@ export class Block {
         }
     }
 }
+
+/**
+ * Find all connected/welded adjacent translucent blocks in the active puzzle
+ * @param {Block} startBlock 
+ * @param {Block[]} allBlocks 
+ * @returns {Block[]} Connected cluster of blocks
+ */
+export function getTranslucentCluster(startBlock, allBlocks) {
+    if (!startBlock || (!startBlock.isTranslucent && !startBlock.isLocked) || startBlock.isRemoved || startBlock.isFalling || startBlock.isExploding) {
+        return startBlock ? [startBlock] : [];
+    }
+
+    const cluster = [];
+    const visited = new Set();
+    const queue = [startBlock];
+    visited.add(startBlock);
+
+    const activeTranslucent = allBlocks.filter(b => (b.isTranslucent || b.isLocked) && !b.isRemoved && !b.isFalling && !b.isExploding);
+
+    while (queue.length > 0) {
+        const current = queue.shift();
+        cluster.push(current);
+
+        const currentCells = current.getOccupiedCells();
+
+        for (const other of activeTranslucent) {
+            if (visited.has(other)) continue;
+
+            const otherCells = other.getOccupiedCells();
+            let isAdjacent = false;
+
+            for (const c1 of currentCells) {
+                for (const c2 of otherCells) {
+                    const dist = Math.abs(c1.x - c2.x) + Math.abs(c1.y - c2.y) + Math.abs(c1.z - c2.z);
+                    if (dist === 1) { // Shares a touching face
+                        isAdjacent = true;
+                        break;
+                    }
+                }
+                if (isAdjacent) break;
+            }
+
+            if (isAdjacent) {
+                visited.add(other);
+                queue.push(other);
+            }
+        }
+    }
+
+    return cluster;
+}
+
+/**
+ * Move an entire welded cluster of adjacent translucent blocks in unison
+ * @param {Block[]} cluster 
+ * @param {{x: number, z: number}} direction 
+ * @param {Block[]} allBlocks 
+ * @param {number} gridSize 
+ */
+export function moveTranslucentCluster(cluster, direction, allBlocks, gridSize) {
+    if (!cluster || cluster.length === 0) return;
+    if (cluster.some(b => b.isAnimating || b.isFalling || b.isLocked)) return;
+
+    // Snapshot pre-move state for all blocks in cluster for Undo
+    cluster.forEach(b => {
+        const preMoveState = {
+            gridX: b.gridX,
+            gridZ: b.gridZ,
+            yOffset: b.yOffset,
+            direction: { ...b.direction },
+            isVertical: b.isVertical,
+        };
+        if (typeof window !== 'undefined' && typeof window.recordMoveState === 'function') {
+            window.recordMoveState(b, preMoveState);
+        }
+    });
+
+    let stepsToObstacle = 0;
+    let hitEdge = false;
+    let hitObstacle = false;
+
+    const margin = 1;
+    const minBound = -margin;
+    const maxBound = gridSize + margin;
+
+    while (true) {
+        let stepBlocked = false;
+        let anyCubeOff = false;
+        const nextStep = stepsToObstacle + 1;
+
+        for (const block of cluster) {
+            const isXAligned = Math.abs(block.direction.x) > 0;
+            const nextGridX = block.gridX + direction.x * nextStep;
+            const nextGridZ = block.gridZ + direction.z * nextStep;
+
+            // Check edge out of bounds
+            if (block.isVertical) {
+                if (nextGridX < minBound || nextGridX >= maxBound || nextGridZ < minBound || nextGridZ >= maxBound) {
+                    anyCubeOff = true;
+                }
+            } else {
+                for (let i = 0; i < block.length; i++) {
+                    const cx = nextGridX + (isXAligned ? i : 0);
+                    const cz = nextGridZ + (isXAligned ? 0 : i);
+                    if (cx < minBound || cx >= maxBound || cz < minBound || cz >= maxBound) {
+                        anyCubeOff = true;
+                        break;
+                    }
+                }
+            }
+
+            // Check collision with external non-cluster blocks
+            const thisHeight = block.isVertical ? block.length * block.cubeSize : block.cubeSize;
+            const thisYBottom = block.yOffset;
+            const thisYTop = block.yOffset + thisHeight;
+
+            for (const other of allBlocks) {
+                if (cluster.includes(other) || other.isFalling || other.isRemoved || other.removalStartTime) continue;
+
+                const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
+                const otherYBottom = other.yOffset;
+                const otherYTop = other.yOffset + otherHeight;
+
+                const Y_OVERLAP_EPS = 0.001;
+                const yOverlap = (thisYTop - otherYBottom > Y_OVERLAP_EPS) && (otherYTop - thisYBottom > Y_OVERLAP_EPS);
+                if (!yOverlap) continue;
+
+                const otherIsX = Math.abs(other.direction.x) > 0;
+
+                if (block.isVertical) {
+                    if (other.isVertical) {
+                        if (nextGridX === other.gridX && nextGridZ === other.gridZ) {
+                            stepBlocked = true;
+                            break;
+                        }
+                    } else {
+                        for (let j = 0; j < other.length; j++) {
+                            const ox = other.gridX + (otherIsX ? j : 0);
+                            const oz = other.gridZ + (otherIsX ? 0 : j);
+                            if (nextGridX === ox && nextGridZ === oz) {
+                                stepBlocked = true;
+                                break;
+                            }
+                        }
+                    }
+                } else {
+                    for (let i = 0; i < block.length; i++) {
+                        const cx = nextGridX + (isXAligned ? i : 0);
+                        const cz = nextGridZ + (isXAligned ? 0 : i);
+
+                        if (other.isVertical) {
+                            if (cx === other.gridX && cz === other.gridZ) {
+                                stepBlocked = true;
+                                break;
+                            }
+                        } else {
+                            for (let j = 0; j < other.length; j++) {
+                                const ox = other.gridX + (otherIsX ? j : 0);
+                                const oz = other.gridZ + (otherIsX ? 0 : j);
+                                if (cx === ox && cz === oz) {
+                                    stepBlocked = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if (stepBlocked) break;
+                    }
+                }
+
+                if (stepBlocked) break;
+            }
+
+            if (stepBlocked) break;
+        }
+
+        if (stepBlocked) {
+            hitObstacle = true;
+            break;
+        }
+
+        if (anyCubeOff) {
+            hitEdge = true;
+            stepsToObstacle++;
+            break;
+        }
+
+        stepsToObstacle++;
+    }
+
+    if (stepsToObstacle === 0) {
+        if (hitObstacle) {
+            cluster.forEach(b => b.addBounceEffect(allBlocks));
+        }
+        return;
+    }
+
+    const moveDuration = Math.max(0.15, Math.min(0.4, stepsToObstacle * 0.08));
+    const startTime = performance.now();
+
+    cluster.forEach(b => {
+        b.isAnimating = true;
+        if (typeof window !== 'undefined' && typeof window.registerActiveBlock === 'function') {
+            window.registerActiveBlock(b);
+        }
+    });
+
+    const towerCenterOffset = gridSize * 1 / 2; // 3.5
+
+    const clusterMoves = cluster.map(b => {
+        const startX = b.group.position.x;
+        const startZ = b.group.position.z;
+        const finalGridX = b.gridX + direction.x * stepsToObstacle;
+        const finalGridZ = b.gridZ + direction.z * stepsToObstacle;
+
+        const isXAligned = Math.abs(b.direction.x) > 0;
+        let finalX, finalZ;
+        if (b.isVertical) {
+            finalX = finalGridX * b.cubeSize + b.cubeSize / 2 - towerCenterOffset;
+            finalZ = finalGridZ * b.cubeSize + b.cubeSize / 2 - towerCenterOffset;
+        } else if (isXAligned) {
+            finalX = finalGridX * b.cubeSize + (b.length * b.cubeSize) / 2 - towerCenterOffset;
+            finalZ = finalGridZ * b.cubeSize + b.cubeSize / 2 - towerCenterOffset;
+        } else {
+            finalX = finalGridX * b.cubeSize + b.cubeSize / 2 - towerCenterOffset;
+            finalZ = finalGridZ * b.cubeSize + (b.length * b.cubeSize) / 2 - towerCenterOffset;
+        }
+
+        return {
+            block: b,
+            startX, startZ,
+            finalX, finalZ,
+            finalGridX, finalGridZ
+        };
+    });
+
+    const animateCluster = () => {
+        const elapsed = (performance.now() - startTime) / 1000;
+        const progress = Math.min(elapsed / moveDuration, 1.0);
+        // Quad ease out
+        const ease = 1 - (1 - progress) * (1 - progress);
+
+        clusterMoves.forEach(m => {
+            m.block.group.position.x = m.startX + (m.finalX - m.startX) * ease;
+            m.block.group.position.z = m.startZ + (m.finalZ - m.startZ) * ease;
+        });
+
+        if (progress < 1.0) {
+            requestAnimationFrame(animateCluster);
+        } else {
+            clusterMoves.forEach(m => {
+                m.block.group.position.x = m.finalX;
+                m.block.group.position.z = m.finalZ;
+                m.block.gridX = m.finalGridX;
+                m.block.gridZ = m.finalGridZ;
+                m.block.isAnimating = false;
+            });
+
+            if (hitEdge) {
+                cluster.forEach(b => {
+                    b.fall(direction.x * 2.5, direction.z * 2.5, 0.5);
+                });
+            }
+        }
+    };
+
+    requestAnimationFrame(animateCluster);
+}
+
+/**
+ * Scan all active blocks, find welded clusters of touching locked/translucent blocks, and apply the frosted crystal ice styling.
+ * @param {Block[]} allBlocks
+ */
+export function updateWeldedTranslucentClusters(allBlocks) {
+    if (!allBlocks || allBlocks.length === 0) return;
+    const activeTranslucent = allBlocks.filter(b => (b.isLocked || b.isTranslucent) && !b.isRemoved && !b.isFalling && !b.isExploding);
+    
+    const processed = new Set();
+    for (const block of activeTranslucent) {
+        if (processed.has(block)) continue;
+        const cluster = getTranslucentCluster(block, allBlocks);
+        cluster.forEach(b => processed.add(b));
+
+        if (cluster.length >= 3) {
+            // 3 or more blocks: welded cluster! Apply the frosted crystal ice material
+            for (const member of cluster) {
+                member.setTranslucent(true);
+            }
+        } else {
+            // 1 or 2 blocks: keep their own translucent color (original locked style)
+            for (const member of cluster) {
+                member.setTranslucent(false);
+            }
+        }
+    }
+}
+
 

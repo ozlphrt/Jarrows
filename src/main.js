@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { initPhysics, createPhysicsBlock, updatePhysics, isPhysicsStepping, hasPendingOperations, isPhysicsProcessing, removePhysicsBody } from './physics.js';
-import { Block } from './Block.js';
+import { Block, getTranslucentCluster, moveTranslucentCluster, updateWeldedTranslucentClusters } from './Block.js';
 import { createLights, createGrid, setGradientBackground, setupFog, applyLightPreset, LIGHT_PRESETS, globalUniforms } from './scene.js';
 import { validateStructure, validateSolvability, calculateDifficulty, getBlockCells, fixOverlappingBlocks, checkAndFixAllOverlaps, canBlockExit } from './puzzle_validation.js';
 import { initStats, startLevelStats, trackMove, trackSpin, trackBlockRemoved, completeLevel, getLevelComparison, getElapsedTime } from './stats/stats.js';
@@ -80,6 +80,100 @@ function shakeCamera(intensity, duration) {
     cameraShakeStartTime = performance.now();
 }
 window.shakeCamera = shakeCamera;
+
+let activeTowerShakeAnimation = null;
+
+/**
+ * Shake the entire tower with distance-based radial falloff and irregular/random motion.
+ * @param {Block} originBlock - The block that was tapped/pushed
+ * @param {Block[]} allBlocks - All active puzzle blocks
+ * @param {number} maxIntensity - Max shake amplitude at impact point
+ * @param {number} duration - Total shake duration in ms
+ */
+export function triggerRadialTowerShake(originBlock, allBlocks, maxIntensity = 0.28, duration = 380) {
+    if (!originBlock || !allBlocks || allBlocks.length === 0) return;
+
+    // Cancel any ongoing tower shake and restore positions
+    if (activeTowerShakeAnimation) {
+        cancelAnimationFrame(activeTowerShakeAnimation.rafId);
+        activeTowerShakeAnimation.targets.forEach(t => {
+            if (t.block && t.block.group && !t.block.isRemoved) {
+                t.block.group.position.set(t.origX, t.origY, t.origZ);
+            }
+        });
+        activeTowerShakeAnimation = null;
+    }
+
+    // Origin impact position in world/tower space
+    const originPos = originBlock.group ? originBlock.group.position.clone() : new THREE.Vector3(0, 0, 0);
+
+    const eligibleBlocks = allBlocks.filter(b => b && b.group && !b.isRemoved && !b.isFalling && !b.isAnimating);
+    if (eligibleBlocks.length === 0) return;
+
+    const targets = eligibleBlocks.map(b => {
+        const origX = b.group.position.x;
+        const origY = b.group.position.y;
+        const origZ = b.group.position.z;
+        const dist = Math.sqrt(
+            (origX - originPos.x) ** 2 +
+            (origY - originPos.y) ** 2 +
+            (origZ - originPos.z) ** 2
+        );
+        // Radial falloff: full power at impact, decaying smoothly with distance
+        const intensity = maxIntensity / (1.0 + dist * 0.45);
+        // Unique random seeds for irregular motion per block
+        const seedX = Math.random() * Math.PI * 2;
+        const seedY = Math.random() * Math.PI * 2;
+        const seedZ = Math.random() * Math.PI * 2;
+        const freqMult = 0.85 + Math.random() * 0.35;
+
+        return { block: b, origX, origY, origZ, intensity, seedX, seedY, seedZ, freqMult };
+    });
+
+    const startTime = performance.now();
+    shakeCamera(0.06, duration);
+    markNeedsRender(duration + 100);
+
+    function animateShake() {
+        const now = performance.now();
+        const elapsed = now - startTime;
+        const progress = Math.min(1.0, elapsed / duration);
+        const decay = Math.pow(1 - progress, 1.4); // Smooth non-linear decay
+
+        if (progress < 1.0) {
+            targets.forEach(t => {
+                if (t.block.isRemoved || t.block.isFalling || t.block.isAnimating) return;
+
+                // Irregular multi-harmonic wave with random jitter
+                const tMs = elapsed * t.freqMult;
+                const waveX = Math.sin(tMs * 0.075 + t.seedX) * 0.65 + Math.sin(tMs * 0.16 + t.seedX * 1.5) * 0.35 + (Math.random() - 0.5) * 0.4;
+                const waveY = (Math.sin(tMs * 0.09 + t.seedY) * 0.5 + (Math.random() - 0.5) * 0.3) * 0.4;
+                const waveZ = Math.cos(tMs * 0.08 + t.seedZ) * 0.65 + Math.cos(tMs * 0.15 + t.seedZ * 1.5) * 0.35 + (Math.random() - 0.5) * 0.4;
+
+                const dx = waveX * t.intensity * decay;
+                const dy = waveY * t.intensity * decay;
+                const dz = waveZ * t.intensity * decay;
+
+                t.block.group.position.set(t.origX + dx, t.origY + dy, t.origZ + dz);
+            });
+
+            markNeedsRender(50);
+            activeTowerShakeAnimation.rafId = requestAnimationFrame(animateShake);
+        } else {
+            // Restore exact resting positions
+            targets.forEach(t => {
+                if (t.block && t.block.group && !t.block.isRemoved) {
+                    t.block.group.position.set(t.origX, t.origY, t.origZ);
+                }
+            });
+            activeTowerShakeAnimation = null;
+            markNeedsRender(50);
+        }
+    }
+
+    activeTowerShakeAnimation = { targets, rafId: requestAnimationFrame(animateShake) };
+}
+window.triggerRadialTowerShake = triggerRadialTowerShake;
 
 // Active blocks subset tracking (avoids full-array iteration when blocks are at rest)
 const activeBlocks = new Set();
@@ -520,7 +614,7 @@ const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerH
 const renderer = new THREE.WebGLRenderer({
     // AA is expensive on mobile and in battery mode; rely on lower DPR + post AA from browser compositor
     antialias: !isMobileLike && initialQualityPreset !== 'battery',
-    powerPreference: (initialQualityPreset === 'battery' || isIOS || isMobileLike) ? 'low-power' : 'high-performance',
+    powerPreference: 'default',
     alpha: true, // Enable alpha channel for transparency support
 });
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -1051,8 +1145,8 @@ function centerTowerVertically() {
 const MIN_RADIUS_DESKTOP = 13.5; // Prevent clipping on desktop when tower is tall or few blocks remain
 const MIN_RADIUS_MOBILE = 5.0; // Keep tight for mobile
 const MAX_RADIUS = 50;
-const MIN_ELEVATION = -Math.PI / 2; // Lock exactly to base plate horizon
-const MAX_ELEVATION = Math.PI / 2; // Lock exactly to base plate horizon
+const MIN_ELEVATION = -Math.PI * 0.65; // Allow rotating below the horizon (approx. -117°)
+const MAX_ELEVATION = Math.PI * 0.65; // Allow rotating below the horizon (approx. 117°)
 const ZOOM_PADDING = 1.2; // Extra breathing room for desktop to prevent clipping top/bottom
 const ZOOM_PADDING_MOBILE = 0.2; // Minimal padding for mobile
 const AUTO_ZOOM_MIN_BOUNDING_SIZE = 3; // Minimum bounding box size to prevent zooming in too much with few blocks
@@ -1125,7 +1219,7 @@ function calculateInitialCameraPosition() {
     // Set initial values
     const minRadius = isMobileLike ? MIN_RADIUS_MOBILE : MIN_RADIUS_DESKTOP;
     cameraRadius = Math.max(minRadius, Math.min(MAX_RADIUS, requiredDistance));
-    cameraElevation = Math.PI / 4; // 45°
+    cameraElevation = Math.PI / 4; // 45° above horizontal
     cameraAzimuth = Math.PI / 4; // 45° (diagonal view)
 
     // #region agent log
@@ -1385,17 +1479,17 @@ try {
     console.warn('Failed to create debris manager:', e);
 }
 
-// Initialize stats system
-await initStats();
+// Initialize stats system in background (non-blocking)
+initStats().catch(e => console.warn('Stats init error:', e));
 
-// Initialize audio system
-await initAudio();
+// Initialize audio system in background (non-blocking)
+initAudio().catch(e => console.warn('Audio init error:', e));
 
 // Mark game as initialized to show stats bar
 document.body.classList.add('game-initialized');
 
-// Initialize service worker update detection
-await initServiceWorkerUpdates();
+// Initialize service worker update detection in the background (non-blocking)
+initServiceWorkerUpdates().catch(e => console.warn('Service worker check error:', e));
 
 // Create countdown timer (initialized but hidden until time-based mode is active)
 createCountdownTimer();
@@ -2309,16 +2403,13 @@ function clearProgress() {
 // Level 0 = 3 blocks (tutorial)
 // Level 1 = 10 blocks
 // Level 2 = 20 blocks
-// Level 3 = 30 blocks
-// Level N = 10 + (N - 1) * 10 blocks (for N >= 1)
+// Level 50 = 500 blocks
+// Level 350 = 1000 blocks (full mega-tower scaling)
 function getBlocksForLevel(level) {
     if (level === 0) {
         return 3;
     }
     
-    // Default growth: 10 + (level - 1) * 10
-    // After level 50, slow down growth: 500 + (level - 50) * 2
-    // Hard cap at 1000 blocks
     let count;
     if (level <= 50) {
         count = 10 + (level - 1) * 10;
@@ -4551,6 +4642,8 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
      // ============================================
      // END SPECIAL MECHANICS
      // ============================================
+
+
 
     // Place all blocks in batches (turbo placement for very high levels)
     const spawnConfig = getSpawnPlacementConfig(level, allBlocks.length);
@@ -8030,6 +8123,16 @@ function onMouseClick(event) {
     const closestHit = allIntersections[0];
     const block = closestHit.block;
 
+    // Prevent locked/translucent blocks from being moved or detonated - shake the entire tower with radial falloff
+    if (block.isLocked || block.isTranslucent) {
+        triggerRadialTowerShake(block, blocks, 0.28, 380);
+        if (typeof playSound === 'function') {
+            playSound('tap', 0.8).catch(() => {});
+        }
+        showLockTimeRemaining(block);
+        return;
+    }
+
     // Bomb detonation logic: if it's a bomb, detonate it on tap! (Task 1.1)
     if (block.isBomb && !block.isRemoved && !block.isExploding) {
         // Shift+Click debug feature (Task 7.3)
@@ -8041,12 +8144,6 @@ function onMouseClick(event) {
         }
         block.detonate();
         updateUndoButtonState();
-        return;
-    }
-
-    // Prevent locked blocks from being moved
-    if (block.isLocked) {
-        showLockTimeRemaining(block);
         return;
     }
 
@@ -8115,6 +8212,7 @@ function updateSupportGrid() {
             }
         }
     }
+    updateWeldedTranslucentClusters(blocks);
 }
 
 /**
@@ -8152,6 +8250,12 @@ function blockHasSupport(block, allBlocks) {
     return false; // No support found for any cell
 }
 
+let supportCheckDirty = true;
+export function markSupportCheckDirty() {
+    supportCheckDirty = true;
+}
+window.markSupportCheckDirty = markSupportCheckDirty;
+
 /**
  * Check all blocks and trigger falling for those that lost support
  * Blocks fall until they reach the base (yOffset = 0) or another supporting block
@@ -8160,6 +8264,12 @@ function checkAndTriggerFalling(blocks) {
     if (isGeneratingLevel || window.supportCheckingEnabled === false) {
         return;
     }
+
+    // Fast-exit if no blocks moved or removed (crucial 60 FPS optimization for 1000+ blocks)
+    if (!supportCheckDirty && activeBlocks.size === 0) {
+        return;
+    }
+    supportCheckDirty = false;
 
     // Update global grid before check
     updateSupportGrid();
@@ -8211,7 +8321,7 @@ function checkAndTriggerFalling(blocks) {
 /**
  * Like blockHasSupport, but treats blocks in `excluded` as if they don't exist (they provide no support).
  */
-function blockHasSupportExcluding(block, allBlocks, excluded) {
+function directBlockHasExternalSupportExcluding(block, allBlocks, excluded, cluster = null) {
     if (block.yOffset <= 0.01) return true;
     const blockCells = getBlockCells(block);
     const yGrid = Math.round(block.yOffset / block.cubeSize);
@@ -8221,6 +8331,7 @@ function blockHasSupportExcluding(block, allBlocks, excluded) {
         const other = _supportGrid.get(key);
         
         if (other && other !== block && !other.isFalling && !other.isRemoved) {
+            if (cluster && cluster.includes(other)) continue; // Ignore internal cluster blocks
             if (excluded && excluded.has(other)) continue;
             
             const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
@@ -8231,6 +8342,26 @@ function blockHasSupportExcluding(block, allBlocks, excluded) {
         }
     }
     return false;
+}
+
+function blockHasSupportExcluding(block, allBlocks, excluded) {
+    if (block.yOffset <= 0.01) return true;
+
+    if (block.isTranslucent || block.isLocked) {
+        const cluster = getTranslucentCluster(block, allBlocks);
+        if (cluster.length >= 3) {
+            // Check if ANY member in the cluster has external support (or is on the ground)
+            for (const member of cluster) {
+                if (member.yOffset <= 0.01) return true;
+                if (directBlockHasExternalSupportExcluding(member, allBlocks, excluded, cluster)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+
+    return directBlockHasExternalSupportExcluding(block, allBlocks, excluded, null);
 }
 
 /**
@@ -8252,36 +8383,73 @@ function computeSupportFallTargets(allBlocks, toFall) {
     };
 
     for (const block of fallBlocks) {
-        const blockCells = getBlockCells(block);
-        const yGrid = Math.round(block.yOffset / block.cubeSize);
-        let targetYOffset = 0;
+        if (targets.has(block)) continue;
 
-        for (const cell of blockCells) {
-            let highestSupportY = 0;
-            
-            // Check all cells below in the grid
-            for (let y = yGrid - 1; y >= 0; y--) {
-                const key = `${cell.x},${y},${cell.z}`;
-                const other = _supportGrid.get(key);
-                
-                if (other && other !== block && !other.isFalling && !other.isRemoved) {
-                    const otherInFallSet = toFall.has(other);
-                    // Only allow other falling blocks to act as support if we've already computed their target.
-                    if (otherInFallSet && !targets.has(other)) continue;
-                    
-                    const otherTop = getBlockTop(other);
-                    if (otherTop > highestSupportY) highestSupportY = otherTop;
-                    
-                    // Stop searching this cell column once we hit a support
-                    break;
+        const cluster = (block.isTranslucent || block.isLocked) ? getTranslucentCluster(block, allBlocks) : [block];
+        const isCluster = cluster.length >= 3;
+
+        if (isCluster) {
+            // Compute the maximum distance this entire rigid cluster can drop together
+            let minClusterDrop = Infinity;
+
+            for (const member of cluster) {
+                const blockCells = getBlockCells(member);
+                const yGrid = Math.round(member.yOffset / member.cubeSize);
+                let highestSupportY = 0;
+
+                for (const cell of blockCells) {
+                    for (let y = yGrid - 1; y >= 0; y--) {
+                        const key = `${cell.x},${y},${cell.z}`;
+                        const other = _supportGrid.get(key);
+                        
+                        if (other && !cluster.includes(other) && !other.isFalling && !other.isRemoved) {
+                            const otherInFallSet = toFall.has(other);
+                            if (otherInFallSet && !targets.has(other)) continue;
+                            
+                            const otherTop = getBlockTop(other);
+                            if (otherTop > highestSupportY) highestSupportY = otherTop;
+                            break;
+                        }
+                    }
+                }
+
+                const maxMemberDrop = Math.max(0, member.yOffset - highestSupportY);
+                if (maxMemberDrop < minClusterDrop) {
+                    minClusterDrop = maxMemberDrop;
                 }
             }
-            if (highestSupportY > targetYOffset) targetYOffset = highestSupportY;
-        }
 
-        // Safety: never "fall up"
-        targetYOffset = Math.min(targetYOffset, block.yOffset);
-        targets.set(block, targetYOffset);
+            if (minClusterDrop === Infinity) minClusterDrop = block.yOffset;
+
+            // Apply unified delta drop to all blocks in the welded cluster
+            for (const member of cluster) {
+                const targetY = Math.max(0, member.yOffset - minClusterDrop);
+                targets.set(member, targetY);
+            }
+        } else {
+            // Standard single block fall target
+            const blockCells = getBlockCells(block);
+            const yGrid = Math.round(block.yOffset / block.cubeSize);
+            let highestSupportY = 0;
+
+            for (const cell of blockCells) {
+                for (let y = yGrid - 1; y >= 0; y--) {
+                    const key = `${cell.x},${y},${cell.z}`;
+                    const other = _supportGrid.get(key);
+                    
+                    if (other && other !== block && !other.isFalling && !other.isRemoved) {
+                        const otherInFallSet = toFall.has(other);
+                        if (otherInFallSet && !targets.has(other)) continue;
+                        
+                        const otherTop = getBlockTop(other);
+                        if (otherTop > highestSupportY) highestSupportY = otherTop;
+                        break;
+                    }
+                }
+            }
+
+            targets.set(block, Math.min(block.yOffset, highestSupportY));
+        }
     }
 
     return targets;
@@ -8386,13 +8554,14 @@ function startBlockFallingToTarget(block, targetYOffset) {
             block.isAnimating = false;
             fallAnimationId = null;
 
-            // Task: Automatic Floor Blast for Locked Blocks when landing on level 0
-            if (block.isLocked && block.yOffset < 0.1 && !block.isRemoved && !block.removalStartTime) {
-                console.log(`[FloorBlast] Landed locked block at level 0 (x=${block.gridX}, z=${block.gridZ}) blasting`);
-                if (window.particleSystem) {
-                    block.explodeWithParticles(window.particleSystem, 0, true);
-                } else {
-                    block.remove();
+            // Translucent blocks / welded clusters revert to standard non-translucent blocks when landing on the base plate (level 0)
+            if ((block.isLocked || block.isTranslucent) && block.yOffset < 0.1 && !block.isRemoved && !block.removalStartTime) {
+                console.log(`[BasePlate] Landed translucent block at level 0 (x=${block.gridX}, z=${block.gridZ}) - reverting to standard block & dissolving cluster`);
+                if (typeof block.unlockBlock === 'function') {
+                    block.unlockBlock();
+                }
+                if (typeof block.setTranslucent === 'function') {
+                    block.setTranslucent(false);
                 }
             }
 
@@ -8780,6 +8949,16 @@ function onTouchEnd(event) {
     const closestHit = allIntersections[0];
     const block = closestHit.block;
 
+    // Prevent locked/translucent blocks from being moved or detonated - shake the entire tower with radial falloff
+    if (block.isLocked || block.isTranslucent) {
+        triggerRadialTowerShake(block, blocks, 0.28, 380);
+        if (typeof playSound === 'function') {
+            playSound('tap', 0.8).catch(() => {});
+        }
+        showLockTimeRemaining(block);
+        return; // Block intercepts tap but doesn't move
+    }
+
     // Bomb detonation logic: if it's a bomb, detonate it on tap! (Task 1.1)
     if (block.isBomb && !block.isRemoved && !block.isExploding) {
         // Shift+Click debug feature (Task 7.3)
@@ -8792,15 +8971,6 @@ function onTouchEnd(event) {
         block.detonate();
         updateUndoButtonState();
         return;
-    }
-
-
-
-    // Prevent locked blocks from being moved (they can still intercept taps)
-    if (block.isLocked) {
-        // Show remaining lock time when user taps on locked block
-        showLockTimeRemaining(block);
-        return; // Block intercepts tap but doesn't move
     }
 
     // Close settings menu when user clicks on a block (returns to game)
@@ -8826,6 +8996,18 @@ function onTouchEnd(event) {
         // Don't block the move - allow it to proceed and let the move logic handle collisions
         // The validation might be too strict or detecting a transient state
         // return;
+    }
+
+    // Check if this block is part of a translucent welded cluster
+    if (block.isTranslucent) {
+        const cluster = getTranslucentCluster(block, blocks);
+        if (cluster.length > 1) {
+            moveTranslucentCluster(cluster, block.direction, blocks, gridSize);
+            updateSupportGrid();
+            setTimeout(() => checkAndTriggerFalling(blocks), 100);
+            updateUndoButtonState();
+            return;
+        }
     }
 
     // Store if this block will fall
@@ -8889,16 +9071,28 @@ function onTouchEnd(event) {
 // Use capture phase and non-passive to ensure we can process before renderer handler stops propagation
 window.addEventListener('touchend', onTouchEnd, { capture: true, passive: false });
 
-window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
+function resizeRenderer() {
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    if (width > 0 && height > 0) {
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+        renderer.setSize(width, height);
 
-    // Recalculate initial camera position if needed
-    if (!isGeneratingLevel && blocks.length === 0) {
-        calculateInitialCameraPosition();
+        // Recalculate initial camera position if needed
+        if (!isGeneratingLevel && blocks.length === 0) {
+            calculateInitialCameraPosition();
+        }
     }
-});
+}
+
+window.addEventListener('resize', resizeRenderer);
+window.addEventListener('load', resizeRenderer);
+
+// Force resize checks on startup to handle mobile viewport rendering lag/hard-refresh layout delays
+setTimeout(resizeRenderer, 50);
+setTimeout(resizeRenderer, 200);
+setTimeout(resizeRenderer, 1000);
 
 // Animation loop with physics
 let lastTime = performance.now();
@@ -9059,6 +9253,11 @@ function scheduleNextFrame() {
 function animate() {
     scheduleNextFrame();
 
+    // Defensive check to recover from 0-size canvas when loading in background/mobile emulation
+    if (renderer.domElement.width === 0 || renderer.domElement.height === 0) {
+        resizeRenderer();
+    }
+
     const currentTime = performance.now();
     if (!isIOS && (currentTime - lastFrameTick) < (nextFrameDelayMs - 0.5)) {
         return;
@@ -9212,7 +9411,7 @@ function animate() {
         const zoomUpdateInterval = isGeneratingLevel ? SPAWN_ZOOM_UPDATE_INTERVAL_MS : AUTO_ZOOM_UPDATE_INTERVAL_MS;
         const lastUpdate = isGeneratingLevel ? lastSpawnZoomUpdateMs : lastAutoZoomUpdateMs;
         if (currentTime - lastUpdate > zoomUpdateInterval) {
-            if (towerBoundsDirty || isGeneratingLevel || activeBlocks.size > 0 || _towerSpaceZoomBox.isEmpty()) {
+            if (towerBoundsDirty || isGeneratingLevel || _towerSpaceZoomBox.isEmpty()) {
                 _towerSpaceZoomBox.makeEmpty();
                 towerGroup.updateMatrixWorld(true);
                 for (const block of blocks) {
