@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Organic Point-Light & Neighbor Illumination Mockup</title>
+    <style>
+        :root {
+            --bg: #090d16;
+            --card-bg: rgba(18, 24, 38, 0.92);
+            --border: rgba(255, 255, 255, 0.1);
+            --text: #f8fafc;
+            --text-dim: #94a3b8;
+            --accent: #f59e0b;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 2.5rem 1.5rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        header {
+            text-align: center;
+            max-width: 900px;
+            margin-bottom: 2rem;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.35rem 1rem;
+            font-size: 0.8rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            border-radius: 9999px;
+            background: rgba(239, 68, 68, 0.15);
+            color: #f87171;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            margin-bottom: 0.75rem;
+        }
+
+        h1 {
+            font-size: 2.3rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #ffffff, #cbd5e1);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.5rem;
+        }
+
+        p.subtitle {
+            color: var(--text-dim);
+            font-size: 1.05rem;
+            line-height: 1.5;
+        }
+
+        .main-container {
+            display: grid;
+            grid-template-columns: 1fr 340px;
+            gap: 2rem;
+            width: 100%;
+            max-width: 1250px;
+            margin-bottom: 2.5rem;
+        }
+
+        .viewport-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 1.5rem;
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            backdrop-filter: blur(16px);
+            box-shadow: 0 25px 40px -15px rgba(0, 0, 0, 0.7);
+        }
+
+        .viewport-container {
+            width: 100%;
+            height: 520px;
+            border-radius: 1rem;
+            background: #060911;
+            position: relative;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            cursor: grab;
+        }
+
+        .viewport-container:active {
+            cursor: grabbing;
+        }
+
+        .sidebar-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 1.5rem;
+            padding: 1.75rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            backdrop-filter: blur(16px);
+            box-shadow: 0 25px 40px -15px rgba(0, 0, 0, 0.7);
+        }
+
+        .sidebar-card h2 {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: #ffffff;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 0.75rem;
+        }
+
+        .control-item {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .control-item label {
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: #cbd5e1;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .control-item span {
+            color: #f87171;
+            font-weight: 700;
+        }
+
+        input[type="range"] {
+            accent-color: #ef4444;
+            cursor: pointer;
+            height: 6px;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.25rem;
+        }
+
+        .btn-preset {
+            flex: 1;
+            background: rgba(30, 41, 59, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #94a3b8;
+            padding: 0.5rem 0.5rem;
+            font-size: 0.78rem;
+            font-weight: 600;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: center;
+        }
+
+        .btn-preset.active {
+            background: #ef4444;
+            color: #ffffff;
+            border-color: #ef4444;
+            font-weight: 700;
+        }
+
+        .banner {
+            max-width: 1250px;
+            width: 100%;
+            background: linear-gradient(135deg, rgba(239, 68, 68, 0.08), rgba(245, 158, 11, 0.08));
+            border: 1px solid rgba(239, 68, 68, 0.25);
+            border-radius: 1.25rem;
+            padding: 1.75rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .banner h3 {
+            color: #f87171;
+            font-size: 1.2rem;
+            font-weight: 700;
+        }
+
+        .banner ul {
+            padding-left: 1.5rem;
+            color: #cbd5e1;
+            font-size: 0.95rem;
+            line-height: 1.7;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+
+    <header>
+        <div class="badge">Real 3D Emissive Light & Multi-Harmonic Pulse</div>
+        <h1>Organic Bloom & Neighbor Block Illumination</h1>
+        <p class="subtitle">A full 3x3 cluster of blocks demonstrating true real-time 3D point-light emission that physically illuminates surrounding neighboring blocks with organic compound breathing.</p>
+    </header>
+
+    <div class="main-container">
+        <!-- 3D Viewport -->
+        <div class="viewport-card">
+            <div class="viewport-container" id="canvas-container"></div>
+        </div>
+
+        <!-- Sidebar Controls -->
+        <div class="sidebar-card">
+            <h2>Glow & Emission Controls</h2>
+
+            <div class="control-item">
+                <label>Bomb Color: <span id="val-color">Red (Crimson)</span></label>
+                <div class="btn-group">
+                    <button class="btn-preset active" onclick="setColor('red')">Red</button>
+                    <button class="btn-preset" onclick="setColor('yellow')">Yellow</button>
+                    <button class="btn-preset" onclick="setColor('teal')">Teal</button>
+                </div>
+            </div>
+
+            <div class="control-item">
+                <label>Neighbor Light Intensity: <span id="val-light-intensity">2.2</span></label>
+                <input type="range" id="slider-light-intensity" min="0" max="5.0" step="0.1" value="2.2">
+            </div>
+
+            <div class="control-item">
+                <label>Neighbor Light Reach (Radius): <span id="val-light-reach">2.8 units</span></label>
+                <input type="range" id="slider-light-reach" min="1.0" max="5.0" step="0.2" value="2.8">
+            </div>
+
+            <div class="control-item">
+                <label>Volumetric Haze Spread: <span id="val-haze">1.8x</span></label>
+                <input type="range" id="slider-haze" min="0.5" max="3.5" step="0.1" value="1.8">
+            </div>
+
+            <div class="control-item">
+                <label>Organic Pulse Speed: <span id="val-pulse-speed">1.0x</span></label>
+                <input type="range" id="slider-pulse-speed" min="0.2" max="3.0" step="0.1" value="1.0">
+            </div>
+
+            <div class="control-item">
+                <label>Atmosphere Ambient: <span id="val-ambient">20%</span></label>
+                <input type="range" id="slider-ambient" min="0.05" max="0.8" step="0.05" value="0.20">
+            </div>
+        </div>
+    </div>
+
+    <div class="banner">
+        <h3>✨ How the Organic Emission Solution Works</h3>
+        <ul>
+            <li><strong>True Neighbor Illumination (`THREE.PointLight`)</strong>: Each explosive block carries an actual 3D omnidirectional point light. As the bomb breathes, its light bounces directly off the faces and beveled edges of all adjacent blocks.</li>
+            <li><strong>Multi-Harmonic Organic Pulse</strong>: Uses compound sinusoids ($\sin(2.5t) + 0.35\sin(5.2t) + 0.15\sin(9.1t)$) that mimic biological heartbeat rhythms and warm thermal embers instead of a mechanical sine wave.</li>
+            <li><strong>Dual-Layer Volumetric Haze</strong>: An additive atmospheric soft sprite creates a warm volumetric aura in front of the indicator, marrying the point light with the block's physical surface.</li>
+        </ul>
+    </div>
+
+    <script>
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x060911);
+
+        const camera = new THREE.PerspectiveCamera(40, container.clientWidth / container.clientHeight, 0.1, 100);
+        camera.position.set(3.8, 2.5, 4.5);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        container.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+
+        // Ambient & Directional Lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.20);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.40);
+        dirLight.position.set(5, 10, 7);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 1024;
+        dirLight.shadow.mapSize.height = 1024;
+        scene.add(dirLight);
+
+        // Ground
+        const ground = new THREE.Mesh(
+            new THREE.PlaneGeometry(15, 15),
+            new THREE.MeshStandardMaterial({ color: 0x070a10, roughness: 0.9 })
+        );
+        ground.rotation.x = -Math.PI / 2;
+        ground.position.y = -1.8;
+        ground.receiveShadow = true;
+        scene.add(ground);
+
+        // Helper to create soft organic glow texture
+        function createOrganicVolumetricTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 256; canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+            const grad = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+            grad.addColorStop(0.0, 'rgba(255, 255, 255, 1.0)');
+            grad.addColorStop(0.2, 'rgba(255, 200, 200, 0.85)');
+            grad.addColorStop(0.45, 'rgba(255, 60, 60, 0.45)');
+            grad.addColorStop(0.75, 'rgba(230, 20, 20, 0.12)');
+            grad.addColorStop(1.0, 'rgba(200, 0, 0, 0)');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, 256, 256);
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        // Build 3x3 Tower Grid of Blocks
+        const blockSize = 1.0;
+        const spacing = 1.04;
+        const blocks = [];
+        const whiteMaterial = new THREE.MeshStandardMaterial({
+            color: 0xffffff,
+            roughness: 0.15,
+            metalness: 0.02
+        });
+
+        const blockGeo = new THREE.BoxGeometry(blockSize, blockSize, blockSize);
+
+        for (let x = -1; x <= 1; x++) {
+            for (let y = -1; y <= 1; y++) {
+                const isCenter = (x === 0 && y === 0);
+                const block = new THREE.Mesh(blockGeo, isCenter ? whiteMaterial.clone() : whiteMaterial);
+                block.position.set(x * spacing, y * spacing, 0);
+                block.castShadow = true;
+                block.receiveShadow = true;
+                scene.add(block);
+                blocks.push({ mesh: block, isCenter });
+            }
+        }
+
+        // Center Block: The Explosive Bomb Block!
+        const centerBlock = blocks.find(b => b.isCenter).mesh;
+
+        // Ring indicator
+        const ringShape = new THREE.Shape();
+        ringShape.arc(0, 0, 0.28, 0, Math.PI * 2, false);
+        const hole = new THREE.Path();
+        hole.arc(0, 0, 0.18, 0, Math.PI * 2, true);
+        ringShape.holes.push(hole);
+
+        const ringGeo = new THREE.ExtrudeGeometry(ringShape, { depth: 0.04, bevelEnabled: true, bevelThickness: 0.015, bevelSize: 0.015, bevelSegments: 3 });
+        const ringMat = new THREE.MeshStandardMaterial({
+            color: 0xff3b30,
+            emissive: 0xff3b30,
+            emissiveIntensity: 0.8,
+            roughness: 0.1
+        });
+        const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+        ringMesh.position.set(0, 0, 0.51);
+        centerBlock.add(ringMesh);
+
+        // 1. Real 3D Point Light that casts light onto neighboring blocks!
+        const bombLight = new THREE.PointLight(0xff3b30, 2.2, 2.8, 1.5);
+        bombLight.position.set(0, 0, 0.65);
+        centerBlock.add(bombLight);
+
+        // 2. Multi-harmonic Atmospheric Haze Sprite
+        const hazeTexture = createOrganicVolumetricTexture();
+        const hazeMat = new THREE.SpriteMaterial({
+            map: hazeTexture,
+            color: 0xff4444,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            opacity: 0.85
+        });
+        const hazeSprite = new THREE.Sprite(hazeMat);
+        hazeSprite.scale.set(1.8, 1.8, 1);
+        hazeSprite.position.set(0, 0, 0.58);
+        centerBlock.add(hazeSprite);
+
+        // State parameters
+        const state = {
+            lightIntensity: 2.2,
+            lightReach: 2.8,
+            hazeScale: 1.8,
+            pulseSpeed: 1.0,
+            color: 'red'
+        };
+
+        // UI Event Listeners
+        document.getElementById('slider-light-intensity').oninput = e => {
+            state.lightIntensity = parseFloat(e.target.value);
+            document.getElementById('val-light-intensity').textContent = e.target.value;
+        };
+        document.getElementById('slider-light-reach').oninput = e => {
+            state.lightReach = parseFloat(e.target.value);
+            bombLight.distance = state.lightReach;
+            document.getElementById('val-light-reach').textContent = e.target.value + ' units';
+        };
+        document.getElementById('slider-haze').oninput = e => {
+            state.hazeScale = parseFloat(e.target.value);
+            document.getElementById('val-haze').textContent = e.target.value + 'x';
+        };
+        document.getElementById('slider-pulse-speed').oninput = e => {
+            state.pulseSpeed = parseFloat(e.target.value);
+            document.getElementById('val-pulse-speed').textContent = e.target.value + 'x';
+        };
+        document.getElementById('slider-ambient').oninput = e => {
+            const v = parseFloat(e.target.value);
+            ambientLight.intensity = v;
+            document.getElementById('val-ambient').textContent = Math.round(v * 100) + '%';
+        };
+
+        function setColor(c) {
+            state.color = c;
+            document.querySelectorAll('.btn-preset').forEach(b => b.classList.remove('active'));
+            event.target.classList.add('active');
+
+            let hex, name;
+            if (c === 'yellow') {
+                hex = 0xf59e0b;
+                name = 'Golden Yellow';
+            } else if (c === 'teal') {
+                hex = 0x06b6d4;
+                name = 'Electric Teal';
+            } else {
+                hex = 0xff3b30;
+                name = 'Red (Crimson)';
+            }
+            document.getElementById('val-color').textContent = name;
+            bombLight.color.setHex(hex);
+            ringMat.color.setHex(hex);
+            ringMat.emissive.setHex(hex);
+            hazeMat.color.setHex(hex);
+        }
+
+        // Animation Loop with Compound Organic Multi-Harmonics
+        let time = 0;
+        function animate() {
+            requestAnimationFrame(animate);
+            time += 0.025 * state.pulseSpeed;
+
+            // Multi-harmonic compound waveform (organic heartbeat breathing)
+            const harmonic1 = Math.sin(time * 2.4);
+            const harmonic2 = Math.sin(time * 5.1) * 0.35;
+            const harmonic3 = Math.sin(time * 8.7) * 0.15;
+            const compoundBreath = (harmonic1 + harmonic2 + harmonic3) / 1.5; // -1 to 1 normalized
+            const breath01 = compoundBreath * 0.5 + 0.5; // 0 to 1
+
+            // Dynamic Point Light emission onto neighboring blocks
+            bombLight.intensity = state.lightIntensity * (0.65 + breath01 * 0.7);
+
+            // Volumetric haze breathing
+            const curHazeScale = state.hazeScale * (0.88 + breath01 * 0.28);
+            hazeSprite.scale.set(curHazeScale, curHazeScale, 1);
+            hazeMat.opacity = 0.55 + breath01 * 0.45;
+
+            // Indicator emissive pulse
+            ringMat.emissiveIntensity = 0.6 + breath01 * 0.6;
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        });
+    </script>
+</body>
+</html>

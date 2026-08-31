@@ -11,13 +11,15 @@
  */
 export function getBlockCells(block) {
     const cells = [];
+    const bx = Math.round(block.gridX);
+    const bz = Math.round(block.gridZ);
     if (block.isVertical) {
-        cells.push({x: block.gridX, z: block.gridZ});
+        cells.push({x: bx, z: bz});
     } else {
         const isXAligned = Math.abs(block.direction.x) > 0;
         for (let i = 0; i < block.length; i++) {
-            const x = block.gridX + (isXAligned ? i : 0);
-            const z = block.gridZ + (isXAligned ? 0 : i);
+            const x = bx + (isXAligned ? i : 0);
+            const z = bz + (isXAligned ? 0 : i);
             cells.push({x, z});
         }
     }

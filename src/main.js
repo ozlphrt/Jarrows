@@ -915,11 +915,14 @@ renderer.domElement.addEventListener('wheel', (event) => {
     targetRadius *= zoomFactor;
     const minRadius = isMobileLike ? MIN_RADIUS_MOBILE : MIN_RADIUS_DESKTOP;
     targetRadius = Math.max(minRadius, Math.min(MAX_RADIUS, targetRadius));
-    // Sync smoothed auto-zoom radius to manual zoom so auto-zoom doesn't fight when it re-enables
-    smoothedAutoZoomRadius = targetRadius;
-
-    // Disable auto-zoom when user manually zooms
-    autoZoomDisabledUntilMs = performance.now() + AUTO_ZOOM_DISABLE_DURATION_MS;
+    // Stick to manual zoom; show disabled camera icon on HUD until user taps it to re-enable
+    autoZoomDisabledUntilMs = Infinity;
+    if (typeof window !== 'undefined') {
+        window.autoZoomEnabled = false;
+        if (typeof window.showCameraAutoZoomButton === 'function') {
+            window.showCameraAutoZoomButton();
+        }
+    }
 
     // Reset zooming flag after a delay (user stopped zooming)
     clearTimeout(window.zoomTimeout);
@@ -1251,26 +1254,24 @@ function centerTowerVertically() {
 }
 
 // Camera system constants
-const MIN_RADIUS_DESKTOP = 13.5; // Prevent clipping on desktop when tower is tall or few blocks remain
+const MIN_RADIUS_DESKTOP = 6.5; // Allow closer zoom on desktop (down from 13.5)
 const MIN_RADIUS_MOBILE = 5.0; // Keep tight for mobile
 const MAX_RADIUS = 50;
 const MIN_ELEVATION = -Math.PI * 0.65; // Allow rotating below the horizon (approx. -117°)
 const MAX_ELEVATION = Math.PI * 0.65; // Allow rotating below the horizon (approx. 117°)
-const ZOOM_PADDING = 1.2; // Extra breathing room for desktop to prevent clipping top/bottom
+const ZOOM_PADDING = 0.5; // Tighter padding for closer framing
 const ZOOM_PADDING_MOBILE = 0.2; // Minimal padding for mobile
 const AUTO_ZOOM_MIN_BOUNDING_SIZE = 3; // Minimum bounding box size to prevent zooming in too much with few blocks
-const SPAWN_ZOOM_PADDING = 1; // Minimal extra padding during spawn
-const SPAWN_ZOOM_MULTIPLIER = 1.05; // Minimal additional multiplier for spawn zoom
-// Auto-zoom multiplier: platform-aware - larger on desktop (zoom out more), smaller on mobile (zoom in more)
-// Desktop needs more zoom-out to prevent blocks going out of frame
-// Mobile can zoom in more to reduce wasted space on sides
-const AUTO_ZOOM_MULTIPLIER_DESKTOP = 1.22; // Desktop: 22% margin so top/bottom UI elements don't overlap blocks
-const AUTO_ZOOM_MULTIPLIER_MOBILE = 1.02; // Mobile: very tight fit (2% margin)
+const SPAWN_ZOOM_PADDING = 0.5; // Minimal extra padding during spawn
+const SPAWN_ZOOM_MULTIPLIER = 1.0; // Minimal additional multiplier for spawn zoom
+// Auto-zoom multiplier: platform-aware
+const AUTO_ZOOM_MULTIPLIER_DESKTOP = 1.0; // Desktop: tight framing, focusing on the tower
+const AUTO_ZOOM_MULTIPLIER_MOBILE = 1.0; // Mobile: tight fit
 // Desktop-specific padding multiplier to ensure all blocks stay visible
-const DESKTOP_ZOOM_PADDING_MULTIPLIER = 1.0; // No extra multiplier needed
+const DESKTOP_ZOOM_PADDING_MULTIPLIER = 1.0;
 const DESKTOP_FULL_TOWER_VISIBILITY_LEVEL = 100;
-const DESKTOP_HIGH_LEVEL_VERTICAL_FIT_MULTIPLIER = 1.18;
-const DESKTOP_HIGH_LEVEL_MIN_RADIUS = 14.0;
+const DESKTOP_HIGH_LEVEL_VERTICAL_FIT_MULTIPLIER = 1.05;
+const DESKTOP_HIGH_LEVEL_MIN_RADIUS = 8.5;
 // During generation, computing a world-space bounding box by expanding each block object
 // (updateMatrixWorld + expandByObject) is expensive. Throttle it to avoid long rAF frames.
 const SPAWN_ZOOM_UPDATE_INTERVAL_MS = 120;
@@ -1280,7 +1281,7 @@ const DRAG_SENSITIVITY = 0.0025; // Slightly increased for more responsive rotat
 const TOUCH_DRAG_SENSITIVITY = 0.004; // 60% faster than desktop for better mobile experience
 
 // Spherical coordinates (target values - set by user input)
-let cameraRadius = 10;
+let cameraRadius = 8;
 let cameraAzimuth = Math.PI / 4; // 45° (diagonal view)
 let cameraElevation = Math.PI / 4; // 45° above horizontal
 
@@ -1303,27 +1304,24 @@ function calculateInitialCameraPosition() {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
 
-    // Base plate dimensions including margin
-    const basePlateSize = gridSize * cubeSize + (BASE_PLATE_MARGIN * 2);
-    const basePlateDiagonal = Math.sqrt(basePlateSize * basePlateSize * 2);
+    // Base plate dimensions - focus on core grid framing
+    const basePlateSize = gridSize * cubeSize;
+    const basePlateWidth = basePlateSize * 0.8;
 
     // Calculate required distance to fit base plate in view
     // Account for both horizontal and vertical FOV
     const fov = camera.fov * (Math.PI / 180); // Convert to radians
     const aspect = camera.aspect;
 
-    // Calculate for horizontal (width/depth) - use diagonal and aspect ratio
-    // Use mobile-specific padding for mobile devices to reduce side padding
+    // Calculate for horizontal (width/depth)
     const initialPadding = isMobileLike ? ZOOM_PADDING_MOBILE : ZOOM_PADDING;
-    const horizontalDistance = (basePlateDiagonal + initialPadding) / (2 * Math.tan(fov / 2) * aspect);
+    const horizontalDistance = (basePlateWidth + initialPadding) / (2 * Math.tan(fov / 2) * aspect);
 
-    // Calculate for vertical (height) - use more accurate initial estimate
-    // Start with a smaller estimate since auto-zoom will adjust immediately after spawn
-    const estimatedTowerHeight = 6; // Reduced from 10 - auto-zoom will fine-tune after spawn
+    // Calculate for vertical (height)
+    const estimatedTowerHeight = 5;
     const verticalDistance = (estimatedTowerHeight + initialPadding) / (2 * Math.tan(fov / 2));
 
-    // Use the larger distance with reduced safety margin since auto-zoom handles fine-tuning
-    const requiredDistance = Math.max(horizontalDistance, verticalDistance) * 1.05; // 5% safety margin (minimal padding)
+    const requiredDistance = Math.max(horizontalDistance * 0.85, verticalDistance);
 
     // Set initial values
     const minRadius = isMobileLike ? MIN_RADIUS_MOBILE : MIN_RADIUS_DESKTOP;
@@ -1346,7 +1344,7 @@ function calculateInitialCameraPosition() {
     smoothedAutoZoomRadius = cameraRadius;
 
     // #region agent log
-    debugTelemetry({ location: 'main.js:calculateInitialCameraPosition:exit', message: 'Initial camera position set', data: { basePlateDiagonal: basePlateDiagonal.toFixed(2), horizontalDistance: horizontalDistance.toFixed(2), verticalDistance: verticalDistance.toFixed(2), requiredDistance: requiredDistance.toFixed(2), oldTargetRadius: oldTargetRadius.toFixed(2), newTargetRadius: targetRadius.toFixed(2), currentRadius: currentRadius.toFixed(2), elevation: (cameraElevation * 180 / Math.PI).toFixed(2) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'D' });
+    debugTelemetry({ location: 'main.js:calculateInitialCameraPosition:exit', message: 'Initial camera position set', data: { basePlateDiagonal: (basePlateSize * Math.SQRT2).toFixed(2), horizontalDistance: horizontalDistance.toFixed(2), verticalDistance: verticalDistance.toFixed(2), requiredDistance: requiredDistance.toFixed(2), oldTargetRadius: oldTargetRadius.toFixed(2), newTargetRadius: targetRadius.toFixed(2), currentRadius: currentRadius.toFixed(2), elevation: (cameraElevation * 180 / Math.PI).toFixed(2) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'D' });
     // #endregion
 }
 
@@ -1371,6 +1369,14 @@ const AUTO_ZOOM_DISABLE_DURATION_MS = 5000; // 5 seconds
 let autoZoomDisabledUntilMs = 0; // Timestamp when auto-zoom should re-enable
 // Smoothed auto-zoom target: auto-zoom calculates desired radius, we smooth it before setting targetRadius
 let smoothedAutoZoomRadius = cameraRadius;
+
+if (typeof window !== 'undefined') {
+    window.onAutoZoomReenabled = () => {
+        autoZoomDisabledUntilMs = 0;
+        lastAutoZoomUpdateMs = 0;
+        smoothedAutoZoomRadius = targetRadius;
+    };
+}
 
 // Camera framing (tilt) via look-at offset in WORLD space.
 // Spaces:
@@ -2169,6 +2175,12 @@ function timeChallengeGetColorBonusSeconds(blockLength) {
 
 function timeChallengeAwardForBlockRemoved(blockLength) {
     if (!isTimeBasedMode() || timeUpShown) return;
+
+    // Requirement (d): During temporary spin, pause adding times for successful moves
+    if (typeof isTemporarySpinActive === 'function' && isTemporarySpinActive()) {
+        console.log('[Time Challenge] Move time reward paused while temporary spin is active');
+        return;
+    }
 
     timeChallengeRemovals += 1;
     // Simplified: only use color bonus based on block length
@@ -6142,6 +6154,10 @@ async function startNewGame() {
 
 // Level completion modal functions
 function showLevelCompleteModal(completedLevel) {
+    if (typeof clearTemporarySpinState === 'function') {
+        clearTemporarySpinState();
+    }
+
     const modal = document.getElementById('level-complete-modal');
     const message = document.getElementById('level-complete-message');
     const title = document.getElementById('level-complete-title');
@@ -7214,36 +7230,161 @@ if (newGameCancel) {
     });
 }
 
-// Removed undo-button listener - button deleted
+// ==========================================
+// TEMPORARY SPIN ARROWS SYSTEM
+// ==========================================
+// Dynamic Scaling: Option 2 (10.0s – 20.0s based on remaining blocks)
+// Formula: clamp(10.0s, 7.5s + 0.25s * N_remaining, 20.0s)
+function getTemporarySpinDurationMs(remainingBlockCount) {
+    const minSec = 10.0;
+    const maxSec = 20.0;
+    const count = typeof remainingBlockCount === 'number'
+        ? remainingBlockCount
+        : (blocks ? blocks.filter(b => b && !b.isRemoved && !b.isFalling && !b.removalStartTime).length : 15);
+    const calculatedSec = Math.min(maxSec, Math.max(minSec, 7.5 + 0.25 * count));
+    return Math.round(calculatedSec * 1000);
+}
+
+let temporarySpinActive = false;
+let temporarySpinEndTime = 0;
+let currentTemporarySpinTotalDurationMs = 15000;
+let temporarySpinTimerId = null;
+let temporarySpinIntervalId = null;
+const temporarySpinOriginalDirections = new Map(); // Map<Block, {x: number, z: number}>
+
+function isTemporarySpinActive() {
+    return temporarySpinActive;
+}
+
+function clearTemporarySpinState() {
+    if (temporarySpinTimerId) {
+        clearTimeout(temporarySpinTimerId);
+        temporarySpinTimerId = null;
+    }
+    if (temporarySpinIntervalId) {
+        clearInterval(temporarySpinIntervalId);
+        temporarySpinIntervalId = null;
+    }
+    temporarySpinActive = false;
+    temporarySpinEndTime = 0;
+    temporarySpinOriginalDirections.clear();
+    updateSpinCounterDisplay();
+}
+
+function revertTemporarySpin() {
+    if (!temporarySpinActive && temporarySpinOriginalDirections.size === 0) return;
+
+    console.log('[Spin] Reverting temporary arrow directions back to original positions in top-to-bottom wave...');
+    if (temporarySpinTimerId) {
+        clearTimeout(temporarySpinTimerId);
+        temporarySpinTimerId = null;
+    }
+    if (temporarySpinIntervalId) {
+        clearInterval(temporarySpinIntervalId);
+        temporarySpinIntervalId = null;
+    }
+    temporarySpinActive = false;
+    temporarySpinEndTime = 0;
+
+    const TOTAL_CASCADE_MS = 2000;
+    const BLOCK_SPIN_MS = 320;
+
+    // Collect blocks and group by vertical layer (yOffset)
+    const layerMap = new Map(); // Map<number, Array<{block, origDir}>>
+    for (const [block, origDir] of temporarySpinOriginalDirections.entries()) {
+        if (block && blocks && blocks.includes(block) && !block.isRemoved && !block.isFalling && !block.removalStartTime) {
+            const layerKey = Math.round((block.yOffset || 0) * 100) / 100;
+            if (!layerMap.has(layerKey)) {
+                layerMap.set(layerKey, []);
+            }
+            layerMap.get(layerKey).push({ block, origDir });
+        }
+    }
+
+    // Sort layer keys descending (top layer to bottom layer)
+    const sortedLayers = Array.from(layerMap.keys()).sort((a, b) => b - a);
+    const numLayers = sortedLayers.length;
+
+    sortedLayers.forEach((layerKey, layerIndex) => {
+        const delay = numLayers > 1 ? (layerIndex / (numLayers - 1)) * (TOTAL_CASCADE_MS - BLOCK_SPIN_MS) : 0;
+        const layerItems = layerMap.get(layerKey) || [];
+
+        setTimeout(() => {
+            // Play ONE sound effect per layer
+            playSound('syntheticBlockSnap', 0.35);
+
+            // Spin all blocks in this layer together
+            layerItems.forEach(({ block, origDir }) => {
+                try {
+                    if (typeof block.animateToDirection === 'function') {
+                        block.animateToDirection(origDir, BLOCK_SPIN_MS);
+                    } else {
+                        block.direction = { x: origDir.x, z: origDir.z };
+                        block.updateArrowRotation();
+                    }
+                } catch (e) {
+                    console.error('[Spin] Error reverting block:', e);
+                }
+            });
+        }, delay);
+    });
+
+    console.log(`[Spin] Reverting blocks across ${numLayers} layers in top-to-bottom waves (completes in 2s)`);
+    temporarySpinOriginalDirections.clear();
+    updateSpinCounterDisplay();
+}
+
 // Update spin counter display
 function updateSpinCounterDisplay() {
-    // #region agent log
-    debugTelemetry({ location: 'main.js:updateSpinCounterDisplay:entry', message: 'updateSpinCounterDisplay called', data: { isTimeBasedMode: isTimeBasedMode(), remainingSpins: remainingSpins }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H2' });
-    // #endregion
     const spinCounter = document.getElementById('spin-counter');
     if (spinCounter) {
-        spinCounter.style.display = 'flex';
-        
-        if (remainingSpins > 0) {
-            spinCounter.textContent = remainingSpins.toString();
-            spinCounter.style.fontSize = '14px';
-            spinCounter.style.color = '#fff';
-            spinCounter.title = `${remainingSpins} Free Spins available`;
-        } else if (isTimeBasedMode()) {
-            // Task 7.8.1: Don't show percentage here (it's in the timer now)
-            // Just show empty or subtle indicator that it's active
-            spinCounter.textContent = ''; 
-            spinCounter.style.display = 'none'; // Hide if no free spins
+        if (temporarySpinActive) {
+            const remainingMs = Math.max(0, temporarySpinEndTime - performance.now());
+            const remainingSec = Math.ceil(remainingMs / 1000);
+            const totalMs = currentTemporarySpinTotalDurationMs || 15000;
+            const ratio = remainingMs / totalMs;
+
+            spinCounter.style.display = 'flex';
+            spinCounter.textContent = String(remainingSec);
+            spinCounter.classList.add('spin-countdown-active');
+
+            // Dynamic color coding:
+            // High (> 45% & > 5s): Green/Teal
+            // Medium (20% - 45% & > 2s): Amber/Gold
+            // Low (<= 20% or <= 2s): Crimson/Red (urgent panic pulse)
+            spinCounter.classList.remove('countdown-phase-high', 'countdown-phase-med', 'countdown-phase-low');
+            if (ratio > 0.45 && remainingSec > 5) {
+                spinCounter.classList.add('countdown-phase-high');
+            } else if (ratio > 0.20 && remainingSec > 2) {
+                spinCounter.classList.add('countdown-phase-med');
+            } else {
+                spinCounter.classList.add('countdown-phase-low');
+            }
+
+            spinCounter.title = `Temporary spin active: ${remainingSec}s remaining (move time rewards paused)`;
         } else {
-            spinCounter.textContent = '0';
-            spinCounter.style.fontSize = '14px';
-        }
-        
-        if (remainingSpins === Number.POSITIVE_INFINITY) {
-            spinCounter.textContent = '∞';
-            spinCounter.setAttribute('data-infinity', 'true');
-        } else {
-            spinCounter.removeAttribute('data-infinity');
+            spinCounter.classList.remove('spin-countdown-active', 'countdown-phase-high', 'countdown-phase-med', 'countdown-phase-low');
+            spinCounter.style.display = 'flex';
+            
+            if (remainingSpins > 0) {
+                spinCounter.textContent = remainingSpins.toString();
+                spinCounter.style.fontSize = '14px';
+                spinCounter.style.color = '#fff';
+                spinCounter.title = `${remainingSpins} Free Spins available`;
+            } else if (isTimeBasedMode()) {
+                spinCounter.textContent = ''; 
+                spinCounter.style.display = 'none'; // Hide if no free spins
+            } else {
+                spinCounter.textContent = '0';
+                spinCounter.style.fontSize = '14px';
+            }
+            
+            if (remainingSpins === Number.POSITIVE_INFINITY) {
+                spinCounter.textContent = '∞';
+                spinCounter.setAttribute('data-infinity', 'true');
+            } else {
+                spinCounter.removeAttribute('data-infinity');
+            }
         }
     }
 
@@ -7261,16 +7402,10 @@ function updateSpinCounterDisplay() {
             diceButton.disabled = true;
             diceButton.style.opacity = '0.5';
             diceButton.style.cursor = 'not-allowed';
-            // #region agent log
-            debugTelemetry({ location: 'main.js:updateSpinCounterDisplay:disabled', message: 'Dice button disabled', data: { wasDisabled: wasDisabled, nowDisabled: true, remainingSpins: remainingSpins, timeLeftSec: timeLeftSec }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H2' });
-            // #endregion
         } else {
             diceButton.disabled = false;
             diceButton.style.opacity = '1';
             diceButton.style.cursor = 'pointer';
-            // #region agent log
-            debugTelemetry({ location: 'main.js:updateSpinCounterDisplay:enabled', message: 'Dice button enabled', data: { wasDisabled: wasDisabled, nowDisabled: false, remainingSpins: remainingSpins }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H2' });
-            // #endregion
         }
     }
 }
@@ -7279,7 +7414,6 @@ function updateSpinCounterDisplay() {
 function autoSpinAfterSpawn() {
     console.log('Auto spinning blocks after spawn (does not count toward spin limit)');
 
-    // Filter for eligible blocks: vertical OR single-cell blocks OR horizontal multi-cell blocks
     const eligibleBlocks = blocks.filter(block =>
         (block.isVertical || block.length === 1 || (!block.isVertical && block.length > 1)) &&
         !block.isFalling &&
@@ -7292,101 +7426,63 @@ function autoSpinAfterSpawn() {
         return; // No eligible blocks to spin
     }
 
-    // Spin each block with slight duration randomization for visual variety
-    // Note: This does NOT decrement remainingSpins
-    eligibleBlocks.forEach((block, index) => {
-        // Add slight delay and duration variation for staggered effect
-        const baseDuration = 1800; // 1.8 seconds base
-        const durationVariation = 200; // ±200ms variation
-        const duration = baseDuration + (Math.random() * 2 - 1) * durationVariation;
+    // Group by discrete vertical layer (yOffset)
+    const layerMap = new Map();
+    for (const block of eligibleBlocks) {
+        const layerKey = Math.round((block.yOffset || 0) * 100) / 100;
+        if (!layerMap.has(layerKey)) {
+            layerMap.set(layerKey, []);
+        }
+        layerMap.get(layerKey).push(block);
+    }
 
-        // Small delay for staggered start (optional, creates wave effect)
-        const delay = index * 20; // 20ms delay between each block
+    const sortedLayers = Array.from(layerMap.keys()).sort((a, b) => b - a);
+    const numLayers = sortedLayers.length;
+    const TOTAL_CASCADE_MS = 1400;
+    const BLOCK_SPIN_MS = 320;
+
+    sortedLayers.forEach((layerKey, layerIndex) => {
+        const delay = numLayers > 1 ? (layerIndex / (numLayers - 1)) * (TOTAL_CASCADE_MS - BLOCK_SPIN_MS) : 0;
+        const layerBlocks = layerMap.get(layerKey) || [];
 
         setTimeout(() => {
-            try {
-                if (typeof block.animateRandomSpin === 'function') {
-                    block.animateRandomSpin(duration);
-                } else {
-                    console.error('Block does not have animateRandomSpin method!', block);
+            // One sound effect per layer
+            playSound('syntheticBlockSnap', 0.25);
+
+            // Spin all blocks in this layer together
+            layerBlocks.forEach(block => {
+                try {
+                    if (typeof block.animateRandomSpin === 'function') {
+                        block.animateRandomSpin(BLOCK_SPIN_MS);
+                    }
+                } catch (error) {
+                    console.error('Error spinning block:', error);
                 }
-            } catch (error) {
-                console.error('Error spinning block:', error);
-            }
+            });
         }, delay);
     });
 }
 
 // Spin random blocks (vertical and single-cell blocks) to break interlock situations
 function spinRandomBlocks() {
-    // #region agent log
-    debugTelemetry({ location: 'main.js:spinRandomBlocks:entry', message: 'spinRandomBlocks function called', data: { timestamp: Date.now() }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H1' });
-    // #endregion
     console.log('[Spin] ===== spinRandomBlocks FUNCTION CALLED =====');
-    console.log('[Spin] Function entry - timestamp:', new Date().toISOString());
 
-    // Log all state immediately
-    console.log('[Spin] Mode checks:', {
-        isTimeBasedMode: isTimeBasedMode(),
-        isTimeChallengeMode: isTimeChallengeMode(),
-        isInfernoMode: isInfernoMode(),
-        gameMode: gameMode
-    });
-    console.log('[Spin] Time state:', {
-        isTimeFrozen: isTimeFrozen(),
-        timeFreezeReasons: Array.from(timeFreezeReasons),
-        timeChallengeActive: timeChallengeActive,
-        timeUpShown: timeUpShown,
-        timeLeftSec: timeLeftSec
-    });
-    console.log('[Spin] Spin state:', {
-        remainingSpins: remainingSpins,
-        isTimeBasedMode: isTimeBasedMode()
-    });
-    console.log('[Spin] Block state:', {
-        totalBlocks: blocks ? blocks.length : 'blocks is null/undefined',
-        blocksDefined: typeof blocks !== 'undefined'
-    });
-
-    // Disallow spin while user-paused or in modal freezes (prevents weird UX and free actions)
-    // BUT: Allow spin during level_complete freeze in Inferno mode (same as Time Challenge behavior)
+    // Disallow spin while user-paused or in modal freezes
     if (isTimeBasedMode() && isTimeFrozen()) {
         const freezeReasons = Array.from(timeFreezeReasons);
-        // In Time Challenge and Inferno, allow spin during level_complete freeze
-        // (the level complete modal doesn't prevent spinning)
         if (freezeReasons.includes('level_complete')) {
-            // #region agent log
-            debugTelemetry({ location: 'main.js:spinRandomBlocks:allowedDuringLevelComplete', message: 'Spin allowed during level_complete freeze (Time Challenge behavior)', data: { reasons: freezeReasons }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run2', hypothesisId: 'H2' });
-            // #endregion
             console.log('[Spin] ✅ Allowing spin during level_complete freeze (Time Challenge behavior)');
-            // Continue execution - don't return
         } else {
-            // #region agent log
-            debugTelemetry({ location: 'main.js:spinRandomBlocks:blockedFrozen', message: 'Spin blocked: time frozen (non-level_complete reason)', data: { reasons: freezeReasons }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run2', hypothesisId: 'H2' });
-            // #endregion
             console.log('[Spin] ❌ BLOCKED: Time is frozen, reasons:', freezeReasons);
             return;
         }
     }
 
-    // Check button state at function entry
-    const diceButtonCheck = document.getElementById('dice-button');
-    if (diceButtonCheck) {
-        // #region agent log
-        debugTelemetry({ location: 'main.js:spinRandomBlocks:buttonCheck', message: 'Button state at spinRandomBlocks entry', data: { disabled: diceButtonCheck.disabled, hasHandler: diceButtonCheck.dataset.handlerAttached === 'true', handlerExists: !!diceButtonClickHandler }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run2', hypothesisId: 'H1' });
-        // #endregion
-    }
-
-    // Check if spins or time are available (Task 7.7.8: Percentage cost)
     const canSpinWithTime = isTimeBasedMode() && timeLeftSec >= 1.0; 
     const canSpinWithResource = remainingSpins > 0 || remainingSpins === Number.POSITIVE_INFINITY;
     
     if (!canSpinWithResource && !canSpinWithTime) {
-        // #region agent log
-        debugTelemetry({ location: 'main.js:spinRandomBlocks:blockedNoResource', message: 'Spin blocked: insufficient resource and time', data: { remainingSpins: remainingSpins, timeLeftSec: timeLeftSec, canSpinWithTime: canSpinWithTime }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H2' });
-        // #endregion
         console.log('[Spin] ❌ BLOCKED: Insufficient spins and time (Spins:', remainingSpins, 'Time:', timeLeftSec, ')');
-        
         if (isTimeBasedMode() && timeLeftSec < 1.0) {
             flashTimerDelta(-1);
             playSound('error', 0.5);
@@ -7395,17 +7491,11 @@ function spinRandomBlocks() {
     }
 
     if (!blocks || blocks.length === 0) {
-        // #region agent log
-        debugTelemetry({ location: 'main.js:spinRandomBlocks:blockedNoBlocks', message: 'Spin blocked: no blocks', data: { blocksExists: !!blocks, blocksLength: blocks ? blocks.length : 0 }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H2' });
-        // #endregion
         console.log('[Spin] ❌ BLOCKED: No blocks array or empty blocks');
         return;
     }
 
-    console.log('[Spin] ✅ Passed initial checks, total blocks:', blocks.length);
-
     // Filter for eligible blocks: vertical OR single-cell blocks OR horizontal multi-cell blocks
-    // Horizontal multi-cell blocks can only rotate 180 degrees (flip direction)
     const eligibleBlocks = blocks.filter(block =>
         (block.isVertical || block.length === 1 || (!block.isVertical && block.length > 1)) &&
         !block.isFalling &&
@@ -7414,127 +7504,119 @@ function spinRandomBlocks() {
         !block.isAnimating
     );
 
-    console.log('[Spin] Eligible blocks found:', eligibleBlocks.length);
-
     if (eligibleBlocks.length === 0) {
         console.log('[Spin] BLOCKED: No eligible blocks to spin');
-        // Log why blocks are not eligible
-        const reasons = {
-            total: blocks.length,
-            falling: blocks.filter(b => b.isFalling).length,
-            removed: blocks.filter(b => b.isRemoved).length,
-            hasRemovalStartTime: blocks.filter(b => b.removalStartTime).length,
-            isAnimating: blocks.filter(b => b.isAnimating).length,
-            notEligibleType: blocks.filter(b => !b.isVertical && b.length !== 1 && (b.isVertical || b.length <= 1)).length
-        };
-        console.log('[Spin] Block state breakdown:', reasons);
-        return; // No eligible blocks to spin
+        return;
     }
 
-    // Task 1.3 & 7.7.1 & 7.7.8: Resource Management (Priority: Free Spins > Time Percentage)
+    // Resource Management
     if (remainingSpins > 0 && remainingSpins !== Number.POSITIVE_INFINITY) {
-        console.log('[Spin] Using free spin');
         remainingSpins--;
         updateSpinCounterDisplay();
     } else if (remainingSpins === Number.POSITIVE_INFINITY) {
         console.log('[Spin] Infinite spins enabled (Free), no deduction');
     } else if (isTimeBasedMode()) {
-        // Task 7.7.8: Cost percentage of remaining time
         const multiplier = getSpinCostMultiplier(currentLevel);
         const cost = Math.max(1, Math.ceil(timeLeftSec * multiplier));
-        console.log(`[Spin] Costing ${Math.round(multiplier * 100)}% of time (${cost}s)`);
-        
         setTimeLeftSec(timeLeftSec - cost);
         flashTimerDelta(-cost);
         updateTimerDisplay();
         updateSpinCounterDisplay();
-        // Show cost toast near spin button (v8.3.4)
         showSpinCostToast(cost);
     }
 
-    updateIdleTimers(); // Reset idle timers on spin
+    updateIdleTimers();
 
-    // Task 9.2: Animate spin button (rotation)
-    const diceButton = document.getElementById('dice-button');
-    if (diceButton) {
-        diceButton.classList.remove('btn-rotating');
-        void diceButton.offsetWidth; // Trigger reflow
-        diceButton.classList.add('btn-rotating');
-        // Remove after animation (1s matches CSS)
-        setTimeout(() => {
-            if (diceButton) diceButton.classList.remove('btn-rotating');
-        }, 1000);
-
-        // Task 9.2: Display time cost feedback
-        if (isTimeBasedMode() && remainingSpins <= 0) {
-            const multiplier = getSpinCostMultiplier(currentLevel);
-            const cost = Math.max(1, Math.ceil(timeLeftSec * multiplier));
-            
-            const rect = diceButton.getBoundingClientRect();
-            const x = rect.left + rect.width / 2;
-            const y = rect.top;
-            
-            const floatText = document.createElement('div');
-            floatText.textContent = `-${formatTime(cost)}`;
-            floatText.style.cssText = `
-                position: fixed;
-                left: ${x}px;
-                top: ${y}px;
-                transform: translate(-50%, -100%);
-                font-size: 20px;
-                font-weight: 800;
-                color: #ff4d4d;
-                text-shadow: 0 0 10px rgba(255, 77, 77, 0.5);
-                pointer-events: none;
-                z-index: 5000;
-                animation: cost-float 1.5s ease-out forwards;
-                font-family: 'Inter', sans-serif;
-            `;
-            document.body.appendChild(floatText);
-            setTimeout(() => { if (floatText.parentNode) floatText.remove(); }, 1500);
+    // Requirement (a, e): Save original pre-spin directions if starting a new temporary spin window
+    if (!temporarySpinActive) {
+        temporarySpinOriginalDirections.clear();
+        for (const block of blocks) {
+            if (block && !block.isRemoved && !block.isFalling && !block.removalStartTime) {
+                temporarySpinOriginalDirections.set(block, { x: block.direction.x, z: block.direction.z });
+            }
         }
+    } else {
+        // If already in temporary spin, ensure any new blocks are also tracked with original directions
+        for (const block of eligibleBlocks) {
+            if (!temporarySpinOriginalDirections.has(block)) {
+                temporarySpinOriginalDirections.set(block, { x: block.direction.x, z: block.direction.z });
+            }
+        }
+        if (temporarySpinTimerId) clearTimeout(temporarySpinTimerId);
+        if (temporarySpinIntervalId) clearInterval(temporarySpinIntervalId);
     }
-    // Play spin sound with sufficient volume (Task 7.7.1)
-    playSound('syntheticSpin', 0.7);
 
-    updateIdleTimers(); // Reset idle timers on spin
+    // Group eligible blocks by discrete vertical layer (yOffset)
+    const layerMap = new Map();
+    for (const block of eligibleBlocks) {
+        const layerKey = Math.round((block.yOffset || 0) * 100) / 100;
+        if (!layerMap.has(layerKey)) {
+            layerMap.set(layerKey, []);
+        }
+        layerMap.get(layerKey).push(block);
+    }
+
+    // Sort layers from top (highest Y) down to bottom (lowest Y)
+    const sortedLayers = Array.from(layerMap.keys()).sort((a, b) => b - a);
+    const numLayers = sortedLayers.length;
 
     // Track spin for stats
-    console.log('[Spin] Tracking spin for stats...');
     try {
         trackSpin();
     } catch (error) {
         console.error('[Spin] Error tracking spin:', error);
     }
 
-    // Spin each block with slight duration randomization for visual variety
-    console.log('[Spin] Starting to spin', eligibleBlocks.length, 'blocks...');
-    eligibleBlocks.forEach((block, index) => {
-        // Add slight delay and duration variation for staggered effect
-        const baseDuration = 1800; // 1.8 seconds base
-        const durationVariation = 200; // ±200ms variation
-        const duration = baseDuration + (Math.random() * 2 - 1) * durationVariation;
+    // Requirement: Spin all blocks in the same layer together, 1 sound effect per layer, completes in 2.0s
+    const TOTAL_CASCADE_MS = 2000;
+    const BLOCK_SPIN_MS = 320;
 
-        // Small delay for staggered start (optional, creates wave effect)
-        const delay = index * 20; // 20ms delay between each block
+    sortedLayers.forEach((layerKey, layerIndex) => {
+        const delay = numLayers > 1 ? (layerIndex / (numLayers - 1)) * (TOTAL_CASCADE_MS - BLOCK_SPIN_MS) : 0;
+        const layerBlocks = layerMap.get(layerKey) || [];
 
         setTimeout(() => {
-            try {
-                console.log('[Spin] Spinning block', index + 1, 'of', eligibleBlocks.length, ':', { isVertical: block.isVertical, length: block.length });
-                if (typeof block.animateRandomSpin === 'function') {
-                    block.animateRandomSpin(duration);
-                    console.log('[Spin] ✅ Block', index + 1, 'spin animation started');
-                } else {
-                    console.error('[Spin] ❌ Block does not have animateRandomSpin method!', block);
+            // One sound effect per layer
+            playSound('syntheticBlockSnap', 0.35);
+
+            // Spin all blocks in this layer simultaneously
+            layerBlocks.forEach(block => {
+                try {
+                    if (typeof block.animateRandomSpin === 'function') {
+                        block.animateRandomSpin(BLOCK_SPIN_MS);
+                    }
+                } catch (error) {
+                    console.error('[Spin] Error spinning block:', error);
                 }
-            } catch (error) {
-                console.error('[Spin] ❌ Error spinning block', index + 1, ':', error);
-                console.error('[Spin] Error stack:', error.stack);
-            }
+            });
         }, delay);
     });
 
-    console.log('[Spin] ===== spinRandomBlocks FUNCTION COMPLETE =====');
+    // Requirement (a, d): Activate dynamic temporary countdown (Option 2: 10s - 20s)
+    const remainingCount = blocks ? blocks.filter(b => b && !b.isRemoved && !b.isFalling && !b.removalStartTime).length : 15;
+    const durationMs = getTemporarySpinDurationMs(remainingCount);
+    console.log(`[Spin] Temporary spin activated for ${Math.round(durationMs / 1000)}s (${remainingCount} blocks remaining)`);
+
+    temporarySpinActive = true;
+    currentTemporarySpinTotalDurationMs = durationMs;
+    temporarySpinEndTime = performance.now() + durationMs;
+    updateSpinCounterDisplay();
+
+    // Start interval to update countdown UI
+    temporarySpinIntervalId = setInterval(() => {
+        if (!temporarySpinActive) {
+            if (temporarySpinIntervalId) clearInterval(temporarySpinIntervalId);
+            return;
+        }
+        updateSpinCounterDisplay();
+    }, 100);
+
+    // Schedule automatic revert when temporary duration expires
+    temporarySpinTimerId = setTimeout(() => {
+        revertTemporarySpin();
+    }, durationMs);
+
+    console.log(`[Spin] ===== spinRandomBlocks FUNCTION COMPLETE (Temporary Spin Active for ${Math.round(durationMs / 1000)}s) =====`);
 
     // Check button state after function completes
     const diceButtonAfter = document.getElementById('dice-button');
@@ -8171,10 +8253,17 @@ const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 
 function onMouseClick(event) {
-    // Task: Prevent UI clicks from bleeding through to 3D scene
-    // Only process clicks that originate directly on the 3D canvas.
-    // This ensures buttons, menus, and other UI overlays block interaction with blocks.
+    // Only process clicks that originate directly on the 3D canvas and not on any UI element
     if (event.target !== renderer.domElement) {
+        return;
+    }
+
+    // Check if element under mouse pointer is a UI element (e.g. settings menu, buttons, bars)
+    const elemUnderMouse = document.elementFromPoint(event.clientX, event.clientY);
+    if (elemUnderMouse && elemUnderMouse !== renderer.domElement) {
+        return;
+    }
+    if (elemUnderMouse && elemUnderMouse.closest && elemUnderMouse.closest('#settings-menu, #settings-container, #stats-bar, #top-stats-bar, button, .toggle-icon, .stats-control-btn, .extended-stats-modal-overlay, .modal-panel')) {
         return;
     }
 
@@ -8232,6 +8321,14 @@ function onMouseClick(event) {
     // Get the closest intersection (the block the user actually clicked on)
     const closestHit = allIntersections[0];
     const block = closestHit.block;
+
+    // If block is molten / smoldering charred from detonation aftermath, trigger sizzle feedback
+    if (block.isCharred) {
+        if (typeof block.onCharredTap === 'function') {
+            block.onCharredTap();
+        }
+        return;
+    }
 
     // Prevent locked/translucent blocks from being moved or detonated - shake the entire tower with radial falloff
     if (block.isLocked || block.isTranslucent) {
@@ -8301,14 +8398,13 @@ function onMouseClick(event) {
 let _supportGrid = new Map();
 
 /**
- * Update the global support grid based on current block positions
  * Map key: "x,y,z" (integer grid coordinates)
  * Map value: Block object
  */
 function updateSupportGrid() {
     _supportGrid.clear();
     for (const block of blocks) {
-        if (block.isRemoved || block.isFalling) continue;
+        if (!block || block.isRemoved || block.isFalling || block.removalStartTime || block.isExploding || block.wasCatapulted) continue;
         
         // Get all cells this block occupies
         const cells = getBlockCells(block);
@@ -8317,7 +8413,7 @@ function updateSupportGrid() {
         for (const cell of cells) {
             const h = block.isVertical ? block.length : 1;
             for (let dy = 0; dy < h; dy++) {
-                const key = `${cell.x},${yBase + dy},${cell.z}`;
+                const key = `${Math.round(cell.x)},${yBase + dy},${Math.round(cell.z)}`;
                 _supportGrid.set(key, block);
             }
         }
@@ -8333,7 +8429,7 @@ function updateSupportGrid() {
  */
 function blockHasSupport(block, allBlocks) {
     // Blocks on the ground always have support
-    if (block.yOffset <= 0.01) {
+    if (block.yOffset <= 0.05) {
         return true;
     }
 
@@ -8344,14 +8440,14 @@ function blockHasSupport(block, allBlocks) {
     // For a block to have support, at least one of its cells must have support
     for (const cell of blockCells) {
         // Check cell directly below (y - 1)
-        const key = `${cell.x},${yGrid - 1},${cell.z}`;
+        const key = `${Math.round(cell.x)},${yGrid - 1},${Math.round(cell.z)}`;
         const other = _supportGrid.get(key);
         
-        if (other && other !== block && !other.isFalling && !other.isRemoved) {
+        if (other && other !== block && !other.isFalling && !other.isRemoved && !other.removalStartTime && !other.isExploding && !other.wasCatapulted) {
             // Found a supporting block
             const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
             const otherTop = other.yOffset + otherHeight;
-            if (otherTop >= block.yOffset - 0.01) {
+            if (otherTop >= block.yOffset - 0.1) {
                 return true;
             }
         }
@@ -8361,13 +8457,279 @@ function blockHasSupport(block, allBlocks) {
 }
 
 let supportCheckDirty = true;
-export function markSupportCheckDirty() {
+function markSupportCheckDirty() {
     supportCheckDirty = true;
     if (typeof markNeedsRender === 'function') {
         markNeedsRender(1000);
     }
 }
 window.markSupportCheckDirty = markSupportCheckDirty;
+
+/**
+ * Apply continuous 3D spherical thermal shockwave & molten scorch field on the GPU:
+ * 1. Heatwave strength, radius, and duration scale dynamically as a function of how many blocks/cells were destroyed.
+ * 2. Inside-Out Ignition: Heat front blooms outward from epicenter (r = 0 -> maxRadius).
+ * 3. Extended Slower Outside-In Molten Cooling: Glowing fire/embers contract smoothly inward towards crater center (~10-16s).
+ * 4. Movement Immobility: Affected blocks CANNOT be moved until the molten cooling phase completes!
+ * 5. Lingering Dark Ashy Soot: Cooled surfaces remain coated in dark charcoal soot for another ~5s before gently dissolving.
+ */
+// ─────────────────────────────────────────────────────────────────────────────
+// MULTI-BLAST INDEPENDENT THERMAL & ASH COOLDOWN SYSTEM
+// Up to 6 simultaneous blasts can run independently with dedicated GPU slots,
+// individual timers, outside-in unfreezing, and independent block locking.
+// ─────────────────────────────────────────────────────────────────────────────
+const activeThermalBlasts = [];
+let thermalAnimationRunning = false;
+
+function tickThermalBlasts() {
+    const now = performance.now();
+
+    for (let i = activeThermalBlasts.length - 1; i >= 0; i--) {
+        const blast = activeThermalBlasts[i];
+        const elapsed = now - blast.startTime;
+        const totalProgress = Math.min(elapsed / blast.totalDurationMs, 1.0);
+        const slot = blast.slot;
+
+        if (totalProgress < 1.0) {
+            // ── PHASE 1: Very fast heat-up ignition bloom (ease-in)
+            if (elapsed < blast.p1Ms) {
+                const t = elapsed / blast.p1Ms;
+                const ease = t * t * t;
+                globalUniforms.uThermalBlastRadius.value[slot]    = blast.maxRadius * ease;
+                globalUniforms.uThermalBlastIntensity.value[slot] = Math.min(1.0, ease * 1.3 * blast.blastIntensityMultiplier);
+                globalUniforms.uAshRadius.value[slot]             = blast.maxRadius * ease;
+                globalUniforms.uAshIntensity.value[slot]          = Math.min(1.0, ease * 1.3);
+
+            // ── PHASE 2: Slower cool-down, molten core shrinks progressively inward
+            } else if (elapsed < blast.p1Ms + blast.p2Ms) {
+                const t = (elapsed - blast.p1Ms) / blast.p2Ms;
+                const ease = 1.0 - Math.pow(1.0 - t, 2.4);
+
+                globalUniforms.uThermalBlastRadius.value[slot]    = Math.max(0.0, blast.maxRadius * (1.0 - ease));
+                globalUniforms.uThermalBlastIntensity.value[slot] = Math.max(0.0, (1.0 - ease) * blast.blastIntensityMultiplier);
+                globalUniforms.uAshRadius.value[slot]             = blast.maxRadius;
+                globalUniforms.uAshIntensity.value[slot]          = 1.0;
+
+            // ── PHASE 3: Dwell fully dark ash (all locked)
+            } else if (elapsed < blast.p1Ms + blast.p2Ms + blast.p3Ms) {
+                if (!blast.hasQuenchedMolten) {
+                    blast.hasQuenchedMolten = true;
+                    globalUniforms.uThermalBlastRadius.value[slot]    = 0.0;
+                    globalUniforms.uThermalBlastIntensity.value[slot] = 0.0;
+                    if (typeof window.playSound === 'function') {
+                        window.playSound('syntheticQuench', 0.28);
+                    }
+                }
+                globalUniforms.uAshRadius.value[slot]    = blast.maxRadius;
+                globalUniforms.uAshIntensity.value[slot] = 1.0;
+
+            // ── PHASE 4: Outside-in progressive ash cooling & unlock
+            } else {
+                const t = (elapsed - blast.p1Ms - blast.p2Ms - blast.p3Ms) / blast.p4Ms;
+                const ease = t < 0.5
+                    ? 4 * t * t * t
+                    : 1 - Math.pow(-2 * t + 2, 3) / 2;
+
+                globalUniforms.uAshIntensity.value[slot] = Math.max(0.0, 1.0 - ease);
+                globalUniforms.uAshRadius.value[slot]    = Math.max(0.0, blast.maxRadius * (1.0 - ease));
+            }
+
+            // Continuous billowing smoke & embers from this blast epicenter
+            if (now - blast.lastSparkTime > 90 && window.particleSystem) {
+                blast.lastSparkTime = now;
+                const isMolten = elapsed < blast.moltenDurationMs;
+                const currentR = isMolten
+                    ? globalUniforms.uThermalBlastRadius.value[slot]
+                    : globalUniforms.uAshRadius.value[slot];
+
+                if (currentR > 0.1) {
+                    const puffCount = isMolten ? 3 : (Math.random() < globalUniforms.uAshIntensity.value[slot] ? 2 : 1);
+                    for (let s = 0; s < puffCount; s++) {
+                        const ang = Math.random() * Math.PI * 2;
+                        const r = Math.sqrt(Math.random()) * currentR;
+                        const smokePos = new THREE.Vector3(
+                            blast.bombCenter.x + Math.cos(ang) * r,
+                            blast.bombCenter.y + Math.random() * 0.3,
+                            blast.bombCenter.z + Math.sin(ang) * r
+                        );
+                        if (isMolten && Math.random() < 0.5 && typeof window.particleSystem.addFireSparks === 'function') {
+                            window.particleSystem.addFireSparks(smokePos, 2);
+                        }
+                        if (typeof window.particleSystem.addSmokeWisps === 'function') {
+                            window.particleSystem.addSmokeWisps(smokePos, 1);
+                        }
+                    }
+                }
+            }
+        } else {
+            // Blast cooldown complete! Reset this blast's GPU slot
+            globalUniforms.uThermalBlastRadius.value[slot] = 0.0;
+            globalUniforms.uThermalBlastIntensity.value[slot] = 0.0;
+            globalUniforms.uAshRadius.value[slot] = 0.0;
+            globalUniforms.uAshIntensity.value[slot] = 0.0;
+            globalUniforms.uThermalBlastPos.value[slot].set(0, -9999, 0);
+
+            // Release all remaining locks registered by this blast
+            for (const b of blast.survivingBlocks) {
+                if (b && b.activeBlastLocks && b.activeBlastLocks.has(blast)) {
+                    b.activeBlastLocks.delete(blast);
+                    if (b.activeBlastLocks.size === 0) {
+                        b.isCharred = false;
+                    }
+                }
+            }
+
+            activeThermalBlasts.splice(i, 1);
+
+            // When all active blasts are finished, smoothly dissolve remaining smoke
+            if (activeThermalBlasts.length === 0 && window.particleSystem && typeof window.particleSystem.clearSmoke === 'function') {
+                window.particleSystem.clearSmoke(false);
+            }
+        }
+    }
+
+    if (typeof markNeedsRender === 'function') markNeedsRender(100);
+
+    if (activeThermalBlasts.length > 0) {
+        requestAnimationFrame(tickThermalBlasts);
+    } else {
+        thermalAnimationRunning = false;
+    }
+}
+
+/**
+ * Trigger explosion aftermath with independent concurrent blast processing.
+ */
+export function applyDetonationAftermathShock(destroyedCells, bombCenter) {
+    if (!blocks || blocks.length === 0 || !bombCenter) return;
+
+    const survivingBlocks = blocks.filter(b => b && !b.isRemoved && !b.isFalling && !b.isExploding && !b.removalStartTime && !b.isTranslucent);
+    if (survivingBlocks.length === 0) return;
+
+    // 1. Heatwave size & strength realistically proportioned to the blast crater
+    const destroyedCount = (destroyedCells && destroyedCells.length > 0) ? destroyedCells.length : 4;
+    const maxRadius = Math.min(3.8, 1.8 + Math.sqrt(destroyedCount) * 0.35);
+    const blastIntensityMultiplier = Math.min(1.4, 0.9 + destroyedCount * 0.05);
+
+    // Independent 4-phase timings for this blast
+    const p1Ms = 320;
+    const p2Ms = Math.max(3800, Math.min(5800, 3200 + destroyedCount * 220));
+    const p3Ms = Math.max(5000, Math.min(8000, 4500 + destroyedCount * 250 + survivingBlocks.length * 50));
+    const p4Ms = Math.max(5500, Math.min(8500, 5000 + destroyedCount * 250 + survivingBlocks.length * 50));
+    const totalDurationMs = p1Ms + p2Ms + p3Ms + p4Ms;
+
+    // Find an available GPU slot (0..5)
+    const usedSlots = new Set(activeThermalBlasts.map(b => b.slot));
+    let slot = 0;
+    for (let s = 0; s < 6; s++) {
+        if (!usedSlots.has(s)) { slot = s; break; }
+    }
+
+    // Initialize slot's GPU thermal & ash uniforms without disturbing any other active slots
+    globalUniforms.uThermalBlastPos.value[slot].copy(bombCenter);
+    globalUniforms.uThermalBlastRadius.value[slot] = 0.0;
+    globalUniforms.uThermalBlastIntensity.value[slot] = 0.0;
+    globalUniforms.uAshRadius.value[slot] = 0.0;
+    globalUniforms.uAshIntensity.value[slot] = 0.0;
+
+    const startTime = performance.now();
+
+    const blast = {
+        slot,
+        bombCenter: bombCenter.clone(),
+        maxRadius,
+        blastIntensityMultiplier,
+        startTime,
+        p1Ms,
+        p2Ms,
+        p3Ms,
+        p4Ms,
+        totalDurationMs,
+        moltenDurationMs: p1Ms + p2Ms,
+        survivingBlocks,
+        hasQuenchedMolten: false,
+        lastSparkTime: startTime
+    };
+
+    // Lock ONLY blocks that are genuinely within the blast crater/ash zone
+    for (const b of survivingBlocks) {
+        const bPos = new THREE.Vector3();
+        if (b.group) b.group.getWorldPosition(bPos);
+        
+        let minDist = bPos.distanceTo(bombCenter);
+        if (b.length > 1 && b.direction) {
+            const isX = Math.abs(b.direction.x) > 0;
+            const isY = Math.abs(b.direction.y) > 0;
+            for (let ci = 1; ci < b.length; ci++) {
+                const cellPos = bPos.clone();
+                if (isX) cellPos.x += ci * Math.sign(b.direction.x);
+                else if (isY) cellPos.y += ci * Math.sign(b.direction.y);
+                else cellPos.z += ci * Math.sign(b.direction.z || 1);
+                minDist = Math.min(minDist, cellPos.distanceTo(bombCenter));
+            }
+        }
+
+        // Strictly lock only if inside the visible crater radius
+        if (minDist <= maxRadius - 0.15) {
+            if (!b.activeBlastLocks) b.activeBlastLocks = new Set();
+            b.activeBlastLocks.add(blast);
+            b.isCharred = true;
+        }
+    }
+
+    // Play rich fire ignition sound
+    if (typeof playSound === 'function') {
+        playSound('syntheticFireIgnite', 0.45).catch(() => {});
+    }
+
+    activeThermalBlasts.push(blast);
+
+    if (!thermalAnimationRunning) {
+        thermalAnimationRunning = true;
+        requestAnimationFrame(tickThermalBlasts);
+    }
+
+    // Safeguard against deadlock
+    setTimeout(() => {
+        checkDetonationDeadlock();
+    }, 400);
+}
+window.applyDetonationAftermathShock = applyDetonationAftermathShock;
+
+/**
+ * Anti-deadlock check: If no uncharred blocks can legally move, quench charred blocks early.
+ */
+export function checkDetonationDeadlock() {
+    if (!blocks || blocks.length === 0) return;
+    const activeBlocks = blocks.filter(b => b && !b.isRemoved && !b.isFalling && !b.isExploding && !b.removalStartTime && !b.isTranslucent);
+    const charredBlocks = activeBlocks.filter(b => b.isCharred);
+    if (charredBlocks.length === 0) return;
+
+    const nonCharredBlocks = activeBlocks.filter(b => !b.isCharred);
+    if (nonCharredBlocks.length === 0) {
+        // Only charred blocks left - quench immediately so player can play
+        charredBlocks.forEach(b => {
+            if (typeof b.quenchMoltenChar === 'function') b.quenchMoltenChar();
+        });
+        return;
+    }
+
+    let hasValidMove = false;
+    for (const b of nonCharredBlocks) {
+        if (typeof b.canMove === 'function' && b.canMove(blocks) !== 'blocked') {
+            hasValidMove = true;
+            break;
+        }
+    }
+
+    if (!hasValidMove) {
+        // No movable non-charred blocks exist - quench charred blocks early
+        charredBlocks.forEach(b => {
+            if (typeof b.quenchMoltenChar === 'function') b.quenchMoltenChar();
+        });
+    }
+}
+window.checkDetonationDeadlock = checkDetonationDeadlock;
 
 /**
  * Check all blocks and trigger falling for those that lost support
@@ -8382,8 +8744,8 @@ function checkAndTriggerFalling(blocks, force = false) {
     updateSupportGrid();
 
     const eligible = blocks.filter(b => {
-        if (b.isRemoved || b.isFalling) return false;
-        return b.yOffset > 0.01; // only upper-layer blocks can lose support
+        if (!b || b.isRemoved || b.isFalling || b.removalStartTime || b.isExploding || b.wasCatapulted) return false;
+        return b.yOffset > 0.05; // only upper-layer blocks can lose support
     });
 
     // Compute closure of blocks that become unsupported if we remove all blocks already selected to fall.
@@ -8408,7 +8770,7 @@ function checkAndTriggerFalling(blocks, force = false) {
     const targets = computeSupportFallTargets(blocks, toFall);
 
     for (const [block, targetYOffset] of targets.entries()) {
-        if (targetYOffset >= block.yOffset) continue;
+        if (targetYOffset >= block.yOffset - 0.01) continue;
         console.log(`Block at (${block.gridX}, ${block.gridZ}) yOffset=${block.yOffset} lost support, falling to yOffset=${targetYOffset}`);
         if (typeof registerActiveBlock === 'function') registerActiveBlock(block);
         if (typeof markNeedsRender === 'function') markNeedsRender(1000);
@@ -8420,21 +8782,21 @@ function checkAndTriggerFalling(blocks, force = false) {
  * Like blockHasSupport, but treats blocks in `excluded` as if they don't exist (they provide no support).
  */
 function directBlockHasExternalSupportExcluding(block, allBlocks, excluded, cluster = null) {
-    if (block.yOffset <= 0.01) return true;
+    if (block.yOffset <= 0.05) return true;
     const blockCells = getBlockCells(block);
     const yGrid = Math.round(block.yOffset / block.cubeSize);
 
     for (const cell of blockCells) {
-        const key = `${cell.x},${yGrid - 1},${cell.z}`;
+        const key = `${Math.round(cell.x)},${yGrid - 1},${Math.round(cell.z)}`;
         const other = _supportGrid.get(key);
         
-        if (other && other !== block && !other.isFalling && !other.isRemoved) {
+        if (other && other !== block && !other.isFalling && !other.isRemoved && !other.removalStartTime && !other.isExploding && !other.wasCatapulted) {
             if (cluster && cluster.includes(other)) continue; // Ignore internal cluster blocks
             if (excluded && excluded.has(other)) continue;
             
             const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
             const otherTop = other.yOffset + otherHeight;
-            if (otherTop >= block.yOffset - 0.01) {
+            if (otherTop >= block.yOffset - 0.1) {
                 return true;
             }
         }
@@ -8443,14 +8805,14 @@ function directBlockHasExternalSupportExcluding(block, allBlocks, excluded, clus
 }
 
 function blockHasSupportExcluding(block, allBlocks, excluded) {
-    if (block.yOffset <= 0.01) return true;
+    if (block.yOffset <= 0.05) return true;
 
     if (block.isTranslucent || block.isLocked) {
         const cluster = getTranslucentCluster(block, allBlocks);
         if (cluster.length >= 3) {
             // Check if ANY member in the cluster has external support (or is on the ground)
             for (const member of cluster) {
-                if (member.yOffset <= 0.01) return true;
+                if (member.yOffset <= 0.05) return true;
                 if (directBlockHasExternalSupportExcluding(member, allBlocks, excluded, cluster)) {
                     return true;
                 }
@@ -8475,7 +8837,7 @@ function computeSupportFallTargets(allBlocks, toFall) {
 
     // Helper to query the "top surface" of a support block.
     const getBlockTop = (b) => {
-        const baseY = targets.has(b) ? targets.get(b) : b.yOffset;
+        const baseY = targets.has(b) ? targets.get(b) : (b._fallingTargetY !== undefined ? b._fallingTargetY : b.yOffset);
         const h = b.isVertical ? b.length * b.cubeSize : b.cubeSize;
         return baseY + h;
     };
@@ -8497,10 +8859,10 @@ function computeSupportFallTargets(allBlocks, toFall) {
 
                 for (const cell of blockCells) {
                     for (let y = yGrid - 1; y >= 0; y--) {
-                        const key = `${cell.x},${y},${cell.z}`;
+                        const key = `${Math.round(cell.x)},${y},${Math.round(cell.z)}`;
                         const other = _supportGrid.get(key);
                         
-                        if (other && !cluster.includes(other) && !other.isFalling && !other.isRemoved) {
+                        if (other && !cluster.includes(other) && !other.isRemoved && !other.removalStartTime && !other.isExploding && !other.wasCatapulted) {
                             const otherInFallSet = toFall.has(other);
                             if (otherInFallSet && !targets.has(other)) continue;
                             
@@ -8532,10 +8894,10 @@ function computeSupportFallTargets(allBlocks, toFall) {
 
             for (const cell of blockCells) {
                 for (let y = yGrid - 1; y >= 0; y--) {
-                    const key = `${cell.x},${y},${cell.z}`;
+                    const key = `${Math.round(cell.x)},${y},${Math.round(cell.z)}`;
                     const other = _supportGrid.get(key);
                     
-                    if (other && other !== block && !other.isFalling && !other.isRemoved) {
+                    if (other && other !== block && !other.isRemoved && !other.removalStartTime && !other.isExploding && !other.wasCatapulted) {
                         const otherInFallSet = toFall.has(other);
                         if (otherInFallSet && !targets.has(other)) continue;
                         
@@ -8607,6 +8969,7 @@ function startBlockFallingToTarget(block, targetYOffset) {
 
     block.isFalling = true;
     block.isAnimating = true;
+    block._fallingTargetY = targetYOffset;
     if (typeof registerActiveBlock === 'function') registerActiveBlock(block);
 
     const startY = block.yOffset;
@@ -8634,6 +8997,7 @@ function startBlockFallingToTarget(block, targetYOffset) {
     const animateFall = () => {
         if (block.isRemoved || !blocks.includes(block) || isGeneratingLevel) {
             if (fallAnimationId !== null) cancelAnimationFrame(fallAnimationId);
+            delete block._fallingTargetY;
             block.isFalling = false;
             block.isAnimating = false;
             return;
@@ -8650,11 +9014,13 @@ function startBlockFallingToTarget(block, targetYOffset) {
             fallAnimationId = requestAnimationFrame(animateFall);
         } else {
             block.yOffset = targetYOffset;
+            delete block._fallingTargetY;
             block.updateWorldPosition();
             block.isFalling = false;
             block.isAnimating = false;
             fallAnimationId = null;
             markSupportCheckDirty();
+            checkAndTriggerFalling(blocks);
 
             // Translucent blocks / welded clusters revert to standard non-translucent blocks when landing on the base plate (level 0)
             if ((block.isLocked || block.isTranslucent) && block.yOffset < 0.1 && !block.isRemoved && !block.removalStartTime) {
@@ -8871,8 +9237,14 @@ renderer.domElement.addEventListener('touchmove', (event) => {
             smoothedAutoZoomRadius = targetRadius;
             touchState.startDistance = currentDistance;
 
-            // Disable auto-zoom when user manually zooms
-            autoZoomDisabledUntilMs = performance.now() + AUTO_ZOOM_DISABLE_DURATION_MS;
+            // Stick to manual zoom; show disabled camera icon on HUD until user taps it to re-enable
+            autoZoomDisabledUntilMs = Infinity;
+            if (typeof window !== 'undefined') {
+                window.autoZoomEnabled = false;
+                if (typeof window.showCameraAutoZoomButton === 'function') {
+                    window.showCameraAutoZoomButton();
+                }
+            }
         } else {
             // Not pinching: treat as framing drag (vertical, center-of-two-fingers).
             touchState.isPinching = false;
@@ -8975,6 +9347,12 @@ function onTouchEnd(event) {
         return; // Don't process as block tap
     }
 
+    // If the event target is not the 3D canvas (e.g. settings button, menu, or HUD element), ignore block tap
+    if (event.target && event.target !== renderer.domElement) {
+        touchStartPos = null;
+        return;
+    }
+
     // Only process single touch (not multi-touch)
     if (event.touches.length > 0 || event.changedTouches.length !== 1) {
         touchStartPos = null;
@@ -8982,6 +9360,19 @@ function onTouchEnd(event) {
     }
 
     const touch = event.changedTouches[0];
+
+    // Check if the touch landed on any UI element (settings menu, HUD buttons, modals)
+    if (touch) {
+        const elemUnderTouch = document.elementFromPoint(touch.clientX, touch.clientY);
+        if (elemUnderTouch && elemUnderTouch !== renderer.domElement) {
+            touchStartPos = null;
+            return;
+        }
+        if (elemUnderTouch && elemUnderTouch.closest && elemUnderTouch.closest('#settings-menu, #settings-container, #stats-bar, #top-stats-bar, button, .toggle-icon, .stats-control-btn, .extended-stats-modal-overlay, .modal-panel')) {
+            touchStartPos = null;
+            return;
+        }
+    }
 
     // Check if this was actually a drag by checking touch movement
     if (touchStartPos) {
@@ -9589,15 +9980,13 @@ function animate() {
                     if (projX > maxProjX) maxProjX = projX;
                 }
 
-                const diagXZ = Math.sqrt(
-                    Math.pow(Math.max(Math.abs(boxMax.x - _lookAtTarget.x), Math.abs(boxMin.x - _lookAtTarget.x)), 2) +
-                    Math.pow(Math.max(Math.abs(boxMax.z - _lookAtTarget.z), Math.abs(boxMin.z - _lookAtTarget.z)), 2)
-                ) * 2;
-                const effectiveHeight = maxProjY * 2, effectiveWidth = Math.max(maxProjX * 2, diagXZ);
+                const effectiveHeight = maxProjY * 2;
+                const effectiveWidth = maxProjX * 2;
                 const fov = camera.fov * (Math.PI / 180), aspect = camera.aspect;
                 const padding = isMobileLike ? ZOOM_PADDING_MOBILE : ZOOM_PADDING;
                 const hDist = (effectiveHeight + padding * 2) / (2 * Math.tan(fov / 2));
-                const wDist = (effectiveWidth + padding * 2) / (2 * Math.tan(fov / 2) * aspect);
+                // Relax horizontal distance constraint so camera focuses tightly on the tower
+                const wDist = ((effectiveWidth + padding * 2) / (2 * Math.tan(fov / 2) * aspect)) * 0.82;
                 const isDesktopHighLevel = !isMobileLike && currentLevel >= DESKTOP_FULL_TOWER_VISIBILITY_LEVEL;
                 const verticalFitDist = isDesktopHighLevel ? (hDist * DESKTOP_HIGH_LEVEL_VERTICAL_FIT_MULTIPLIER) : hDist;
                 const multiplier = isMobileLike ? AUTO_ZOOM_MULTIPLIER_MOBILE : AUTO_ZOOM_MULTIPLIER_DESKTOP;
@@ -9741,9 +10130,10 @@ function animate() {
     if (blockValueElement) blockValueElement.textContent = blocks.length;
 
     // 10. Support Check & Cleanup
-    const supportCheckInterval = isBatteryQuality ? 250 : 150;
-    if (currentTime - lastSupportCheckTime > supportCheckInterval) {
+    const supportCheckInterval = isBatteryQuality ? 200 : 100;
+    if (supportCheckDirty || (currentTime - lastSupportCheckTime > supportCheckInterval)) {
         lastSupportCheckTime = currentTime;
+        supportCheckDirty = false;
         checkAndTriggerFalling(blocks);
 
         // Also check any locked blocks on the bottom floor

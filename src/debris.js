@@ -71,15 +71,14 @@ export class DebrisManager {
             );
             const piecePosition = position.clone().add(offset);
 
-            // Explosion velocity
+            // Explosion velocity with natural 3D radial distribution
             const angle = Math.random() * Math.PI * 2;
-            const elevation = (Math.random() - 0.5) * Math.PI * 0.7; // -63 to +63 degrees
-            const horizontalSpeed = 5.0 + Math.random() * 6.0;
-            const verticalSpeed = 2.5 + Math.random() * 3.5;
+            const horizontalSpeed = 4.0 + Math.random() * 5.0;
+            const verticalSpeed = (Math.random() - 0.2) * 1.5;
 
             const initialVelocity = new THREE.Vector3(
                 Math.cos(angle) * horizontalSpeed,
-                verticalSpeed + Math.abs(elevation) * 1.5,
+                verticalSpeed,
                 Math.sin(angle) * horizontalSpeed
             );
 

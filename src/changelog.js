@@ -4,6 +4,18 @@
  */
 
 export const changelog = {
+    "8.21.0": {
+        title: "Multi-Blast Cooldown Engine & Atmospheric Detonation Aftermath",
+        date: "2026-08-31",
+        changes: [
+            "Independent Multi-Blast Engine: Supports up to 6 concurrent explosions with isolated GPU slots and distinct cooldown lifecycles",
+            "4-Phase Detonation Aftermath: Rapid heat bloom, molten cooling, deep charcoal ash dwell, and progressive ash dissolution",
+            "Volumetric Billboard Smoke System: 320-sprite pool emitting organic billowing cloud puffs directly from the blast epicenter",
+            "Accurate Visual Blast Locking: Calibrated shockwave radius ensuring only visibly charred crater blocks are locked, keeping clean outer blocks freely playable",
+            "Full Cooldown Immobilization: Affected blocks remain safely immobilized across all phases until ash has 100% dissolved",
+            "Ash Soot Shader Coating: Sinks glowing indicators and overlays burnt charcoal soot on direct and ambient block faces"
+        ]
+    },
     "8.20.0": {
         title: "Welded Translucent Ice Clusters & Radial Tower Physics",
         date: "2026-08-28",

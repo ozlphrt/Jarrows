@@ -13,40 +13,76 @@ let lastPlayTimes = {}; // Track last play time for debounce
 // Synthetic sound generators (Web Audio API)
 const syntheticSounds = {
     /**
-     * "Liquid Satin": A soft, filtered white-noise sweep.
-     * Evokes air moving over smooth glass.
+     * "Springy Boing": A very soft, gentle, warm spring wobble with low-pass filtering.
      */
-    'syntheticSpin': (ctx, destination, volume) => {
-        // Noise burst - 0.75 seconds of audio data
-        const duration = 0.75;
-        const bufferSize = Math.ceil(ctx.sampleRate * duration);
-        const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-        const data = buffer.getChannelData(0);
-        for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+    'syntheticBlockSnap': (ctx, destination, volume = 0.2) => {
+        const now = ctx.currentTime;
+        const duration = 0.18;
+        const baseVol = volume * 0.045; // Whisper-soft level
 
-        const noise = ctx.createBufferSource();
-        noise.buffer = buffer;
-
+        // Master warm low-pass filter to remove any sharpness/harshness
         const filter = ctx.createBiquadFilter();
-        filter.type = "highpass";
-        filter.frequency.setValueAtTime(6000, ctx.currentTime);
-        filter.frequency.exponentialRampToValueAtTime(800, ctx.currentTime + duration);
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(600, now);
+        filter.Q.setValueAtTime(1.2, now);
+        filter.connect(destination);
 
-        const env = ctx.createGain();
-        const peakGain = 0.12 * (volume / 0.5);
+        // Layer 1: Spring Vibrato Wobble (24Hz LFO modulating pitch for elastic boing)
+        const lfo = ctx.createOscillator();
+        const lfoGain = ctx.createGain();
+        lfo.type = 'sine';
+        lfo.frequency.setValueAtTime(24, now); // 24Hz soft coil oscillation
+        lfoGain.gain.setValueAtTime(35, now);  // Subtle wobble depth in Hz
+        lfoGain.gain.exponentialRampToValueAtTime(0.1, now + duration);
+        lfo.connect(lfoGain);
 
-        env.gain.setValueAtTime(0, ctx.currentTime);
-        env.gain.linearRampToValueAtTime(peakGain, ctx.currentTime + 0.02);
-        env.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+        // Layer 2: Primary "Boiiing" Oscillator (Smooth elastic pitch sweep)
+        const springOsc = ctx.createOscillator();
+        const springGain = ctx.createGain();
+        springOsc.type = 'sine';
+        springOsc.frequency.setValueAtTime(140, now);
+        springOsc.frequency.exponentialRampToValueAtTime(420, now + 0.035);
+        springOsc.frequency.exponentialRampToValueAtTime(210, now + duration);
+        lfoGain.connect(springOsc.frequency);
 
-        noise.connect(filter);
-        filter.connect(env);
-        env.connect(destination);
-        noise.start();
-        // Explicitly stop after duration to prevent continued playback
-        noise.stop(ctx.currentTime + duration);
+        springGain.gain.setValueAtTime(0, now);
+        springGain.gain.linearRampToValueAtTime(baseVol, now + 0.01);
+        springGain.gain.exponentialRampToValueAtTime(0.00005, now + duration);
 
-        return noise;
+        springOsc.connect(springGain);
+        springGain.connect(filter);
+
+        // Layer 3: Warm Sine Overtone
+        const harmOsc = ctx.createOscillator();
+        const harmGain = ctx.createGain();
+        harmOsc.type = 'sine';
+        harmOsc.frequency.setValueAtTime(280, now);
+        harmOsc.frequency.exponentialRampToValueAtTime(560, now + 0.035);
+        harmOsc.frequency.exponentialRampToValueAtTime(310, now + duration * 0.6);
+        lfoGain.connect(harmOsc.frequency);
+
+        harmGain.gain.setValueAtTime(0, now);
+        harmGain.gain.linearRampToValueAtTime(baseVol * 0.3, now + 0.012);
+        harmGain.gain.exponentialRampToValueAtTime(0.00005, now + duration * 0.6);
+
+        harmOsc.connect(harmGain);
+        harmGain.connect(filter);
+
+        // Start and stop all nodes cleanly
+        lfo.start(now);
+        lfo.stop(now + duration);
+        springOsc.start(now);
+        springOsc.stop(now + duration);
+        harmOsc.start(now);
+        harmOsc.stop(now + duration * 0.65);
+
+        return springOsc;
+    },
+    'syntheticSpin': (ctx, destination, volume) => {
+        return syntheticSounds['syntheticBlockSnap'](ctx, destination, volume);
+    },
+    'syntheticMagneticSnap': (ctx, destination, volume) => {
+        return syntheticSounds['syntheticBlockSnap'](ctx, destination, volume);
     },
     /**
      * "Crush": A sharp, plasticky "dice clack" sound.
@@ -106,6 +142,138 @@ const syntheticSounds = {
         satinSource.start(now);
 
         return lowOsc; // Return the first oscillator as a representative source
+    },
+
+    /**
+     * "Fire Ignite": A rich whoosh of flame ignition with snapping wood/ember crackles.
+     */
+    'syntheticFireIgnite': (ctx, destination, volume = 0.25) => {
+        const now = ctx.currentTime;
+        const duration = 0.5;
+        const baseVol = volume * 0.26;
+
+        // Layer 1: Fire ignition whoosh
+        const bufferSize = Math.ceil(ctx.sampleRate * duration);
+        const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+        const output = noiseBuffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+            output[i] = Math.random() * 2 - 1;
+        }
+
+        const whiteNoise = ctx.createBufferSource();
+        whiteNoise.buffer = noiseBuffer;
+
+        const bandpass = ctx.createBiquadFilter();
+        bandpass.type = 'bandpass';
+        bandpass.frequency.setValueAtTime(600, now);
+        bandpass.frequency.exponentialRampToValueAtTime(1400, now + 0.1);
+        bandpass.frequency.exponentialRampToValueAtTime(300, now + duration);
+        bandpass.Q.setValueAtTime(1.2, now);
+
+        const gainNode = ctx.createGain();
+        gainNode.gain.setValueAtTime(0.001, now);
+        gainNode.gain.linearRampToValueAtTime(baseVol, now + 0.06);
+        gainNode.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+
+        whiteNoise.connect(bandpass);
+        bandpass.connect(gainNode);
+        gainNode.connect(destination);
+        whiteNoise.start(now);
+        whiteNoise.stop(now + duration);
+
+        // Layer 2: Ember crackles
+        for (let j = 0; j < 3; j++) {
+            const crackleTime = now + 0.04 + Math.random() * 0.25;
+            const popOsc = ctx.createOscillator();
+            popOsc.type = 'triangle';
+            popOsc.frequency.setValueAtTime(1600 + Math.random() * 600, crackleTime);
+            popOsc.frequency.exponentialRampToValueAtTime(200, crackleTime + 0.02);
+
+            const popGain = ctx.createGain();
+            popGain.gain.setValueAtTime(baseVol * 0.5, crackleTime);
+            popGain.gain.exponentialRampToValueAtTime(0.0001, crackleTime + 0.02);
+
+            popOsc.connect(popGain);
+            popGain.connect(destination);
+            popOsc.start(crackleTime);
+            popOsc.stop(crackleTime + 0.025);
+        }
+
+        return whiteNoise;
+    },
+
+    /**
+     * "Molten Sizzle": A soft burning ember sizzle / heat crackle.
+     */
+    'syntheticSizzle': (ctx, destination, volume = 0.25) => {
+        const now = ctx.currentTime;
+        const duration = 0.45;
+        const baseVol = volume * 0.22;
+
+        // Filtered noise for sizzle
+        const bufferSize = Math.ceil(ctx.sampleRate * duration);
+        const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+        const output = noiseBuffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+            output[i] = (Math.random() * 2 - 1) * (Math.random() < 0.35 ? 1.0 : 0.25);
+        }
+
+        const whiteNoise = ctx.createBufferSource();
+        whiteNoise.buffer = noiseBuffer;
+
+        const bandpass = ctx.createBiquadFilter();
+        bandpass.type = 'bandpass';
+        bandpass.frequency.setValueAtTime(2400, now);
+        bandpass.Q.setValueAtTime(1.8, now);
+
+        const gainNode = ctx.createGain();
+        gainNode.gain.setValueAtTime(0.001, now);
+        gainNode.gain.linearRampToValueAtTime(baseVol, now + 0.04);
+        gainNode.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+
+        whiteNoise.connect(bandpass);
+        bandpass.connect(gainNode);
+        gainNode.connect(destination);
+
+        whiteNoise.start(now);
+        whiteNoise.stop(now + duration);
+        return whiteNoise;
+    },
+
+    /**
+     * "Steam Quench": A gentle steam release quench sound when charred blocks cool and recover.
+     */
+    'syntheticQuench': (ctx, destination, volume = 0.25) => {
+        const now = ctx.currentTime;
+        const duration = 0.35;
+        const baseVol = volume * 0.18;
+
+        const bufferSize = Math.ceil(ctx.sampleRate * duration);
+        const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+        const output = noiseBuffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+            output[i] = Math.random() * 2 - 1;
+        }
+
+        const whiteNoise = ctx.createBufferSource();
+        whiteNoise.buffer = noiseBuffer;
+
+        const lowpass = ctx.createBiquadFilter();
+        lowpass.type = 'lowpass';
+        lowpass.frequency.setValueAtTime(3200, now);
+        lowpass.frequency.exponentialRampToValueAtTime(600, now + duration);
+
+        const gainNode = ctx.createGain();
+        gainNode.gain.setValueAtTime(baseVol, now);
+        gainNode.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+
+        whiteNoise.connect(lowpass);
+        lowpass.connect(gainNode);
+        gainNode.connect(destination);
+
+        whiteNoise.start(now);
+        whiteNoise.stop(now + duration);
+        return whiteNoise;
     }
 };
 
@@ -175,10 +343,11 @@ async function playSound(name, volume = 0.5) {
         }
     }
 
-    // Debounce check: Prevent playing the same sound multiple times within 100ms
+    // Debounce check: Prevent playing the same sound multiple times within debounce threshold
     const now = Date.now();
     const lastTime = lastPlayTimes[name] || 0;
-    if (now - lastTime < 100) {
+    const debounceMs = (name === 'syntheticBlockSnap' || name === 'syntheticMagneticSnap') ? 8 : 100;
+    if (now - lastTime < debounceMs) {
         // Debounced - skip playing
         return null;
     }

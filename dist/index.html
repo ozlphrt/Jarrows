@@ -493,55 +493,42 @@
         .extended-stats-modal-overlay {
             position: fixed;
             inset: 0;
-            background: rgba(0, 0, 0, 0.55);
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
+            background: rgba(10, 15, 29, 0.78);
+            backdrop-filter: blur(20px) saturate(160%);
+            -webkit-backdrop-filter: blur(20px) saturate(160%);
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
-            z-index: 2000;
+            padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+            z-index: 3500;
             overflow-y: auto;
             -webkit-overflow-scrolling: touch;
-        }
-
-        /* Time-up modal: transparent overlay, no blur - allow viewing debris animation */
-        #time-up-modal.extended-stats-modal-overlay {
-            background: transparent;
-            backdrop-filter: none;
-            -webkit-backdrop-filter: none;
-            pointer-events: none;
-            /* Allow clicks to pass through overlay */
-        }
-
-        /* But make the panel itself clickable */
-        #time-up-modal .extended-stats-modal-panel {
-            pointer-events: auto;
         }
 
         .extended-stats-modal-panel {
             width: calc(100vw - 32px);
             max-width: 420px;
-            /* Portrait-first: use full height efficiently */
             min-height: auto;
             max-height: calc(100vh - 40px - max(12px, env(safe-area-inset-top, 0)) - max(12px, env(safe-area-inset-bottom, 0)));
             margin: 0;
-            padding: calc(24px + env(safe-area-inset-top)) calc(20px + env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom)) calc(20px + env(safe-area-inset-left));
+            padding: 28px 24px;
             box-sizing: border-box;
-            background: rgba(255, 255, 255, 0.04);
-            backdrop-filter: blur(35px) saturate(160%);
-            -webkit-backdrop-filter: blur(35px) saturate(160%);
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
-            border-radius: 24px;
+            background: linear-gradient(165deg, rgba(28, 38, 58, 0.95), rgba(15, 23, 42, 0.98));
+            backdrop-filter: blur(35px) saturate(180%);
+            -webkit-backdrop-filter: blur(35px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            box-shadow: 0 24px 64px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+            border-radius: 26px;
             overflow-y: auto;
             overflow-x: hidden;
             -webkit-overflow-scrolling: touch;
             color: rgba(255, 255, 255, 0.95);
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+            font-family: 'Fredoka', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
             position: relative;
             display: flex;
             flex-direction: column;
+            align-items: center;
+            text-align: center;
             gap: 16px;
         }
 
@@ -549,44 +536,44 @@
         @media (orientation: landscape) and (min-width: 769px) {
             .extended-stats-modal-panel {
                 width: calc(100vw - 32px);
-                max-width: 560px;
+                max-width: 540px;
                 max-height: calc(100vh - 32px);
                 margin: 16px;
-                padding: calc(18px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) calc(18px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
+                padding: 24px 28px;
             }
         }
-
-        /* Removed ::before gradient strip */
 
         .extended-stats-modal-panel h1,
         .extended-stats-modal-panel h2,
         .extended-stats-modal-panel h3,
         .extended-stats-modal-panel .modal-title {
-            font-size: 26px; /* Increased from 20px */
+            font-size: 26px;
             font-weight: 900;
             letter-spacing: 0.4px;
-            margin: 0 0 10px 0;
-            color: rgba(255, 255, 255, 0.95);
-            font-family: 'Fredoka', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            margin: 0 0 4px 0;
+            color: rgba(255, 255, 255, 0.98);
+            font-family: 'Fredoka', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
         }
 
         .extended-stats-modal-panel p,
         .extended-stats-modal-panel div:not(.modal-actions):not(.extended-stats-modal-panel) {
-            font-size: 18px; /* Increased from 15px */
+            font-size: 16px;
             line-height: 1.5;
             opacity: 0.95;
-            color: rgba(255, 255, 255, 0.92);
+            color: rgba(255, 255, 255, 0.88);
             font-weight: 600;
-            font-family: 'Fredoka', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            font-family: 'Fredoka', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
         }
 
         .extended-stats-modal-panel b,
         .extended-stats-modal-panel strong {
             font-weight: 900;
+            color: #ffffff;
         }
 
         .extended-stats-modal-panel ul {
-            margin: 10px 0 10px 18px;
+            margin: 8px 0 8px 18px;
+            text-align: left;
         }
 
         .extended-stats-modal-panel .modal-actions {
@@ -594,8 +581,122 @@
             flex-direction: column;
             gap: 10px;
             justify-content: flex-end;
-            margin-top: 16px;
+            margin-top: 10px;
             width: 100%;
+        }
+
+        /* Time-up modal overlay and panel styling */
+        #time-up-modal.extended-stats-modal-overlay {
+            background: rgba(10, 15, 29, 0.82) !important;
+            backdrop-filter: blur(24px) saturate(160%) !important;
+            -webkit-backdrop-filter: blur(24px) saturate(160%) !important;
+            pointer-events: auto !important;
+        }
+
+        #time-up-modal .extended-stats-modal-panel {
+            max-width: 380px !important;
+            padding: 32px 26px 28px !important;
+            background: linear-gradient(165deg, rgba(30, 41, 62, 0.96), rgba(15, 23, 42, 0.99)) !important;
+            border: 1px solid rgba(255, 255, 255, 0.16) !important;
+            box-shadow: 0 30px 80px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 255, 255, 0.09), inset 0 1px 0 rgba(255, 255, 255, 0.25) !important;
+            border-radius: 28px !important;
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            text-align: center !important;
+            gap: 16px !important;
+        }
+
+        .time-up-icon-badge {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(255, 71, 87, 0.25) 0%, rgba(255, 71, 87, 0.08) 100%);
+            border: 1px solid rgba(255, 71, 87, 0.4);
+            box-shadow: 0 0 20px rgba(255, 71, 87, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 30px;
+            margin-bottom: 2px;
+        }
+
+        .time-up-header {
+            font-size: 34px !important;
+            font-weight: 900 !important;
+            letter-spacing: 0.5px !important;
+            margin: 0 !important;
+            color: #ffffff !important;
+            text-shadow: 0 3px 12px rgba(0, 0, 0, 0.6) !important;
+            font-family: 'Fredoka', 'Inter', sans-serif !important;
+        }
+
+        .time-up-stat-card {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.09);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+            border-radius: 18px;
+            padding: 16px 14px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .time-up-stat-label {
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: rgba(251, 191, 36, 0.85);
+        }
+
+        .time-up-level-num {
+            font-size: 52px;
+            font-weight: 900;
+            line-height: 1.05;
+            color: #fbbf24;
+            text-shadow: 0 4px 16px rgba(251, 191, 36, 0.45);
+            font-family: 'Fredoka', 'Inter', sans-serif;
+        }
+
+        .time-up-stat-msg {
+            font-size: 14px;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.75);
+            margin-top: 4px;
+        }
+
+        .time-up-primary-btn {
+            background: linear-gradient(135deg, #ff4757, #ff6b81) !important;
+            border: none !important;
+            color: #ffffff !important;
+            font-size: 19px !important;
+            font-weight: 800 !important;
+            font-family: 'Fredoka', 'Inter', sans-serif !important;
+            padding: 15px 24px !important;
+            border-radius: 18px !important;
+            width: 100% !important;
+            box-shadow: 0 8px 24px rgba(255, 71, 87, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.3) !important;
+            cursor: pointer !important;
+            transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1) !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3) !important;
+            letter-spacing: 0.3px !important;
+        }
+
+        .time-up-primary-btn:hover {
+            transform: translateY(-2px) !important;
+            box-shadow: 0 12px 30px rgba(255, 71, 87, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.45) !important;
+            filter: brightness(1.08) !important;
+        }
+
+        .time-up-primary-btn:active {
+            transform: translateY(0) scale(0.98) !important;
         }
 
         /* Game Over Modal Animation */
@@ -612,43 +713,16 @@
         }
 
         #time-up-modal:not(.game-over-modal-entering) .extended-stats-modal-panel {
-            transform: translateY(30px);
+            transform: translateY(30px) scale(0.95);
             opacity: 0;
         }
 
         #time-up-modal .extended-stats-modal-panel {
-            transition: transform 0.5s ease-out, opacity 0.5s ease-out;
+            transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.45s ease-out;
         }
 
         #time-up-modal.game-over-modal-entering .extended-stats-modal-panel {
-            transform: translateY(0);
-            opacity: 1;
-        }
-
-        #time-up-modal:not(.game-over-modal-entering) .time-up-header,
-        #time-up-modal:not(.game-over-modal-entering) .time-up-summary,
-        #time-up-modal:not(.game-over-modal-entering) .time-up-actions {
-            opacity: 0;
-        }
-
-        #time-up-modal .time-up-header,
-        #time-up-modal .time-up-summary,
-        #time-up-modal .time-up-actions {
-            transition: opacity 0.3s ease-out;
-        }
-
-        #time-up-modal.game-over-modal-entering .time-up-header {
-            transition-delay: 0.1s;
-            opacity: 1;
-        }
-
-        #time-up-modal.game-over-modal-entering .time-up-summary {
-            transition-delay: 0.2s;
-            opacity: 1;
-        }
-
-        #time-up-modal.game-over-modal-entering .time-up-actions {
-            transition-delay: 0.3s;
+            transform: translateY(0) scale(1);
             opacity: 1;
         }
 
@@ -1617,37 +1691,142 @@
             fill: none;
         }
 
-        /* Dice button — no box, same visual weight as settings */
+        /* Dice button — stable, upright, zero tilting */
         #dice-button.stats-control-btn {
             background: transparent;
             padding: 8px;
             border-radius: 12px;
+            transform: none !important;
         }
 
         #dice-button.stats-control-btn:hover {
             color: rgba(255, 255, 255, 1);
+            transform: none !important;
         }
 
         #dice-button.stats-control-btn .btn-icon {
             width: 26px;
             height: 26px;
-            transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+            transform: none !important;
         }
 
-        #dice-button.btn-rotating .btn-icon {
-            animation: dice-spin 0.8s cubic-bezier(0.45, 0.05, 0.55, 0.95);
+        /* Hide background icon when active countdown badge is displayed */
+        #dice-button:has(.spin-countdown-active) .btn-icon {
+            opacity: 0 !important;
+            visibility: hidden !important;
         }
 
-        @keyframes dice-spin {
-            0% { transform: rotate(0deg) scale(1); }
-            40% { transform: rotate(180deg) scale(1.3); }
-            100% { transform: rotate(360deg) scale(1); }
+        /* Camera Auto-Zoom HUD button (shown when manual zoom is active) */
+        #camera-zoom-btn.stats-control-btn {
+            background: rgba(255, 255, 255, 0.08);
+            padding: 8px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: rgba(255, 255, 255, 0.85);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            position: relative;
+        }
+
+        #camera-zoom-btn.stats-control-btn:hover {
+            color: #ffffff;
+            background: rgba(255, 255, 255, 0.16);
+            border-color: rgba(255, 255, 255, 0.28);
+            transform: translateY(-1px);
+        }
+
+        #camera-zoom-btn.stats-control-btn .btn-icon {
+            width: 24px;
+            height: 24px;
+            stroke: #ff7675;
         }
 
         @keyframes cost-float {
             0% { opacity: 0; transform: translate(-50%, 0) scale(0.5); }
             20% { opacity: 1; transform: translate(-50%, -20px) scale(1.2); }
             100% { opacity: 0; transform: translate(-50%, -80px) scale(1); }
+        }
+
+        .spin-counter-badge {
+            position: absolute;
+            top: -4px;
+            right: -4px;
+            min-width: 18px;
+            height: 18px;
+            padding: 0 4px;
+            border-radius: 9px;
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 800;
+            color: #fff;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+            pointer-events: none;
+            transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+            z-index: 10;
+        }
+
+        /* Active countdown: Covers the ENTIRE spin button with prominent, color-coded timer */
+        .spin-counter-badge.spin-countdown-active {
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            width: 100% !important;
+            height: 100% !important;
+            border-radius: 12px !important;
+            font-size: 32px !important;
+            line-height: 1 !important;
+            font-weight: 900 !important;
+            font-family: 'Fredoka', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+            letter-spacing: -1px !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5) !important;
+            border-width: 1.5px !important;
+            box-sizing: border-box !important;
+            z-index: 20 !important;
+            backdrop-filter: blur(16px) !important;
+            -webkit-backdrop-filter: blur(16px) !important;
+            transform: none !important;
+            animation: none !important;
+            transition: background 0.35s ease, border-color 0.35s ease, box-shadow 0.35s ease;
+        }
+
+        /* Color code: High time (Tones of Green) */
+        .spin-counter-badge.spin-countdown-active.countdown-phase-high {
+            background: linear-gradient(135deg, #10b981, #059669) !important;
+            border-color: #34d399 !important;
+            color: #ffffff !important;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.3) !important;
+            animation: none !important;
+        }
+
+        /* Color code: Medium time (Tones of Orange) */
+        .spin-counter-badge.spin-countdown-active.countdown-phase-med {
+            background: linear-gradient(135deg, #f97316, #ea580c) !important;
+            border-color: #fb923c !important;
+            color: #ffffff !important;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.3) !important;
+            animation: none !important;
+        }
+
+        /* Color code: Low time (Tones of Red) */
+        .spin-counter-badge.spin-countdown-active.countdown-phase-low {
+            background: linear-gradient(135deg, #ef4444, #dc2626) !important;
+            border-color: #f87171 !important;
+            color: #ffffff !important;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.35) !important;
+            animation: none !important;
         }
 
 
@@ -1872,7 +2051,7 @@
             }
         }
     </style>
-  <script type="module" crossorigin src="/Jarrows/assets/index-DkD1ixmW.js"></script>
+  <script type="module" crossorigin src="/Jarrows/assets/index-CzoI933h.js"></script>
   <link rel="modulepreload" crossorigin href="/Jarrows/assets/preload-helper-Si1OKCYg.js">
 <link rel="manifest" href="/Jarrows/manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="/Jarrows/registerSW.js"></script></head>
 
@@ -1917,10 +2096,17 @@
 
         <span class="stats-separator">|</span>
 
-        <span class="stats-separator">|</span>
+        <!-- Camera Auto Zoom button (Appears when manual zoom is active) -->
+        <button class="stats-control-btn" id="camera-zoom-btn" title="Auto-Zoom Disabled (Tap to Re-enable)" style="display: none; opacity: 0; transition: opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1), transform 0.2s ease;">
+            <svg class="btn-icon" id="camera-zoom-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2m5.66 0H14a2 2 0 0 1 2 2v3.34l1 7.16" fill="none"></path>
+                <line x1="1" y1="1" x2="23" y2="23" fill="none"></line>
+                <path d="M23 7l-7 5 7 5V7z" fill="none"></path>
+            </svg>
+        </button>
 
         <!-- Settings (Moved from game-controls) -->
-        <div id="settings-container" style="position: relative;">
+        <div id="settings-container" style="position: relative; z-index: 10000;">
             <button class="stats-control-btn" id="settings-toggle" title="Settings">
                 <svg class="btn-icon" viewBox="0 0 24 24">
                     <circle cx="12" cy="12" r="3" stroke-linecap="round" stroke-linejoin="round"></circle>
@@ -1930,7 +2116,7 @@
                 </svg>
             </button>
             <div id="settings-menu"
-                style="position: absolute; bottom: 100%; right: 0; margin-bottom: 24px; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 16px; padding: 12px; display: none; flex-direction: column; gap: 10px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4); pointer-events: auto;">
+                style="position: absolute; bottom: 100%; right: 0; margin-bottom: 24px; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 16px; padding: 12px; display: none; flex-direction: column; gap: 10px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4); pointer-events: auto; z-index: 10001;">
                 <button class="toggle-icon" id="colors-toggle" title="Colored/White Blocks">
                     <svg id="colors-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                         stroke-linecap="round" stroke-linejoin="round">
@@ -2222,16 +2408,17 @@
     <!-- Time Up Modal -->
     <div id="time-up-modal" class="extended-stats-modal-overlay" style="display:none; z-index: 3500;">
         <div class="extended-stats-modal-panel">
-            <div style="display:flex; align-items:center; gap: 10px; margin-bottom: 12px;">
-                <span style="font-size: 24px;">⏱️</span>
-                <div class="modal-title time-up-header">Time's Up!</div>
+            <div class="time-up-icon-badge">
+                <span>⏱️</span>
             </div>
-            <div class="time-up-summary" style="margin-bottom: 16px; line-height: 1.6; opacity: 0.9;">
-                <p style="margin: 0 0 10px 0;">You reached <strong>Level <span id="time-up-level">0</span></strong></p>
-                <p style="margin: 0; opacity: 0.8; font-size: 14px;">Great effort! Ready to try again?</p>
+            <div class="time-up-header">Time's Up!</div>
+            <div class="time-up-stat-card">
+                <div class="time-up-stat-label">LEVEL REACHED</div>
+                <div class="time-up-level-num" id="time-up-level">0</div>
+                <div class="time-up-stat-msg">Great effort! Ready to try again?</div>
             </div>
-            <div class="modal-actions time-up-actions">
-                <button id="time-up-restart-level" class="game-button" style="padding: 10px 14px;">Restart Game</button>
+            <div class="modal-actions" style="margin-top: 6px; width: 100%;">
+                <button id="time-up-restart-level" class="time-up-primary-btn">Restart Game</button>
             </div>
         </div>
     </div>

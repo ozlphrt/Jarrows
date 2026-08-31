@@ -353,9 +353,144 @@ export function createCameraPivotHelpers(scene, pivotX, pivotY, pivotZ, gridSize
 /**
  * Global shader uniforms shared across all GPU-accelerated materials
  */
+const MAX_BLASTS = 6;
+
 export const globalUniforms = {
-    uTime: { value: 0.0 }
+    uTime: { value: 0.0 },
+    uThermalBlastPos: { value: Array.from({ length: MAX_BLASTS }, () => new THREE.Vector3(0, -9999, 0)) },
+    uThermalBlastRadius: { value: new Float32Array(MAX_BLASTS) },
+    uThermalBlastIntensity: { value: new Float32Array(MAX_BLASTS) },
+    uAshRadius: { value: new Float32Array(MAX_BLASTS) },
+    uAshIntensity: { value: new Float32Array(MAX_BLASTS) }
 };
+
+/**
+ * Configure continuous 3D spherical thermal scorch, molten field & lingering ashy soot on GPU
+ * Supports up to 6 simultaneous independent detonations.
+ */
+export function setupThermalMaterial(material) {
+    const previousCompile = material.onBeforeCompile;
+    material.onBeforeCompile = (shader) => {
+        if (typeof previousCompile === 'function') {
+            previousCompile(shader);
+        }
+
+        shader.uniforms.uThermalBlastPos = globalUniforms.uThermalBlastPos;
+        shader.uniforms.uThermalBlastRadius = globalUniforms.uThermalBlastRadius;
+        shader.uniforms.uThermalBlastIntensity = globalUniforms.uThermalBlastIntensity;
+        shader.uniforms.uAshRadius = globalUniforms.uAshRadius;
+        shader.uniforms.uAshIntensity = globalUniforms.uAshIntensity;
+
+        let extraVertDeclarations = '';
+        if (!shader.vertexShader.includes('vThermalWorldPos')) {
+            extraVertDeclarations += 'varying vec3 vThermalWorldPos;\n';
+        }
+        if (!shader.vertexShader.includes('vThermalWorldNormal')) {
+            extraVertDeclarations += 'varying vec3 vThermalWorldNormal;\n';
+        }
+        if (extraVertDeclarations.length > 0) {
+            shader.vertexShader = shader.vertexShader.replace(
+                '#include <common>',
+                `#include <common>\n${extraVertDeclarations}`
+            );
+        }
+
+        if (!shader.vertexShader.includes('// __THERMAL_VERT_ASSIGN__')) {
+            shader.vertexShader = shader.vertexShader.replace(
+                '#include <worldpos_vertex>',
+                `
+                #include <worldpos_vertex>
+                // __THERMAL_VERT_ASSIGN__
+                vThermalWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
+                vThermalWorldNormal = normalize((modelMatrix * vec4(objectNormal, 0.0)).xyz);
+                `
+            );
+        }
+
+        let extraFragUniforms = '';
+        if (!shader.fragmentShader.includes('uThermalBlastPos')) {
+            extraFragUniforms += `
+                uniform vec3 uThermalBlastPos[6];
+                uniform float uThermalBlastRadius[6];
+                uniform float uThermalBlastIntensity[6];
+                uniform float uAshRadius[6];
+                uniform float uAshIntensity[6];
+            `;
+        }
+        if (!shader.fragmentShader.includes('vThermalWorldPos')) {
+            extraFragUniforms += 'varying vec3 vThermalWorldPos;\n';
+        }
+        if (!shader.fragmentShader.includes('vThermalWorldNormal')) {
+            extraFragUniforms += 'varying vec3 vThermalWorldNormal;\n';
+        }
+        if (extraFragUniforms.length > 0) {
+            shader.fragmentShader = shader.fragmentShader.replace(
+                '#include <common>',
+                `#include <common>\n${extraFragUniforms}`
+            );
+        }
+
+        if (!shader.fragmentShader.includes('// __THERMAL_AFTERMATH_HOOK__')) {
+            shader.fragmentShader = shader.fragmentShader.replace(
+                '#include <dithering_fragment>',
+                `
+                #include <dithering_fragment>
+                // __THERMAL_AFTERMATH_HOOK__
+                {
+                    float maxAshFactor = 0.0;
+                    float maxHeat = 0.0;
+                    vec3 totalThermalGlow = vec3(0.0);
+
+                    for (int bi = 0; bi < 6; bi++) {
+                        if (uThermalBlastRadius[bi] > 0.01 || uAshRadius[bi] > 0.01) {
+                            vec3 toFrag = vThermalWorldPos - uThermalBlastPos[bi];
+                            float dist = length(toFrag);
+                            vec3 blastDir = dist > 1e-4 ? toFrag / dist : vec3(0.0, 1.0, 0.0);
+                            vec3 norm = length(vThermalWorldNormal) > 1e-4 ? normalize(vThermalWorldNormal) : vec3(0.0, 1.0, 0.0);
+                            float directFacing = max(0.0, dot(-blastDir, norm));
+
+                            // 1. Dark Ashy Soot Field (Lingers after molten cooling)
+                            if (dist <= uAshRadius[bi] + 0.6 && uAshIntensity[bi] > 0.001) {
+                                float ashInner = uAshRadius[bi] - dist;
+                                float ashFacing = 0.38 + 0.62 * pow(max(1e-4, directFacing), 0.45);
+                                float af = smoothstep(-0.6, 0.6, ashInner) * uAshIntensity[bi] * ashFacing;
+                                maxAshFactor = max(maxAshFactor, af);
+                            }
+
+                            // 2. Molten Glowing Core (Contracts from outside-in)
+                            if (dist <= uThermalBlastRadius[bi] + 0.5 && uThermalBlastIntensity[bi] > 0.001) {
+                                float heatInner = uThermalBlastRadius[bi] - dist;
+                                float heatFacing = max(directFacing, 0.22 * max(0.0, dot(vec3(0.0, 1.0, 0.0), norm)));
+                                if (heatFacing > 0.03) {
+                                    float heat = smoothstep(-0.5, 0.7, heatInner) * uThermalBlastIntensity[bi] * pow(max(1e-4, heatFacing), 0.65);
+                                    maxHeat = max(maxHeat, heat);
+
+                                    vec3 colEmber = vec3(0.80, 0.10, 0.02);
+                                    vec3 colOrange = vec3(1.0, 0.40, 0.0);
+                                    vec3 colWhiteHot = vec3(1.0, 0.92, 0.65);
+
+                                    vec3 thermalGlow = mix(colEmber, mix(colOrange, colWhiteHot, clamp((heat - 0.42) * 2.0, 0.0, 1.0)), clamp(heat * 1.5, 0.0, 1.0));
+                                    totalThermalGlow += thermalGlow * (heat * 1.7);
+                                }
+                            }
+                        }
+                    }
+
+                    if (maxAshFactor > 0.001) {
+                        vec3 darkAshColor = vec3(0.032, 0.035, 0.040); // Deep matte burnt charcoal soot
+                        gl_FragColor.rgb = mix(gl_FragColor.rgb, darkAshColor, maxAshFactor * 0.96);
+                    }
+
+                    if (maxHeat > 0.001) {
+                        gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.06, 0.07, 0.09), maxHeat * 0.90);
+                        gl_FragColor.rgb += totalThermalGlow;
+                    }
+                }
+                `
+            );
+        }
+    };
+}
 
 /**
  * Configure shader hook for materials that pulse on the GPU (bombs, highlights)
@@ -365,34 +500,116 @@ export function setupPulsingMaterial(material, options = {}) {
     const isBomb = options.isBomb || false;
     const isHighlight = options.isHighlight || false;
 
+    const previousCompile = material.onBeforeCompile;
     material.onBeforeCompile = (shader) => {
+        if (typeof previousCompile === 'function') {
+            previousCompile(shader);
+        }
+
         shader.uniforms.uTime = globalUniforms.uTime;
         shader.uniforms.uPulseOffset = { value: pulseOffset };
+        shader.uniforms.uThermalBlastPos = globalUniforms.uThermalBlastPos;
+        shader.uniforms.uAshRadius = globalUniforms.uAshRadius;
+        shader.uniforms.uAshIntensity = globalUniforms.uAshIntensity;
 
-        shader.fragmentShader = `
-            uniform float uTime;
-            uniform float uPulseOffset;
-            ${shader.fragmentShader}
-        `;
+        let extraVertDeclarations = '';
+        if (!shader.vertexShader.includes('vThermalWorldPos')) {
+            extraVertDeclarations += 'varying vec3 vThermalWorldPos;\n';
+        }
+        if (!shader.vertexShader.includes('vThermalWorldNormal')) {
+            extraVertDeclarations += 'varying vec3 vThermalWorldNormal;\n';
+        }
+        if (extraVertDeclarations.length > 0) {
+            shader.vertexShader = shader.vertexShader.replace(
+                '#include <common>',
+                `#include <common>\n${extraVertDeclarations}`
+            );
+        }
 
-        if (isBomb) {
-            shader.fragmentShader = shader.fragmentShader.replace(
-                '#include <emissivemap_fragment>',
+        if (!shader.vertexShader.includes('// __THERMAL_VERT_ASSIGN__')) {
+            shader.vertexShader = shader.vertexShader.replace(
+                '#include <worldpos_vertex>',
                 `
-                #include <emissivemap_fragment>
-                float t = uTime + uPulseOffset;
-                float breath = sin(t * 3.0) * 0.7 + sin(t * 7.0) * 0.3;
-                float pulseFactor = 0.33 + (breath + 1.0) * 0.5;
-                totalEmissiveRadiance *= pulseFactor;
+                #include <worldpos_vertex>
+                // __THERMAL_VERT_ASSIGN__
+                vThermalWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
+                vThermalWorldNormal = normalize((modelMatrix * vec4(objectNormal, 0.0)).xyz);
                 `
             );
-        } else if (isHighlight) {
+        }
+
+        // Declare uniforms only if not already declared by setupThermalMaterial
+        let extraFragmentUniforms = '';
+        if (!shader.fragmentShader.includes('uPulseOffset')) {
+            extraFragmentUniforms += `
+                uniform float uTime;
+                uniform float uPulseOffset;
+            `;
+        }
+        if (!shader.fragmentShader.includes('uThermalBlastPos')) {
+            extraFragmentUniforms += `
+                uniform vec3 uThermalBlastPos[6];
+                uniform float uAshRadius[6];
+                uniform float uAshIntensity[6];
+            `;
+        }
+        if (!shader.fragmentShader.includes('vThermalWorldPos')) {
+            extraFragmentUniforms += `
+                varying vec3 vThermalWorldPos;
+            `;
+        }
+        if (!shader.fragmentShader.includes('vThermalWorldNormal')) {
+            extraFragmentUniforms += `
+                varying vec3 vThermalWorldNormal;
+            `;
+        }
+
+        if (extraFragmentUniforms.length > 0) {
+            shader.fragmentShader = shader.fragmentShader.replace(
+                '#include <common>',
+                `#include <common>\n${extraFragmentUniforms}`
+            );
+        }
+
+        if (isBomb && !shader.fragmentShader.includes('// __PULSE_BOMB_HOOK__')) {
             shader.fragmentShader = shader.fragmentShader.replace(
                 '#include <emissivemap_fragment>',
                 `
                 #include <emissivemap_fragment>
-                float pulseFactor = sin(uTime * 3.0) * 0.3 + 0.7;
-                totalEmissiveRadiance *= pulseFactor;
+                // __PULSE_BOMB_HOOK__
+                {
+                    float t = uTime + uPulseOffset;
+                    float breath = sin(t * 3.0) * 0.7 + sin(t * 7.0) * 0.3;
+                    float pulseFactor = 0.33 + (breath + 1.0) * 0.5;
+                    totalEmissiveRadiance *= pulseFactor;
+
+                    // Extinguish emissive glow when ashed/locked by ANY active blast
+                    float pulseAsh = 0.0;
+                    for (int bi = 0; bi < 6; bi++) {
+                        if (uAshIntensity[bi] > 0.001 && uAshRadius[bi] > 0.01) {
+                            float dist = length(vThermalWorldPos - uThermalBlastPos[bi]);
+                            if (dist <= uAshRadius[bi] + 0.6) {
+                                float af = smoothstep(-0.6, 0.6, uAshRadius[bi] - dist) * uAshIntensity[bi];
+                                pulseAsh = max(pulseAsh, af);
+                            }
+                        }
+                    }
+                    if (pulseAsh > 0.001) {
+                        totalEmissiveRadiance *= max(0.0, 1.0 - pulseAsh * 0.96);
+                    }
+                }
+                `
+            );
+        } else if (isHighlight && !shader.fragmentShader.includes('// __PULSE_HIGHLIGHT_HOOK__')) {
+            shader.fragmentShader = shader.fragmentShader.replace(
+                '#include <emissivemap_fragment>',
+                `
+                #include <emissivemap_fragment>
+                // __PULSE_HIGHLIGHT_HOOK__
+                {
+                    float pulseFactor = sin(uTime * 3.0) * 0.3 + 0.7;
+                    totalEmissiveRadiance *= pulseFactor;
+                }
                 `
             );
         }
@@ -407,12 +624,26 @@ export function setupGlowQuadMaterial(material, options = {}) {
     material.onBeforeCompile = (shader) => {
         shader.uniforms.uTime = globalUniforms.uTime;
         shader.uniforms.uPulseOffset = { value: pulseOffset };
+        shader.uniforms.uThermalBlastPos = globalUniforms.uThermalBlastPos;
+        shader.uniforms.uAshRadius = globalUniforms.uAshRadius;
+        shader.uniforms.uAshIntensity = globalUniforms.uAshIntensity;
 
-        shader.vertexShader = `
+        shader.vertexShader = shader.vertexShader.replace(
+            '#include <common>',
+            `
+            #include <common>
             uniform float uTime;
             uniform float uPulseOffset;
-            ${shader.vertexShader}
-        `;
+            varying vec3 vGlowWorldPos;
+            `
+        );
+        shader.vertexShader = shader.vertexShader.replace(
+            '#include <worldpos_vertex>',
+            `
+            #include <worldpos_vertex>
+            vGlowWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
+            `
+        );
         shader.vertexShader = shader.vertexShader.replace(
             '#include <begin_vertex>',
             `
@@ -423,11 +654,18 @@ export function setupGlowQuadMaterial(material, options = {}) {
             `
         );
 
-        shader.fragmentShader = `
+        shader.fragmentShader = shader.fragmentShader.replace(
+            '#include <common>',
+            `
+            #include <common>
             uniform float uTime;
             uniform float uPulseOffset;
-            ${shader.fragmentShader}
-        `;
+            uniform vec3 uThermalBlastPos[6];
+            uniform float uAshRadius[6];
+            uniform float uAshIntensity[6];
+            varying vec3 vGlowWorldPos;
+            `
+        );
         shader.fragmentShader = shader.fragmentShader.replace(
             '#include <color_fragment>',
             `
@@ -435,6 +673,22 @@ export function setupGlowQuadMaterial(material, options = {}) {
             float t = uTime + uPulseOffset;
             float breath = sin(t * 3.0) * 0.7 + sin(t * 7.0) * 0.3;
             diffuseColor.a *= (0.7 + (breath + 1.0) * 0.25);
+
+            // Extinguish halo aura completely when covered in ash by ANY active blast
+            float maxAshFactor = 0.0;
+            for (int bi = 0; bi < 6; bi++) {
+                if (uAshIntensity[bi] > 0.001 && uAshRadius[bi] > 0.01) {
+                    float dist = length(vGlowWorldPos - uThermalBlastPos[bi]);
+                    if (dist <= uAshRadius[bi] + 0.6) {
+                        float af = smoothstep(-0.6, 0.6, uAshRadius[bi] - dist) * uAshIntensity[bi];
+                        maxAshFactor = max(maxAshFactor, af);
+                    }
+                }
+            }
+            if (maxAshFactor > 0.001) {
+                diffuseColor.a *= max(0.0, 1.0 - maxAshFactor * 0.98);
+                diffuseColor.rgb *= max(0.0, 1.0 - maxAshFactor * 0.90);
+            }
             `
         );
     };

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { createPhysicsBlock, removePhysicsBody, isPhysicsStepping, deferBodyCreation, deferBodyModification } from './physics.js';
 import { playSound, isAudioEnabled } from './audio.js';
-import { setupPulsingMaterial, setupGlowQuadMaterial } from './scene.js';
+import { setupPulsingMaterial, setupGlowQuadMaterial, setupThermalMaterial } from './scene.js';
 
 
 // Global geometry pool to reuse RoundedBoxGeometry instances
@@ -41,6 +41,48 @@ function createBombStripeTexture() {
     texture.wrapT = THREE.RepeatWrapping;
     texture.repeat.set(1, 1); // Large scale mapping
     TextureCache.set('bombStripes', texture);
+    return texture;
+}
+
+/**
+ * Generate procedural organic scorch texture with white-hot molten core and dark charred edges
+ */
+function getOrCreateScorchTexture() {
+    if (TextureCache.has('organicScorchTexture')) return TextureCache.get('organicScorchTexture');
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d');
+
+    // Organic radial molten core
+    const grad = ctx.createRadialGradient(128, 128, 8, 128, 128, 122);
+    grad.addColorStop(0.0, 'rgba(255, 255, 255, 1.0)'); // White-hot thermal core
+    grad.addColorStop(0.15, 'rgba(255, 215, 60, 0.98)'); // Radiant molten gold
+    grad.addColorStop(0.38, 'rgba(255, 70, 0, 0.92)');  // Fiery crimson orange
+    grad.addColorStop(0.65, 'rgba(160, 25, 10, 0.85)'); // Smoldering ember
+    grad.addColorStop(0.85, 'rgba(24, 26, 32, 0.90)');  // Charred soot
+    grad.addColorStop(1.0, 'rgba(24, 26, 32, 0.0)');   // Soft feathered border
+
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(128, 128, 122, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Add organic singed flecks and fissures
+    ctx.fillStyle = 'rgba(12, 14, 18, 0.55)';
+    for (let i = 0; i < 45; i++) {
+        const ang = Math.random() * Math.PI * 2;
+        const rad = 40 + Math.random() * 75;
+        const rSize = 2 + Math.random() * 7;
+        ctx.beginPath();
+        ctx.arc(128 + Math.cos(ang) * rad, 128 + Math.sin(ang) * rad, rSize, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+    TextureCache.set('organicScorchTexture', texture);
     return texture;
 }
 
@@ -174,6 +216,11 @@ function yRangesOverlapForMovement(_thisBlock, _otherBlock, thisYBottom, thisYTo
  * @returns {boolean} True if this is a head-on collision
  */
 function isHeadOnCollision(movingBlock, otherBlock, collisionX, collisionZ, currentX = null, currentZ = null) {
+    // Locked or charred/cooling blocks cannot push or be pushed
+    if (movingBlock.isLocked || movingBlock.isCharred || otherBlock.isLocked || otherBlock.isCharred) {
+        return false;
+    }
+
     // Only single-cell, vertical, or horizontal multi-cell blocks can have head-on collisions
     const isSingleOrVertical = (movingBlock.length === 1) || movingBlock.isVertical;
     const isHorizontalMultiCell = !movingBlock.isVertical && movingBlock.length > 1;
@@ -255,8 +302,16 @@ export class Block {
         this.lockEndTime = 0; // Timestamp when lock expires
         this.lockStartTime = 0; // Timestamp when lock started (for auto-unlock protection)
         this.originalColor = null; // Store original color for restoration
-        this.originalOpacity = 1.0; // Store original opacity for restoration
-        this.opacityAnimationId = null; // Track opacity animation frame ID
+        // Molten charred state (detonation shockwave aftermath)
+        this.isCharred = false;
+        this.charStartTime = 0;
+        this.charEndTime = 0;
+        this.charDuration = 0;
+        this._charAnimId = null;
+        this._origCharColor = null;
+        this._origCharEmissive = null;
+        this._origCharEmissiveIntensity = undefined;
+
         this.unlockAnimationId = null; // Track unlock transition animation frame ID
         this.isUnlocking = false; // Track if unlock animation is in progress
         this.lockFillMesh = null; // Fill mesh for lock time visualization
@@ -358,6 +413,9 @@ export class Block {
                 transparent: false 
             });
         }
+
+        // Apply continuous GPU 3D thermal blast shader hook
+        setupThermalMaterial(blockMaterial);
 
         // Apply bomb styling: Indicators glow (Task 2.3, 3.2, 3.4)
         if (this.isBomb) {
@@ -750,6 +808,7 @@ export class Block {
                 metalness: 0.6,
                 roughness: 0.3
             });
+            setupThermalMaterial(material);
             
             return new THREE.Mesh(geometry, material);
         };
@@ -1035,6 +1094,7 @@ export class Block {
 
         const topArrow = new THREE.Group();
         const topArrowData = createArrowGeometry(style);
+        setupThermalMaterial(topArrowData.material);
         const topArrowMesh = new THREE.Mesh(topArrowData.geometry, topArrowData.material);
 
         // Bomb styling: Add indicator material with emissive luminescence & halo
@@ -1209,6 +1269,7 @@ export class Block {
             color: indicatorColor,
             side: THREE.DoubleSide
         });
+        setupThermalMaterial(dotMaterial);
 
         let dotMesh;
         if (this.isSpinGem) {
@@ -1258,6 +1319,7 @@ export class Block {
             color: indicatorColor,
             side: THREE.DoubleSide
         });
+        setupThermalMaterial(circleMaterial);
 
         let circleMesh;
         if (this.isSpinGem) {
@@ -2390,29 +2452,104 @@ export class Block {
         this.updateArrowRotation();
     }
 
-    // Animate random spin: fast rotation that slows down and stops at random direction
-    animateRandomSpin(duration = 1800, callback = null) {
-        // Vertical blocks, single-cell blocks, and horizontal multi-cell blocks can spin
-        // Horizontal multi-cell blocks can only rotate 180 degrees (flip direction)
-        const isHorizontalMultiCell = !this.isVertical && this.length > 1;
+    /**
+     * Feedback when user taps on a smoldering charred block.
+     */
+    onCharredTap() {
+        if (!this.isCharred) return;
 
-        if (!this.isVertical && this.length !== 1 && !isHorizontalMultiCell) {
+        // Hot molten shake wobble
+        this.shakeViolently(140, 0.25);
+
+        // Play sizzle sound
+        if (typeof window.playSound === 'function') {
+            window.playSound('syntheticSizzle', 0.38);
+        }
+
+        // Puff of smoke and fire sparks
+        this.group.updateMatrixWorld(true);
+        const pos = new THREE.Vector3();
+        this.group.getWorldPosition(pos);
+        if (window.particleSystem) {
+            if (typeof window.particleSystem.addFireSparks === 'function') {
+                window.particleSystem.addFireSparks(pos, 4);
+            }
+            if (typeof window.particleSystem.addSmokeWisps === 'function') {
+                window.particleSystem.addSmokeWisps(pos, 6);
+            }
+        }
+    }
+
+    /**
+     * Flash the block and its indicators with a luminous emissive pulse when spinning.
+     */
+    flashHighlight(duration = 320, flashColorHex = 0xffffff, peakIntensity = 0.85) {
+        if (!this.cubes || !this.cubes[0] || !this.cubes[0].material) return;
+        const mat = this.cubes[0].material;
+
+        if (this._flashAnimId) {
+            cancelAnimationFrame(this._flashAnimId);
+            this._flashAnimId = null;
+        }
+
+        const origEmissive = this._origEmissive ? this._origEmissive : mat.emissive.clone();
+        if (!this._origEmissive) this._origEmissive = origEmissive;
+        const origIntensity = this._origEmissiveIntensity !== undefined ? this._origEmissiveIntensity : (mat.emissiveIntensity || 0);
+        if (this._origEmissiveIntensity === undefined) this._origEmissiveIntensity = origIntensity;
+
+        const flashColor = new THREE.Color(flashColorHex);
+        const startTime = performance.now();
+        const attackDuration = duration * 0.25; // Snappy 80ms attack
+
+        const animateFlash = () => {
+            const now = performance.now();
+            const elapsed = now - startTime;
+            const progress = Math.min(elapsed / duration, 1.0);
+
+            if (progress < 1.0) {
+                let currentIntensity;
+                if (elapsed < attackDuration) {
+                    const attackProgress = elapsed / attackDuration;
+                    currentIntensity = origIntensity + (peakIntensity - origIntensity) * attackProgress;
+                    mat.emissive.copy(flashColor);
+                } else {
+                    const decayProgress = (elapsed - attackDuration) / (duration - attackDuration);
+                    const easeDecay = 1 - Math.pow(decayProgress, 0.4);
+                    currentIntensity = origIntensity + (peakIntensity - origIntensity) * easeDecay;
+                    mat.emissive.lerpColors(flashColor, origEmissive, decayProgress);
+                }
+                mat.emissiveIntensity = currentIntensity;
+                this.isDirty = true;
+                this._flashAnimId = requestAnimationFrame(animateFlash);
+            } else {
+                mat.emissive.copy(origEmissive);
+                mat.emissiveIntensity = origIntensity;
+                this.isDirty = true;
+                this._flashAnimId = null;
+            }
+        };
+
+        this._flashAnimId = requestAnimationFrame(animateFlash);
+    }
+
+    /**
+     * Animate arrow directly to a target direction with a fast snap + magnetic needle oscillation.
+     * Used for both temporary spin and reverting to original direction.
+     */
+    animateToDirection(targetDirection, duration = 450, callback = null) {
+        if (!targetDirection) {
             if (callback) callback();
             return;
         }
 
-        // If no arrow, just set direction immediately
-        if (!this.arrow || !this.arrow.children.length > 0) {
-            let targetDirection;
-            if (isHorizontalMultiCell) {
-                // Horizontal multi-cell: flip 180 degrees (opposite direction)
-                targetDirection = { x: -this.direction.x, z: -this.direction.z };
-            } else {
-                // Vertical or single-cell: random direction
-                const directions = [{ x: 1, z: 0 }, { x: -1, z: 0 }, { x: 0, z: 1 }, { x: 0, z: -1 }];
-                targetDirection = directions[Math.floor(Math.random() * directions.length)];
-            }
-            this.direction = targetDirection;
+        // Trigger visual flash pulse on the block layer
+        this.flashHighlight(duration);
+
+        // Horizontal multi-cell blocks can only point in their axis
+        const isHorizontalMultiCell = !this.isVertical && this.length > 1;
+
+        if (!this.arrow || !this.arrow.children || this.arrow.children.length === 0) {
+            this.direction = { x: targetDirection.x, z: targetDirection.z };
             this.updateArrowRotation();
             if (callback) callback();
             return;
@@ -2420,20 +2557,79 @@ export class Block {
 
         const topArrow = this.arrow.children[0];
         if (!topArrow) {
-            let targetDirection;
-            if (isHorizontalMultiCell) {
-                // Horizontal multi-cell: flip 180 degrees (opposite direction)
-                targetDirection = { x: -this.direction.x, z: -this.direction.z };
-            } else {
-                // Vertical or single-cell: random direction
-                const directions = [{ x: 1, z: 0 }, { x: -1, z: 0 }, { x: 0, z: 1 }, { x: 0, z: -1 }];
-                targetDirection = directions[Math.floor(Math.random() * directions.length)];
-            }
-            this.direction = targetDirection;
+            this.direction = { x: targetDirection.x, z: targetDirection.z };
             this.updateArrowRotation();
             if (callback) callback();
             return;
         }
+
+        // Calculate start and destination angles (normalized shortest path, no full 360 revolutions)
+        const startAngle = topArrow.rotation.z;
+        const targetAngle = Math.atan2(targetDirection.x, targetDirection.z) + Math.PI;
+
+        let angleDiff = targetAngle - startAngle;
+        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+
+        if (isHorizontalMultiCell && Math.abs(angleDiff) < 0.01) {
+            // If horizontal multi-cell is told to flip 180 deg
+            angleDiff = Math.PI;
+        }
+
+        const destinationAngle = startAngle + angleDiff;
+
+        // Update direction property immediately so game logic/validations recognize it
+        this.direction = { x: targetDirection.x, z: targetDirection.z };
+
+        const startTime = performance.now();
+        const snapDuration = Math.max(80, duration * 0.35); // Fast initial snap (~140ms)
+        const oscillationDuration = Math.max(120, duration * 0.65); // Needle oscillation settling (~280ms)
+
+        const animate = () => {
+            const now = performance.now();
+            const elapsed = now - startTime;
+
+            if (elapsed < snapDuration) {
+                // Phase 1: Snappy direct rotation (cubic ease-out)
+                const progress = elapsed / snapDuration;
+                const eased = 1 - Math.pow(1 - progress, 3);
+                topArrow.rotation.z = startAngle + (destinationAngle - startAngle) * eased;
+                requestAnimationFrame(animate);
+            } else {
+                // Phase 2: Compass needle oscillation (spring settling around destination angle)
+                const oscElapsed = elapsed - snapDuration;
+                const oscProgress = Math.min(oscElapsed / oscillationDuration, 1);
+
+                if (oscProgress < 1) {
+                    const damping = Math.pow(1 - oscProgress, 2.5); // Exponential-like decay
+                    const amplitude = (Math.PI / 8) * (Math.abs(angleDiff) / Math.PI || 1); // Amplitude scales with turn size
+                    const cycles = 2.5; // 2.5 spring rebounds
+                    const oscillation = Math.sin(oscProgress * Math.PI * 2 * cycles) * amplitude * damping;
+                    topArrow.rotation.z = destinationAngle + oscillation;
+                    requestAnimationFrame(animate);
+                } else {
+                    // Final settle: snap to exact targetAngle
+                    topArrow.rotation.z = targetAngle;
+                    this.updateArrowRotation();
+                    if (callback) callback();
+                }
+            }
+        };
+
+        animate();
+    }
+
+    // Animate random spin: directly rotate to a new randomized direction with magnetic oscillation
+    animateRandomSpin(duration = 450, callback = null) {
+        const isHorizontalMultiCell = !this.isVertical && this.length > 1;
+
+        if (!this.isVertical && this.length !== 1 && !isHorizontalMultiCell) {
+            if (callback) callback();
+            return;
+        }
+
+        // Trigger visual flash pulse on the block layer
+        this.flashHighlight(duration);
 
         // Determine target direction based on block type
         let targetDirection;
@@ -2441,104 +2637,15 @@ export class Block {
             // Horizontal multi-cell: flip 180 degrees (opposite direction)
             targetDirection = { x: -this.direction.x, z: -this.direction.z };
         } else {
-            // Vertical or single-cell: random direction (one of 4 cardinal directions)
+            // Vertical or single-cell: pick a DIFFERENT cardinal direction if possible
             const directions = [{ x: 1, z: 0 }, { x: -1, z: 0 }, { x: 0, z: 1 }, { x: 0, z: -1 }];
-            targetDirection = directions[Math.floor(Math.random() * directions.length)];
+            const otherDirs = directions.filter(d => !(d.x === this.direction.x && d.z === this.direction.z));
+            targetDirection = otherDirs.length > 0
+                ? otherDirs[Math.floor(Math.random() * otherDirs.length)]
+                : directions[Math.floor(Math.random() * directions.length)];
         }
 
-        // Calculate start and end angles
-        const startAngle = Math.atan2(this.direction.x, this.direction.z) + Math.PI;
-        const targetAngle = Math.atan2(targetDirection.x, targetDirection.z) + Math.PI;
-
-        // Calculate number of full rotations (2-4 rotations for visual effect)
-        // For horizontal multi-cell blocks, ensure we rotate exactly 180 degrees + full rotations
-        const numRotations = 2 + Math.random() * 2; // 2-4 rotations
-        const totalRotation = numRotations * Math.PI * 2;
-
-        // Determine shortest path to target angle
-        let angleDiff = targetAngle - startAngle;
-        // Normalize to [-PI, PI] range
-        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-
-        // For horizontal multi-cell blocks, angleDiff should be exactly PI (180 degrees)
-        // But we allow some tolerance in case of floating point issues
-        if (isHorizontalMultiCell) {
-            // Ensure we rotate exactly 180 degrees (PI radians)
-            angleDiff = Math.PI; // Always 180 degrees for horizontal multi-cell
-        }
-
-        // Add full rotations in the same direction as the shortest path
-        // If angleDiff is positive, rotate clockwise (positive); if negative, rotate counter-clockwise (negative)
-        const rotationDirection = angleDiff >= 0 ? 1 : -1;
-        const endAngle = startAngle + (rotationDirection * totalRotation) + angleDiff;
-
-        // Normalize endAngle to be equivalent to targetAngle (modulo 2π) to prevent flick
-        // This ensures smooth transition from spin to oscillation
-        const normalizedEndAngle = targetAngle + (Math.round((endAngle - targetAngle) / (Math.PI * 2)) * Math.PI * 2);
-
-        // Update direction to target immediately (for movement logic)
-        this.direction = { x: targetDirection.x, z: targetDirection.z };
-
-        // Animate arrow rotation with ease-out curve (fast start, slow end)
-        const startTime = performance.now();
-        const spinDuration = duration * 0.7; // Use 70% of duration for spin, 30% for oscillation
-        const oscillationDuration = duration * 0.3; // 30% for compass needle oscillation
-
-        const animate = () => {
-            const elapsed = performance.now() - startTime;
-            const spinProgress = Math.min(elapsed / spinDuration, 1);
-
-            if (spinProgress < 1) {
-                // Spin phase: fast start, slow end
-                // Using cubic ease-out: 1 - (1 - t)^3
-                const eased = 1 - Math.pow(1 - spinProgress, 3);
-                const currentAngle = startAngle + (normalizedEndAngle - startAngle) * eased;
-                topArrow.rotation.z = currentAngle;
-                requestAnimationFrame(animate);
-            } else {
-                // Ensure smooth transition: set to normalized end angle (equivalent to targetAngle)
-                topArrow.rotation.z = normalizedEndAngle;
-
-                // Oscillation phase: compass needle effect (magnetic settling)
-                const oscillationStartTime = performance.now();
-                const oscillationAmplitude = Math.PI / 10; // ~18 degrees for smoother oscillation
-                const oscillationCycles = 3; // Back to 3 cycles as requested
-
-                const oscillate = () => {
-                    const oscillationElapsed = performance.now() - oscillationStartTime;
-                    const oscillationProgress = Math.min(oscillationElapsed / oscillationDuration, 1);
-
-                    if (oscillationProgress < 1) {
-                        // Even smoother damping: use cubic ease-out for very gradual settling
-                        // This creates the smoothest, most natural settling motion
-                        const easeOutDamping = 1 - Math.pow(1 - oscillationProgress, 3); // Cubic ease-out for smoother damping
-                        const dampingFactor = 1 - easeOutDamping; // Invert so amplitude decreases very gradually
-
-                        // Slow down oscillation frequency at the start for smoother initial motion
-                        // Use a slower frequency multiplier that increases over time
-                        const frequencyMultiplier = 0.5 + (oscillationProgress * 0.5); // Start at 0.5x, end at 1.0x speed
-
-                        // Oscillate with decreasing amplitude and gradually increasing frequency
-                        // Use normalizedEndAngle (which equals targetAngle) as base for smooth continuity
-                        const oscillation = Math.sin(oscillationProgress * Math.PI * oscillationCycles * 2 * frequencyMultiplier) * oscillationAmplitude * dampingFactor;
-                        topArrow.rotation.z = normalizedEndAngle + oscillation;
-                        requestAnimationFrame(oscillate);
-                    } else {
-                        // Final settle: ensure exact target angle
-                        topArrow.rotation.z = targetAngle;
-                        // Update indicators to match final direction
-                        this.updateArrowRotation();
-                        if (callback) callback();
-                    }
-                };
-
-                // Start oscillation immediately
-                oscillate();
-            }
-        };
-
-        animate();
+        this.animateToDirection(targetDirection, duration, callback);
     }
 
     // Helper function to check rotation safety with specific directions (for recursive head-on collisions)
@@ -3183,8 +3290,8 @@ export class Block {
     }
 
     canMove(blocks) {
-        // Locked blocks cannot move
-        if (this.isLocked) {
+        // Locked or charred/cooling blocks cannot move
+        if (this.isLocked || this.isCharred) {
             return 'blocked';
         }
 
@@ -3459,8 +3566,8 @@ export class Block {
     }
 
     move(blocks, gridSize) {
-        // Don't move if already animating, falling, or locked
-        if (this.isAnimating || this.isFalling || this.isLocked) return;
+        // Don't move if already animating, falling, locked, or charred/cooling
+        if (this.isAnimating || this.isFalling || this.isLocked || this.isCharred) return;
 
         // Snapshot state for Undo BEFORE any move logic mutates direction/yOffset/etc.
         const preMoveState = {
@@ -4665,11 +4772,12 @@ export class Block {
                     debrisManager.createDebrisFromBlock(blockCenter, blockColor, pieceCount);
                 }
 
-                // Spawn particles for dust/smoke effect - BIGGER EXPLOSION, PUSH FARTHER
+                // Spawn particles for dust/smoke effect with slide direction momentum
                 if (particleSystem) {
-                    const particleCount = 40 + Math.floor(Math.random() * 40); // 40-80 particles (more)
-                    const velocity = 5.0 + Math.random() * 6.0; // 5.0-11.0 velocity (push much farther)
-                    particleSystem.addExplosion(blockCenter, blockColor, particleCount, velocity);
+                    const particleCount = 40 + Math.floor(Math.random() * 40); // 40-80 particles
+                    const velocity = 4.0 + Math.random() * 4.0;
+                    const moveDir = this.direction ? new THREE.Vector3(this.direction.x, 0, this.direction.z) : null;
+                    particleSystem.addExplosion(blockCenter, blockColor, particleCount, velocity, moveDir);
                 }
 
                 // Animate block: scale down + fade out (faster than particle-only explosion)
@@ -4843,10 +4951,11 @@ export class Block {
                     blockColor = this.cubes[0].material.color.clone();
                 }
 
-                // Spawn particles
+                // Spawn particles with movement momentum
                 const particleCount = 20 + Math.floor(Math.random() * 30); // 20-50 particles
                 const velocity = 2.0 + Math.random() * 2.0; // 2.0-4.0 velocity
-                particleSystem.addExplosion(blockCenter, blockColor, particleCount, velocity);
+                const moveDir = this.direction ? new THREE.Vector3(this.direction.x, 0, this.direction.z) : null;
+                particleSystem.addExplosion(blockCenter, blockColor, particleCount, velocity, moveDir);
 
                 // Animate block: scale down + fade out
                 const startTime = performance.now();
@@ -4947,6 +5056,10 @@ export class Block {
                             this.scene.remove(this.group);
                         }
 
+                        if (typeof window.markSupportCheckDirty === 'function') {
+                            window.markSupportCheckDirty();
+                        }
+
                         resolve();
                     }
                 };
@@ -5039,7 +5152,7 @@ export class Block {
     }
 
     detonate() {
-        if (this.isRemoved || this._explosionAnimationStarted || this.isLocked || this.isTranslucent) return;
+        if (this.isRemoved || this._explosionAnimationStarted || this.isLocked || this.isTranslucent || this.isCharred) return;
         this._explosionAnimationStarted = true;
         this.isExploding = true;
         this.isAnimating = true; // Task 8.1.0: Consistency for progress dial
@@ -5072,6 +5185,14 @@ export class Block {
 
         const affectedBlocks = this.getAffectedBlocks();
 
+        // Collect destroyed cells before removal to determine shockwave boundary
+        const destroyedCells = [...this.getOccupiedCells()];
+        affectedBlocks.forEach(b => {
+            if (typeof b.getOccupiedCells === 'function') {
+                destroyedCells.push(...b.getOccupiedCells());
+            }
+        });
+
         // Detonate/Remove affected blocks
         affectedBlocks.forEach((block, index) => {
             // Task 9.2: Mark affected blocks as exploding IMMEDIATELY 
@@ -5083,7 +5204,7 @@ export class Block {
             setTimeout(() => {
                 if (block.isRemoved || block._explosionAnimationStarted) return;
 
-                if (block.isBomb && !block.isLocked && !block.isTranslucent) {
+                if (block.isBomb && !block.isLocked && !block.isTranslucent && !block.isCharred) {
                     block.detonate(); 
                 } else {
                     // Use explodeWithParticles for faster, cleaner removal (Task 6.2)
@@ -5104,11 +5225,17 @@ export class Block {
         if (typeof window.markSupportCheckDirty === 'function') {
             window.markSupportCheckDirty();
         }
+        
+        // After explosion completes and new structure settles under gravity, trigger aftermath shock
+        const settleDelay = Math.max(500, affectedBlocks.length * 30 + 350);
         setTimeout(() => {
             if (typeof window.markSupportCheckDirty === 'function') {
                 window.markSupportCheckDirty();
             }
-        }, affectedBlocks.length * 30 + 100);
+            if (typeof window.applyDetonationAftermathShock === 'function') {
+                window.applyDetonationAftermathShock(destroyedCells, bombPos);
+            }
+        }, settleDelay);
     }
 
     /**
