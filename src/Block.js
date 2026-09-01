@@ -2459,23 +2459,39 @@ export class Block {
         if (!this.isCharred) return;
 
         // Hot molten shake wobble
-        this.shakeViolently(140, 0.25);
+        this.shakeViolently(180, 0.30);
 
         // Play sizzle sound
         if (typeof window.playSound === 'function') {
-            window.playSound('syntheticSizzle', 0.38);
+            window.playSound('syntheticSizzle', 0.48);
         }
 
-        // Puff of smoke and fire sparks
+        // Show feedback message informing the player
+        if (typeof window.showGameHint === 'function') {
+            window.showGameHint('Cooling down... Please wait for ash to clear.', 'charred_tap_hint');
+        }
+
+        // Prominent burst of volumetric smoke puffs & fiery embers from block cells
         this.group.updateMatrixWorld(true);
         const pos = new THREE.Vector3();
         this.group.getWorldPosition(pos);
         if (window.particleSystem) {
             if (typeof window.particleSystem.addFireSparks === 'function') {
-                window.particleSystem.addFireSparks(pos, 4);
+                window.particleSystem.addFireSparks(pos, 8);
             }
             if (typeof window.particleSystem.addSmokeWisps === 'function') {
-                window.particleSystem.addSmokeWisps(pos, 6);
+                // Dense main smoke puffs
+                window.particleSystem.addSmokeWisps(pos, 10, {
+                    sizeMult: 1.6,
+                    maxAge: 1.8,
+                    isSteam: false
+                });
+                // Sizzling steam wisps
+                window.particleSystem.addSmokeWisps(pos, 5, {
+                    sizeMult: 1.1,
+                    maxAge: 1.2,
+                    isSteam: true
+                });
             }
         }
     }

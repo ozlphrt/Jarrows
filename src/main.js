@@ -8501,14 +8501,25 @@ let thermalAnimationRunning = false;
 function tickThermalBlasts() {
     const now = performance.now();
 
+    // Check remaining active blocks to accelerate cooldown in endgame (last 3-4 blocks)
+    const activeBlocksCount = (blocks || []).filter(b => b && !b.isRemoved && !b.removalStartTime && !b.isFalling).length;
+    const endgameSpeedMult = activeBlocksCount <= 2 ? 3.5 : (activeBlocksCount <= 4 ? 2.4 : 1.0);
+
     for (let i = activeThermalBlasts.length - 1; i >= 0; i--) {
         const blast = activeThermalBlasts[i];
-        const elapsed = now - blast.startTime;
+        
+        // Advance effective elapsed time using dynamic speed multiplier
+        if (blast.lastTickTime === undefined) blast.lastTickTime = blast.startTime;
+        const dt = Math.max(0, Math.min(100, now - blast.lastTickTime));
+        blast.lastTickTime = now;
+        blast.effectiveElapsed = (blast.effectiveElapsed !== undefined ? blast.effectiveElapsed : 0) + dt * endgameSpeedMult;
+
+        const elapsed = blast.effectiveElapsed;
         const totalProgress = Math.min(elapsed / blast.totalDurationMs, 1.0);
         const slot = blast.slot;
 
         if (totalProgress < 1.0) {
-            // ── PHASE 1: Very fast heat-up ignition bloom (ease-in)
+            // ── PHASE 1: Fast heat-up ignition bloom (ease-in)
             if (elapsed < blast.p1Ms) {
                 const t = elapsed / blast.p1Ms;
                 const ease = t * t * t;
@@ -8517,7 +8528,7 @@ function tickThermalBlasts() {
                 globalUniforms.uAshRadius.value[slot]             = blast.maxRadius * ease;
                 globalUniforms.uAshIntensity.value[slot]          = Math.min(1.0, ease * 1.3);
 
-            // ── PHASE 2: Slower cool-down, molten core shrinks progressively inward
+            // ── PHASE 2: Molten core shrinks progressively inward towards crater center
             } else if (elapsed < blast.p1Ms + blast.p2Ms) {
                 const t = (elapsed - blast.p1Ms) / blast.p2Ms;
                 const ease = 1.0 - Math.pow(1.0 - t, 2.4);
@@ -8527,7 +8538,7 @@ function tickThermalBlasts() {
                 globalUniforms.uAshRadius.value[slot]             = blast.maxRadius;
                 globalUniforms.uAshIntensity.value[slot]          = 1.0;
 
-            // ── PHASE 3: Dwell fully dark ash (all locked)
+            // ── PHASE 3: Deep matte dark ash dwell (keeps ash distinctly visible for the bulk of cooldown)
             } else if (elapsed < blast.p1Ms + blast.p2Ms + blast.p3Ms) {
                 if (!blast.hasQuenchedMolten) {
                     blast.hasQuenchedMolten = true;
@@ -8540,15 +8551,30 @@ function tickThermalBlasts() {
                 globalUniforms.uAshRadius.value[slot]    = blast.maxRadius;
                 globalUniforms.uAshIntensity.value[slot] = 1.0;
 
-            // ── PHASE 4: Outside-in progressive ash cooling & unlock
+            // ── PHASE 4: Outside-in smooth ash clearing & progressive block unlock
             } else {
                 const t = (elapsed - blast.p1Ms - blast.p2Ms - blast.p3Ms) / blast.p4Ms;
-                const ease = t < 0.5
-                    ? 4 * t * t * t
-                    : 1 - Math.pow(-2 * t + 2, 3) / 2;
+                // Smooth quadratic ease for snappy, non-abrupt clearing
+                const ease = 1.0 - Math.pow(1.0 - t, 2.0);
 
-                globalUniforms.uAshIntensity.value[slot] = Math.max(0.0, 1.0 - ease);
-                globalUniforms.uAshRadius.value[slot]    = Math.max(0.0, blast.maxRadius * (1.0 - ease));
+                const currentAshRadius = Math.max(0.0, blast.maxRadius * (1.0 - ease));
+                globalUniforms.uAshRadius.value[slot]    = currentAshRadius;
+                globalUniforms.uAshIntensity.value[slot] = Math.max(0.0, 1.0 - ease * 0.90);
+
+                // As the ash boundary retreats inward, unlock outer blocks that are now clear
+                for (const b of blast.survivingBlocks) {
+                    if (b && b.activeBlastLocks && b.activeBlastLocks.has(blast)) {
+                        const bPos = new THREE.Vector3();
+                        if (b.group) b.group.getWorldPosition(bPos);
+                        const dist = bPos.distanceTo(blast.bombCenter);
+                        if (dist > currentAshRadius) {
+                            b.activeBlastLocks.delete(blast);
+                            if (b.activeBlastLocks.size === 0) {
+                                b.isCharred = false;
+                            }
+                        }
+                    }
+                }
             }
 
             // Continuous billowing smoke & embers from this blast epicenter
@@ -8628,11 +8654,13 @@ export function applyDetonationAftermathShock(destroyedCells, bombCenter) {
     const maxRadius = Math.min(3.8, 1.8 + Math.sqrt(destroyedCount) * 0.35);
     const blastIntensityMultiplier = Math.min(1.4, 0.9 + destroyedCount * 0.05);
 
-    // Independent 4-phase timings for this blast
-    const p1Ms = 320;
-    const p2Ms = Math.max(3800, Math.min(5800, 3200 + destroyedCount * 220));
-    const p3Ms = Math.max(5000, Math.min(8000, 4500 + destroyedCount * 250 + survivingBlocks.length * 50));
-    const p4Ms = Math.max(5500, Math.min(8500, 5000 + destroyedCount * 250 + survivingBlocks.length * 50));
+    // Dynamic phase durations: keep ash visible and solid for ~75% of ash time, then clear in ~25%
+    const p1Ms = 300;
+    const p2Ms = Math.max(3200, Math.min(4800, 2800 + destroyedCount * 180));
+    // Phase 3: Prominent visible ash dwell
+    const p3Ms = Math.max(6500, Math.min(9500, 6000 + destroyedCount * 220 + survivingBlocks.length * 40));
+    // Phase 4: Snappy clean ash dissolve
+    const p4Ms = Math.max(2200, Math.min(3000, 2000 + destroyedCount * 80));
     const totalDurationMs = p1Ms + p2Ms + p3Ms + p4Ms;
 
     // Find an available GPU slot (0..5)
@@ -9458,6 +9486,14 @@ function onTouchEnd(event) {
     // Get the closest intersection
     const closestHit = allIntersections[0];
     const block = closestHit.block;
+
+    // If block is molten / smoldering charred from detonation aftermath, trigger sizzle and smoke burst feedback
+    if (block.isCharred) {
+        if (typeof block.onCharredTap === 'function') {
+            block.onCharredTap();
+        }
+        return;
+    }
 
     // Prevent locked/translucent blocks from being moved or detonated - shake the entire tower with radial falloff
     if (block.isLocked || block.isTranslucent) {

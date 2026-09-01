@@ -4,6 +4,16 @@
  */
 
 export const changelog = {
+    "8.23.0": {
+        title: "Smoke Burst on Tap, Crisp Ash Dissolution & Endgame Cooldown Acceleration",
+        date: "2026-09-01",
+        changes: [
+            "Cooling Block Tap Feedback & Smoke Bursts: Tapping smoldering or cooling blocks triggers a vivid burst of billowing smoke puffs, embers, wobble shake, and informative guidance",
+            "Crisp Ash Dissolution Curve: Ash soot remains prominently dark for the bulk of the cooldown period and then clears inward smoothly and crisply, making cooldown status immediately obvious",
+            "Endgame Cooldown Acceleration: Cooldown progression automatically speeds up 2.4x - 3.5x when 3-4 or fewer blocks remain on the board, eliminating unnecessary endgame wait times",
+            "Synchronized Outside-In Block Unlocking: Blocks unlock progressively the exact moment the clearing ash boundary retreats past them"
+        ]
+    },
     "8.22.0": {
         title: "Tower Support Physics Stability & Real-Time Layout Debug Capture",
         date: "2026-09-01",
