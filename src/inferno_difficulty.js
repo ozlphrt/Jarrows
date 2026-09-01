@@ -203,45 +203,38 @@ function getMultilayerComplexity(level) {
 }
 
 /**
- * Get spin cost multiplier (fraction of remaining time to charge)
- * Higher multiplier = more expensive spins = harder
+ * Get spin cost multiplier (fraction of level par time to charge)
+ * Calibrated so spins cost a fair, strategic toll (8s - 25s) rather than wiping out 40 minutes.
  */
 export function getSpinCostMultiplier(level) {
     let baseValue;
 
     if (level <= 5) {
-        baseValue = 1 / 3; // 33.3%
+        baseValue = 0.08; // ~8% of level par
     } else if (level <= 10) {
-        // Transition from 1/3 to 1/2
         const t = (level - 5) / 5;
-        baseValue = lerp(1 / 3, 1 / 2, t);
+        baseValue = lerp(0.08, 0.10, t);
     } else if (level <= 25) {
-        // Transition from 1/2 to 2/3
         const t10 = getMilestoneTransition(level, 10, 4);
         const t25 = getMilestoneTransition(level, 25, 4);
         if (level < 14) {
-            baseValue = lerp(1 / 2, 2 / 3, t10);
+            baseValue = lerp(0.10, 0.12, t10);
         } else {
-            baseValue = lerp(2 / 3, 3 / 4, t25);
+            baseValue = lerp(0.12, 0.14, t25);
         }
     } else if (level <= 50) {
-        // Transition from 2/3 to 3/4
         const t25 = getMilestoneTransition(level, 25, 4);
         const t50 = getMilestoneTransition(level, 50, 4);
         if (level < 29) {
-            baseValue = lerp(2 / 3, 3 / 4, t25);
+            baseValue = lerp(0.12, 0.14, t25);
         } else {
-            baseValue = lerp(3 / 4, 0.85, t50);
+            baseValue = lerp(0.14, 0.16, t50);
         }
     } else {
-        // Post-50: continue increasing at 50% rate (maximum 90%)
-        const t50 = getMilestoneTransition(50, 50, 4);
-        const baseAt50 = lerp(3 / 4, 0.85, t50);
-        const scaling = getPost50Scaling(level);
-        baseValue = Math.min(0.90, baseAt50 + ((level - 50) * 0.005 * (scaling - 1.0)));
+        baseValue = 0.18;
     }
 
-    return Math.max(1 / 3, Math.min(0.90, baseValue));
+    return Math.max(0.06, Math.min(0.20, baseValue));
 }
 
 /**

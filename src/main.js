@@ -438,7 +438,17 @@ window.rechargeSpin = function () {
 
 let gameMode = 'inferno';
 let timeLeftSec = 30;
-function setTimeLeftSec(val) { timeLeftSec = val; }
+let currentLevelParTime = 60;
+let currentLevelMaxTimeCap = 120;
+let lastBlockRemovalTime = 0;
+let removalComboStreak = 0;
+let lastSpinTimestamp = 0;
+let consecutiveSpinCount = 0;
+
+function setTimeLeftSec(val) {
+    const maxCap = currentLevelMaxTimeCap || 300;
+    timeLeftSec = Math.max(0, Math.min(maxCap, val));
+}
 let timeChallengeActive = false;
 
 let targetTowerPositionOffset = new THREE.Vector3(0, 0, 0);
@@ -2115,87 +2125,97 @@ function timeChallengeResetRun() {
 }
 
 function timeChallengeStartNewLevel(blocksArray) {
-    // #region agent log
-    debugTelemetry({ location: 'main.js:timeChallengeStartNewLevel:entry', message: 'timeChallengeStartNewLevel called', data: { isTimeBasedMode: isTimeBasedMode(), blocksCount: blocksArray ? blocksArray.length : 0, currentLevel: currentLevel }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H2' });
-    // #endregion
     if (!isTimeBasedMode()) return;
 
-    // Calculate base time by summing actual block lengths
-    // Length 1 (Red) = 1 second, Length 2 (Teal) = 2 seconds, Length 3+ (Yellow) = 3 seconds
-    let calculatedTime = 0;
-    for (const block of blocksArray) {
-        calculatedTime += timeChallengeGetColorBonusSeconds(block.length);
+    // Calculate level par time based on block count and average solve duration
+    let estimatedTotalTime = 0;
+    if (blocksArray && blocksArray.length > 0) {
+        for (const block of blocksArray) {
+            // ~0.8s for Length 1 (Red), ~1.4s for Length 2 (Teal), ~2.0s for Length 3+ (Yellow)
+            const blockEst = block.length >= 3 ? 2.0 : (block.length === 2 ? 1.4 : 0.8);
+            estimatedTotalTime += blockEst;
+        }
     }
 
-    const minTime = 30; // Minimum 30 seconds
+    // Par time: at least 35s, proportioned to the puzzle size
+    const parTime = Math.max(35, Math.round(estimatedTotalTime));
+    currentLevelParTime = parTime;
+    // Level capacity: 1.5x Par Time (e.g. 180s level has max cap of 270s / 4.5 min)
+    currentLevelMaxTimeCap = Math.max(50, Math.round(parTime * 1.5));
 
-    // Initial time = max(30, sum of block lengths) + residual from previous level
-    setTimeLeftSec(Math.max(minTime, calculatedTime) + timeChallengeResidualSec);
-    timeChallengeInitialTime = timeLeftSec; // Track initial time for this level
-    // Track carried over time before resetting
-    if (timeChallengeResidualSec > 0) {
-        timeChallengeTimeCarriedOverAllTime += timeChallengeResidualSec;
+    // Carryover bonus: carry over up to 25% of the new level's par time as a skill head-start
+    const maxCarryover = Math.round(parTime * 0.25);
+    const carryoverBonus = Math.min(timeChallengeResidualSec, maxCarryover);
+
+    // Initial time for the level = Par Time + Carryover Bonus, capped at Max Capacity
+    const startClock = Math.min(currentLevelMaxTimeCap, parTime + carryoverBonus);
+    setTimeLeftSec(startClock);
+    timeChallengeInitialTime = timeLeftSec;
+
+    if (carryoverBonus > 0) {
+        timeChallengeTimeCarriedOverAllTime += carryoverBonus;
     }
-    timeChallengeTimeCollected = 0; // Reset time collected counter for this level
-    timeChallengeSpinCost = 0; // Reset spin cost counter for this level
-    timeChallengeResidualSec = 0; // Clear residual after using it
+    timeChallengeTimeCollected = 0;
+    timeChallengeSpinCost = 0;
+    timeChallengeResidualSec = 0; // Clear residual after applying carryover
 
-    // Keep removal counter cumulative across levels (for per-removal bonuses)
-    // Don't reset timeChallengeRemovals here
+    // Reset combo streak for the new level
+    removalComboStreak = 0;
+    lastBlockRemovalTime = 0;
+    consecutiveSpinCount = 0;
 
-    const wasActive = timeChallengeActive;
     timeChallengeActive = true;
     timeUpShown = false;
     setTimeFrozen('time_up', false);
-
-    // #region agent log
-    debugTelemetry({ location: 'main.js:timeChallengeStartNewLevel:exit', message: 'timeChallengeStartNewLevel completed', data: { wasActive: wasActive, nowActive: timeChallengeActive, timeLeftSec: timeLeftSec }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H2' });
-    // #endregion
 
     updateTimerDisplay();
 }
 
 function timeChallengeGetBaseSecondsForRemovalNumber(n) {
-    // Survival table:
-    // 1–25: +4s, 26–75: +3s, 76–150: +2s, 151–250: +1s, 251+: +0s
-    if (n <= 25) return 4;
-    if (n <= 75) return 3;
-    if (n <= 150) return 2;
-    if (n <= 250) return 1;
-    return 0;
+    if (n <= 25) return 2;
+    if (n <= 75) return 1.5;
+    if (n <= 150) return 1;
+    return 0.5;
 }
 
 function timeChallengeGetColorBonusSeconds(blockLength) {
-    // Block.js uses [Red, Teal, Yellow] mapping by length (1,2,3).
-    // We treat any length >= 3 as Yellow for time bonus.
-    if (blockLength >= 3) return 3; // Yellow
-    if (blockLength === 2) return 2; // Teal
-    return 1; // Red (default)
+    if (blockLength >= 3) return 1.4; // Yellow
+    if (blockLength === 2) return 1.0; // Teal
+    return 0.6; // Red
 }
 
 function timeChallengeAwardForBlockRemoved(blockLength) {
     if (!isTimeBasedMode() || timeUpShown) return;
 
-    // Requirement (d): During temporary spin, pause adding times for successful moves
+    // During temporary spin, pause adding times for moves
     if (typeof isTemporarySpinActive === 'function' && isTemporarySpinActive()) {
-        console.log('[Time Challenge] Move time reward paused while temporary spin is active');
         return;
     }
 
+    const now = performance.now();
+    const dt = now - lastBlockRemovalTime;
+    lastBlockRemovalTime = now;
+
+    // Rhythmic combo detection: moves within 2.4s build combo streak
+    if (dt < 2400) {
+        removalComboStreak = Math.min(5, removalComboStreak + 1);
+    } else {
+        removalComboStreak = 1;
+    }
+
     timeChallengeRemovals += 1;
-    // Simplified: only use color bonus based on block length
-    const gained = timeChallengeGetColorBonusSeconds(blockLength);
-    timeChallengeTimeCollected += gained; // Track time collected this level
-    timeChallengeTimeCollectedAllTime += gained; // Track cumulative time collected across all levels
 
-    // Add time immediately (like spin does), then show flash animation
-    const before = timeLeftSec;
-    setTimeLeftSec(timeLeftSec + gained);
+    const baseBonus = timeChallengeGetColorBonusSeconds(blockLength);
+    // Combo multiplier: 1x, 1.4x, 1.8x, 2.2x, 2.5x
+    const comboMult = removalComboStreak >= 4 ? 2.5 : (removalComboStreak === 3 ? 1.8 : (removalComboStreak === 2 ? 1.4 : 1.0));
+    const gained = Math.round(baseBonus * comboMult * 10) / 10;
 
-    // Play time added sound effect
+    timeChallengeTimeCollected += gained;
+    timeChallengeTimeCollectedAllTime += gained;
+
+    setTimeLeftSec(Math.min(currentLevelMaxTimeCap, timeLeftSec + gained));
+
     playSound('timeAdded', 0.8);
-
-    // Show flash animation (same as spin)
     flashTimerDelta(gained);
     updateTimerDisplay();
 }
@@ -7463,6 +7483,37 @@ function autoSpinAfterSpawn() {
     });
 }
 
+/**
+ * Calculate dynamic spin time cost based on level par time, consecutive multiplier, and clutch window.
+ */
+function calculateSpinTimeCost() {
+    const now = performance.now();
+    // If more than 16s passed without spinning, reset consecutive escalation
+    if (now - lastSpinTimestamp > 16000) {
+        consecutiveSpinCount = 0;
+    }
+
+    // Base cost is derived from level par time using getSpinCostMultiplier (8% - 18% of par time)
+    const multiplier = getSpinCostMultiplier(currentLevel);
+    const par = currentLevelParTime || 60;
+    const baseCost = Math.max(8, Math.min(25, Math.round(par * multiplier)));
+
+    // Consecutive spin escalation: 1st spin = 1.0x, 2nd spin = 1.5x, 3rd+ spin = 2.0x
+    const consecutiveMult = consecutiveSpinCount === 0 ? 1.0 : (consecutiveSpinCount === 1 ? 1.5 : 2.0);
+    const nominalCost = Math.round(baseCost * consecutiveMult);
+
+    // "Last Chance" Clutch Window: leave at least 3.0s on the clock so a desperate spin doesn't immediately kill the player
+    const maxAllowedCost = Math.max(1, Math.floor(timeLeftSec - 3.0));
+    const finalCost = Math.min(nominalCost, maxAllowedCost);
+
+    return {
+        cost: Math.max(1, finalCost),
+        nominalCost,
+        multiplier: consecutiveMult,
+        isConsecutive: consecutiveSpinCount > 0
+    };
+}
+
 // Spin random blocks (vertical and single-cell blocks) to break interlock situations
 function spinRandomBlocks() {
     console.log('[Spin] ===== spinRandomBlocks FUNCTION CALLED =====');
@@ -7516,13 +7567,18 @@ function spinRandomBlocks() {
     } else if (remainingSpins === Number.POSITIVE_INFINITY) {
         console.log('[Spin] Infinite spins enabled (Free), no deduction');
     } else if (isTimeBasedMode()) {
-        const multiplier = getSpinCostMultiplier(currentLevel);
-        const cost = Math.max(1, Math.ceil(timeLeftSec * multiplier));
+        const spinCostInfo = calculateSpinTimeCost();
+        const cost = spinCostInfo.cost;
+
+        lastSpinTimestamp = performance.now();
+        consecutiveSpinCount++;
+
+        timeChallengeSpinCost += cost;
         setTimeLeftSec(timeLeftSec - cost);
         flashTimerDelta(-cost);
         updateTimerDisplay();
         updateSpinCounterDisplay();
-        showSpinCostToast(cost);
+        showSpinCostToast(cost, spinCostInfo.multiplier);
     }
 
     updateIdleTimers();
@@ -10476,10 +10532,6 @@ scheduleNextFrame();
  * Shuffle an array in place using Durstenfeld shuffle (Task 7.7.4)
  * @param {Array} array 
  */
-/**
- * Shuffle an array in place using Durstenfeld shuffle (Task 7.7.4)
- * @param {Array} array 
- */
 function shuffleArray(array) {
     if (!array || array.length <= 1) return array;
     for (let i = array.length - 1; i > 0; i--) {
@@ -10492,8 +10544,9 @@ function shuffleArray(array) {
 /**
  * Show a brief floating toast near the spin button displaying the time cost (v8.3.4)
  * @param {number} costSec - seconds deducted
+ * @param {number} multiplier - consecutive spin multiplier
  */
-function showSpinCostToast(costSec) {
+function showSpinCostToast(costSec, multiplier = 1.0) {
     const btn = document.getElementById('dice-button');
     if (!btn) return;
 
@@ -10504,20 +10557,25 @@ function showSpinCostToast(costSec) {
     else if (mins > 0) label = `-${mins}m`;
     else label = `-${secs}s`;
 
+    if (multiplier > 1.0) {
+        label += ` (x${multiplier})`;
+    }
+
     const toast = document.createElement('div');
     toast.textContent = label;
     Object.assign(toast.style, {
         position: 'fixed',
         fontFamily: "'Rajdhani', sans-serif",
-        fontSize: '16px',
-        fontWeight: '700',
-        color: 'rgba(255, 100, 100, 0.95)',
+        fontSize: '18px',
+        fontWeight: '800',
+        color: multiplier > 1.0 ? '#FF4D4D' : 'rgba(255, 110, 110, 0.95)',
+        textShadow: '0 2px 8px rgba(0,0,0,0.7)',
         letterSpacing: '0.5px',
         pointerEvents: 'none',
         zIndex: '9999',
-        transition: 'opacity 0.4s ease, transform 0.8s ease',
+        transition: 'opacity 0.4s ease, transform 0.8s cubic-bezier(0.2, 0.9, 0.3, 1.2)',
         opacity: '1',
-        transform: 'translateY(0)',
+        transform: 'translate(-50%, -100%)',
     });
 
     // Position above the spin button

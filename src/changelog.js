@@ -4,6 +4,17 @@
  */
 
 export const changelog = {
+    "8.24.0": {
+        title: "Dynamic Par Time Economy, Combo Multipliers & Strategic Spin Balancing",
+        date: "2026-09-01",
+        changes: [
+            "Level-Aware Par Time Scaling: Each puzzle initializes with a calibrated par time tailored to its block count, with a max bank ceiling of 1.5x par to eliminate runaway 50-minute marathons",
+            "Skill Carryover Bonus: Fast level completions carry over up to 25% of the next level's par time as a skill head-start",
+            "Rhythmic Combo Rewards: Chaining moves within 2.4s triggers escalating combo multipliers (up to 2.5x) for high-tempo play",
+            "Strategic Spin Cost & Escalation: Spins cost a fair toll (8s - 25s) based on level par, with consecutive spin escalation (1.5x - 2.0x) that resets after 16s of regular play",
+            "Clutch Spin Grace Window: Spins in critical low-time situations leave at least 3.0s on the clock to give the player a clutch solve window"
+        ]
+    },
     "8.23.0": {
         title: "Smoke Burst on Tap, Crisp Ash Dissolution & Endgame Cooldown Acceleration",
         date: "2026-09-01",
