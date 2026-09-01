@@ -261,8 +261,8 @@ export function createParticleSystem(maxParticles, scene) {
                 var ny = (opts.dir.y || 0) / dLen;
                 var nz = (opts.dir.z || 0) / dLen;
 
-                var speed = (opts.speed !== undefined ? opts.speed : 2.0) * (0.8 + Math.random() * 0.5);
-                var spread = opts.spread !== undefined ? opts.spread : 0.6;
+                var speed = (opts.speed !== undefined ? opts.speed : 2.0) * (0.8 + Math.random() * 0.4);
+                var spread = opts.spread !== undefined ? opts.spread : 0.35;
                 var rx = (Math.random() - 0.5) * spread;
                 var ry = (Math.random() - 0.5) * spread;
                 var rz = (Math.random() - 0.5) * spread;
@@ -301,10 +301,11 @@ export function createParticleSystem(maxParticles, scene) {
             }
             sprite.material.opacity = 0.0;
 
+            // Tight origin anchoring (within 0.08 of specified coordinate)
             sprite.position.set(
-                position.x + (Math.random() - 0.5) * 0.45,
-                position.y + Math.random() * 0.20,
-                position.z + (Math.random() - 0.5) * 0.45
+                position.x + (Math.random() - 0.5) * 0.08,
+                position.y + Math.random() * 0.08,
+                position.z + (Math.random() - 0.5) * 0.08
             );
 
             sprite.scale.setScalar(state.startSize * 0.3);
@@ -314,7 +315,7 @@ export function createParticleSystem(maxParticles, scene) {
     }
 
     /**
-     * Emit a violent, dramatic burst of smoke jets thrown outward from a pushed charred block
+     * Emit a violent, dramatic burst of smoke jets thrown outward directly from a pushed charred block's physical cubes
      */
     function addPushedBlockSmokeBurst(block, pushDir) {
         if (!block || !block.group) return;
@@ -327,54 +328,55 @@ export function createParticleSystem(maxParticles, scene) {
             ? pushDir
             : (block.direction || { x: 0, y: 1, z: 0 });
 
-        // Collect cell positions along the block
-        var cellPositions = [centerPos.clone()];
-        if (block.length && block.length > 1 && block.direction) {
-            var isX = Math.abs(block.direction.x) > 0;
-            var isY = Math.abs(block.direction.y) > 0;
-            for (var ci = 1; ci < block.length; ci++) {
-                var cellPos = centerPos.clone();
-                if (isX) cellPos.x += ci * Math.sign(block.direction.x) * 1.0;
-                else if (isY) cellPos.y += ci * Math.sign(block.direction.y) * 1.0;
-                else cellPos.z += ci * Math.sign(block.direction.z || 1) * 1.0;
-                cellPositions.push(cellPos);
+        // Collect exact 3D world positions of each cube in the block
+        var cellPositions = [];
+        if (block.cubes && block.cubes.length > 0) {
+            for (var ci = 0; ci < block.cubes.length; ci++) {
+                if (block.cubes[ci]) {
+                    var cp = new THREE.Vector3();
+                    block.cubes[ci].getWorldPosition(cp);
+                    cellPositions.push(cp);
+                }
             }
         }
+        if (cellPositions.length === 0) {
+            cellPositions.push(centerPos);
+        }
 
-        // Emit high-velocity smoke jets and embers from each cell
+        // Emit high-velocity smoke jets and embers directly from each physical cube
         cellPositions.forEach(function(cPos) {
             // 1. High-velocity directional smoke thrown along push trajectory
-            addSmokeWisps(cPos, 7, {
+            addSmokeWisps(cPos, 6, {
                 dir: dir,
-                speed: 2.8,
-                spread: 0.6,
-                sizeMult: 2.2,
-                maxAge: 1.6,
+                speed: 2.5,
+                spread: 0.35,
+                sizeMult: 1.8,
+                maxAge: 1.4,
                 isDarkSoot: true
             });
 
             // 2. Hot steam venting plumes
-            addSmokeWisps(cPos, 5, {
-                dir: { x: dir.x * 0.5, y: Math.abs(dir.y) + 0.9, z: dir.z * 0.5 },
-                speed: 2.4,
-                spread: 0.7,
-                sizeMult: 1.7,
-                maxAge: 1.3,
+            addSmokeWisps(cPos, 4, {
+                dir: { x: dir.x * 0.4, y: Math.abs(dir.y) + 0.8, z: dir.z * 0.4 },
+                speed: 2.2,
+                spread: 0.4,
+                sizeMult: 1.4,
+                maxAge: 1.2,
                 isSteam: true
             });
 
             // 3. Radial burst billowing out from the block
-            addSmokeWisps(cPos, 6, {
-                sizeMult: 2.5,
-                maxAge: 1.9,
+            addSmokeWisps(cPos, 4, {
+                sizeMult: 1.9,
+                maxAge: 1.5,
                 isDarkSoot: false
             });
 
             // 4. Hot fire sparks thrown outward
-            addFireSparks(cPos, 8);
+            addFireSparks(cPos, 6);
         });
 
-        if (window.markNeedsRender) window.markNeedsRender(3000);
+        if (window.markNeedsRender) window.markNeedsRender(2500);
     }
 
     function addQuenchBurst(position, count) {

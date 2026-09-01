@@ -8633,29 +8633,37 @@ function tickThermalBlasts() {
                 }
             }
 
-            // Continuous billowing smoke & embers from this blast epicenter
-            if (now - blast.lastSparkTime > 90 && window.particleSystem) {
+            // Continuous billowing smoke & embers directly from cooling charred blocks in this crater
+            if (now - blast.lastSparkTime > 110 && window.particleSystem) {
                 blast.lastSparkTime = now;
                 const isMolten = elapsed < blast.moltenDurationMs;
-                const currentR = isMolten
-                    ? globalUniforms.uThermalBlastRadius.value[slot]
-                    : globalUniforms.uAshRadius.value[slot];
-
-                if (currentR > 0.1) {
-                    const puffCount = isMolten ? 3 : (Math.random() < globalUniforms.uAshIntensity.value[slot] ? 2 : 1);
+                
+                // Get all active charred blocks belonging to this blast
+                const charredBlocks = blast.survivingBlocks.filter(b => b && b.isCharred && !b.isRemoved && !b.isFalling && b.cubes && b.cubes.length > 0);
+                
+                if (charredBlocks.length > 0) {
+                    const puffCount = isMolten ? 2 : 1;
                     for (let s = 0; s < puffCount; s++) {
-                        const ang = Math.random() * Math.PI * 2;
-                        const r = Math.sqrt(Math.random()) * currentR;
-                        const smokePos = new THREE.Vector3(
-                            blast.bombCenter.x + Math.cos(ang) * r,
-                            blast.bombCenter.y + Math.random() * 0.3,
-                            blast.bombCenter.z + Math.sin(ang) * r
-                        );
-                        if (isMolten && Math.random() < 0.5 && typeof window.particleSystem.addFireSparks === 'function') {
-                            window.particleSystem.addFireSparks(smokePos, 2);
-                        }
-                        if (typeof window.particleSystem.addSmokeWisps === 'function') {
-                            window.particleSystem.addSmokeWisps(smokePos, 1);
+                        const targetBlock = charredBlocks[Math.floor(Math.random() * charredBlocks.length)];
+                        const targetCube = targetBlock.cubes[Math.floor(Math.random() * targetBlock.cubes.length)];
+                        
+                        if (targetCube) {
+                            const smokePos = new THREE.Vector3();
+                            targetCube.getWorldPosition(smokePos);
+                            // Smoke rises directly from the top face of the cooling cube
+                            smokePos.y += 0.45;
+                            smokePos.x += (Math.random() - 0.5) * 0.12;
+                            smokePos.z += (Math.random() - 0.5) * 0.12;
+
+                            if (isMolten && Math.random() < 0.35 && typeof window.particleSystem.addFireSparks === 'function') {
+                                window.particleSystem.addFireSparks(smokePos, 2);
+                            }
+                            if (typeof window.particleSystem.addSmokeWisps === 'function') {
+                                window.particleSystem.addSmokeWisps(smokePos, 1, {
+                                    sizeMult: isMolten ? 1.4 : 1.1,
+                                    maxAge: isMolten ? 1.6 : 1.3
+                                });
+                            }
                         }
                     }
                 }
