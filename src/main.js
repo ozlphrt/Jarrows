@@ -8322,10 +8322,10 @@ function onMouseClick(event) {
     const closestHit = allIntersections[0];
     const block = closestHit.block;
 
-    // If block is molten / smoldering charred from detonation aftermath, trigger sizzle feedback
+    // If block is molten / smoldering charred from detonation aftermath, trigger sizzle and directional smoke burst feedback
     if (block.isCharred) {
         if (typeof block.onCharredTap === 'function') {
-            block.onCharredTap();
+            block.onCharredTap(block.direction);
         }
         return;
     }
@@ -9490,7 +9490,7 @@ function onTouchEnd(event) {
     // If block is molten / smoldering charred from detonation aftermath, trigger sizzle and smoke burst feedback
     if (block.isCharred) {
         if (typeof block.onCharredTap === 'function') {
-            block.onCharredTap();
+            block.onCharredTap(block.direction);
         }
         return;
     }

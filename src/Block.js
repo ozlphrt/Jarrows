@@ -2453,17 +2453,17 @@ export class Block {
     }
 
     /**
-     * Feedback when user taps on a smoldering charred block.
+     * Feedback when user taps or pushes a smoldering charred block.
      */
-    onCharredTap() {
+    onCharredTap(pushDir = null) {
         if (!this.isCharred) return;
 
         // Hot molten shake wobble
-        this.shakeViolently(180, 0.30);
+        this.shakeViolently(200, 0.35);
 
         // Play sizzle sound
         if (typeof window.playSound === 'function') {
-            window.playSound('syntheticSizzle', 0.48);
+            window.playSound('syntheticSizzle', 0.52);
         }
 
         // Show feedback message informing the player
@@ -2471,27 +2471,25 @@ export class Block {
             window.showGameHint('Cooling down... Please wait for ash to clear.', 'charred_tap_hint');
         }
 
-        // Prominent burst of volumetric smoke puffs & fiery embers from block cells
-        this.group.updateMatrixWorld(true);
-        const pos = new THREE.Vector3();
-        this.group.getWorldPosition(pos);
+        // Prominent burst of volumetric smoke puffs, steam jets, and fiery embers thrown outward from this pushed block
         if (window.particleSystem) {
-            if (typeof window.particleSystem.addFireSparks === 'function') {
-                window.particleSystem.addFireSparks(pos, 8);
-            }
-            if (typeof window.particleSystem.addSmokeWisps === 'function') {
-                // Dense main smoke puffs
-                window.particleSystem.addSmokeWisps(pos, 10, {
-                    sizeMult: 1.6,
-                    maxAge: 1.8,
-                    isSteam: false
-                });
-                // Sizzling steam wisps
-                window.particleSystem.addSmokeWisps(pos, 5, {
-                    sizeMult: 1.1,
-                    maxAge: 1.2,
-                    isSteam: true
-                });
+            if (typeof window.particleSystem.addPushedBlockSmokeBurst === 'function') {
+                window.particleSystem.addPushedBlockSmokeBurst(this, pushDir || this.direction);
+            } else {
+                this.group.updateMatrixWorld(true);
+                const pos = new THREE.Vector3();
+                this.group.getWorldPosition(pos);
+                if (typeof window.particleSystem.addFireSparks === 'function') {
+                    window.particleSystem.addFireSparks(pos, 8);
+                }
+                if (typeof window.particleSystem.addSmokeWisps === 'function') {
+                    window.particleSystem.addSmokeWisps(pos, 12, {
+                        sizeMult: 2.0,
+                        maxAge: 1.6,
+                        dir: pushDir || this.direction,
+                        speed: 2.6
+                    });
+                }
             }
         }
     }

@@ -254,15 +254,34 @@ export function createParticleSystem(maxParticles, scene) {
             state.startSize = baseSize;
             state.endSize   = baseSize * (3.5 + Math.random() * 2.0);
 
-            state.velY = 0.55 + Math.random() * 0.70;
-            var ang = Math.random() * Math.PI * 2;
-            var hs  = 0.08 + Math.random() * 0.22;
-            state.velX = Math.cos(ang) * hs;
-            state.velZ = Math.sin(ang) * hs;
+            if (opts.dir) {
+                // Directional smoke blast thrown outward from pushed block
+                var dLen = Math.hypot(opts.dir.x || 0, opts.dir.y || 0, opts.dir.z || 0) || 1.0;
+                var nx = (opts.dir.x || 0) / dLen;
+                var ny = (opts.dir.y || 0) / dLen;
+                var nz = (opts.dir.z || 0) / dLen;
+
+                var speed = (opts.speed !== undefined ? opts.speed : 2.0) * (0.8 + Math.random() * 0.5);
+                var spread = opts.spread !== undefined ? opts.spread : 0.6;
+                var rx = (Math.random() - 0.5) * spread;
+                var ry = (Math.random() - 0.5) * spread;
+                var rz = (Math.random() - 0.5) * spread;
+
+                state.velX = (nx + rx) * speed;
+                state.velY = Math.max(0.2, (ny + ry + 0.35) * speed);
+                state.velZ = (nz + rz) * speed;
+            } else {
+                state.velY = 0.55 + Math.random() * 0.70;
+                var ang = Math.random() * Math.PI * 2;
+                var hs  = 0.08 + Math.random() * 0.22;
+                state.velX = Math.cos(ang) * hs;
+                state.velZ = Math.sin(ang) * hs;
+            }
+
             state.phase = Math.random() * Math.PI * 2;
 
             sprite.material.rotation = Math.random() * Math.PI * 2;
-            state.rotSpeed = (Math.random() - 0.5) * 0.55;
+            state.rotSpeed = (Math.random() - 0.5) * 0.75;
 
             if (opts.isEmber) {
                 sprite.material.color.setRGB(1.0, 0.55 + Math.random() * 0.35, 0.08);
@@ -270,24 +289,92 @@ export function createParticleSystem(maxParticles, scene) {
             } else if (opts.isSteam) {
                 var v = 0.88 + Math.random() * 0.12;
                 sprite.material.color.setRGB(v, v, Math.min(1, v + 0.04));
-                state.startOpacity = 0.55;
+                state.startOpacity = 0.65;
+            } else if (opts.isDarkSoot) {
+                var dsh = 0.10 + Math.random() * 0.12;
+                sprite.material.color.setRGB(dsh, dsh * 1.02, dsh * 1.05);
+                state.startOpacity = 0.75 + Math.random() * 0.20;
             } else {
                 var sh = 0.22 + Math.random() * 0.20;
                 sprite.material.color.setRGB(sh, sh * 1.04, sh * 1.10);
-                state.startOpacity = 0.50 + Math.random() * 0.20;
+                state.startOpacity = 0.55 + Math.random() * 0.25;
             }
             sprite.material.opacity = 0.0;
 
             sprite.position.set(
-                position.x + (Math.random() - 0.5) * 0.55,
-                position.y + Math.random() * 0.25,
-                position.z + (Math.random() - 0.5) * 0.55
+                position.x + (Math.random() - 0.5) * 0.45,
+                position.y + Math.random() * 0.20,
+                position.z + (Math.random() - 0.5) * 0.45
             );
 
             sprite.scale.setScalar(state.startSize * 0.3);
             sprite.visible = true;
         }
         if (window.markNeedsRender) window.markNeedsRender(3500);
+    }
+
+    /**
+     * Emit a violent, dramatic burst of smoke jets thrown outward from a pushed charred block
+     */
+    function addPushedBlockSmokeBurst(block, pushDir) {
+        if (!block || !block.group) return;
+        block.group.updateMatrixWorld(true);
+
+        var centerPos = new THREE.Vector3();
+        block.group.getWorldPosition(centerPos);
+
+        var dir = (pushDir && (pushDir.x !== 0 || pushDir.y !== 0 || pushDir.z !== 0))
+            ? pushDir
+            : (block.direction || { x: 0, y: 1, z: 0 });
+
+        // Collect cell positions along the block
+        var cellPositions = [centerPos.clone()];
+        if (block.length && block.length > 1 && block.direction) {
+            var isX = Math.abs(block.direction.x) > 0;
+            var isY = Math.abs(block.direction.y) > 0;
+            for (var ci = 1; ci < block.length; ci++) {
+                var cellPos = centerPos.clone();
+                if (isX) cellPos.x += ci * Math.sign(block.direction.x) * 1.0;
+                else if (isY) cellPos.y += ci * Math.sign(block.direction.y) * 1.0;
+                else cellPos.z += ci * Math.sign(block.direction.z || 1) * 1.0;
+                cellPositions.push(cellPos);
+            }
+        }
+
+        // Emit high-velocity smoke jets and embers from each cell
+        cellPositions.forEach(function(cPos) {
+            // 1. High-velocity directional smoke thrown along push trajectory
+            addSmokeWisps(cPos, 7, {
+                dir: dir,
+                speed: 2.8,
+                spread: 0.6,
+                sizeMult: 2.2,
+                maxAge: 1.6,
+                isDarkSoot: true
+            });
+
+            // 2. Hot steam venting plumes
+            addSmokeWisps(cPos, 5, {
+                dir: { x: dir.x * 0.5, y: Math.abs(dir.y) + 0.9, z: dir.z * 0.5 },
+                speed: 2.4,
+                spread: 0.7,
+                sizeMult: 1.7,
+                maxAge: 1.3,
+                isSteam: true
+            });
+
+            // 3. Radial burst billowing out from the block
+            addSmokeWisps(cPos, 6, {
+                sizeMult: 2.5,
+                maxAge: 1.9,
+                isDarkSoot: false
+            });
+
+            // 4. Hot fire sparks thrown outward
+            addFireSparks(cPos, 8);
+        });
+
+        if (window.markNeedsRender) window.markNeedsRender(3000);
     }
 
     function addQuenchBurst(position, count) {
@@ -484,6 +571,7 @@ export function createParticleSystem(maxParticles, scene) {
     return {
         addExplosion:    addExplosion,
         addSmokeWisps:   addSmokeWisps,
+        addPushedBlockSmokeBurst: addPushedBlockSmokeBurst,
         addFireSparks:   addFireSparks,
         addQuenchBurst:  addQuenchBurst,
         clearSmoke:      clearSmoke,
