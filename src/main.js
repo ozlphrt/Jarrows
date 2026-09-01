@@ -8626,7 +8626,11 @@ function tickThermalBlasts() {
                         if (dist > currentAshRadius) {
                             b.activeBlastLocks.delete(blast);
                             if (b.activeBlastLocks.size === 0) {
-                                b.isCharred = false;
+                                if (typeof b.setCharred === 'function') {
+                                    b.setCharred(false);
+                                } else {
+                                    b.isCharred = false;
+                                }
                             }
                         }
                     }
@@ -8681,7 +8685,11 @@ function tickThermalBlasts() {
                 if (b && b.activeBlastLocks && b.activeBlastLocks.has(blast)) {
                     b.activeBlastLocks.delete(blast);
                     if (b.activeBlastLocks.size === 0) {
-                        b.isCharred = false;
+                        if (typeof b.setCharred === 'function') {
+                            b.setCharred(false);
+                        } else {
+                            b.isCharred = false;
+                        }
                     }
                 }
             }
@@ -8782,7 +8790,12 @@ export function applyDetonationAftermathShock(destroyedCells, bombCenter) {
         if (minDist <= maxRadius - 0.15) {
             if (!b.activeBlastLocks) b.activeBlastLocks = new Set();
             b.activeBlastLocks.add(blast);
-            b.isCharred = true;
+            if (typeof b.setCharred === 'function') {
+                b.setCharred(true);
+            } else {
+                b.isCharred = true;
+            }
+            blast.survivingBlocks.push(b);
         }
     }
 

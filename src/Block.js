@@ -2495,6 +2495,101 @@ export class Block {
     }
 
     /**
+     * Set charred cooling state and dynamically update arrow/dot/circle indicator colors.
+     */
+    setCharred(val) {
+        this.isCharred = !!val;
+        if (!this.isCharred && this.activeBlastLocks) {
+            this.activeBlastLocks.clear();
+        }
+        this.updateCoolingIndicatorState();
+    }
+
+    /**
+     * Quench charred cooling state early with particle quench burst and color restoration.
+     */
+    quenchMoltenChar() {
+        if (!this.isCharred) return;
+        this.setCharred(false);
+        if (window.particleSystem && typeof window.particleSystem.addQuenchBurst === 'function') {
+            this.group.updateMatrixWorld(true);
+            const pos = new THREE.Vector3();
+            this.group.getWorldPosition(pos);
+            window.particleSystem.addQuenchBurst(pos, 8);
+        }
+    }
+
+    /**
+     * Update arrow, dot, and circle indicator colors based on cooling down status.
+     * When cooling down: indicators switch to an intense smoldering charred ember color.
+     * When cooldown completes: indicators restore to their original theme colors (Red, Teal, Yellow).
+     */
+    updateCoolingIndicatorState() {
+        let targetColorHex;
+        let targetEmissiveHex;
+        let targetEmissiveIntensity = 0.3;
+
+        if (this.isCharred) {
+            // Distinct glowing smoldering ember / molten rust color for cooling unplayable blocks
+            targetColorHex = 0xFF5000;
+            targetEmissiveHex = 0xE63900;
+            targetEmissiveIntensity = 0.55;
+        } else if (this.isBomb) {
+            const maxColors = [0xff2252, 0x00e5ff, 0xffa000];
+            targetColorHex = maxColors[this.length - 1] || maxColors[0];
+            targetEmissiveHex = targetColorHex;
+            targetEmissiveIntensity = this.length === 1 ? 0.70 : 0.55;
+        } else {
+            const colors = [0xff6b6b, 0x4ecdc4, 0xffc125];
+            targetColorHex = colors[this.length - 1] || colors[0];
+            targetEmissiveHex = targetColorHex;
+            targetEmissiveIntensity = 0.3;
+        }
+
+        // Apply color & emissive to arrow meshes
+        if (this.arrow) {
+            this.arrow.traverse((child) => {
+                if (child.isMesh && child.material) {
+                    const mats = Array.isArray(child.material) ? child.material : [child.material];
+                    mats.forEach(mat => {
+                        if (mat.color && typeof mat.color.setHex === 'function') {
+                            mat.color.setHex(targetColorHex);
+                        }
+                        if (mat.emissive && typeof mat.emissive.setHex === 'function') {
+                            mat.emissive.setHex(targetEmissiveHex);
+                        }
+                        if (mat.emissiveIntensity !== undefined) {
+                            mat.emissiveIntensity = targetEmissiveIntensity;
+                        }
+                    });
+                }
+            });
+        }
+
+        // Apply color & emissive to direction indicators (dots & circles)
+        if (this.directionIndicators) {
+            this.directionIndicators.traverse((child) => {
+                if (child.isMesh && child.material) {
+                    const mats = Array.isArray(child.material) ? child.material : [child.material];
+                    mats.forEach(mat => {
+                        if (mat.color && typeof mat.color.setHex === 'function') {
+                            mat.color.setHex(targetColorHex);
+                        }
+                        if (mat.emissive && typeof mat.emissive.setHex === 'function') {
+                            mat.emissive.setHex(targetEmissiveHex);
+                        }
+                        if (mat.emissiveIntensity !== undefined) {
+                            mat.emissiveIntensity = targetEmissiveIntensity;
+                        }
+                    });
+                }
+            });
+        }
+
+        if (window.markNeedsRender) window.markNeedsRender(150);
+    }
+
+    /**
      * Flash the block and its indicators with a luminous emissive pulse when spinning.
      */
     flashHighlight(duration = 320, flashColorHex = 0xffffff, peakIntensity = 0.85) {
