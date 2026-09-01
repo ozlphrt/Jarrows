@@ -247,6 +247,7 @@ export function createParticleSystem(maxParticles, scene) {
             var sprite = state.sprite;
 
             state.active = true;
+            state.fadingOut = false;
             state.age = 0;
             state.maxAge = (opts.maxAge !== undefined) ? opts.maxAge : (2.5 + Math.random() * 1.5);
 

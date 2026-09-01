@@ -4,6 +4,17 @@
  */
 
 export const changelog = {
+    "8.25.0": {
+        title: "Ground-Rooted Support Physics, Full Indicator Defrosting & Organic Blast Shaders",
+        date: "2026-09-01",
+        changes: [
+            "Ground-Rooted Support Physics: Replaced local peer checks with a global ground-rooted reachability graph from y=0 upwards, eliminating mutual support deadlocks where multi-layer frosted clusters and sandwiched blocks floated in mid-air",
+            "Base Plate Cluster Dissolution & Color Restoration: Landing on the base plate at y=0 comprehensively unlocks frosted clusters and restores vibrant length-based palette colors (Red, Teal, Yellow) to all arrows and indicators",
+            "Hollow Ring Geometry & Additive Artifact Elimination: Removed secondary additive mesh domes and quads, rendering circle indicators as clean, crisp 3D rings with zero bright pinpoint light spots in their hollow centers",
+            "Gap-Aware Non-Spherical Blast Shaders: Blended Chebyshev and Euclidean metrics with 3D procedural turbulence for realistic rectangular shockwave channeling along block crevices",
+            "Dynamic Spin Cost & Level Timer Balancing: Implemented bomb-aware timer calculations with a 3:30 par ceiling, and scaled spin costs dynamically (8% - 18% of par) without artificial caps"
+        ]
+    },
     "8.24.0": {
         title: "Dynamic Par Time Economy, Combo Multipliers & Strategic Spin Balancing",
         date: "2026-09-01",

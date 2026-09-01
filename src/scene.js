@@ -444,25 +444,38 @@ export function setupThermalMaterial(material) {
                     for (int bi = 0; bi < 6; bi++) {
                         if (uThermalBlastRadius[bi] > 0.01 || uAshRadius[bi] > 0.01) {
                             vec3 toFrag = vThermalWorldPos - uThermalBlastPos[bi];
-                            float dist = length(toFrag);
-                            vec3 blastDir = dist > 1e-4 ? toFrag / dist : vec3(0.0, 1.0, 0.0);
+                            vec3 dAbs = abs(toFrag);
+                            float dEuc = length(toFrag);
+                            float dBox = max(dAbs.x, max(dAbs.y, dAbs.z));
+
+                            // 1. Grid-aware metric blending (channels along rectangular block gaps & faces)
+                            float dMetric = mix(dEuc, dBox, 0.38);
+
+                            // 2. Soft organic 3D billows (eliminates circular disc while keeping boundary smooth & feathered)
+                            float n1 = sin(vThermalWorldPos.x * 2.2 + vThermalWorldPos.y * 1.8) * cos(vThermalWorldPos.z * 2.2 + vThermalWorldPos.y * 1.4);
+                            float n2 = sin(vThermalWorldPos.x * 4.2 - vThermalWorldPos.z * 3.8 + vThermalWorldPos.y * 2.5) * 0.35;
+                            float turbulence = (n1 + n2) * 0.26;
+
+                            float effectiveDist = dMetric - turbulence;
+
+                            vec3 blastDir = dEuc > 1e-4 ? toFrag / dEuc : vec3(0.0, 1.0, 0.0);
                             vec3 norm = length(vThermalWorldNormal) > 1e-4 ? normalize(vThermalWorldNormal) : vec3(0.0, 1.0, 0.0);
                             float directFacing = max(0.0, dot(-blastDir, norm));
 
-                            // 1. Dark Ashy Soot Field (Lingers after molten cooling)
-                            if (dist <= uAshRadius[bi] + 0.6 && uAshIntensity[bi] > 0.001) {
-                                float ashInner = uAshRadius[bi] - dist;
-                                float ashFacing = 0.38 + 0.62 * pow(max(1e-4, directFacing), 0.45);
-                                float af = smoothstep(-0.6, 0.6, ashInner) * uAshIntensity[bi] * ashFacing;
+                            // 3. Dark Ashy Soot Field (Wide, silky smooth feathered falloff into clean block surfaces)
+                            if (effectiveDist <= uAshRadius[bi] + 1.25 && uAshIntensity[bi] > 0.001) {
+                                float ashInner = uAshRadius[bi] - effectiveDist;
+                                float ashFacing = 0.58 + 0.42 * pow(max(1e-4, directFacing), 0.5);
+                                float af = smoothstep(-1.25, 0.85, ashInner) * uAshIntensity[bi] * ashFacing;
                                 maxAshFactor = max(maxAshFactor, af);
                             }
 
-                            // 2. Molten Glowing Core (Contracts from outside-in)
-                            if (dist <= uThermalBlastRadius[bi] + 0.5 && uThermalBlastIntensity[bi] > 0.001) {
-                                float heatInner = uThermalBlastRadius[bi] - dist;
+                            // 4. Molten Glowing Core (Smooth feathered heat transition)
+                            if (effectiveDist <= uThermalBlastRadius[bi] + 0.85 && uThermalBlastIntensity[bi] > 0.001) {
+                                float heatInner = uThermalBlastRadius[bi] - effectiveDist;
                                 float heatFacing = max(directFacing, 0.22 * max(0.0, dot(vec3(0.0, 1.0, 0.0), norm)));
                                 if (heatFacing > 0.03) {
-                                    float heat = smoothstep(-0.5, 0.7, heatInner) * uThermalBlastIntensity[bi] * pow(max(1e-4, heatFacing), 0.65);
+                                    float heat = smoothstep(-0.85, 0.95, heatInner) * uThermalBlastIntensity[bi] * pow(max(1e-4, heatFacing), 0.65);
                                     maxHeat = max(maxHeat, heat);
 
                                     vec3 colEmber = vec3(0.80, 0.10, 0.02);
@@ -587,15 +600,21 @@ export function setupPulsingMaterial(material, options = {}) {
                     float pulseAsh = 0.0;
                     for (int bi = 0; bi < 6; bi++) {
                         if (uAshIntensity[bi] > 0.001 && uAshRadius[bi] > 0.01) {
-                            float dist = length(vThermalWorldPos - uThermalBlastPos[bi]);
-                            if (dist <= uAshRadius[bi] + 0.6) {
-                                float af = smoothstep(-0.6, 0.6, uAshRadius[bi] - dist) * uAshIntensity[bi];
+                            vec3 toFrag = vThermalWorldPos - uThermalBlastPos[bi];
+                            vec3 dAbs = abs(toFrag);
+                            float dMetric = mix(length(toFrag), max(dAbs.x, max(dAbs.y, dAbs.z)), 0.38);
+                            float n1 = sin(vThermalWorldPos.x * 2.2 + vThermalWorldPos.y * 1.8) * cos(vThermalWorldPos.z * 2.2 + vThermalWorldPos.y * 1.4);
+                            float n2 = sin(vThermalWorldPos.x * 4.2 - vThermalWorldPos.z * 3.8 + vThermalWorldPos.y * 2.5) * 0.35;
+                            float effectiveDist = dMetric - (n1 + n2) * 0.26;
+
+                            if (effectiveDist <= uAshRadius[bi] + 1.25) {
+                                float af = smoothstep(-1.25, 0.85, uAshRadius[bi] - effectiveDist) * uAshIntensity[bi];
                                 pulseAsh = max(pulseAsh, af);
                             }
                         }
                     }
                     if (pulseAsh > 0.001) {
-                        totalEmissiveRadiance *= max(0.0, 1.0 - pulseAsh * 0.96);
+                        totalEmissiveRadiance *= max(0.0, 1.0 - pulseAsh * 2.0);
                     }
                 }
                 `
@@ -678,16 +697,18 @@ export function setupGlowQuadMaterial(material, options = {}) {
             float maxAshFactor = 0.0;
             for (int bi = 0; bi < 6; bi++) {
                 if (uAshIntensity[bi] > 0.001 && uAshRadius[bi] > 0.01) {
-                    float dist = length(vGlowWorldPos - uThermalBlastPos[bi]);
-                    if (dist <= uAshRadius[bi] + 0.6) {
-                        float af = smoothstep(-0.6, 0.6, uAshRadius[bi] - dist) * uAshIntensity[bi];
+                    vec3 toGlow = vGlowWorldPos - uThermalBlastPos[bi];
+                    vec3 dGlowAbs = abs(toGlow);
+                    float dGlowMetric = mix(length(toGlow), max(dGlowAbs.x, max(dGlowAbs.y, dGlowAbs.z)), 0.38);
+                    if (dGlowMetric <= uAshRadius[bi] + 1.25) {
+                        float af = smoothstep(-1.25, 0.85, uAshRadius[bi] - dGlowMetric) * uAshIntensity[bi];
                         maxAshFactor = max(maxAshFactor, af);
                     }
                 }
             }
             if (maxAshFactor > 0.001) {
-                diffuseColor.a *= max(0.0, 1.0 - maxAshFactor * 0.98);
-                diffuseColor.rgb *= max(0.0, 1.0 - maxAshFactor * 0.90);
+                diffuseColor.a *= max(0.0, 1.0 - maxAshFactor * 1.8);
+                diffuseColor.rgb *= max(0.0, 1.0 - maxAshFactor * 1.8);
             }
             `
         );

@@ -446,7 +446,10 @@ let lastSpinTimestamp = 0;
 let consecutiveSpinCount = 0;
 
 function setTimeLeftSec(val) {
-    const maxCap = currentLevelMaxTimeCap || 300;
+    if (typeof val !== 'number' || isNaN(val)) {
+        val = 30;
+    }
+    const maxCap = (typeof currentLevelMaxTimeCap === 'number' && !isNaN(currentLevelMaxTimeCap)) ? currentLevelMaxTimeCap : 300;
     timeLeftSec = Math.max(0, Math.min(maxCap, val));
 }
 let timeChallengeActive = false;
@@ -1925,21 +1928,9 @@ function animateTimeAddition(deltaSeconds) {
             requestAnimationFrame(animate);
         } else {
             // Animation complete - snap to final value
-            setTimeLeftSec(Math.max(0, timeAnimationTarget));
+            setTimeLeftSec(timeAnimationTarget);
             updateTimerDisplay();
             timeAnimationActive = false;
-            console.log('[Time Challenge] Animation complete, final time:', timeLeftSec);
-
-            // Check if there's more to animate (if target was updated during animation)
-            // This shouldn't happen since we add to target, but just in case
-            const finalTarget = timeAnimationTarget;
-            if (finalTarget > timeLeftSec) {
-                const remaining = finalTarget - timeLeftSec;
-                if (remaining > 0.1) { // Small threshold to avoid infinite loops
-                    console.log('[Time Challenge] More time to animate, continuing:', remaining);
-                    animateTimeAddition(remaining);
-                }
-            }
         }
     }
 
@@ -1952,10 +1943,10 @@ function flashTimerDelta(deltaSeconds) {
     const deltaEl = document.getElementById('timer-delta');
     if (!timerEl || !deltaEl) return;
 
-    const deltaInt = Math.trunc(deltaSeconds);
-    if (deltaInt === 0) return;
+    const deltaNum = typeof deltaSeconds === 'number' ? deltaSeconds : parseFloat(deltaSeconds);
+    if (isNaN(deltaNum) || Math.abs(deltaNum) < 0.05) return;
 
-    const isGain = deltaInt > 0;
+    const isGain = deltaNum > 0;
     const klass = isGain ? 'timer-gain' : 'timer-loss';
 
     timerEl.classList.remove('timer-gain', 'timer-loss');
@@ -1963,7 +1954,12 @@ function flashTimerDelta(deltaSeconds) {
     void timerEl.offsetWidth;
     timerEl.classList.add(klass);
 
-    deltaEl.textContent = (isGain ? `+${deltaInt}` : `${deltaInt}`) + 's';
+    const absVal = Math.abs(deltaNum);
+    const formattedVal = (absVal >= 1 && Number.isInteger(absVal)) 
+        ? `${absVal}` 
+        : `${absVal.toFixed(1)}`;
+
+    deltaEl.textContent = (isGain ? `+${formattedVal}` : `-${formattedVal}`) + 's';
     deltaEl.style.color = isGain ? '#7CFF9A' : '#FF7C7C';
     deltaEl.classList.remove('show');
     void deltaEl.offsetWidth;
@@ -2127,21 +2123,32 @@ function timeChallengeResetRun() {
 function timeChallengeStartNewLevel(blocksArray) {
     if (!isTimeBasedMode()) return;
 
-    // Calculate level par time based on block count and average solve duration
+    // Calculate level par time based on block count, bomb efficiency, and average solve duration
     let estimatedTotalTime = 0;
     if (blocksArray && blocksArray.length > 0) {
+        let bombCount = 0;
         for (const block of blocksArray) {
-            // ~0.8s for Length 1 (Red), ~1.4s for Length 2 (Teal), ~2.0s for Length 3+ (Yellow)
-            const blockEst = block.length >= 3 ? 2.0 : (block.length === 2 ? 1.4 : 0.8);
+            if (block && block.isBomb) {
+                bombCount++;
+            }
+            // Base estimated duration per block
+            const blockEst = block.length >= 3 ? 1.6 : (block.length === 2 ? 1.2 : 0.7);
             estimatedTotalTime += blockEst;
+        }
+
+        // Bombs clear large clusters in single detonations (discount bulk-cleared blocks)
+        if (bombCount > 0) {
+            const bulkBlocksDiscount = bombCount * 14;
+            const discountedSeconds = bulkBlocksDiscount * 0.9;
+            estimatedTotalTime = Math.max(35, estimatedTotalTime - discountedSeconds + (bombCount * 1.8));
         }
     }
 
-    // Par time: at least 35s, proportioned to the puzzle size
-    const parTime = Math.max(35, Math.round(estimatedTotalTime));
+    // Par time: at least 35s, with a firm ceiling of 210s (3:30 min) for urgent pacing on mega levels
+    const parTime = Math.max(35, Math.min(210, Math.round(estimatedTotalTime)));
     currentLevelParTime = parTime;
-    // Level capacity: 1.5x Par Time (e.g. 180s level has max cap of 270s / 4.5 min)
-    currentLevelMaxTimeCap = Math.max(50, Math.round(parTime * 1.5));
+    // Level capacity: 1.4x Par Time, capped at 270s (4:30 min)
+    currentLevelMaxTimeCap = Math.max(50, Math.min(270, Math.round(parTime * 1.4)));
 
     // Carryover bonus: carry over up to 25% of the new level's par time as a skill head-start
     const maxCarryover = Math.round(parTime * 0.25);
@@ -2193,29 +2200,31 @@ function timeChallengeAwardForBlockRemoved(blockLength) {
     }
 
     const now = performance.now();
-    const dt = now - lastBlockRemovalTime;
+    const dt = lastBlockRemovalTime > 0 ? (now - lastBlockRemovalTime) : 999999;
     lastBlockRemovalTime = now;
 
     // Rhythmic combo detection: moves within 2.4s build combo streak
     if (dt < 2400) {
-        removalComboStreak = Math.min(5, removalComboStreak + 1);
+        removalComboStreak = Math.min(5, (removalComboStreak || 0) + 1);
     } else {
         removalComboStreak = 1;
     }
 
-    timeChallengeRemovals += 1;
+    timeChallengeRemovals = (timeChallengeRemovals || 0) + 1;
 
-    const baseBonus = timeChallengeGetColorBonusSeconds(blockLength);
+    const baseBonus = timeChallengeGetColorBonusSeconds(blockLength || 1);
     // Combo multiplier: 1x, 1.4x, 1.8x, 2.2x, 2.5x
     const comboMult = removalComboStreak >= 4 ? 2.5 : (removalComboStreak === 3 ? 1.8 : (removalComboStreak === 2 ? 1.4 : 1.0));
     const gained = Math.round(baseBonus * comboMult * 10) / 10;
 
-    timeChallengeTimeCollected += gained;
-    timeChallengeTimeCollectedAllTime += gained;
+    timeChallengeTimeCollected = (timeChallengeTimeCollected || 0) + gained;
+    timeChallengeTimeCollectedAllTime = (timeChallengeTimeCollectedAllTime || 0) + gained;
 
-    setTimeLeftSec(Math.min(currentLevelMaxTimeCap, timeLeftSec + gained));
+    setTimeLeftSec(timeLeftSec + gained);
 
-    playSound('timeAdded', 0.8);
+    if (typeof playSound === 'function') {
+        playSound('timeAdded', 0.8).catch(() => {});
+    }
     flashTimerDelta(gained);
     updateTimerDisplay();
 }
@@ -7496,7 +7505,8 @@ function calculateSpinTimeCost() {
     // Base cost is derived from level par time using getSpinCostMultiplier (8% - 18% of par time)
     const multiplier = getSpinCostMultiplier(currentLevel);
     const par = currentLevelParTime || 60;
-    const baseCost = Math.max(8, Math.min(25, Math.round(par * multiplier)));
+    // Dynamic proportional scaling without artificial hard-cap (minimum 10s)
+    const baseCost = Math.max(10, Math.round(par * multiplier));
 
     // Consecutive spin escalation: 1st spin = 1.0x, 2nd spin = 1.5x, 3rd+ spin = 2.0x
     const consecutiveMult = consecutiveSpinCount === 0 ? 1.0 : (consecutiveSpinCount === 1 ? 1.5 : 2.0);
@@ -8557,9 +8567,9 @@ let thermalAnimationRunning = false;
 function tickThermalBlasts() {
     const now = performance.now();
 
-    // Check remaining active blocks to accelerate cooldown in endgame (last 3-4 blocks)
-    const activeBlocksCount = (blocks || []).filter(b => b && !b.isRemoved && !b.removalStartTime && !b.isFalling).length;
-    const endgameSpeedMult = activeBlocksCount <= 2 ? 3.5 : (activeBlocksCount <= 4 ? 2.4 : 1.0);
+    // Accelerate cooldown in endgame (last 3-4 blocks)
+    const blockCount = blocks ? blocks.length : 0;
+    const endgameSpeedMult = blockCount <= 2 ? 3.5 : (blockCount <= 4 ? 2.4 : 1.0);
 
     for (let i = activeThermalBlasts.length - 1; i >= 0; i--) {
         const blast = activeThermalBlasts[i];
@@ -8575,6 +8585,19 @@ function tickThermalBlasts() {
         const slot = blast.slot;
 
         if (totalProgress < 1.0) {
+            // Staggered charring onset: indicators transition to dark ashed tones sequentially as molten fire cools & smoke begins
+            for (const b of blast.survivingBlocks) {
+                if (b && b.activeBlastLocks && b.activeBlastLocks.has(blast)) {
+                    if (!b.isCharred && elapsed >= (b._charredDelayElapsed || 0)) {
+                        if (typeof b.setCharred === 'function') {
+                            b.setCharred(true);
+                        } else {
+                            b.isCharred = true;
+                        }
+                    }
+                }
+            }
+
             // ── PHASE 1: Fast heat-up ignition bloom (ease-in)
             if (elapsed < blast.p1Ms) {
                 const t = elapsed / blast.p1Ms;
@@ -8584,13 +8607,26 @@ function tickThermalBlasts() {
                 globalUniforms.uAshRadius.value[slot]             = blast.maxRadius * ease;
                 globalUniforms.uAshIntensity.value[slot]          = Math.min(1.0, ease * 1.3);
 
-            // ── PHASE 2: Molten core shrinks progressively inward towards crater center
+            // ── PHASE 2: Molten core stays prominent for 75% duration, then contracts as smoke billows in the final 25%
             } else if (elapsed < blast.p1Ms + blast.p2Ms) {
-                const t = (elapsed - blast.p1Ms) / blast.p2Ms;
-                const ease = 1.0 - Math.pow(1.0 - t, 2.4);
+                const t = Math.max(0.0, Math.min(1.0, (elapsed - blast.p1Ms) / blast.p2Ms));
+                let radiusRatio, intensityRatio;
 
-                globalUniforms.uThermalBlastRadius.value[slot]    = Math.max(0.0, blast.maxRadius * (1.0 - ease));
-                globalUniforms.uThermalBlastIntensity.value[slot] = Math.max(0.0, (1.0 - ease) * blast.blastIntensityMultiplier);
+                if (t <= 0.75) {
+                    // First 75%: Molten core remains large, bright, and simmering (100% -> 65% radius)
+                    const progress75 = t / 0.75;
+                    radiusRatio = 1.0 - 0.35 * Math.pow(progress75, 1.2);
+                    intensityRatio = 1.0 - 0.20 * progress75;
+                } else {
+                    // Final 25%: Smoke is active; remaining 65% molten core contracts smoothly into center (65% -> 0%)
+                    const progress25 = (t - 0.75) / 0.25;
+                    const easeOut = progress25 * progress25;
+                    radiusRatio = 0.65 * (1.0 - easeOut);
+                    intensityRatio = 0.80 * (1.0 - easeOut);
+                }
+
+                globalUniforms.uThermalBlastRadius.value[slot]    = Math.max(0.0, blast.maxRadius * radiusRatio);
+                globalUniforms.uThermalBlastIntensity.value[slot] = Math.max(0.0, intensityRatio * blast.blastIntensityMultiplier);
                 globalUniforms.uAshRadius.value[slot]             = blast.maxRadius;
                 globalUniforms.uAshIntensity.value[slot]          = 1.0;
 
@@ -8637,16 +8673,53 @@ function tickThermalBlasts() {
                 }
             }
 
-            // Continuous billowing smoke & embers directly from cooling charred blocks in this crater
-            if (now - blast.lastSparkTime > 110 && window.particleSystem) {
+            // Dynamic smoke generation: start smoke when 25% of molten screen time remains (mixing molten fire & smoke)
+            const smokeStartDelayMs = Math.round(blast.moltenDurationMs * 0.75);
+            const moltenEnd = blast.moltenDurationMs;
+            const ashEnd = blast.p1Ms + blast.p2Ms + blast.p3Ms;
+            
+            let smokeInterval = 80;
+            let puffCount = 3;
+            let sizeMult = 2.0;
+            let maxAge = 2.0;
+            let sparkChance = 0.50;
+            let isDarkSoot = true;
+            let isSteam = false;
+
+            if (elapsed < smokeStartDelayMs) {
+                // Pure molten fire on full display without smoke obstruction
+                puffCount = 0;
+            } else if (elapsed < moltenEnd + 800) {
+                // Peak smoke billows as molten core quenches and shrinks into ash
+                smokeInterval = 70;
+                puffCount = 3;
+                sizeMult = 2.2;
+                maxAge = 2.2;
+                sparkChance = 0.45;
+                isDarkSoot = true;
+            } else if (elapsed < ashEnd) {
+                // Ash dwell: thinning out, lighter gray subtle wisps
+                smokeInterval = 220;
+                puffCount = 1;
+                sizeMult = 0.95;
+                maxAge = 1.2;
+                sparkChance = 0.0;
+                isDarkSoot = false;
+            } else {
+                // Phase 4 ash dissolve: very faint / clarifying into clean air
+                smokeInterval = 400;
+                puffCount = Math.random() < 0.4 ? 1 : 0;
+                sizeMult = 0.65;
+                maxAge = 0.9;
+                sparkChance = 0.0;
+                isSteam = true;
+            }
+
+            if (puffCount > 0 && now - blast.lastSparkTime > smokeInterval && window.particleSystem) {
                 blast.lastSparkTime = now;
-                const isMolten = elapsed < blast.moltenDurationMs;
-                
-                // Get all active charred blocks belonging to this blast
                 const charredBlocks = blast.survivingBlocks.filter(b => b && b.isCharred && !b.isRemoved && !b.isFalling && b.cubes && b.cubes.length > 0);
                 
                 if (charredBlocks.length > 0) {
-                    const puffCount = isMolten ? 2 : 1;
                     for (let s = 0; s < puffCount; s++) {
                         const targetBlock = charredBlocks[Math.floor(Math.random() * charredBlocks.length)];
                         const targetCube = targetBlock.cubes[Math.floor(Math.random() * targetBlock.cubes.length)];
@@ -8659,13 +8732,15 @@ function tickThermalBlasts() {
                             smokePos.x += (Math.random() - 0.5) * 0.12;
                             smokePos.z += (Math.random() - 0.5) * 0.12;
 
-                            if (isMolten && Math.random() < 0.35 && typeof window.particleSystem.addFireSparks === 'function') {
+                            if (sparkChance > 0 && Math.random() < sparkChance && typeof window.particleSystem.addFireSparks === 'function') {
                                 window.particleSystem.addFireSparks(smokePos, 2);
                             }
                             if (typeof window.particleSystem.addSmokeWisps === 'function') {
                                 window.particleSystem.addSmokeWisps(smokePos, 1, {
-                                    sizeMult: isMolten ? 1.4 : 1.1,
-                                    maxAge: isMolten ? 1.6 : 1.3
+                                    sizeMult,
+                                    maxAge,
+                                    isDarkSoot,
+                                    isSteam
                                 });
                             }
                         }
@@ -8726,9 +8801,9 @@ export function applyDetonationAftermathShock(destroyedCells, bombCenter) {
     const maxRadius = Math.min(3.8, 1.8 + Math.sqrt(destroyedCount) * 0.35);
     const blastIntensityMultiplier = Math.min(1.4, 0.9 + destroyedCount * 0.05);
 
-    // Dynamic phase durations: keep ash visible and solid for ~75% of ash time, then clear in ~25%
-    const p1Ms = 300;
-    const p2Ms = Math.max(3200, Math.min(4800, 2800 + destroyedCount * 180));
+    // Dynamic phase durations: instant explosion bloom (180ms), elongated molten core contraction, ash dwell, and outside-in unfreeze
+    const p1Ms = 180;
+    const p2Ms = Math.max(4500, Math.min(6200, 3800 + destroyedCount * 220));
     // Phase 3: Prominent visible ash dwell
     const p3Ms = Math.max(6500, Math.min(9500, 6000 + destroyedCount * 220 + survivingBlocks.length * 40));
     // Phase 4: Snappy clean ash dissolve
@@ -8763,7 +8838,7 @@ export function applyDetonationAftermathShock(destroyedCells, bombCenter) {
         p4Ms,
         totalDurationMs,
         moltenDurationMs: p1Ms + p2Ms,
-        survivingBlocks,
+        survivingBlocks: [],
         hasQuenchedMolten: false,
         lastSparkTime: startTime
     };
@@ -8786,8 +8861,8 @@ export function applyDetonationAftermathShock(destroyedCells, bombCenter) {
             }
         }
 
-        // Strictly lock only if inside the visible crater radius
-        if (minDist <= maxRadius - 0.15) {
+        // Lock and char all blocks genuinely covered by the visible ash & soot crater
+        if (minDist <= maxRadius + 0.8) {
             if (!b.activeBlastLocks) b.activeBlastLocks = new Set();
             b.activeBlastLocks.add(blast);
             if (typeof b.setCharred === 'function') {
@@ -8795,6 +8870,7 @@ export function applyDetonationAftermathShock(destroyedCells, bombCenter) {
             } else {
                 b.isCharred = true;
             }
+
             blast.survivingBlocks.push(b);
         }
     }
@@ -8823,11 +8899,14 @@ window.applyDetonationAftermathShock = applyDetonationAftermathShock;
  */
 export function checkDetonationDeadlock() {
     if (!blocks || blocks.length === 0) return;
-    const activeBlocks = blocks.filter(b => b && !b.isRemoved && !b.isFalling && !b.isExploding && !b.removalStartTime && !b.isTranslucent);
-    const charredBlocks = activeBlocks.filter(b => b.isCharred);
+    const charredBlocks = blocks.filter(b => b && b.isCharred && !b.isRemoved && !b.isFalling);
     if (charredBlocks.length === 0) return;
 
-    const nonCharredBlocks = activeBlocks.filter(b => !b.isCharred);
+    const nonCharredCount = blocks.length - charredBlocks.length;
+    // Fast-path: if there are plenty of non-charred blocks (> 8), deadlock is virtually impossible on large towers
+    if (nonCharredCount > 8) return;
+
+    const nonCharredBlocks = blocks.filter(b => b && !b.isCharred && !b.isRemoved && !b.isFalling && !b.isExploding && !b.removalStartTime && !b.isTranslucent);
     if (nonCharredBlocks.length === 0) {
         // Only charred blocks left - quench immediately so player can play
         charredBlocks.forEach(b => {
@@ -8837,14 +8916,16 @@ export function checkDetonationDeadlock() {
     }
 
     let hasValidMove = false;
-    for (const b of nonCharredBlocks) {
+    // Check candidate movable blocks (up to 10)
+    for (let i = 0; i < Math.min(10, nonCharredBlocks.length); i++) {
+        const b = nonCharredBlocks[i];
         if (typeof b.canMove === 'function' && b.canMove(blocks) !== 'blocked') {
             hasValidMove = true;
             break;
         }
     }
 
-    if (!hasValidMove) {
+    if (!hasValidMove && nonCharredBlocks.length <= 10) {
         // No movable non-charred blocks exist - quench charred blocks early
         charredBlocks.forEach(b => {
             if (typeof b.quenchMoltenChar === 'function') b.quenchMoltenChar();
@@ -8854,8 +8935,9 @@ export function checkDetonationDeadlock() {
 window.checkDetonationDeadlock = checkDetonationDeadlock;
 
 /**
- * Check all blocks and trigger falling for those that lost support
- * Blocks fall until they reach the base (yOffset = 0) or another supporting block
+ * Check all blocks and trigger falling for those that lost support.
+ * Uses a Ground-Rooted Reachability graph from yOffset=0 upwards,
+ * eliminating circular mutual-support loops where floating clusters and sandwiched blocks hold each other up in mid-air.
  */
 function checkAndTriggerFalling(blocks, force = false) {
     if (isGeneratingLevel || window.supportCheckingEnabled === false) {
@@ -8865,30 +8947,69 @@ function checkAndTriggerFalling(blocks, force = false) {
     // Update global grid before check
     updateSupportGrid();
 
-    const eligible = blocks.filter(b => {
-        if (!b || b.isRemoved || b.isFalling || b.isAnimating || b.removalStartTime || b.isExploding || b.wasCatapulted) return false;
-        return b.yOffset > 0.05; // only upper-layer blocks can lose support
-    });
+    const activeBlocks = blocks.filter(b => b && !b.isRemoved && !b.removalStartTime && !b.isExploding && !b.wasCatapulted);
+    const groundSupported = new Set();
 
-    // Compute closure of blocks that become unsupported if we remove all blocks already selected to fall.
-    const toFall = new Set();
+    // 1. Seed groundSupported with all blocks directly resting on the ground base plate (yOffset <= 0.05)
+    for (const b of activeBlocks) {
+        if (b.yOffset <= 0.05) {
+            if (b.isTranslucent || b.isLocked) {
+                const cluster = getTranslucentCluster(b, activeBlocks);
+                cluster.forEach(m => groundSupported.add(m));
+            } else {
+                groundSupported.add(b);
+            }
+        }
+    }
+
+    // 2. Propagate ground support upward through continuous solid support chains
     let changed = true;
     while (changed) {
         changed = false;
-        for (const b of eligible) {
-            if (toFall.has(b)) continue;
-            if (!blockHasSupportExcluding(b, blocks, toFall)) {
-                toFall.add(b);
+        for (const b of activeBlocks) {
+            if (groundSupported.has(b)) continue;
+
+            const cluster = (b.isTranslucent || b.isLocked) ? getTranslucentCluster(b, activeBlocks) : [b];
+            let clusterHasSupport = false;
+
+            for (const member of cluster) {
+                const blockCells = getBlockCells(member);
+                const yGrid = Math.round(member.yOffset / member.cubeSize);
+
+                for (const cell of blockCells) {
+                    const key = `${Math.round(cell.x)},${yGrid - 1},${Math.round(cell.z)}`;
+                    const other = _supportGrid.get(key);
+
+                    if (other && groundSupported.has(other) && !cluster.includes(other)) {
+                        const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
+                        const otherTop = other.yOffset + otherHeight;
+                        if (otherTop >= member.yOffset - 0.1) {
+                            clusterHasSupport = true;
+                            break;
+                        }
+                    }
+                }
+                if (clusterHasSupport) break;
+            }
+
+            if (clusterHasSupport) {
+                cluster.forEach(m => groundSupported.add(m));
                 changed = true;
             }
         }
     }
 
+    // 3. Any active block not reached by ground support is unsupported and must fall
+    const toFall = new Set();
+    for (const b of activeBlocks) {
+        if (!groundSupported.has(b) && !b.isFalling && !b.isAnimating) {
+            toFall.add(b);
+        }
+    }
+
     if (toFall.size === 0) return;
 
-    // Compute landing Y targets for each falling block, considering:
-    // - static blocks (not in toFall)
-    // - already-resolved falling blocks (using their computed target Y)
+    // Compute landing Y targets for each falling block
     const targets = computeSupportFallTargets(blocks, toFall);
 
     for (const [block, targetYOffset] of targets.entries()) {
@@ -8898,52 +9019,6 @@ function checkAndTriggerFalling(blocks, force = false) {
         if (typeof markNeedsRender === 'function') markNeedsRender(1000);
         startBlockFallingToTarget(block, targetYOffset);
     }
-}
-
-/**
- * Like blockHasSupport, but treats blocks in `excluded` as if they don't exist (they provide no support).
- */
-function directBlockHasExternalSupportExcluding(block, allBlocks, excluded, cluster = null) {
-    if (block.yOffset <= 0.05) return true;
-    const blockCells = getBlockCells(block);
-    const yGrid = Math.round(block.yOffset / block.cubeSize);
-
-    for (const cell of blockCells) {
-        const key = `${Math.round(cell.x)},${yGrid - 1},${Math.round(cell.z)}`;
-        const other = _supportGrid.get(key);
-        
-        if (other && other !== block && !other.isFalling && !other.isRemoved && !other.removalStartTime && !other.isExploding && !other.wasCatapulted) {
-            if (cluster && cluster.includes(other)) continue; // Ignore internal cluster blocks
-            if (excluded && excluded.has(other)) continue;
-            
-            const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
-            const otherTop = other.yOffset + otherHeight;
-            if (otherTop >= block.yOffset - 0.1) {
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
-function blockHasSupportExcluding(block, allBlocks, excluded) {
-    if (block.yOffset <= 0.05) return true;
-
-    if (block.isTranslucent || block.isLocked) {
-        const cluster = getTranslucentCluster(block, allBlocks);
-        if (cluster.length >= 3) {
-            // Check if ANY member in the cluster has external support (or is on the ground)
-            for (const member of cluster) {
-                if (member.yOffset <= 0.05) return true;
-                if (directBlockHasExternalSupportExcluding(member, allBlocks, excluded, cluster)) {
-                    return true;
-                }
-            }
-            return false;
-        }
-    }
-
-    return directBlockHasExternalSupportExcluding(block, allBlocks, excluded, null);
 }
 
 /**
@@ -9145,13 +9220,21 @@ function startBlockFallingToTarget(block, targetYOffset) {
             checkAndTriggerFalling(blocks);
 
             // Translucent blocks / welded clusters revert to standard non-translucent blocks when landing on the base plate (level 0)
-            if ((block.isLocked || block.isTranslucent) && block.yOffset < 0.1 && !block.isRemoved && !block.removalStartTime) {
-                console.log(`[BasePlate] Landed translucent block at level 0 (x=${block.gridX}, z=${block.gridZ}) - reverting to standard block & dissolving cluster`);
-                if (typeof block.unlockBlock === 'function') {
-                    block.unlockBlock();
-                }
-                if (typeof block.setTranslucent === 'function') {
-                    block.setTranslucent(false);
+            if (block.yOffset < 0.1 && !block.isRemoved && !block.removalStartTime) {
+                if (block.isLocked || block.isTranslucent || block._isFrostedClusterState) {
+                    console.log(`[BasePlate] Landed translucent block at level 0 (x=${block.gridX}, z=${block.gridZ}) - reverting to standard block & dissolving cluster`);
+                    if (typeof block.unlockBlock === 'function') {
+                        block.unlockBlock();
+                    }
+                    if (typeof block.setTranslucent === 'function') {
+                        block.setTranslucent(false);
+                    }
+                    if (typeof block.setIndicatorsFrosted === 'function') {
+                        block.setIndicatorsFrosted(false);
+                    }
+                    if (typeof block.updateCoolingIndicatorState === 'function') {
+                        block.updateCoolingIndicatorState();
+                    }
                 }
             }
 
