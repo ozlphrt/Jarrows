@@ -215,6 +215,32 @@ export function fixOverlappingBlocks(blocks, gridSize) {
         return true;
     }
 
+    function hasSupportAtYOffset(blockToMove, testYOffset, allBlocks) {
+        if (testYOffset <= 0.05) return true;
+        const moveCells = getBlockCells(blockToMove);
+        const moveCellSet = cellsToKeySet(moveCells);
+
+        for (const other of allBlocks) {
+            if (!other || other === blockToMove || other.isFalling || other.isRemoved || other.isExploding || other.removalStartTime) continue;
+            const otherCells = getBlockCells(other);
+            let sharesCell = false;
+            for (const c of otherCells) {
+                if (moveCellSet.has(`${c.x},${c.z}`)) {
+                    sharesCell = true;
+                    break;
+                }
+            }
+            if (!sharesCell) continue;
+
+            const otherHeight = other.isVertical ? (other.length * (other.cubeSize || 1)) : (other.cubeSize || 1);
+            const otherTop = snapLayerY(other.yOffset || 0) + otherHeight;
+            if (Math.abs(otherTop - testYOffset) < 0.1) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // Identify overlaps (collect ALL, not just first)
     const overlaps = [];
     const occupiedCells = new Map(); // key: "x,z" -> array of {block, yBottom, yTop}
@@ -236,7 +262,7 @@ export function fixOverlappingBlocks(blocks, gridSize) {
         }
     }
 
-    // Fix overlaps: try snapping, then search both DOWN and UP for a safe layer
+    // Fix overlaps: try snapping, then search downwards / surface levels
     const failedOverlaps = [];
     for (const overlap of overlaps) {
         const b1 = overlap.block1;
@@ -257,17 +283,23 @@ export function fixOverlappingBlocks(blocks, gridSize) {
         const { cubeSize } = getBlockYRange(blockToMove);
         const base = snapLayerY(blockToMove.yOffset || 0);
 
-        // Candidate list: snapped base, then alternate down/up by layer.
+        // Candidate list: snapped base, downward steps to 0, then only supported layer tops
         const candidates = [base];
-        const MAX_STEPS = 20; // Increased from 12 to allow more search space
-        for (let i = 1; i <= MAX_STEPS; i++) {
+        const maxLayers = Math.max(1, Math.round(base / cubeSize));
+        for (let i = 1; i <= maxLayers; i++) {
             candidates.push(Math.max(0, base - i * cubeSize));
-            candidates.push(base + i * cubeSize);
         }
+        candidates.push(0);
+
+        // Also candidate tops of overlapping or neighboring blocks below
+        const otherBlock = blockToMove === b1 ? b2 : b1;
+        const otherHeight = otherBlock.isVertical ? (otherBlock.length * cubeSize) : cubeSize;
+        const otherTop = snapLayerY(otherBlock.yOffset || 0) + otherHeight;
+        candidates.push(otherTop);
 
         let chosen = null;
         for (const c of candidates) {
-            if (isSafeAtYOffset(blockToMove, c, blocks)) {
+            if (isSafeAtYOffset(blockToMove, c, blocks) && hasSupportAtYOffset(blockToMove, c, blocks)) {
                 chosen = c;
                 break;
             }

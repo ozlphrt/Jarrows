@@ -4438,6 +4438,11 @@ export class Block {
         const shakeAmplitude = 0.08; // Increased from 0.06 for slightly more visible shake
         const surroundingBlockAmplitude = 0.04; // Reduced amplitude for surrounding blocks
 
+        this.isAnimating = true;
+        if (typeof window !== 'undefined' && typeof window.registerActiveBlock === 'function') {
+            window.registerActiveBlock(this);
+        }
+
         // Get cells occupied by this block
         const thisBlockCells = new Set();
         if (this.isVertical) {
@@ -4499,6 +4504,14 @@ export class Block {
             }
         }
 
+        // Mark surrounding blocks as animating during the subtle shake so they aren't evaluated mid-shake
+        surroundingBlocks.forEach(b => {
+            b.isAnimating = true;
+            if (typeof window !== 'undefined' && typeof window.registerActiveBlock === 'function') {
+                window.registerActiveBlock(b);
+            }
+        });
+
         // Store original positions for this block
         const originalX = this.group.position.x;
         const originalZ = this.group.position.z;
@@ -4523,6 +4536,10 @@ export class Block {
                 this.isAnimating = false;
                 this.group.scale.set(1, 1, 1);
                 this.updateWorldPosition();
+                for (const block of surroundingBlocks) {
+                    block.isAnimating = false;
+                    block.updateWorldPosition();
+                }
                 if (typeof window !== 'undefined' && typeof window.updateUndoButtonState === 'function') {
                     window.updateUndoButtonState();
                 }
@@ -4575,16 +4592,18 @@ export class Block {
                 // Snap back to exact grid position (main block)
                 this.updateWorldPosition();
                 this.isAnimating = false;
+
+                // Snap back surrounding blocks and clear isAnimating
+                for (const block of surroundingBlocks) {
+                    block.isAnimating = false;
+                    block.updateWorldPosition();
+                }
+
                 if (typeof window !== 'undefined' && typeof window.updateUndoButtonState === 'function') {
                     window.updateUndoButtonState();
                 }
                 if (typeof window !== 'undefined' && typeof window.markSupportCheckDirty === 'function') {
                     window.markSupportCheckDirty();
-                }
-
-                // Snap back surrounding blocks
-                for (const block of surroundingBlocks) {
-                    block.updateWorldPosition();
                 }
             }
         };

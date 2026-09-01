@@ -2155,6 +2155,9 @@
                 <button class="toggle-icon" id="ver-toggle" title="Show build version">
                     <span id="ver-label">VER</span>
                 </button>
+                <button class="toggle-icon" id="debug-copy-layout-btn" title="Copy Current Layout to Clipboard (Debug)">
+                    <span style="font-size: 10px; font-weight: 900; letter-spacing: 0.5px;">DBG</span>
+                </button>
                 <button class="toggle-icon" id="share-toggle" title="Share & Install">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
                         stroke-linejoin="round">
@@ -3283,6 +3286,21 @@
                     const valueEl = document.getElementById('ver-modal-value');
                     if (valueEl) valueEl.textContent = getBuildIdString();
                     if (modal) modal.style.display = 'flex';
+                });
+            }
+
+            // DBG button: copy current layout state to clipboard
+            const debugCopyBtn = document.getElementById('debug-copy-layout-btn');
+            if (debugCopyBtn) {
+                debugCopyBtn.classList.add('active');
+                debugCopyBtn.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (window.updateIdleTimers) window.updateIdleTimers();
+                    if (settingsMenu) settingsMenu.classList.remove('show');
+                    if (typeof window.copyLayoutToClipboard === 'function') {
+                        window.copyLayoutToClipboard();
+                    }
                 });
             }
 

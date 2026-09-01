@@ -4,6 +4,17 @@
  */
 
 export const changelog = {
+    "8.22.0": {
+        title: "Tower Support Physics Stability & Real-Time Layout Debug Capture",
+        date: "2026-09-01",
+        changes: [
+            "Fixed Stand-Alone Suspension Bug: Support grid dynamically indexes active falling blocks at their destination landing target, preventing falling upper blocks from dropping through or getting suspended in mid-air",
+            "Safe Physical Overlap Resolution: Puzzle structure repair engine strictly requires physical support and no longer elevates blocks into unsupported air",
+            "Animation Support Check Isolation: Block bounce and movement animations are strictly protected from premature support checks during multi-block cascades",
+            "Desktop Click Support Parity: Mouse interactions trigger full support checks identically to touch inputs",
+            "Debug Layout Clipboard Export (DBG): Added settings button to copy complete 3D puzzle block coordinate metadata in formatted JSON"
+        ]
+    },
     "8.21.0": {
         title: "Multi-Blast Cooldown Engine & Atmospheric Detonation Aftermath",
         date: "2026-08-31",

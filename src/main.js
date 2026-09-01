@@ -8380,6 +8380,19 @@ function onMouseClick(event) {
     block.move(blocks, gridSize);
     updateSupportGrid();
 
+    // After a block moves, check if any other blocks lost support
+    setTimeout(() => {
+        checkAndTriggerFalling(blocks);
+        setTimeout(() => {
+            checkAndTriggerFalling(blocks);
+        }, 400);
+    }, 200);
+
+    // Update button states after move
+    if (typeof updateUndoButtonState === 'function') {
+        updateUndoButtonState();
+    }
+
     // If block will fall, it's being cleared - advance solution step
     if (willFall && window.puzzleSolution) {
         // Wait for animation to complete, then update
@@ -8404,11 +8417,15 @@ let _supportGrid = new Map();
 function updateSupportGrid() {
     _supportGrid.clear();
     for (const block of blocks) {
-        if (!block || block.isRemoved || block.isFalling || block.removalStartTime || block.isExploding || block.wasCatapulted) continue;
+        if (!block || block.isRemoved || block.removalStartTime || block.isExploding || block.wasCatapulted) continue;
         
-        // Get all cells this block occupies
+        // If falling without a known destination target, it cannot provide stable support
+        if (block.isFalling && block._fallingTargetY === undefined) continue;
+
+        // Get effective Y layer: if actively falling with a known destination, use the target landing Y
+        const effY = (block.isFalling && block._fallingTargetY !== undefined) ? block._fallingTargetY : block.yOffset;
         const cells = getBlockCells(block);
-        const yBase = Math.round(block.yOffset / block.cubeSize);
+        const yBase = Math.round(effY / block.cubeSize);
         
         for (const cell of cells) {
             const h = block.isVertical ? block.length : 1;
@@ -8744,7 +8761,7 @@ function checkAndTriggerFalling(blocks, force = false) {
     updateSupportGrid();
 
     const eligible = blocks.filter(b => {
-        if (!b || b.isRemoved || b.isFalling || b.removalStartTime || b.isExploding || b.wasCatapulted) return false;
+        if (!b || b.isRemoved || b.isFalling || b.isAnimating || b.removalStartTime || b.isExploding || b.wasCatapulted) return false;
         return b.yOffset > 0.05; // only upper-layer blocks can lose support
     });
 
@@ -10569,5 +10586,62 @@ function showTutorialOverlay(stepIndicator, messageText, btnText = null, btnCall
 
     document.body.appendChild(container);
 }
+
+/**
+ * Debug feature: Copy current 3D puzzle layout to clipboard as JSON
+ */
+window.copyLayoutToClipboard = async function () {
+    try {
+        const activeBlocks = (blocks || []).filter(b => b && !b.isRemoved);
+        const layoutData = {
+            timestamp: new Date().toISOString(),
+            level: currentLevel,
+            gridSize: gridSize,
+            totalBlocks: activeBlocks.length,
+            blocks: activeBlocks.map((b, idx) => ({
+                id: idx,
+                length: b.length,
+                gridX: b.gridX,
+                gridZ: b.gridZ,
+                yOffset: Number(b.yOffset.toFixed(3)),
+                direction: { x: b.direction.x, z: b.direction.z },
+                isVertical: !!b.isVertical,
+                isLocked: !!b.isLocked,
+                isTranslucent: !!b.isTranslucent,
+                isCharred: !!b.isCharred,
+                isBomb: !!b.isBomb,
+                isSpinGem: !!b.isSpinGem,
+                isFalling: !!b.isFalling,
+                isAnimating: !!b.isAnimating,
+                _fallingTargetY: b._fallingTargetY !== undefined ? Number(b._fallingTargetY.toFixed(3)) : undefined
+            }))
+        };
+
+        const jsonStr = JSON.stringify(layoutData, null, 2);
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(jsonStr);
+        } else {
+            const textarea = document.createElement('textarea');
+            textarea.value = jsonStr;
+            textarea.style.position = 'fixed';
+            textarea.style.opacity = '0';
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+        }
+
+        if (typeof showGameHint === 'function') {
+            showGameHint('Debug: Layout copied to clipboard!', 'dbg_copy_' + Date.now());
+        }
+        console.log('[DEBUG] Layout JSON copied to clipboard:', layoutData);
+    } catch (err) {
+        console.error('Failed to copy layout to clipboard:', err);
+        if (typeof showGameHint === 'function') {
+            showGameHint('Failed to copy layout to clipboard');
+        }
+    }
+};
+
 
 
