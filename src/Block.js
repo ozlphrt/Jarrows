@@ -742,8 +742,8 @@ export class Block {
         const nextState = !!enabled;
         this.isBomb = nextState;
 
-        // Block body remains porcelain white for all blocks
-        const normalBodyColor = new THREE.Color(0xffffff);
+        // Block body remains porcelain white for all blocks (v8.31.2 studio porcelain clearcoat)
+        const normalBodyColor = new THREE.Color(0xe6ebf2);
         this.originalColor = normalBodyColor.clone();
 
         if (this.cubes && this.cubes.length > 0) {
@@ -751,8 +751,10 @@ export class Block {
                 if (!cube || !cube.material) continue;
                 const mat = cube.material;
                 mat.color.copy(normalBodyColor);
-                mat.roughness = 0.36;
-                mat.metalness = 0.02;
+                mat.roughness = 0.14;
+                mat.metalness = 0.05;
+                mat.clearcoat = 1.0;
+                mat.clearcoatRoughness = 0.04;
                 if (mat.userData) {
                     mat.userData.baseBlockColor = normalBodyColor.clone();
                     mat.userData.originalColor = normalBodyColor.clone();
@@ -1688,9 +1690,11 @@ export class Block {
 
         if (this.originalMaterial) {
             this.originalMaterial.color.setHex(materialColor);
-            // Keep shiny plastic properties for all blocks
-            this.originalMaterial.roughness = 0.36; // Restore original matte satin roughness
-            this.originalMaterial.metalness = 0.02;
+            // Glazed porcelain clearcoat material (v8.31.2)
+            this.originalMaterial.roughness = 0.14;
+            this.originalMaterial.metalness = 0.05;
+            this.originalMaterial.clearcoat = 1.0;
+            this.originalMaterial.clearcoatRoughness = 0.04;
         }
 
         // Update arrow color - ALWAYS use length-based color (for visibility), ignore passed arrowColor
@@ -3701,6 +3705,80 @@ export class Block {
     }
 
     /**
+     * Check if this block has a completely unobstructed path to exit the grid along its direction.
+     * If the path to the edge of the board is clear of all active, solid obstacles, the block is free to leave!
+     * @param {Block[]} blocks
+     * @returns {boolean} True if the path to the outside of the grid is clear
+     */
+    hasClearExitPath(blocks) {
+        if (!blocks || !Array.isArray(blocks)) return true;
+        if (this.isLocked || this.isCharred) return false;
+        if (this.isRemoved || this.isFalling || this.isExploding) return false;
+
+        const dirX = this.direction ? this.direction.x : 0;
+        const dirZ = this.direction ? this.direction.z : 0;
+        if (dirX === 0 && dirZ === 0) return false;
+
+        const thisHeight = this.isVertical ? this.length * this.cubeSize : this.cubeSize;
+        const thisYBottom = this.yOffset;
+        const thisYTop = this.yOffset + thisHeight;
+
+        const myCells = typeof this.getOccupiedCells === 'function' ? this.getOccupiedCells() : [];
+        const myCellSet = new Set(myCells.map(c => `${c.x},${c.z}`));
+
+        const isXAligned = Math.abs(dirX) > 0;
+        const len = this.isVertical ? 1 : this.length;
+        const maxSteps = (this.gridSize || 7) + 2;
+
+        for (let step = 1; step <= maxSteps; step++) {
+            let anyCubeInBounds = false;
+
+            for (let i = 0; i < len; i++) {
+                const cellX = this.gridX + (step * dirX) + (this.isVertical ? 0 : (isXAligned ? i : 0));
+                const cellZ = this.gridZ + (step * dirZ) + (this.isVertical ? 0 : (isXAligned ? 0 : i));
+
+                if (cellX < 0 || cellX >= this.gridSize || cellZ < 0 || cellZ >= this.gridSize) {
+                    continue; // Out of bounds = exiting the board!
+                }
+
+                anyCubeInBounds = true;
+
+                if (myCellSet.has(`${cellX},${cellZ}`)) continue;
+
+                for (const other of blocks) {
+                    if (!other || other === this) continue;
+                    if (other.isRemoved || other.isFalling || other.isExploding || other.removalStartTime || other.isAnimating || other.wasCatapulted || other._explosionAnimationStarted) continue;
+
+                    const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
+                    const otherYBottom = other.yOffset;
+                    const otherYTop = other.yOffset + otherHeight;
+                    if (!yRangesOverlapForMovement(this, other, thisYBottom, thisYTop, otherYBottom, otherYTop)) continue;
+
+                    if (other.isVertical) {
+                        if (cellX === other.gridX && cellZ === other.gridZ) {
+                            return false; // Obstacle blocking exit path!
+                        }
+                    } else {
+                        const otherIsX = Math.abs(other.direction.x) > 0;
+                        for (let j = 0; j < other.length; j++) {
+                            const ox = other.gridX + (otherIsX ? j : 0);
+                            const oz = other.gridZ + (otherIsX ? 0 : j);
+                            if (cellX === ox && cellZ === oz) {
+                                return false; // Obstacle blocking exit path!
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (!anyCubeInBounds) {
+                return true; // Completely off the board with zero obstacles encountered!
+            }
+        }
+
+        return true;
+    }
+
     /**
      * Find all immediate obstacle blocks obstructing this block's forward movement path.
      * @param {Block[]} blocks 
@@ -3708,6 +3786,10 @@ export class Block {
      */
     findAllDirectBlockers(blocks) {
         if (!blocks || !Array.isArray(blocks)) return [];
+        if (typeof this.hasClearExitPath === 'function' && this.hasClearExitPath(blocks)) {
+            return [];
+        }
+
         const newGridX = this.gridX + this.direction.x;
         const newGridZ = this.gridZ + this.direction.z;
         const thisHeight = this.isVertical ? this.length * this.cubeSize : this.cubeSize;
@@ -3730,7 +3812,7 @@ export class Block {
             if (myCellSet.has(`${checkX},${checkZ}`)) continue;
 
             for (const other of blocks) {
-                if (!other || other === this || other.isFalling || other.isRemoved || other.isExploding || other.removalStartTime) continue;
+                if (!other || other === this || other.isFalling || other.isRemoved || other.isExploding || other.removalStartTime || other.isAnimating || other.wasCatapulted || other._explosionAnimationStarted) continue;
                 if (blockers.includes(other)) continue;
 
                 const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
@@ -3774,6 +3856,37 @@ export class Block {
             return 'blocked';
         }
 
+        // Fast-path: If block has an unobstructed path to exit the grid, it can NEVER be blocked!
+        if (typeof this.hasClearExitPath === 'function' && this.hasClearExitPath(blocks)) {
+            const isXAligned = Math.abs(this.direction.x) > 0;
+            const nextX = this.gridX + this.direction.x;
+            const nextZ = this.gridZ + this.direction.z;
+            let willFallOnNextStep = false;
+
+            if (this.isVertical) {
+                if (nextX < 0 || nextX >= this.gridSize || nextZ < 0 || nextZ >= this.gridSize) {
+                    willFallOnNextStep = true;
+                }
+            } else {
+                for (let i = 0; i < this.length; i++) {
+                    const cx = nextX + (isXAligned ? i : 0);
+                    const cz = nextZ + (isXAligned ? 0 : i);
+                    if (cx < 0 || cx >= this.gridSize || cz < 0 || cz >= this.gridSize) {
+                        willFallOnNextStep = true;
+                        break;
+                    }
+                }
+            }
+
+            if (window.debugMoveMode) {
+                window.debugMoveInfo = {
+                    result: willFallOnNextStep ? 'fall' : 'ok',
+                    reason: 'Clear exit path confirmed (no obstacles)'
+                };
+            }
+            return willFallOnNextStep ? 'fall' : 'ok';
+        }
+
         const newGridX = this.gridX + this.direction.x;
         const newGridZ = this.gridZ + this.direction.z;
 
@@ -3803,8 +3916,8 @@ export class Block {
 
             // Check for 3D overlaps: blocks cannot move to a position where they would overlap with another block
             for (const other of blocks) {
-                // Skip blocks that are falling, removed, exploding, or being removed
-                if (other === this || other.isFalling || other.isRemoved || other.isExploding || other.removalStartTime) continue;
+                // Skip blocks that are falling, removed, exploding, animating, catapulted, or being removed
+                if (other === this || other.isFalling || other.isRemoved || other.isExploding || other.removalStartTime || other.isAnimating || other.wasCatapulted || other._explosionAnimationStarted) continue;
 
                 // Calculate Y ranges for both blocks to check for 3D overlap
                 const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
@@ -3941,8 +4054,8 @@ export class Block {
 
             // Check for 3D overlaps: blocks cannot move to a position where they would overlap with another block
             for (const other of blocks) {
-                // Skip blocks that are falling, removed, exploding, or being removed
-                if (other === this || other.isFalling || other.isRemoved || other.isExploding || other.removalStartTime) continue;
+                // Skip blocks that are falling, removed, exploding, animating, catapulted, or being removed
+                if (other === this || other.isFalling || other.isRemoved || other.isExploding || other.removalStartTime || other.isAnimating || other.wasCatapulted || other._explosionAnimationStarted) continue;
 
                 // Calculate Y ranges for both blocks to check for 3D overlap
                 const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
@@ -4137,8 +4250,8 @@ export class Block {
             let collisionCellZ = null; // Track the specific cell that collided (for horizontal blocks)
 
             for (const other of blocks) {
-                // Skip blocks that are falling, removed, or being removed
-                if (other === this || other.isFalling || other.isRemoved || other.isExploding || other.removalStartTime) continue;
+                // Skip blocks that are falling, removed, exploding, animating, catapulted, or being removed
+                if (other === this || other.isFalling || other.isRemoved || other.isExploding || other.removalStartTime || other.isAnimating || other.wasCatapulted || other._explosionAnimationStarted) continue;
 
                 // Calculate Y ranges for both blocks to check for 3D overlap
                 const thisHeight = this.isVertical ? this.length * this.cubeSize : this.cubeSize;
@@ -6113,11 +6226,13 @@ export class Block {
                     mat.alphaMap = null;
                     mat.transparent = false;
                     mat.opacity = 1.0;
-                    mat.roughness = 0.36; // Restore original matte satin roughness
-                    mat.metalness = 0.02;
+                    mat.roughness = 0.14; // Restore porcelain clearcoat roughness (v8.31.2)
+                    mat.metalness = 0.05;
+                    mat.clearcoat = 1.0;
+                    mat.clearcoatRoughness = 0.04;
                     const baseColor = asThreeColor(
                         mat.userData.baseBlockColor || mat.userData.originalColor || this.originalColor,
-                        0xffffff
+                        0xe6ebf2
                     );
                     mat.color.copy(baseColor);
                     mat.emissive.setHex(0x000000);

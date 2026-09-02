@@ -2527,9 +2527,9 @@ function getBlockFootprintCellCount(block) {
     return Math.max(1, block.length || 1);
 }
 
-function getEligibleBlocksForBlastTuning() {
-    if (!Array.isArray(blocks)) return [];
-    return blocks.filter((block) => {
+function getEligibleBlocksForBlastTuning(customBlocks = null) {
+    const list = Array.isArray(customBlocks) ? customBlocks : (Array.isArray(blocks) ? blocks : []);
+    return list.filter((block) => {
         if (!block) return false;
         if (block.isRemoved || block.isFalling || block.removalStartTime) return false;
         return true;
@@ -2609,8 +2609,8 @@ function calculateBlockBombScore(block, currentGridSize) {
     return cornerScore + layerScore;
 }
 
-function applyBlastCellPercentToCurrentTower(targetPercent) {
-    const eligibleBlocks = getEligibleBlocksForBlastTuning();
+function applyBlastCellPercentToCurrentTower(targetPercent, customBlocks = null) {
+    const eligibleBlocks = getEligibleBlocksForBlastTuning(customBlocks);
     if (eligibleBlocks.length === 0) return null;
 
     const { totalCells } = computeBlastCellStats(eligibleBlocks);
@@ -3920,38 +3920,29 @@ function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, targetBlockCo
 const FAST_SPAWN_LEVEL_THRESHOLD = 51;
 
 function getSpawnPlacementConfig(level, totalBlocks) {
-    // Level 1-5: Classic Slow Build
+    // Level 1-5: Snappy responsive build (<250ms)
     if (level <= 5) {
         return {
-            batchSize: 10,
-            delayBetweenBatches: 10,
-            animationDuration: 50
+            batchSize: 45,
+            delayBetweenBatches: 2,
+            animationDuration: 18
         };
     }
 
-    // Level 6-50: Snappy Build
+    // Level 6-50: Rapid dynamic build (<200ms)
     if (level <= 50) {
         return {
-            batchSize: 25,
-            delayBetweenBatches: 4,
-            animationDuration: 30
-        };
-    }
-
-    // Level 51-100: Aggressive Build
-    if (level <= 100) {
-        return {
-            batchSize: 50,
+            batchSize: 75,
             delayBetweenBatches: 0,
-            animationDuration: 20
+            animationDuration: 14
         };
     }
 
-    // Level 101+: Sleek Turbo Mode
+    // Level 51+: Sleek Turbo Build (<150ms)
     return {
-        batchSize: Math.max(80, Math.min(250, Math.ceil(totalBlocks / 6))),
+        batchSize: Math.max(120, Math.min(300, Math.ceil(totalBlocks / 4))),
         delayBetweenBatches: 0,
-        animationDuration: 15
+        animationDuration: 10
     };
 }
 
@@ -4885,6 +4876,12 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
      // ============================================
 
 
+
+    // Pre-spawn bomb assignment: Ensures all blocks enter the tower with their final,
+    // uniform porcelain clearcoat material from the very first frame (zero post-spawn flicker or tone shifting)
+    if (currentLevel >= 10) {
+        applyBlastCellPercentToCurrentTower(blastCellPercent, allBlocks);
+    }
 
     // Place all blocks in batches (turbo placement for very high levels)
     const spawnConfig = getSpawnPlacementConfig(level, allBlocks.length);
@@ -8937,8 +8934,9 @@ function onMouseClick(event) {
     }
 
     // Check if the block is blocked by adjacent obstacles
-    const moveStatus = typeof block.canMove === 'function' ? block.canMove(blocks) : 'ok';
-    if (moveStatus === 'blocked') {
+    const hasClearExit = typeof block.hasClearExitPath === 'function' && block.hasClearExitPath(blocks);
+    const moveStatus = hasClearExit ? 'ok' : (typeof block.canMove === 'function' ? block.canMove(blocks) : 'ok');
+    if (moveStatus === 'blocked' && !hasClearExit) {
         if (typeof block.onBlockedTap === 'function') {
             block.onBlockedTap(block.direction);
         }
@@ -10319,8 +10317,9 @@ function onTouchEnd(event) {
     }
 
     // Check if the block is blocked by adjacent obstacles
-    const moveStatus = typeof block.canMove === 'function' ? block.canMove(blocks) : 'ok';
-    if (moveStatus === 'blocked') {
+    const hasClearExit = typeof block.hasClearExitPath === 'function' && block.hasClearExitPath(blocks);
+    const moveStatus = hasClearExit ? 'ok' : (typeof block.canMove === 'function' ? block.canMove(blocks) : 'ok');
+    if (moveStatus === 'blocked' && !hasClearExit) {
         if (typeof block.onBlockedTap === 'function') {
             block.onBlockedTap(block.direction);
         }
