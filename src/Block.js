@@ -5521,12 +5521,15 @@ export class Block {
                 if (this.arrow) {
                     this.arrow.traverse((child) => {
                         if (child.material) {
-                            child.material.transparent = true;
-                            fadeMaterials.push(child.material);
-                            if (isBlasted) {
-                                if (!child.material.emissive) child.material.emissive = new THREE.Color(0, 0, 0);
-                                indicatorMaterials.push(child.material);
-                            }
+                            const mats = Array.isArray(child.material) ? child.material : [child.material];
+                            mats.forEach(m => {
+                                m.transparent = true;
+                                fadeMaterials.push(m);
+                                if (isBlasted && m.isMeshStandardMaterial) {
+                                    if (!m.emissive) m.emissive = new THREE.Color(0, 0, 0);
+                                    indicatorMaterials.push(m);
+                                }
+                            });
                         }
                     });
                 }
@@ -5534,12 +5537,15 @@ export class Block {
                 if (this.directionIndicators) {
                     this.directionIndicators.traverse((child) => {
                         if (child.material) {
-                            child.material.transparent = true;
-                            fadeMaterials.push(child.material);
-                            if (isBlasted) {
-                                if (!child.material.emissive) child.material.emissive = new THREE.Color(0, 0, 0);
-                                indicatorMaterials.push(child.material);
-                            }
+                            const mats = Array.isArray(child.material) ? child.material : [child.material];
+                            mats.forEach(m => {
+                                m.transparent = true;
+                                fadeMaterials.push(m);
+                                if (isBlasted && m.isMeshStandardMaterial) {
+                                    if (!m.emissive) m.emissive = new THREE.Color(0, 0, 0);
+                                    indicatorMaterials.push(m);
+                                }
+                            });
                         }
                     });
                 }
