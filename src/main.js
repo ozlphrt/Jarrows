@@ -8792,15 +8792,27 @@ function onMouseClick(event) {
             block.onBlockedTap(block.direction);
         }
 
-        // Apply collision penalty: lock this block and all colliding obstacles in front
+        const isBasePlate = (block.yOffset < 0.1);
+        const directBlockers = typeof block.findAllDirectBlockers === 'function'
+            ? block.findAllDirectBlockers(blocks)
+            : (typeof block.findDirectBlocker === 'function' ? [block.findDirectBlocker(blocks)].filter(Boolean) : []);
+
+        if (isBasePlate) {
+            // Base plate rule: Side collision / tap does NOT turn into translucent in the base plate!
+            // Blocks shake and stop.
+            if (typeof block.shake === 'function') block.shake();
+            if (typeof block.addBounceEffect === 'function') block.addBounceEffect(blocks);
+            for (const blocker of directBlockers) {
+                if (blocker && typeof blocker.shake === 'function') blocker.shake();
+            }
+            return;
+        }
+
+        // Higher layers: apply collision penalty: lock this block and all colliding obstacles in front
         const remTime = (isTimeBasedMode() && typeof timeLeftSec === 'number') ? timeLeftSec : null;
         if (!block.isLocked && !block.isFalling && !block.isRemoved) {
             block.lockBlock(currentLevel, remTime);
         }
-
-        const directBlockers = typeof block.findAllDirectBlockers === 'function'
-            ? block.findAllDirectBlockers(blocks)
-            : (typeof block.findDirectBlocker === 'function' ? [block.findDirectBlocker(blocks)].filter(Boolean) : []);
 
         for (const blocker of directBlockers) {
             if (blocker && !blocker.isLocked && !blocker.isFalling && !blocker.isRemoved && !blocker.isExploding) {
@@ -10159,15 +10171,27 @@ function onTouchEnd(event) {
             block.onBlockedTap(block.direction);
         }
 
-        // Apply collision penalty: lock this block and all colliding obstacles in front
+        const isBasePlate = (block.yOffset < 0.1);
+        const directBlockers = typeof block.findAllDirectBlockers === 'function'
+            ? block.findAllDirectBlockers(blocks)
+            : (typeof block.findDirectBlocker === 'function' ? [block.findDirectBlocker(blocks)].filter(Boolean) : []);
+
+        if (isBasePlate) {
+            // Base plate rule: Side collision / tap does NOT turn into translucent in the base plate!
+            // Blocks shake and stop.
+            if (typeof block.shake === 'function') block.shake();
+            if (typeof block.addBounceEffect === 'function') block.addBounceEffect(blocks);
+            for (const blocker of directBlockers) {
+                if (blocker && typeof blocker.shake === 'function') blocker.shake();
+            }
+            return;
+        }
+
+        // Higher layers: apply collision penalty: lock this block and all colliding obstacles in front
         const remTime = (isTimeBasedMode() && typeof timeLeftSec === 'number') ? timeLeftSec : null;
         if (!block.isLocked && !block.isFalling && !block.isRemoved) {
             block.lockBlock(currentLevel, remTime);
         }
-
-        const directBlockers = typeof block.findAllDirectBlockers === 'function'
-            ? block.findAllDirectBlockers(blocks)
-            : (typeof block.findDirectBlocker === 'function' ? [block.findDirectBlocker(blocks)].filter(Boolean) : []);
 
         for (const blocker of directBlockers) {
             if (blocker && !blocker.isLocked && !blocker.isFalling && !blocker.isRemoved && !blocker.isExploding) {

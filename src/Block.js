@@ -1767,6 +1767,11 @@ export class Block {
             return;
         }
 
+        // Base plate rule: Blocks on the base plate (yOffset < 0.1) never lock into translucent state
+        if (this.yOffset < 0.1) {
+            return;
+        }
+
         let lockDuration;
         const isTimerMode = remainingTime !== null && remainingTime > 0;
         if (isTimerMode) {
@@ -2439,18 +2444,6 @@ export class Block {
         /* if (this.isLocked && performance.now() >= this.lockEndTime) {
             this.unlockBlock();
         } */
-
-        // Task: Automatic Floor Blast for Locked Blocks
-        // If a block is semi-transparent and sitting on the bottom layer (yOffset < 0.1),
-        // it should blast automatically (it's debris, not a solid tower floor block).
-        if (this.isLocked && this.yOffset < 0.1 && !this.isRemoved && !this.removalStartTime) {
-            console.log(`[FloorBlast] Locked block at level 0 (x=${this.gridX}, z=${this.gridZ}) blasting`);
-            if (window.particleSystem) {
-                this.explodeWithParticles(window.particleSystem, 0, true);
-            } else {
-                this.remove();
-            }
-        }
     }
 
     /**
@@ -4491,22 +4484,32 @@ export class Block {
                     // The next iteration will calculate nextGridX/nextGridZ using the rotated direction
                     continue; // Skip updating tempGridX/tempGridZ, continue with rotated direction
                 } else {
-                    // Regular side collision: stop and lock both blocks
+                    // Regular side collision: stop and shake (base plate) or lock both blocks (higher layers)
                     hitObstacle = true;
 
-                    // Get remaining time if in timer mode (Time Challenge or Inferno)
-                    let remainingTime = null;
-                    if (typeof window !== 'undefined' && window.timeLeftSec !== undefined) {
-                        remainingTime = window.timeLeftSec;
-                    }
+                    const isBasePlate = (this.yOffset < 0.1) || (collidedBlock && collidedBlock.yOffset < 0.1);
 
-                    // Lock both blocks: the moving block (this) and the stationary block (collidedBlock)
-                    if (collidedBlock && !collidedBlock.isLocked && !collidedBlock.isFalling && !collidedBlock.isRemoved) {
-                        collidedBlock.lockBlock(this.level, remainingTime);
-                    }
-                    // Lock the moving block as well
-                    if (!this.isLocked && !this.isFalling && !this.isRemoved) {
-                        this.lockBlock(this.level, remainingTime);
+                    if (isBasePlate) {
+                        // Base plate rule: Side collision will NOT turn into translucent in the base plate,
+                        // but blocks will shake and stop after they collide.
+                        if (collidedBlock && typeof collidedBlock.shake === 'function') {
+                            collidedBlock.shake();
+                        }
+                    } else {
+                        // Higher layers: regular locking penalty
+                        let remainingTime = null;
+                        if (typeof window !== 'undefined' && window.timeLeftSec !== undefined) {
+                            remainingTime = window.timeLeftSec;
+                        }
+
+                        // Lock both blocks: the moving block (this) and the stationary block (collidedBlock)
+                        if (collidedBlock && !collidedBlock.isLocked && !collidedBlock.isFalling && !collidedBlock.isRemoved) {
+                            collidedBlock.lockBlock(this.level, remainingTime);
+                        }
+                        // Lock the moving block as well
+                        if (!this.isLocked && !this.isFalling && !this.isRemoved) {
+                            this.lockBlock(this.level, remainingTime);
+                        }
                     }
 
                     break;
@@ -4522,6 +4525,9 @@ export class Block {
         // If blocked immediately with no movement, add bounce effect
         if (stepsToObstacle === 0 && hitObstacle) {
             this.addBounceEffect(blocks);
+            if (typeof this.shake === 'function') {
+                this.shake();
+            }
             if (typeof updateWeldedTranslucentClusters === 'function') {
                 updateWeldedTranslucentClusters(blocks);
             }
@@ -4877,6 +4883,9 @@ export class Block {
                 if (hitObstacle) {
                     this.updateWorldPosition();
                     this.addBounceEffect(blocks);
+                    if (typeof this.shake === 'function') {
+                        this.shake();
+                    }
                 } else if (hitEdge) {
                     // Hit edge - trigger blast effect instead of falling away
                     // Position is already correct from animation (at the edge)
