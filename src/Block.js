@@ -656,7 +656,7 @@ export class Block {
         this.isHighlighted = false;
 
         // Store original color for lock/unlock color restoration
-        this.originalColor = blockColor;
+        this.originalColor = this.isBomb ? new THREE.Color(0x23262e) : blockColor;
 
         // Create arrow with colored arrow (always colored for visibility)
         this.createArrow(arrowStyle, arrowColor);
@@ -745,17 +745,18 @@ export class Block {
      */
     setBombState(enabled) {
         const nextState = !!enabled;
-        if (this.isBomb === nextState) return;
-
         this.isBomb = nextState;
 
         // Update block body material: dark graphite for bombs, white porcelain for normal
+        const bombBodyColor = new THREE.Color(0x23262e);
+        const normalBodyColor = new THREE.Color(0xffffff);
+        this.originalColor = this.isBomb ? bombBodyColor.clone() : normalBodyColor.clone();
+
         if (this.cubes && this.cubes.length > 0) {
             for (const cube of this.cubes) {
                 if (!cube || !cube.material) continue;
                 const mat = cube.material;
                 if (this.isBomb) {
-                    const bombBodyColor = new THREE.Color(0x23262e);
                     mat.color.copy(bombBodyColor);
                     mat.roughness = 0.40;
                     mat.metalness = 0.08;
@@ -764,7 +765,6 @@ export class Block {
                         mat.userData.originalColor = bombBodyColor.clone();
                     }
                 } else {
-                    const normalBodyColor = new THREE.Color(0xffffff);
                     mat.color.copy(normalBodyColor);
                     mat.roughness = 0.36;
                     mat.metalness = 0.02;
@@ -2295,10 +2295,12 @@ export class Block {
                         const origOpacity = cube.material.userData?.originalOpacity !== undefined ? cube.material.userData.originalOpacity : 1.0;
                         cube.material.opacity = origOpacity;
                         cube.material.transparent = origOpacity < 1.0;
-                        const finalBaseColor = asThreeColor(
+                        const bombBodyColor = new THREE.Color(0x23262e);
+                        const normalBaseColor = asThreeColor(
                             cube.material.userData?.baseBlockColor || cube.material.userData?.originalColor || this.originalColor,
                             0xffffff
                         );
+                        const finalBaseColor = this.isBomb ? bombBodyColor : normalBaseColor;
                         cube.material.color.copy(finalBaseColor);
                         // Restore original emissive properties
                         const finalEmissive = asThreeColor(cube.material.userData?.originalEmissive, 0x000000);
@@ -6132,12 +6134,14 @@ export class Block {
                     mat.alphaMap = null;
                     mat.transparent = false;
                     mat.opacity = 1.0;
-                    mat.roughness = 0.36; // Restore original matte satin roughness (not 0.1 which made blocks appear whiter)
-                    mat.metalness = 0.02;
-                    const baseColor = asThreeColor(
+                    mat.roughness = this.isBomb ? 0.40 : 0.36;
+                    mat.metalness = this.isBomb ? 0.08 : 0.02;
+                    const bombBodyColor = new THREE.Color(0x23262e);
+                    const normalBodyColor = asThreeColor(
                         mat.userData.baseBlockColor || mat.userData.originalColor || this.originalColor,
                         0xffffff
                     );
+                    const baseColor = this.isBomb ? bombBodyColor : normalBodyColor;
                     mat.color.copy(baseColor);
                     mat.emissive.setHex(0x000000);
                     mat.emissiveIntensity = 0.0;

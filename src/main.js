@@ -2667,12 +2667,10 @@ function applyBlastCellPercentToCurrentTower(targetPercent) {
     const selectedSet = new Set(selectedBombs.map(s => s.block));
     for (const block of eligibleBlocks) {
         const shouldBeBomb = selectedSet.has(block);
-        if (block.isBomb !== shouldBeBomb) {
-            if (typeof block.setBombState === 'function') {
-                block.setBombState(shouldBeBomb);
-            } else {
-                block.isBomb = shouldBeBomb;
-            }
+        if (typeof block.setBombState === 'function') {
+            block.setBombState(shouldBeBomb);
+        } else {
+            block.isBomb = shouldBeBomb;
         }
     }
 
