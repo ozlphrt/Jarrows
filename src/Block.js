@@ -581,10 +581,10 @@ export class Block {
         } else {
             blockMaterial = new THREE.MeshPhysicalMaterial({
                 color: materialColor,
-                roughness: 0.24, // Smooth satin finish
-                metalness: 0.04,
-                clearcoat: 0.85, // Rich clearcoat lacquer
-                clearcoatRoughness: 0.18, // Broad, silky specular lobe so reflections stay visible across all viewing angles
+                roughness: 0.14, // Polished high-gloss porcelain
+                metalness: 0.05,
+                clearcoat: 1.0, // Full liquid lacquer clearcoat
+                clearcoatRoughness: 0.04, // Mirror-crisp specular reflections on faces and bevels
                 opacity: 1.0, 
                 transparent: false,
                 emissive: new THREE.Color(0x000000),
