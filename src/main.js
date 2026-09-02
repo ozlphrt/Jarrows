@@ -1491,17 +1491,17 @@ function updateLightsForCamera(lights, azimuth, elevation, center) {
     if (!lights) return;
 
     // Anchor the studio light rig relative to tower center:
-    // 1. Key Light: +X (30.0), +Y (42.0), +Z (16.0) -> Side 1 (+X) Brightest (~1.09), Side 2 (+Z) Less bright (~0.87)
-    const keyOffset = new THREE.Vector3(30.0, 42.0, 16.0);
+    // 1. Key Light: +X (32.0), +Y (38.0), +Z (20.0) -> Side 1 (+X) Brightest (~1.14), Side 2 (+Z) Less bright (~0.84)
+    const keyOffset = new THREE.Vector3(32.0, 38.0, 20.0);
     targetKeyLightPosition = center.clone().add(keyOffset);
 
-    // 2. Fill Light: -X (-10.0), +Y (32.0), -Z (-26.0) -> Side 3 (-Z) Balanced (~0.73)
-    const fillOffset = new THREE.Vector3(-10.0, 32.0, -26.0);
+    // 2. Fill Light: +X (4.0), +Y (30.0), -Z (-32.0) -> Side 3 (-Z) Balanced (~0.68)
+    const fillOffset = new THREE.Vector3(4.0, 30.0, -32.0);
     targetFillLightPosition = center.clone().add(fillOffset);
 
-    // 3. Rim Light: -X (-26.0), +Y (26.0), +Z (8.0) -> Side 4 (-X) Gentle shade (~0.65), clear on mobile
+    // 3. Rim Light: -X (-28.0), +Y (24.0), +Z (2.0) -> Side 4 (-X) Gentle shade (~0.51), distinct from Side 3 & clear on mobile
     if (lights.rimLight) {
-        const rimPos = center.clone().add(new THREE.Vector3(-26.0, 26.0, 8.0));
+        const rimPos = center.clone().add(new THREE.Vector3(-28.0, 24.0, 2.0));
         lights.rimLight.position.copy(rimPos);
     }
 }
