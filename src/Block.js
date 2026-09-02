@@ -579,10 +579,12 @@ export class Block {
                 emissiveIntensity: FROSTY_CONFIG.blockEmissiveIntensity
             });
         } else {
-            blockMaterial = new THREE.MeshStandardMaterial({
+            blockMaterial = new THREE.MeshPhysicalMaterial({
                 color: materialColor,
-                roughness: 0.36, // Matte satin finish with soft specular sheen
-                metalness: 0.02,
+                roughness: 0.22, // Smooth, lustrous satin finish
+                metalness: 0.04,
+                clearcoat: 0.70, // Glazed lacquer clearcoat reflecting the soft-box studio
+                clearcoatRoughness: 0.12, // Glossy specular reflection on faces and bevels
                 opacity: 1.0, 
                 transparent: false,
                 emissive: new THREE.Color(0x000000),
@@ -1104,6 +1106,8 @@ export class Block {
                 arrowGeometry = new THREE.ExtrudeGeometry(arrowShape, extrudeSettings);
                 arrowMaterial = new THREE.MeshStandardMaterial({
                     color: blockColor,
+                    roughness: 0.24,
+                    metalness: 0.12,
                     side: THREE.DoubleSide
                 });
 

@@ -792,3 +792,86 @@ export function setupGlowQuadMaterial(material, options = {}) {
     };
 }
 
+/**
+ * Procedural Soft-Box Studio Reflection Environment Map
+ * Creates an image-based lighting (IBL) environment map with overhead soft-box panels
+ * and gentle lateral fill panels. Applies dynamic specular reflections to all blocks and arrows.
+ * @param {THREE.Scene} scene
+ * @param {THREE.WebGLRenderer} renderer
+ */
+export function setupStudioEnvironment(scene, renderer) {
+    if (!scene || !renderer) return;
+
+    try {
+        const width = 512;
+        const height = 256;
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        // 1. Studio backdrop gradient (cool dark navy-slate floor to neutral soft zenith)
+        const bgGradient = ctx.createLinearGradient(0, 0, 0, height);
+        bgGradient.addColorStop(0.0, '#3a4a60'); // Ceiling / zenith soft illumination
+        bgGradient.addColorStop(0.42, '#1e293b'); // Horizon neutral slate
+        bgGradient.addColorStop(0.58, '#141d2c'); // Ground transition
+        bgGradient.addColorStop(1.0, '#0a0f18'); // Floor dark bounce
+        ctx.fillStyle = bgGradient;
+        ctx.fillRect(0, 0, width, height);
+
+        // 2. Primary Key Soft-box Light Bank (overhead angled panel)
+        // Positioned in upper hemisphere to catch top faces and upper bevels
+        const keyGrad = ctx.createRadialGradient(width * 0.35, height * 0.22, 10, width * 0.35, height * 0.22, 100);
+        keyGrad.addColorStop(0.0, 'rgba(255, 255, 255, 0.95)');
+        keyGrad.addColorStop(0.35, 'rgba(230, 244, 255, 0.70)');
+        keyGrad.addColorStop(0.70, 'rgba(180, 215, 255, 0.30)');
+        keyGrad.addColorStop(1.0, 'rgba(180, 215, 255, 0.0)');
+        ctx.fillStyle = keyGrad;
+        ctx.beginPath();
+        ctx.ellipse(width * 0.35, height * 0.22, 120, 45, -0.15, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 3. Secondary Lateral Fill Strip (subtle soft light bar for side faces)
+        const fillGrad = ctx.createRadialGradient(width * 0.78, height * 0.30, 10, width * 0.78, height * 0.30, 80);
+        fillGrad.addColorStop(0.0, 'rgba(220, 238, 255, 0.75)');
+        fillGrad.addColorStop(0.4, 'rgba(160, 205, 250, 0.40)');
+        fillGrad.addColorStop(1.0, 'rgba(160, 205, 250, 0.0)');
+        ctx.fillStyle = fillGrad;
+        ctx.beginPath();
+        ctx.ellipse(width * 0.78, height * 0.30, 90, 35, 0.2, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 4. Subtle Rim Highlight Accent (grazing angle glint)
+        const rimGrad = ctx.createRadialGradient(width * 0.08, height * 0.28, 5, width * 0.08, height * 0.28, 60);
+        rimGrad.addColorStop(0.0, 'rgba(255, 255, 255, 0.65)');
+        rimGrad.addColorStop(0.5, 'rgba(200, 225, 255, 0.25)');
+        rimGrad.addColorStop(1.0, 'rgba(200, 225, 255, 0.0)');
+        ctx.fillStyle = rimGrad;
+        ctx.beginPath();
+        ctx.ellipse(width * 0.08, height * 0.28, 60, 25, 0.0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 5. Convert to Three.js Equirectangular Texture and PMREM
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.mapping = THREE.EquirectangularReflectionMapping;
+        texture.colorSpace = THREE.SRGBColorSpace;
+
+        const pmremGenerator = new THREE.PMREMGenerator(renderer);
+        pmremGenerator.compileEquirectangularShader();
+        const envMap = pmremGenerator.fromEquirectangular(texture).texture;
+
+        scene.environment = envMap;
+        if (typeof scene.environmentIntensity !== 'undefined') {
+            scene.environmentIntensity = 0.90;
+        }
+
+        // Cleanup temporary resources
+        texture.dispose();
+        pmremGenerator.dispose();
+    } catch (err) {
+        console.warn('Failed to generate procedural studio environment:', err);
+    }
+}
+
+
