@@ -906,14 +906,14 @@ export class Block {
             map: texture,
             color: colorHex,
             transparent: true,
-            opacity: 0.70,
+            opacity: 0.60,
             blending: THREE.NormalBlending,
             side: THREE.DoubleSide,
             depthWrite: false
         });
         setupGlowQuadMaterial(haloMat, { pulseOffset: this.pulseOffset || 0.0 });
         const haloMesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), haloMat);
-        haloMesh.scale.set(0.75, 0.75, 1);
+        haloMesh.scale.set(0.50, 0.50, 1);
         haloMesh.position.z = -0.002;
         group.add(haloMesh);
 
@@ -928,11 +928,11 @@ export class Block {
         group.isOrganicGlow = true;
 
         // 1. 3D Volumetric Glowing Torus (Curved glowing ring wrapping the geometry in 3D)
-        const torusGeom = new THREE.TorusGeometry(0.22, 0.07, 14, 28);
+        const torusGeom = new THREE.TorusGeometry(0.20, 0.05, 14, 28);
         const torusMat = new THREE.MeshBasicMaterial({
             color: colorHex,
             transparent: true,
-            opacity: 0.85,
+            opacity: 0.80,
             blending: THREE.NormalBlending,
             side: THREE.DoubleSide,
             depthWrite: false
@@ -948,14 +948,14 @@ export class Block {
             map: texture,
             color: colorHex,
             transparent: true,
-            opacity: 0.70,
+            opacity: 0.60,
             blending: THREE.NormalBlending,
             side: THREE.DoubleSide,
             depthWrite: false
         });
         setupGlowQuadMaterial(haloMat, { pulseOffset: this.pulseOffset || 0.0 });
         const haloMesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), haloMat);
-        haloMesh.scale.set(0.85, 0.85, 1);
+        haloMesh.scale.set(0.60, 0.60, 1);
         haloMesh.position.z = -0.002;
         group.add(haloMesh);
 
@@ -963,43 +963,26 @@ export class Block {
     }
 
     /**
-     * Create 3D Volumetric Glow for Top Arrow (Expanded 3D glowing shell + ambient aura)
+     * Create 3D Soft Ambient Halo for Top Arrow (strictly kept within block bounds)
      */
-    create3DArrowGlow(colorHex, arrowGeometry) {
+    create3DArrowGlow(colorHex) {
         const group = new THREE.Group();
         group.isOrganicGlow = true;
 
-        // 1. 3D Volumetric Glowing Shell wrapping arrow in 3D
-        if (arrowGeometry) {
-            const shellMat = new THREE.MeshBasicMaterial({
-                color: colorHex,
-                transparent: true,
-                opacity: 0.85,
-                blending: THREE.NormalBlending,
-                side: THREE.DoubleSide,
-                depthWrite: false
-            });
-            setupGlowQuadMaterial(shellMat, { pulseOffset: this.pulseOffset || 0.0 });
-            const shellMesh = new THREE.Mesh(arrowGeometry, shellMat);
-            shellMesh.scale.set(1.15, 1.15, 1.3);
-            shellMesh.position.z = 0.005;
-            group.add(shellMesh);
-        }
-
-        // 2. Soft 3D Ambient Halo behind it
+        // Soft 3D Ambient Halo behind arrow, kept strictly within the flat top face
         const texture = createIndicatorHaloTexture();
         const haloMat = new THREE.MeshBasicMaterial({
             map: texture,
             color: colorHex,
             transparent: true,
-            opacity: 0.70,
+            opacity: 0.55,
             blending: THREE.NormalBlending,
             side: THREE.DoubleSide,
             depthWrite: false
         });
         setupGlowQuadMaterial(haloMat, { pulseOffset: this.pulseOffset || 0.0 });
         const haloMesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), haloMat);
-        haloMesh.scale.set(0.95, 0.95, 1);
+        haloMesh.scale.set(0.55, 0.55, 1);
         haloMesh.position.z = -0.002;
         group.add(haloMesh);
 
@@ -1343,13 +1326,6 @@ export class Block {
         }
         const topArrowMesh = new THREE.Mesh(topArrowData.geometry, topArrowData.material);
 
-        if (this.isBomb && !this.isCharred && !this.isTranslucent) {
-            const halo = this.create3DArrowGlow(bombColorHex, topArrowData.geometry);
-            halo.position.copy(topArrowMesh.position);
-            topArrow.add(halo);
-            if (this.bombGlowSprites) this.bombGlowSprites.push(halo);
-        }
-
         // Store original emissiveIntensity for later color updates
         if (topArrowMesh.material.emissive) {
             topArrowMesh.material._originalEmissiveIntensity = topArrowMesh.material.emissiveIntensity !== undefined
@@ -1374,7 +1350,18 @@ export class Block {
         // Arrow center is at arrowCenterOffset in local +Y, so move it back by that amount
         topArrowMesh.position.y = -arrowCenterOffset;
 
+        // Scale arrow mesh slightly to guarantee it sits comfortably within the flat face of the block
+        // without crossing rounded bevels or block boundaries
+        topArrowMesh.scale.set(0.85, 0.85, 0.85);
+
         topArrow.add(topArrowMesh);
+
+        if (this.isBomb && !this.isCharred && !this.isTranslucent) {
+            const halo = this.create3DArrowGlow(bombColorHex);
+            halo.position.copy(topArrowMesh.position);
+            topArrow.add(halo);
+            if (this.bombGlowSprites) this.bombGlowSprites.push(halo);
+        }
 
         if (this.isVertical) {
             topArrow.position.set(0, this.length * this.cubeSize + 0.02, 0);
