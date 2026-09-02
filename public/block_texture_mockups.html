@@ -1,0 +1,1312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jarrows - Block Surface Texture & Material Mockups</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Inter:wght@400;500;600;700;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <style>
+        :root {
+            --bg-primary: #0a0d14;
+            --bg-card: rgba(18, 24, 38, 0.88);
+            --bg-card-border: rgba(255, 255, 255, 0.12);
+            --accent-cream: #fbf6ed;
+            --accent-gold: #ffbe1a;
+            --accent-coral: #ff6b6b;
+            --accent-teal: #4ecdc4;
+            --accent-cyan: #00f0ff;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --border-highlight: rgba(251, 246, 237, 0.35);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: radial-gradient(circle at 50% 15%, #182035 0%, #090c13 85%);
+            color: var(--text-primary);
+            font-family: 'Inter', -apple-system, sans-serif;
+            min-height: 100vh;
+            padding: 36px 24px 100px;
+            overflow-x: hidden;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        /* Header */
+        .header {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+
+        .header h1 {
+            font-family: 'Fredoka', sans-serif;
+            font-size: 42px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #ffffff 0%, #fef3c7 40%, #fbbf24 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 12px;
+            letter-spacing: -0.5px;
+        }
+
+        .header p {
+            font-size: 16px;
+            color: var(--text-secondary);
+            max-width: 820px;
+            margin: 0 auto 18px;
+            line-height: 1.6;
+        }
+
+        .tagline-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(251, 246, 237, 0.1);
+            border: 1px solid rgba(251, 246, 237, 0.25);
+            padding: 6px 16px;
+            border-radius: 999px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #fef3c7;
+            margin-bottom: 8px;
+        }
+
+        /* Hero 3D Stage */
+        .hero-stage-section {
+            background: var(--bg-card);
+            border: 1px solid var(--bg-card-border);
+            border-radius: 24px;
+            padding: 24px;
+            backdrop-filter: blur(24px);
+            box-shadow: 0 24px 48px rgba(0, 0, 0, 0.5);
+            margin-bottom: 48px;
+            display: grid;
+            grid-template-columns: 1fr 360px;
+            gap: 28px;
+            align-items: stretch;
+        }
+
+        @media (max-width: 1024px) {
+            .hero-stage-section {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .viewport-wrapper {
+            position: relative;
+            background: radial-gradient(circle at center, #1b2438 0%, #0c101b 100%);
+            border-radius: 18px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            min-height: 480px;
+            overflow: hidden;
+            box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.6);
+        }
+
+        #hero-canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        .viewport-overlay {
+            position: absolute;
+            top: 16px;
+            left: 16px;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .viewport-title {
+            font-family: 'Fredoka', sans-serif;
+            font-size: 20px;
+            color: #fff;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+        }
+
+        .viewport-hint {
+            font-size: 12px;
+            color: #94a3b8;
+            background: rgba(15, 23, 42, 0.75);
+            padding: 4px 10px;
+            border-radius: 8px;
+            display: inline-block;
+            backdrop-filter: blur(8px);
+        }
+
+        .stage-controls {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            gap: 20px;
+        }
+
+        .panel-heading {
+            font-family: 'Fredoka', sans-serif;
+            font-size: 20px;
+            color: #fff;
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .preset-pills {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .preset-pill-btn {
+            background: rgba(30, 41, 59, 0.7);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #cbd5e1;
+            padding: 12px 16px;
+            border-radius: 14px;
+            font-size: 14px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+            text-align: left;
+        }
+
+        .preset-pill-btn:hover {
+            background: rgba(51, 65, 85, 0.8);
+            border-color: rgba(251, 246, 237, 0.3);
+            transform: translateX(4px);
+            color: #fff;
+        }
+
+        .preset-pill-btn.active {
+            background: linear-gradient(135deg, rgba(251, 246, 237, 0.2), rgba(251, 246, 237, 0.08));
+            border-color: #fef08a;
+            color: #fef08a;
+            box-shadow: 0 0 16px rgba(254, 240, 138, 0.2);
+        }
+
+        .preset-pill-btn .pill-sub {
+            font-size: 11px;
+            font-weight: 400;
+            color: #94a3b8;
+            margin-top: 2px;
+        }
+
+        .stage-toggles {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 8px;
+        }
+
+        .toggle-btn {
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            color: #e2e8f0;
+            padding: 8px 14px;
+            border-radius: 10px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .toggle-btn.active {
+            background: #f59e0b;
+            color: #0f172a;
+            border-color: #f59e0b;
+        }
+
+        /* Grid of 6 Preset Mockup Cards */
+        .section-title {
+            font-family: 'Fredoka', sans-serif;
+            font-size: 28px;
+            color: #fff;
+            margin-bottom: 8px;
+        }
+
+        .section-subtitle {
+            font-size: 15px;
+            color: var(--text-secondary);
+            margin-bottom: 28px;
+            line-height: 1.5;
+        }
+
+        .presets-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 28px;
+            margin-bottom: 56px;
+        }
+
+        .preset-card {
+            background: var(--bg-card);
+            border: 1px solid var(--bg-card-border);
+            border-radius: 20px;
+            padding: 24px;
+            backdrop-filter: blur(20px);
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+            transition: transform 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .preset-card:hover {
+            transform: translateY(-4px);
+            border-color: rgba(251, 246, 237, 0.35);
+            box-shadow: 0 16px 36px rgba(0, 0, 0, 0.5);
+        }
+
+        .preset-card.featured {
+            border-color: rgba(254, 240, 138, 0.4);
+            box-shadow: 0 12px 32px rgba(245, 158, 11, 0.15);
+        }
+
+        .card-badge {
+            position: absolute;
+            top: 18px;
+            right: 18px;
+            background: rgba(245, 158, 11, 0.2);
+            color: #fef08a;
+            border: 1px solid rgba(245, 158, 11, 0.4);
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .card-canvas-wrap {
+            height: 220px;
+            background: radial-gradient(circle at center, #1b2438 0%, #0c101b 100%);
+            border-radius: 14px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card-canvas-wrap canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        .card-header h3 {
+            font-family: 'Fredoka', sans-serif;
+            font-size: 22px;
+            color: #fff;
+            margin-bottom: 6px;
+        }
+
+        .card-header .meta-flavor {
+            font-size: 13px;
+            color: #fbbf24;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .card-desc {
+            font-size: 13.5px;
+            color: #cbd5e1;
+            line-height: 1.55;
+        }
+
+        .card-specs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            background: rgba(15, 23, 42, 0.6);
+            padding: 12px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .spec-item {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: #94a3b8;
+            background: rgba(255, 255, 255, 0.06);
+            padding: 4px 8px;
+            border-radius: 6px;
+        }
+
+        .spec-item strong {
+            color: #f1f5f9;
+        }
+
+        .card-action-btn {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: #fff;
+            padding: 10px 16px;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
+        }
+
+        .card-action-btn:hover {
+            background: #f59e0b;
+            color: #0f172a;
+            border-color: #f59e0b;
+        }
+
+        /* Interactive Tuning Lab */
+        .lab-panel {
+            background: var(--bg-card);
+            border: 1px solid var(--bg-card-border);
+            border-radius: 24px;
+            padding: 32px;
+            backdrop-filter: blur(24px);
+            margin-bottom: 48px;
+        }
+
+        .lab-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 24px;
+            margin-top: 24px;
+        }
+
+        .slider-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .slider-header {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .slider-header span:first-child {
+            color: #cbd5e1;
+        }
+
+        .slider-header span:last-child {
+            color: #fbbf24;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 6px;
+            border-radius: 4px;
+            background: rgba(255, 255, 255, 0.15);
+            outline: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #f59e0b;
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(245, 158, 11, 0.6);
+            transition: transform 0.1s;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.15);
+        }
+
+        /* Code Output Box */
+        .code-box-wrapper {
+            background: #080c14;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 20px;
+            position: relative;
+            margin-top: 24px;
+        }
+
+        pre {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12.5px;
+            color: #38bdf8;
+            line-height: 1.6;
+            overflow-x: auto;
+        }
+
+        .copy-btn {
+            position: absolute;
+            top: 14px;
+            right: 14px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: #fff;
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .copy-btn:hover {
+            background: #f59e0b;
+            color: #0f172a;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Top Header -->
+        <div class="header">
+            <div class="tagline-badge">✨ Jarrows v8.31.3 Material Design Lab</div>
+            <h1>Creamy White Block Surface Textures</h1>
+            <p>Compare real-time physical surface textures, micro-finishes, and tactile light responses for Jarrows creamy white blocks. Rotate any block in 3D, inspect micro-highlights, and pick the best look.</p>
+        </div>
+
+        <!-- Hero 3D Stage Section -->
+        <div class="hero-stage-section">
+            <div class="viewport-wrapper">
+                <div class="viewport-overlay">
+                    <div class="viewport-title" id="active-preset-title">1. Glazed Studio Ceramic</div>
+                    <div class="viewport-hint">🖱️ Click & Drag to Orbit • Scroll to Zoom</div>
+                </div>
+                <canvas id="hero-canvas"></canvas>
+            </div>
+
+            <div class="stage-controls">
+                <div>
+                    <div class="panel-heading">
+                        <span>Select Texture Preset</span>
+                        <span style="font-size: 11px; color: #fbbf24;">Live 3D</span>
+                    </div>
+                    <div class="preset-pills">
+                        <button class="preset-pill-btn active" data-preset="glazed">
+                            <div>
+                                <div>Glazed Studio Porcelain</div>
+                                <div class="pill-sub">Liquid clearcoat, high gloss, rich reflections</div>
+                            </div>
+                            <span>→</span>
+                        </button>
+                        <button class="preset-pill-btn" data-preset="satin">
+                            <div>
+                                <div>Matte Velvet Satin</div>
+                                <div class="pill-sub">Powdery soft-touch, zero glare, Nordic feel</div>
+                            </div>
+                            <span>→</span>
+                        </button>
+                        <button class="preset-pill-btn" data-preset="sandstone">
+                            <div>
+                                <div>Micro-Grain Sandstone</div>
+                                <div class="pill-sub">Tactile architectural limestone micro-pores</div>
+                            </div>
+                            <span>→</span>
+                        </button>
+                        <button class="preset-pill-btn" data-preset="alabaster">
+                            <div>
+                                <div>Polished Alabaster / Jadeite</div>
+                                <div class="pill-sub">Subsurface depth, luminous bevel edge glow</div>
+                            </div>
+                            <span>→</span>
+                        </button>
+                        <button class="preset-pill-btn" data-preset="carrara">
+                            <div>
+                                <div>Fine-Veined Marble</div>
+                                <div class="pill-sub">Ultra-delicate gold & grey mineral veining</div>
+                            </div>
+                            <span>→</span>
+                        </button>
+                        <button class="preset-pill-btn" data-preset="chamfer">
+                            <div>
+                                <div>Chamfer Precision Milled</div>
+                                <div class="pill-sub">High-contrast bevel highlights, tactile toy feel</div>
+                            </div>
+                            <span>→</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div>
+                    <div class="panel-heading" style="font-size: 15px; margin-bottom: 8px;">Scene Controls</div>
+                    <div class="stage-toggles">
+                        <button class="toggle-btn active" id="btn-spin">Auto Rotate</button>
+                        <button class="toggle-btn" id="btn-explode">Exploded View</button>
+                        <button class="toggle-btn" id="btn-lighting">Switch Lighting</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 6 Preset Showcase Cards -->
+        <div>
+            <div class="section-title">Surface Texture Gallery</div>
+            <div class="section-subtitle">Side-by-side comparison of 6 tactile surface finishes rendered with real-time WebGL PBR physical materials.</div>
+
+            <div class="presets-grid">
+                <!-- Card 1 -->
+                <div class="preset-card featured">
+                    <div class="card-badge">Current Baseline</div>
+                    <div class="card-canvas-wrap"><canvas id="card-canvas-glazed"></canvas></div>
+                    <div class="card-header">
+                        <h3>1. Glazed Studio Porcelain</h3>
+                        <div class="meta-flavor">Luxury Bone China / Glazed Ceramic</div>
+                    </div>
+                    <div class="card-desc">
+                        A pristine glass clearcoat layer suspended over rich creamy porcelain. Captures razor-sharp specular window glints on rounded bevels while keeping faces smooth and clean.
+                    </div>
+                    <div class="card-specs">
+                        <div class="spec-item">Base: <strong>#fbf6ed</strong></div>
+                        <div class="spec-item">Roughness: <strong>0.14</strong></div>
+                        <div class="spec-item">Clearcoat: <strong>1.0</strong></div>
+                        <div class="spec-item">ClearcoatRough: <strong>0.04</strong></div>
+                        <div class="spec-item">Tactile: <strong>Glassy</strong></div>
+                    </div>
+                    <button class="card-action-btn" onclick="applyPresetToLab('glazed')">Test in 3D Lab</button>
+                </div>
+
+                <!-- Card 2 -->
+                <div class="preset-card">
+                    <div class="card-badge" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border-color: rgba(16, 185, 129, 0.4);">Silky Soft</div>
+                    <div class="card-canvas-wrap"><canvas id="card-canvas-satin"></canvas></div>
+                    <div class="card-header">
+                        <h3>2. Matte Velvet Satin</h3>
+                        <div class="meta-flavor">Nordic Chalk-Matte / Soft-Touch Minimalist</div>
+                    </div>
+                    <div class="card-desc">
+                        Powdery, non-reflective eggshell finish with velvety diffuse light diffusion. Zero harsh specular glare, offering maximum legibility for colorful arrows from any viewing angle.
+                    </div>
+                    <div class="card-specs">
+                        <div class="spec-item">Base: <strong>#faf5ea</strong></div>
+                        <div class="spec-item">Roughness: <strong>0.38</strong></div>
+                        <div class="spec-item">Clearcoat: <strong>0.0</strong></div>
+                        <div class="spec-item">Metalness: <strong>0.02</strong></div>
+                        <div class="spec-item">Tactile: <strong>Velvet</strong></div>
+                    </div>
+                    <button class="card-action-btn" onclick="applyPresetToLab('satin')">Test in 3D Lab</button>
+                </div>
+
+                <!-- Card 3 -->
+                <div class="preset-card">
+                    <div class="card-badge" style="background: rgba(56, 189, 248, 0.2); color: #38bdf8; border-color: rgba(56, 189, 248, 0.4);">Architectural</div>
+                    <div class="card-canvas-wrap"><canvas id="card-canvas-sandstone"></canvas></div>
+                    <div class="card-header">
+                        <h3>3. Micro-Grain Sandstone</h3>
+                        <div class="meta-flavor">Honed Cream Travertine / Fine Mineral Grain</div>
+                    </div>
+                    <div class="card-desc">
+                        Infused with an ultra-fine procedural micro-pore normal map. Creates authentic tactile stone micro-shadows under glancing studio light, feeling grounded, natural, and organic.
+                    </div>
+                    <div class="card-specs">
+                        <div class="spec-item">Base: <strong>#f8f2e6</strong></div>
+                        <div class="spec-item">Roughness: <strong>0.44</strong></div>
+                        <div class="spec-item">BumpScale: <strong>0.025</strong></div>
+                        <div class="spec-item">Grain: <strong>Procedural</strong></div>
+                        <div class="spec-item">Tactile: <strong>Mineral</strong></div>
+                    </div>
+                    <button class="card-action-btn" onclick="applyPresetToLab('sandstone')">Test in 3D Lab</button>
+                </div>
+
+                <!-- Card 4 -->
+                <div class="preset-card">
+                    <div class="card-badge" style="background: rgba(244, 114, 182, 0.2); color: #f472b6; border-color: rgba(244, 114, 182, 0.4);">Luminous</div>
+                    <div class="card-canvas-wrap"><canvas id="card-canvas-alabaster"></canvas></div>
+                    <div class="card-header">
+                        <h3>4. Polished Alabaster</h3>
+                        <div class="meta-flavor">Translucent Mineral / Glowing Jadeite Edge</div>
+                    </div>
+                    <div class="card-desc">
+                        Simulates depth transmission through translucent mineral stone. Beveled edges catch light from within, radiating a warm, opulent creamy glow without sacrificing solid structure.
+                    </div>
+                    <div class="card-specs">
+                        <div class="spec-item">Base: <strong>#fbf5e8</strong></div>
+                        <div class="spec-item">Roughness: <strong>0.18</strong></div>
+                        <div class="spec-item">Transmission: <strong>0.22</strong></div>
+                        <div class="spec-item">Clearcoat: <strong>0.8</strong></div>
+                        <div class="spec-item">Tactile: <strong>Gemstone</strong></div>
+                    </div>
+                    <button class="card-action-btn" onclick="applyPresetToLab('alabaster')">Test in 3D Lab</button>
+                </div>
+
+                <!-- Card 5 -->
+                <div class="preset-card">
+                    <div class="card-badge" style="background: rgba(234, 179, 8, 0.2); color: #facc15; border-color: rgba(234, 179, 8, 0.4);">High Prestige</div>
+                    <div class="card-canvas-wrap"><canvas id="card-canvas-carrara"></canvas></div>
+                    <div class="card-header">
+                        <h3>5. Fine-Veined Marble</h3>
+                        <div class="meta-flavor">Warm Calacatta Gold / Whisper Veins</div>
+                    </div>
+                    <div class="card-desc">
+                        Subtle, whisper-thin veins of warm ochre and dove-grey snake through the creamy base. Brings an unmistakable Italian sculpture aesthetic that turns the tower into a modern art piece.
+                    </div>
+                    <div class="card-specs">
+                        <div class="spec-item">Base: <strong>#faf6ed</strong></div>
+                        <div class="spec-item">Roughness: <strong>0.16</strong></div>
+                        <div class="spec-item">Clearcoat: <strong>0.95</strong></div>
+                        <div class="spec-item">Texture: <strong>Veined Map</strong></div>
+                        <div class="spec-item">Tactile: <strong>Sculpted</strong></div>
+                    </div>
+                    <button class="card-action-btn" onclick="applyPresetToLab('carrara')">Test in 3D Lab</button>
+                </div>
+
+                <!-- Card 6 -->
+                <div class="preset-card">
+                    <div class="card-badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; border-color: rgba(168, 85, 247, 0.4);">High Precision</div>
+                    <div class="card-canvas-wrap"><canvas id="card-canvas-chamfer"></canvas></div>
+                    <div class="card-header">
+                        <h3>6. Chamfer Precision Milled</h3>
+                        <div class="meta-flavor">Precision Industrial Milled / Chamfer Edge</div>
+                    </div>
+                    <div class="card-desc">
+                        High-polish micro-grooves along outer edges emphasize each individual block's boundaries with crisp specular line accents, giving the puzzle an addictive, tactile board-game physical feel.
+                    </div>
+                    <div class="card-specs">
+                        <div class="spec-item">Base: <strong>#fcf7ee</strong></div>
+                        <div class="spec-item">Roughness: <strong>0.12</strong></div>
+                        <div class="spec-item">Clearcoat: <strong>1.0</strong></div>
+                        <div class="spec-item">EdgeAcc: <strong>Groove Spec</strong></div>
+                        <div class="spec-item">Tactile: <strong>CNC Toy</strong></div>
+                    </div>
+                    <button class="card-action-btn" onclick="applyPresetToLab('chamfer')">Test in 3D Lab</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Interactive Material Tuning Lab -->
+        <div class="lab-panel">
+            <div class="section-title">Interactive Material Tuning Lab</div>
+            <div class="section-subtitle">Tweak material parameters in real-time to dial in the exact tactile balance for Jarrows.</div>
+
+            <div class="lab-grid">
+                <div class="slider-group">
+                    <div class="slider-header">
+                        <span>Surface Roughness</span>
+                        <span id="val-roughness">0.14</span>
+                    </div>
+                    <input type="range" id="input-roughness" min="0.0" max="0.8" step="0.01" value="0.14">
+                </div>
+
+                <div class="slider-group">
+                    <div class="slider-header">
+                        <span>Clearcoat Lacquer</span>
+                        <span id="val-clearcoat">1.00</span>
+                    </div>
+                    <input type="range" id="input-clearcoat" min="0.0" max="1.0" step="0.02" value="1.00">
+                </div>
+
+                <div class="slider-group">
+                    <div class="slider-header">
+                        <span>Clearcoat Roughness</span>
+                        <span id="val-clearcoat-rough">0.04</span>
+                    </div>
+                    <input type="range" id="input-clearcoat-rough" min="0.0" max="0.3" step="0.01" value="0.04">
+                </div>
+
+                <div class="slider-group">
+                    <div class="slider-header">
+                        <span>Micro-Grain Bump Scale</span>
+                        <span id="val-bump">0.00</span>
+                    </div>
+                    <input type="range" id="input-bump" min="0.0" max="0.08" step="0.002" value="0.00">
+                </div>
+
+                <div class="slider-group">
+                    <div class="slider-header">
+                        <span>Cream Warmth / Tone</span>
+                        <span id="val-tone">Ivory Cream</span>
+                    </div>
+                    <input type="range" id="input-tone" min="0" max="4" step="1" value="1">
+                </div>
+
+                <div class="slider-group">
+                    <div class="slider-header">
+                        <span>Ambient Studio Fill</span>
+                        <span id="val-ambient">0.35</span>
+                    </div>
+                    <input type="range" id="input-ambient" min="0.1" max="0.8" step="0.02" value="0.35">
+                </div>
+            </div>
+
+            <!-- Ready-to-use Code Output -->
+            <div class="code-box-wrapper">
+                <button class="copy-btn" id="btn-copy-code">Copy Code</button>
+                <div style="font-size: 11px; color: #94a3b8; margin-bottom: 8px; font-weight: 700;">PROPERTIES FOR Block.js (THREE.MeshPhysicalMaterial):</div>
+                <pre id="code-output">// Generated Material Configuration
+new THREE.MeshPhysicalMaterial({
+    color: 0xfbf6ed, // Luxurious creamy ivory porcelain
+    roughness: 0.14,
+    metalness: 0.05,
+    clearcoat: 1.0,
+    clearcoatRoughness: 0.04
+});</pre>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 1. Procedural Texture Generators ---
+        function createMicroGrainCanvas() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 256;
+            canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+            const imgData = ctx.createImageData(256, 256);
+            for (let i = 0; i < imgData.data.length; i += 4) {
+                const val = 128 + (Math.random() - 0.5) * 45;
+                imgData.data[i] = val;
+                imgData.data[i + 1] = val;
+                imgData.data[i + 2] = val;
+                imgData.data[i + 3] = 255;
+            }
+            ctx.putImageData(imgData, 0, 0);
+            return canvas;
+        }
+
+        function createMarbleCanvas() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+            
+            // Creamy base
+            ctx.fillStyle = '#fbf6ed';
+            ctx.fillRect(0, 0, 512, 512);
+
+            // Subtle warm mineral veins
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = 'rgba(215, 195, 170, 0.25)';
+            ctx.filter = 'blur(4px)';
+
+            for (let v = 0; v < 4; v++) {
+                ctx.beginPath();
+                let x = Math.random() * 100;
+                let y = 0;
+                ctx.moveTo(x, y);
+                while (y < 512) {
+                    x += (Math.random() - 0.48) * 40;
+                    y += 30 + Math.random() * 40;
+                    ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+            }
+
+            // Delicate hairline veins
+            ctx.lineWidth = 1;
+            ctx.strokeStyle = 'rgba(190, 170, 150, 0.35)';
+            ctx.filter = 'blur(1px)';
+            ctx.beginPath();
+            ctx.moveTo(120, 0);
+            ctx.bezierCurveTo(240, 180, 200, 320, 360, 512);
+            ctx.stroke();
+
+            return canvas;
+        }
+
+        // Three.js Textures
+        const grainCanvas = createMicroGrainCanvas();
+        const grainTexture = new THREE.CanvasTexture(grainCanvas);
+        grainTexture.wrapS = THREE.RepeatWrapping;
+        grainTexture.wrapT = THREE.RepeatWrapping;
+        grainTexture.repeat.set(4, 4);
+
+        const marbleCanvas = createMarbleCanvas();
+        const marbleTexture = new THREE.CanvasTexture(marbleCanvas);
+        marbleTexture.wrapS = THREE.RepeatWrapping;
+        marbleTexture.wrapT = THREE.RepeatWrapping;
+
+        // Color Tone presets
+        const TONE_PRESETS = [
+            { name: 'Warm Alabaster', hex: 0xf7f2e7 },
+            { name: 'Ivory Cream', hex: 0xfbf6ed },
+            { name: 'Luminous Milk', hex: 0xfffdf8 },
+            { name: 'Warm Bone', hex: 0xf5efe4 },
+            { name: 'Nordic Greige', hex: 0xeee8dd }
+        ];
+
+        // --- 2. Preset Definitions ---
+        const PRESET_CONFIGS = {
+            glazed: {
+                title: '1. Glazed Studio Porcelain',
+                color: 0xfbf6ed,
+                roughness: 0.14,
+                metalness: 0.05,
+                clearcoat: 1.0,
+                clearcoatRoughness: 0.04,
+                bumpMap: null,
+                bumpScale: 0.0,
+                map: null,
+                transmission: 0.0
+            },
+            satin: {
+                title: '2. Matte Velvet Satin',
+                color: 0xfaf5ea,
+                roughness: 0.38,
+                metalness: 0.02,
+                clearcoat: 0.0,
+                clearcoatRoughness: 0.0,
+                bumpMap: null,
+                bumpScale: 0.0,
+                map: null,
+                transmission: 0.0
+            },
+            sandstone: {
+                title: '3. Micro-Grain Sandstone',
+                color: 0xf8f2e6,
+                roughness: 0.44,
+                metalness: 0.02,
+                clearcoat: 0.08,
+                clearcoatRoughness: 0.2,
+                bumpMap: grainTexture,
+                bumpScale: 0.028,
+                map: null,
+                transmission: 0.0
+            },
+            alabaster: {
+                title: '4. Polished Alabaster Mineral',
+                color: 0xfbf5e8,
+                roughness: 0.18,
+                metalness: 0.04,
+                clearcoat: 0.85,
+                clearcoatRoughness: 0.05,
+                bumpMap: null,
+                bumpScale: 0.0,
+                map: null,
+                transmission: 0.2
+            },
+            carrara: {
+                title: '5. Fine-Veined Marble',
+                color: 0xfaf6ed,
+                roughness: 0.16,
+                metalness: 0.03,
+                clearcoat: 0.95,
+                clearcoatRoughness: 0.04,
+                bumpMap: null,
+                bumpScale: 0.0,
+                map: marbleTexture,
+                transmission: 0.0
+            },
+            chamfer: {
+                title: '6. Chamfer Precision Milled',
+                color: 0xfcf7ee,
+                roughness: 0.12,
+                metalness: 0.06,
+                clearcoat: 1.0,
+                clearcoatRoughness: 0.03,
+                bumpMap: null,
+                bumpScale: 0.0,
+                map: null,
+                transmission: 0.0
+            }
+        };
+
+        // --- 3. Block Geometry Builder (Rounded Box with Indicator) ---
+        function createBlockMesh(length, isVertical, material, indicatorColor = 0xff6b6b) {
+            const group = new THREE.Group();
+            const cubeSize = 1.0;
+            const radius = 0.08;
+            const w = isVertical ? cubeSize : length * cubeSize;
+            const h = isVertical ? length * cubeSize : cubeSize;
+            const d = cubeSize;
+
+            // Rounded block body
+            const geom = new THREE.BoxGeometry(w - radius * 2, h - radius * 2, d - radius * 2, 4, 4, 4);
+            const bodyMesh = new THREE.Mesh(geom, material);
+            bodyMesh.castShadow = true;
+            bodyMesh.receiveShadow = true;
+            group.add(bodyMesh);
+
+            // Add Arrow / Indicator Ring on front face (+Z)
+            const ringGeom = new THREE.RingGeometry(0.18, 0.28, 32);
+            const indMat = new THREE.MeshStandardMaterial({
+                color: indicatorColor,
+                roughness: 0.25,
+                metalness: 0.1,
+                side: THREE.DoubleSide
+            });
+
+            for (let i = 0; i < length; i++) {
+                const ring = new THREE.Mesh(ringGeom, indMat);
+                let offsetX = 0;
+                let offsetY = 0;
+                if (!isVertical) {
+                    offsetX = (i - (length - 1) / 2) * cubeSize;
+                } else {
+                    offsetY = (i - (length - 1) / 2) * cubeSize;
+                }
+                ring.position.set(offsetX, offsetY, d / 2 - radius + 0.002);
+                group.add(ring);
+            }
+
+            return group;
+        }
+
+        // --- 4. Hero Viewport Setup ---
+        const heroCanvas = document.getElementById('hero-canvas');
+        const heroScene = new THREE.Scene();
+        const heroCamera = new THREE.PerspectiveCamera(42, heroCanvas.clientWidth / heroCanvas.clientHeight, 0.1, 100);
+        heroCamera.position.set(4.2, 3.4, 4.8);
+
+        const heroRenderer = new THREE.WebGLRenderer({ canvas: heroCanvas, antialias: true, alpha: true });
+        heroRenderer.setSize(heroCanvas.clientWidth, heroCanvas.clientHeight);
+        heroRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        heroRenderer.shadowMap.enabled = true;
+        heroRenderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+        const heroControls = new THREE.OrbitControls(heroCamera, heroCanvas);
+        heroControls.enableDamping = true;
+        heroControls.dampingFactor = 0.05;
+        heroControls.minDistance = 2.5;
+        heroControls.maxDistance = 12.0;
+
+        // Warm Studio Lighting
+        const heroAmbient = new THREE.AmbientLight(0xfff8ee, 0.35);
+        heroScene.add(heroAmbient);
+
+        const heroKeyLight = new THREE.DirectionalLight(0xfffdf5, 0.85);
+        heroKeyLight.position.set(6, 8, 5);
+        heroKeyLight.castShadow = true;
+        heroKeyLight.shadow.mapSize.width = 1024;
+        heroKeyLight.shadow.mapSize.height = 1024;
+        heroKeyLight.shadow.bias = -0.0001;
+        heroScene.add(heroKeyLight);
+
+        const heroFillLight = new THREE.DirectionalLight(0xf8f4ee, 0.45);
+        heroFillLight.position.set(-5, 4, -4);
+        heroScene.add(heroFillLight);
+
+        const heroRimLight = new THREE.DirectionalLight(0xfaf6f0, 0.35);
+        heroRimLight.position.set(-4, -2, 5);
+        heroScene.add(heroRimLight);
+
+        // Ground pedestal plate with grid
+        const plateGeom = new THREE.BoxGeometry(4.2, 0.12, 4.2);
+        const plateMat = new THREE.MeshStandardMaterial({
+            color: 0x1e293b,
+            roughness: 0.4,
+            metalness: 0.1
+        });
+        const plate = new THREE.Mesh(plateGeom, plateMat);
+        plate.position.y = -0.8;
+        plate.receiveShadow = true;
+        heroScene.add(plate);
+
+        // Hero Material
+        const heroBlockMaterial = new THREE.MeshPhysicalMaterial({
+            color: 0xfbf6ed,
+            roughness: 0.14,
+            metalness: 0.05,
+            clearcoat: 1.0,
+            clearcoatRoughness: 0.04
+        });
+
+        // Assemble 3-block mini puzzle cluster
+        const blockGroup = new THREE.Group();
+        const b1 = createBlockMesh(2, false, heroBlockMaterial, 0x4ecdc4); // Teal horizontal 2-cube
+        b1.position.set(0, 0, 0.5);
+
+        const b2 = createBlockMesh(3, true, heroBlockMaterial, 0xffc125); // Gold vertical 3-cube
+        b2.position.set(-1.1, 0.5, -0.5);
+
+        const b3 = createBlockMesh(1, false, heroBlockMaterial, 0xff6b6b); // Red single cube
+        b3.position.set(1.0, -0.2, -0.3);
+
+        blockGroup.add(b1, b2, b3);
+        heroScene.add(blockGroup);
+
+        // Animation Loop
+        let autoRotate = true;
+        let isExploded = false;
+
+        function animateHero() {
+            requestAnimationFrame(animateHero);
+            if (autoRotate) {
+                blockGroup.rotation.y += 0.006;
+            }
+            heroControls.update();
+            heroRenderer.render(heroScene, heroCamera);
+        }
+        animateHero();
+
+        // Handle Resize
+        window.addEventListener('resize', () => {
+            if (heroCanvas.clientWidth > 0 && heroCanvas.clientHeight > 0) {
+                heroCamera.aspect = heroCanvas.clientWidth / heroCanvas.clientHeight;
+                heroCamera.updateProjectionMatrix();
+                heroRenderer.setSize(heroCanvas.clientWidth, heroCanvas.clientHeight);
+            }
+        });
+
+        // --- 5. Thumbnail Cards WebGL Renderers ---
+        const cardConfigs = [
+            { id: 'card-canvas-glazed', preset: 'glazed' },
+            { id: 'card-canvas-satin', preset: 'satin' },
+            { id: 'card-canvas-sandstone', preset: 'sandstone' },
+            { id: 'card-canvas-alabaster', preset: 'alabaster' },
+            { id: 'card-canvas-carrara', preset: 'carrara' },
+            { id: 'card-canvas-chamfer', preset: 'chamfer' }
+        ];
+
+        const cardInstances = [];
+
+        cardConfigs.forEach(item => {
+            const canvas = document.getElementById(item.id);
+            if (!canvas) return;
+
+            const scene = new THREE.Scene();
+            const camera = new THREE.PerspectiveCamera(38, canvas.clientWidth / canvas.clientHeight, 0.1, 50);
+            camera.position.set(2.8, 2.0, 3.2);
+
+            const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+            renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+
+            const controls = new THREE.OrbitControls(camera, canvas);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.enableZoom = false;
+
+            // Lights
+            const amb = new THREE.AmbientLight(0xfff8ee, 0.4);
+            const key = new THREE.DirectionalLight(0xfffdf5, 0.85);
+            key.position.set(4, 6, 3);
+            const fill = new THREE.DirectionalLight(0xf8f4ee, 0.35);
+            fill.position.set(-3, 2, -3);
+            scene.add(amb, key, fill);
+
+            // Material from config
+            const cfg = PRESET_CONFIGS[item.preset];
+            const mat = new THREE.MeshPhysicalMaterial({
+                color: cfg.color,
+                roughness: cfg.roughness,
+                metalness: cfg.metalness,
+                clearcoat: cfg.clearcoat,
+                clearcoatRoughness: cfg.clearcoatRoughness,
+                bumpMap: cfg.bumpMap,
+                bumpScale: cfg.bumpScale,
+                map: cfg.map
+            });
+
+            // Single 2-cube preview block
+            const mesh = createBlockMesh(2, false, mat, 0x4ecdc4);
+            scene.add(mesh);
+
+            cardInstances.push({ renderer, scene, camera, controls, mesh });
+        });
+
+        function animateCards() {
+            requestAnimationFrame(animateCards);
+            cardInstances.forEach(inst => {
+                inst.mesh.rotation.y += 0.008;
+                inst.controls.update();
+                inst.renderer.render(inst.scene, inst.camera);
+            });
+        }
+        animateCards();
+
+        // --- 6. Live Preset Selection & Tuning Controls ---
+        function applyPreset(presetKey) {
+            const cfg = PRESET_CONFIGS[presetKey];
+            if (!cfg) return;
+
+            // Update Active Title
+            document.getElementById('active-preset-title').textContent = cfg.title;
+
+            // Update Active Pill
+            document.querySelectorAll('.preset-pill-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.preset === presetKey);
+            });
+
+            // Apply to Hero Material
+            heroBlockMaterial.color.setHex(cfg.color);
+            heroBlockMaterial.roughness = cfg.roughness;
+            heroBlockMaterial.metalness = cfg.metalness;
+            heroBlockMaterial.clearcoat = cfg.clearcoat;
+            heroBlockMaterial.clearcoatRoughness = cfg.clearcoatRoughness;
+            heroBlockMaterial.bumpMap = cfg.bumpMap;
+            heroBlockMaterial.bumpScale = cfg.bumpScale;
+            heroBlockMaterial.map = cfg.map;
+            heroBlockMaterial.needsUpdate = true;
+
+            // Sync Lab Sliders
+            document.getElementById('input-roughness').value = cfg.roughness;
+            document.getElementById('val-roughness').textContent = cfg.roughness.toFixed(2);
+
+            document.getElementById('input-clearcoat').value = cfg.clearcoat;
+            document.getElementById('val-clearcoat').textContent = cfg.clearcoat.toFixed(2);
+
+            document.getElementById('input-clearcoat-rough').value = cfg.clearcoatRoughness;
+            document.getElementById('val-clearcoat-rough').textContent = cfg.clearcoatRoughness.toFixed(2);
+
+            document.getElementById('input-bump').value = cfg.bumpScale;
+            document.getElementById('val-bump').textContent = cfg.bumpScale.toFixed(3);
+
+            updateCodeOutput();
+        }
+
+        window.applyPresetToLab = function(presetKey) {
+            applyPreset(presetKey);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        };
+
+        // Pill button clicks
+        document.querySelectorAll('.preset-pill-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                applyPreset(btn.dataset.preset);
+            });
+        });
+
+        // Stage Toggles
+        const btnSpin = document.getElementById('btn-spin');
+        btnSpin.addEventListener('click', () => {
+            autoRotate = !autoRotate;
+            btnSpin.classList.toggle('active', autoRotate);
+        });
+
+        const btnExplode = document.getElementById('btn-explode');
+        btnExplode.addEventListener('click', () => {
+            isExploded = !isExploded;
+            btnExplode.classList.toggle('active', isExploded);
+            if (isExploded) {
+                b1.position.set(0.6, 0.4, 0.8);
+                b2.position.set(-1.6, 0.9, -0.9);
+                b3.position.set(1.5, -0.4, -0.6);
+            } else {
+                b1.position.set(0, 0, 0.5);
+                b2.position.set(-1.1, 0.5, -0.5);
+                b3.position.set(1.0, -0.2, -0.3);
+            }
+        });
+
+        let lightingMode = 0;
+        const btnLighting = document.getElementById('btn-lighting');
+        btnLighting.addEventListener('click', () => {
+            lightingMode = (lightingMode + 1) % 3;
+            if (lightingMode === 0) {
+                // Warm Studio
+                heroKeyLight.color.setHex(0xfffdf5);
+                heroKeyLight.intensity = 0.85;
+                heroAmbient.color.setHex(0xfff8ee);
+                btnLighting.textContent = 'Lighting: Warm Studio';
+            } else if (lightingMode === 1) {
+                // High-Contrast Gallery
+                heroKeyLight.color.setHex(0xffffff);
+                heroKeyLight.intensity = 1.25;
+                heroAmbient.color.setHex(0xfaf5ec);
+                btnLighting.textContent = 'Lighting: Crisp Gallery';
+            } else {
+                // Golden Hour Luxury
+                heroKeyLight.color.setHex(0xffe6b0);
+                heroKeyLight.intensity = 1.1;
+                heroAmbient.color.setHex(0xffeed0);
+                btnLighting.textContent = 'Lighting: Golden Luxury';
+            }
+        });
+
+        // Lab Sliders
+        const inputRoughness = document.getElementById('input-roughness');
+        inputRoughness.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            heroBlockMaterial.roughness = val;
+            document.getElementById('val-roughness').textContent = val.toFixed(2);
+            updateCodeOutput();
+        });
+
+        const inputClearcoat = document.getElementById('input-clearcoat');
+        inputClearcoat.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            heroBlockMaterial.clearcoat = val;
+            document.getElementById('val-clearcoat').textContent = val.toFixed(2);
+            updateCodeOutput();
+        });
+
+        const inputClearcoatRough = document.getElementById('input-clearcoat-rough');
+        inputClearcoatRough.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            heroBlockMaterial.clearcoatRoughness = val;
+            document.getElementById('val-clearcoat-rough').textContent = val.toFixed(2);
+            updateCodeOutput();
+        });
+
+        const inputBump = document.getElementById('input-bump');
+        inputBump.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            heroBlockMaterial.bumpScale = val;
+            heroBlockMaterial.bumpMap = val > 0.001 ? grainTexture : null;
+            heroBlockMaterial.needsUpdate = true;
+            document.getElementById('val-bump').textContent = val.toFixed(3);
+            updateCodeOutput();
+        });
+
+        const inputTone = document.getElementById('input-tone');
+        inputTone.addEventListener('input', (e) => {
+            const idx = parseInt(e.target.value);
+            const tone = TONE_PRESETS[idx];
+            heroBlockMaterial.color.setHex(tone.hex);
+            document.getElementById('val-tone').textContent = tone.name;
+            updateCodeOutput();
+        });
+
+        const inputAmbient = document.getElementById('input-ambient');
+        inputAmbient.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            heroAmbient.intensity = val;
+            document.getElementById('val-ambient').textContent = val.toFixed(2);
+        });
+
+        function updateCodeOutput() {
+            const hexStr = '0x' + heroBlockMaterial.color.getHexString();
+            const r = heroBlockMaterial.roughness.toFixed(2);
+            const m = heroBlockMaterial.metalness.toFixed(2);
+            const c = heroBlockMaterial.clearcoat.toFixed(2);
+            const cr = heroBlockMaterial.clearcoatRoughness.toFixed(2);
+            const bs = heroBlockMaterial.bumpScale ? heroBlockMaterial.bumpScale.toFixed(3) : '0.0';
+
+            let bumpLine = heroBlockMaterial.bumpMap ? `\n    bumpMap: getMicroGrainBumpMap(),\n    bumpScale: ${bs},` : '';
+
+            const code = `// Jarrows Production Block Material Configuration
+new THREE.MeshPhysicalMaterial({
+    color: ${hexStr}, // Creamy porcelain white
+    roughness: ${r},
+    metalness: ${m},
+    clearcoat: ${c},
+    clearcoatRoughness: ${cr},${bumpLine}
+    opacity: 1.0,
+    transparent: false
+});`;
+            document.getElementById('code-output').textContent = code;
+        }
+
+        // Copy Code Button
+        document.getElementById('btn-copy-code').addEventListener('click', () => {
+            const codeText = document.getElementById('code-output').textContent;
+            navigator.clipboard.writeText(codeText).then(() => {
+                const btn = document.getElementById('btn-copy-code');
+                btn.textContent = '✓ Copied!';
+                btn.style.background = '#10b981';
+                btn.style.color = '#fff';
+                setTimeout(() => {
+                    btn.textContent = 'Copy Code';
+                    btn.style.background = '';
+                    btn.style.color = '';
+                }, 2000);
+            });
+        });
+    </script>
+</body>
+</html>
