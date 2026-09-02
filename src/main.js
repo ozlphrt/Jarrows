@@ -10709,21 +10709,23 @@ function animate() {
     const hasActiveAnimations = cachedHasActiveAnimations;
     const hasMovingTower = Math.abs(towerPositionOffset.y - targetTowerPositionOffset.y) > 0.005;
     const hasActiveTimeChallenge = isTimeBasedMode() && timeChallengeActive && !timeUpShown && !isPaused && !isTimeFrozen();
-    const hasCameraShake = (currentTime - cameraShakeStartTime) < cameraShakeDuration;
+    const hasActiveBombs = Array.isArray(blocks) && blocks.some(b => b && b.isBomb && !b.isRemoved && !b.isExploding && !b.isCharred);
 
-    const isActiveFrame = interacting || 
-                          hasFallingBlocks || 
-                          cameraStillMoving || 
-                          hasActiveAnimations || 
-                          isGeneratingLevel || 
-                          hasDebris || 
-                          hasMovingTower ||
-                          hasCameraShake ||
-                          hasActiveTimeChallenge ||
-                          (activeBlocks.size > 0) ||
-                          (currentTime < renderKeepAliveUntilMs);
+    const isUserActive = interacting || 
+                         hasFallingBlocks || 
+                         cameraStillMoving || 
+                         hasActiveAnimations || 
+                         isGeneratingLevel || 
+                         hasDebris || 
+                         hasMovingTower ||
+                         hasCameraShake ||
+                         hasActiveTimeChallenge ||
+                         (activeBlocks.size > 0) ||
+                         (currentTime < renderKeepAliveUntilMs);
 
-    nextFrameDelayMs = isActiveFrame ? ACTIVE_FRAME_MS : IDLE_FRAME_MS;
+    const isActiveFrame = isUserActive || hasActiveBombs;
+
+    nextFrameDelayMs = isUserActive ? ACTIVE_FRAME_MS : IDLE_FRAME_MS;
     if (isActiveFrame) {
         settleFramesRemaining = 5;
     }

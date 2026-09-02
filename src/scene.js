@@ -543,6 +543,8 @@ export function setupThermalMaterial(material) {
             );
         }
     };
+
+    material.customProgramCacheKey = () => 'thermal_mat';
 }
 
 /**
@@ -682,6 +684,12 @@ export function setupPulsingMaterial(material, options = {}) {
             );
         }
     };
+
+    const prevCacheKey = material.customProgramCacheKey;
+    material.customProgramCacheKey = () => {
+        const base = typeof prevCacheKey === 'function' ? prevCacheKey.call(material) : 'mat';
+        return base + '_pulse_' + (isBomb ? 'bomb' : (isHighlight ? 'high' : 'norm'));
+    };
 }
 
 /**
@@ -689,6 +697,7 @@ export function setupPulsingMaterial(material, options = {}) {
  */
 export function setupGlowQuadMaterial(material, options = {}) {
     const pulseOffset = options.pulseOffset || 0.0;
+    material.customProgramCacheKey = () => 'glowquad_' + (pulseOffset > 0 ? pulseOffset.toFixed(1) : '0');
     material.onBeforeCompile = (shader) => {
         shader.uniforms.uTime = globalUniforms.uTime;
         shader.uniforms.uPulseOffset = { value: pulseOffset };
