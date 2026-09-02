@@ -87,9 +87,9 @@ export function createLights(scene) {
     // =========================================================================
     
     // 1. Ambient Light: Studio ambient baseline
-    // 1. Ambient Light: Balanced baseline illumination - clear shadow legibility without bleaching
+    // 1. Ambient Light: Warm studio ambient baseline
     const ambientIntensity = isMobileLike ? 0.38 : 0.32;
-    const ambientLight = new THREE.AmbientLight(0xdce8ff, ambientIntensity);
+    const ambientLight = new THREE.AmbientLight(0xfff8ee, ambientIntensity);
     scene.add(ambientLight);
     
     // 2. Key Light: Primary warm directional sun & shadow caster
@@ -117,17 +117,17 @@ export function createLights(scene) {
     keyLight.shadow.normalBias = 0.025;
     scene.add(keyLight);
     
-    // 3. Fill Light: Soft cool blue sky fill (+4.0, 30.0, -32.0)
+    // 3. Fill Light: Soft warm studio fill (+4.0, 30.0, -32.0)
     // Targets Side 3 (-Z) for balanced illumination
     const fillIntensity = isMobileLike ? 0.36 : 0.30;
-    const fillLight = new THREE.DirectionalLight(0xc4dcff, fillIntensity);
+    const fillLight = new THREE.DirectionalLight(0xf8f4ee, fillIntensity);
     fillLight.position.set(4.0, 30.0, -32.0);
     scene.add(fillLight);
 
-    // 4. Rim / Accent Light: Gentle shade accent (-28.0, 24.0, 2.0)
+    // 4. Rim / Accent Light: Gentle warm studio accent (-28.0, 24.0, 2.0)
     // Targets Side 4 (-X) - soft accent so dark side remains legible
     const rimIntensity = isMobileLike ? 0.28 : 0.22;
-    const rimLight = new THREE.DirectionalLight(0xd0e0ff, rimIntensity);
+    const rimLight = new THREE.DirectionalLight(0xfaf6f0, rimIntensity);
     rimLight.position.set(-28.0, 24.0, 2.0);
     scene.add(rimLight);
     
@@ -164,10 +164,10 @@ export function setShadowsEnabled(scene, lights, renderer, enabled = true) {
 export const LIGHT_PRESETS = {
     'default': {
         name: 'Default Cinematic Studio',
-        ambient: { color: 0xdce8ff, intensity: 0.56 },
+        ambient: { color: 0xfff8ee, intensity: 0.56 },
         key: { color: 0xfffcf2, intensity: 1.15, pos: [32.0, 38.0, 20.0] },
-        fill: { color: 0xc4dcff, intensity: 0.55, pos: [4.0, 30.0, -32.0] },
-        rim: { color: 0xd0e0ff, intensity: 0.40, pos: [-28.0, 24.0, 2.0] },
+        fill: { color: 0xf8f4ee, intensity: 0.55, pos: [4.0, 30.0, -32.0] },
+        rim: { color: 0xfaf6f0, intensity: 0.40, pos: [-28.0, 24.0, 2.0] },
         shadowRadius: 3.0
     },
     'desert-dawn': {
@@ -900,10 +900,10 @@ function renderGalleryCanvas(ctx, width, height) {
         const startX = winX - totalW / 2 + mullion;
         const startY = winY - totalH / 2 + mullion;
 
-        // Subtle cool edge glow around window frame
+        // Subtle warm edge glow around window frame
         const wGrad = ctx.createRadialGradient(winX, winY, 15, winX, winY, totalW * 0.8);
-        wGrad.addColorStop(0.0, 'rgba(220, 240, 255, 0.35)');
-        wGrad.addColorStop(1.0, 'rgba(200, 230, 255, 0.0)');
+        wGrad.addColorStop(0.0, 'rgba(255, 250, 240, 0.35)');
+        wGrad.addColorStop(1.0, 'rgba(255, 245, 230, 0.0)');
         ctx.fillStyle = wGrad;
         ctx.beginPath();
         ctx.ellipse(winX, winY, totalW * 0.75, totalH * 0.75, 0, 0, Math.PI * 2);
@@ -925,7 +925,7 @@ function renderGalleryCanvas(ctx, width, height) {
 
     // 4. Four Cardinal Light Scribes at 0°, 90°, 180°, 270° (0.0, 0.25, 0.50, 0.75)
     // Slender vertical architectural gallery lights between the windows
-    ctx.fillStyle = 'rgba(215, 235, 255, 0.75)';
+    ctx.fillStyle = 'rgba(255, 250, 242, 0.75)';
     const cardinalPositions = [0, width * 0.25, width * 0.50, width * 0.75];
     for (let i = 0; i < cardinalPositions.length; i++) {
         const cX = cardinalPositions[i];
@@ -933,7 +933,7 @@ function renderGalleryCanvas(ctx, width, height) {
     }
 
     // 5. Floor horizon line (360° continuous gallery floor perimeter)
-    ctx.fillStyle = 'rgba(200, 225, 255, 0.40)';
+    ctx.fillStyle = 'rgba(255, 248, 238, 0.40)';
     ctx.fillRect(0, height * 0.50, width, 4);
 }
 

@@ -540,7 +540,7 @@ export class Block {
 
         // Use Classic palette as default: original natural colors
         const colors = [0xff6b6b, 0x4ecdc4, 0xffc125]; // Red, Teal, Golden Yellow
-        const whiteColor = 0xe6ebf2; // Studio ceramic porcelain off-white (prevents glare blowout, preserves rich arrow contrast)
+        const whiteColor = 0xfbf6ed; // Creamy porcelain white (warm ivory undertone, rich contrast)
 
         // Check global setting for default block color
         const useColored = (typeof window !== 'undefined' && window.useColoredBlocksDefault !== undefined)
@@ -742,8 +742,8 @@ export class Block {
         const nextState = !!enabled;
         this.isBomb = nextState;
 
-        // Block body remains porcelain white for all blocks (v8.31.2 studio porcelain clearcoat)
-        const normalBodyColor = new THREE.Color(0xe6ebf2);
+        // Block body remains creamy porcelain white for all blocks (v8.31.3)
+        const normalBodyColor = new THREE.Color(0xfbf6ed);
         this.originalColor = normalBodyColor.clone();
 
         if (this.cubes && this.cubes.length > 0) {
@@ -6232,7 +6232,7 @@ export class Block {
                     mat.clearcoatRoughness = 0.04;
                     const baseColor = asThreeColor(
                         mat.userData.baseBlockColor || mat.userData.originalColor || this.originalColor,
-                        0xe6ebf2
+                        0xfbf6ed
                     );
                     mat.color.copy(baseColor);
                     mat.emissive.setHex(0x000000);
