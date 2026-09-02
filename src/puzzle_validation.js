@@ -29,8 +29,8 @@ export function getBlockCells(block) {
 // --- 3D overlap helpers (snap + epsilon) ---
 // Float drift can accumulate in yOffset (e.g. 2.0016). For structure checks and fixes,
 // treat values very close to an integer as that integer.
-const Y_SNAP_EPS = 0.01;
-const Y_OVERLAP_EPS = 0.001; // touching at boundary is NOT overlap
+const Y_SNAP_EPS = 0.35;
+const Y_OVERLAP_EPS = 0.05; // touching at boundary is NOT overlap
 
 function snapLayerY(y) {
     const r = Math.round(y);

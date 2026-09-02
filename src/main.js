@@ -8721,13 +8721,10 @@ function onMouseClick(event) {
         // Update block's world matrix before raycasting
         block.group.updateMatrixWorld(true);
 
-        // Try both block.cubes and block.group for intersection
-        let intersects = raycaster.intersectObjects(block.cubes, true);
-
-        // If no intersections with cubes, try the group itself
-        if (intersects.length === 0) {
-            intersects = raycaster.intersectObject(block.group, true);
-        }
+        // Raycast strictly against block.cubes (the true physical volume of the block).
+        // Never fall back to block.group, which includes direction indicator meshes that extend
+        // past the cell boundary and cause false raycast hits on the block behind.
+        const intersects = raycaster.intersectObjects(block.cubes, true);
 
         // Store intersections with block reference for later processing
         for (const intersection of intersects) {
@@ -9549,7 +9546,7 @@ function computeSupportFallTargets(allBlocks, toFall) {
 
             // Apply unified delta drop to all blocks in the welded cluster
             for (const member of cluster) {
-                const targetY = Math.max(0, member.yOffset - minClusterDrop);
+                const targetY = Math.max(0, Math.round(member.yOffset - minClusterDrop));
                 targets.set(member, targetY);
             }
         } else {
@@ -9574,7 +9571,7 @@ function computeSupportFallTargets(allBlocks, toFall) {
                 }
             }
 
-            targets.set(block, Math.min(block.yOffset, highestSupportY));
+            targets.set(block, Math.min(Math.round(block.yOffset), Math.round(highestSupportY)));
         }
     }
 
@@ -9696,7 +9693,7 @@ function startBlockFallingToTarget(block, targetYOffset) {
         if (progress < 1) {
             fallAnimationId = requestAnimationFrame(animateFall);
         } else {
-            block.yOffset = targetYOffset;
+            block.yOffset = Math.round(targetYOffset);
             delete block._fallingTargetY;
             block.updateWorldPosition();
             block.isFalling = false;
@@ -10100,13 +10097,10 @@ function onTouchEnd(event) {
         // Update block's world matrix before raycasting
         block.group.updateMatrixWorld(true);
 
-        // Try both block.cubes and block.group for intersection
-        let intersects = raycaster.intersectObjects(block.cubes, true);
-
-        // If no intersections with cubes, try the group itself
-        if (intersects.length === 0) {
-            intersects = raycaster.intersectObject(block.group, true);
-        }
+        // Raycast strictly against block.cubes (the true physical volume of the block).
+        // Never fall back to block.group, which includes direction indicator meshes that extend
+        // past the cell boundary and cause false raycast hits on the block behind.
+        const intersects = raycaster.intersectObjects(block.cubes, true);
 
         for (const intersection of intersects) {
             allIntersections.push({

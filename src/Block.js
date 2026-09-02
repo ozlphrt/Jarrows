@@ -351,14 +351,14 @@ function safeTelemetry(data) {
  * we "snap" yBottom to the nearest integer layer when it's close enough.
  */
 function snapLayerY(y) {
-    // Snap only when already very close to an integer layer.
+    // Snap when close to an integer layer.
     // This fixes accumulated float drift from animations/support calculations.
     const r = Math.round(y);
-    return Math.abs(y - r) < 0.01 ? r : y;
+    return Math.abs(y - r) < 0.35 ? r : y;
 }
 
 function yRangesOverlapForMovement(_thisBlock, _otherBlock, thisYBottom, thisYTop, otherYBottom, otherYTop) {
-    const EPSILON = 0.001;
+    const EPSILON = 0.05;
 
     const thisHeight = thisYTop - thisYBottom;
     const otherHeight = otherYTop - otherYBottom;
@@ -1416,9 +1416,8 @@ export class Block {
             blockDepth = this.length * this.cubeSize;
         }
 
-        // Increased offset from surface to match how arrows stand out (arrows are at cubeSize + 0.02 above block)
-        // Use larger offset to make dots/circles stand out the same way
-        const surfaceOffset = 0.03;
+        // Keep surface offset subtle so indicators do not protrude into neighboring block bounding boxes
+        const surfaceOffset = 0.005;
 
         // Use full arrowColor for all indicators (no darkening)
         const indicatorColor = blockColor; // blockColor is already arrowColor when passed
@@ -3726,10 +3725,18 @@ export class Block {
         const isXAligned = Math.abs(this.direction.x) > 0;
         const len = this.isVertical ? 1 : this.length;
 
+        // Obtain set of cells currently occupied by this block so we never evaluate our own body cells
+        const myCells = typeof this.getOccupiedCells === 'function' ? this.getOccupiedCells() : [];
+        const myCellSet = new Set(myCells.map(c => `${c.x},${c.z}`));
+
         const blockers = [];
         for (let i = 0; i < len; i++) {
             const checkX = newGridX + (this.isVertical ? 0 : (isXAligned ? i : 0));
             const checkZ = newGridZ + (this.isVertical ? 0 : (isXAligned ? 0 : i));
+
+            // Must be within grid bounds and MUST NOT be one of this block's own occupied cells!
+            if (checkX < 0 || checkX >= this.gridSize || checkZ < 0 || checkZ >= this.gridSize) continue;
+            if (myCellSet.has(`${checkX},${checkZ}`)) continue;
 
             for (const other of blocks) {
                 if (!other || other === this || other.isFalling || other.isRemoved || other.isExploding || other.removalStartTime) continue;
@@ -3805,8 +3812,8 @@ export class Block {
 
             // Check for 3D overlaps: blocks cannot move to a position where they would overlap with another block
             for (const other of blocks) {
-                // Skip blocks that are falling, removed, or being removed
-                if (other === this || other.isFalling || other.isRemoved || other.removalStartTime) continue;
+                // Skip blocks that are falling, removed, exploding, or being removed
+                if (other === this || other.isFalling || other.isRemoved || other.isExploding || other.removalStartTime) continue;
 
                 // Calculate Y ranges for both blocks to check for 3D overlap
                 const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
@@ -3912,6 +3919,8 @@ export class Block {
         }
 
         const isXAligned = Math.abs(this.direction.x) > 0;
+        const myCells = typeof this.getOccupiedCells === 'function' ? this.getOccupiedCells() : [];
+        const myCellSet = new Set(myCells.map(c => `${c.x},${c.z}`));
 
         for (let i = 0; i < this.length; i++) {
             let checkX = newGridX;
@@ -3931,6 +3940,9 @@ export class Block {
                 return 'fall';
             }
 
+            // A block's own existing cells cannot block its own forward movement
+            if (myCellSet.has(`${checkX},${checkZ}`)) continue;
+
             // Calculate Y ranges for this block
             const thisHeight = this.isVertical ? this.length * this.cubeSize : this.cubeSize;
             const thisYBottom = this.yOffset;
@@ -3938,8 +3950,8 @@ export class Block {
 
             // Check for 3D overlaps: blocks cannot move to a position where they would overlap with another block
             for (const other of blocks) {
-                // Skip blocks that are falling, removed, or being removed
-                if (other === this || other.isFalling || other.isRemoved || other.removalStartTime) continue;
+                // Skip blocks that are falling, removed, exploding, or being removed
+                if (other === this || other.isFalling || other.isRemoved || other.isExploding || other.removalStartTime) continue;
 
                 // Calculate Y ranges for both blocks to check for 3D overlap
                 const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
@@ -4072,6 +4084,9 @@ export class Block {
         }
 
         // Calculate how many steps the block can move before hitting something
+        const initialOccupiedCells = typeof this.getOccupiedCells === 'function' ? this.getOccupiedCells() : [];
+        const initialCellSet = new Set(initialOccupiedCells.map(c => `${c.x},${c.z}`));
+
         let stepsToObstacle = 0;
         let tempGridX = this.gridX;
         let tempGridZ = this.gridZ;
@@ -4178,6 +4193,11 @@ export class Block {
                     for (let i = 0; i < this.length; i++) {
                         const checkX = nextGridX + (isXAligned ? i : 0);
                         const checkZ = nextGridZ + (isXAligned ? 0 : i);
+
+                        // At step 1, don't collide with self-occupied starting cells
+                        if (tempGridX === this.gridX && tempGridZ === this.gridZ && initialCellSet.has(`${checkX},${checkZ}`)) {
+                            continue;
+                        }
 
                         if (other.isVertical) {
                             if (checkX === other.gridX && checkZ === other.gridZ) {
