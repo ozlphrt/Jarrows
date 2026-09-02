@@ -537,16 +537,16 @@
         controls.minDistance = 3.5;
         controls.maxDistance = 12.0;
 
-        // 2. Add Base Analytical Lights
-        const keyLight = new THREE.DirectionalLight(0xfffaed, 1.4);
+        // 2. Add Base Analytical Lights (calibrated to prevent glare blowout)
+        const keyLight = new THREE.DirectionalLight(0xfffaed, 0.75);
         keyLight.position.set(12, 16, 10);
         scene.add(keyLight);
 
-        const fillLight = new THREE.DirectionalLight(0xdbeafe, 0.6);
+        const fillLight = new THREE.DirectionalLight(0xdbeafe, 0.30);
         fillLight.position.set(-10, 10, -10);
         scene.add(fillLight);
 
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.45);
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.32);
         scene.add(ambientLight);
 
         // 3. Create Swept Delta Wing Arrow Geometry Helper
@@ -626,122 +626,123 @@
         const envMaps = {};
 
         function drawHeroCanvas(ctx, w, h) {
-            ctx.fillStyle = '#010204';
+            ctx.fillStyle = '#000000';
             ctx.fillRect(0, 0, w, h);
 
-            // Overhead Golden Arc
-            const halo = ctx.createLinearGradient(0, h * 0.05, 0, h * 0.25);
-            halo.addColorStop(0, 'rgba(255, 230, 180, 0)');
-            halo.addColorStop(0.5, 'rgba(255, 240, 200, 0.85)');
-            halo.addColorStop(1, 'rgba(255, 210, 150, 0)');
-            ctx.fillStyle = halo;
-            ctx.fillRect(0, h * 0.05, w, h * 0.20);
+            // Overhead Zenith Rim Arc (grazing top bevels)
+            const haloGrad = ctx.createLinearGradient(0, h * 0.04, 0, h * 0.16);
+            haloGrad.addColorStop(0.0, 'rgba(255, 235, 200, 0.0)');
+            haloGrad.addColorStop(0.5, 'rgba(255, 235, 200, 0.70)');
+            haloGrad.addColorStop(1.0, 'rgba(255, 200, 140, 0.0)');
+            ctx.fillStyle = haloGrad;
+            ctx.fillRect(0, h * 0.04, w, h * 0.12);
 
-            // Radiant Golden Sun Soft-Box (+35° azimuth)
-            const kX = w * 0.60, kY = h * 0.32;
-            const corona = ctx.createRadialGradient(kX, kY, 20, kX, kY, 180);
-            corona.addColorStop(0, 'rgba(255, 210, 100, 0.80)');
-            corona.addColorStop(0.5, 'rgba(255, 170, 50, 0.40)');
-            corona.addColorStop(1, 'rgba(255, 140, 20, 0)');
-            ctx.fillStyle = corona;
+            // Flank Golden Key Soft-Box (+72° azimuth grazing)
+            const keyX = w * 0.70;
+            const keyY = h * 0.30;
+            const keyGrad = ctx.createRadialGradient(keyX, keyY, 8, keyX, keyY, 90);
+            keyGrad.addColorStop(0.0, 'rgba(255, 255, 255, 1.0)');
+            keyGrad.addColorStop(0.35, 'rgba(255, 230, 160, 0.90)');
+            keyGrad.addColorStop(0.70, 'rgba(255, 180, 70, 0.30)');
+            keyGrad.addColorStop(1.0, 'rgba(255, 140, 20, 0.0)');
+            ctx.fillStyle = keyGrad;
             ctx.beginPath();
-            ctx.ellipse(kX, kY, 170, 170, 0, 0, Math.PI * 2);
+            ctx.ellipse(keyX, keyY, 55, 110, -0.10, 0, Math.PI * 2);
             ctx.fill();
 
-            const core = ctx.createRadialGradient(kX, kY, 5, kX, kY, 100);
-            core.addColorStop(0, 'rgba(255, 255, 255, 1.0)');
-            core.addColorStop(0.4, 'rgba(255, 250, 220, 0.95)');
-            core.addColorStop(0.8, 'rgba(255, 220, 130, 0.50)');
-            core.addColorStop(1, 'rgba(255, 200, 80, 0)');
-            ctx.fillStyle = core;
+            // Opposite Electric Cyan Rim Blade (-72° azimuth grazing)
+            const rimX = w * 0.30;
+            const rimY = h * 0.30;
+            const rimGrad = ctx.createRadialGradient(rimX, rimY, 6, rimX, rimY, 60);
+            rimGrad.addColorStop(0.0, 'rgba(0, 240, 255, 0.90)');
+            rimGrad.addColorStop(0.5, 'rgba(0, 160, 255, 0.35)');
+            rimGrad.addColorStop(1.0, 'rgba(0, 100, 255, 0.0)');
+            ctx.fillStyle = rimGrad;
             ctx.beginPath();
-            ctx.ellipse(kX, kY, 100, 135, -0.15, 0, Math.PI * 2);
+            ctx.ellipse(rimX, rimY, 35, 100, 0.10, 0, Math.PI * 2);
             ctx.fill();
-
-            // Electric Vivid Cyan Rim Blade (-55° azimuth)
-            const rX = w * 0.30, rY = h * 0.30;
-            const rGlow = ctx.createRadialGradient(rX, rY, 10, rX, rY, 120);
-            rGlow.addColorStop(0, 'rgba(0, 240, 255, 0.90)');
-            rGlow.addColorStop(0.45, 'rgba(0, 180, 255, 0.50)');
-            rGlow.addColorStop(1, 'rgba(0, 120, 255, 0)');
-            ctx.fillStyle = rGlow;
-            ctx.beginPath();
-            ctx.ellipse(rX, rY, 70, 150, 0.18, 0, Math.PI * 2);
-            ctx.fill();
-
-            ctx.fillStyle = 'rgba(180, 255, 255, 1.0)';
-            ctx.fillRect(rX - 12, rY - 110, 24, 220);
+            // Slender bright cyan core
+            ctx.fillStyle = 'rgba(200, 255, 255, 0.95)';
+            ctx.fillRect(rimX - 6, rimY - 80, 12, 160);
         }
 
         function drawGalleryCanvas(ctx, w, h) {
-            ctx.fillStyle = '#05070a';
+            ctx.fillStyle = '#000000';
             ctx.fillRect(0, 0, w, h);
 
-            // Triple Cathedral Skylights
+            // Triple Cathedral Ceiling Skylights (grazing overhead top bevels)
             ctx.save();
-            ctx.translate(w * 0.50, h * 0.15);
-            ctx.rotate(-0.15);
-            const bW = 420, bH = 24, sp = 36;
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-            ctx.fillRect(-bW / 2, -sp - bH, bW, bH);
-            ctx.fillRect(-bW / 2, -bH / 2, bW, bH);
-            ctx.fillRect(-bW / 2, sp, bW, bH);
+            ctx.translate(w * 0.50, h * 0.12);
+            ctx.rotate(-0.12);
+            const beamW = 380;
+            const beamH = 14;
+            const spacing = 22;
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.90)';
+            ctx.fillRect(-beamW / 2, -spacing - beamH, beamW, beamH);
+            ctx.fillRect(-beamW / 2, -beamH / 2, beamW, beamH);
+            ctx.fillRect(-beamW / 2, spacing, beamW, beamH);
             ctx.restore();
 
-            // 8-Pane Industrial Loft Window
-            const wX = w * 0.20, wY = h * 0.38, totW = 190, totH = 230;
-            const cols = 2, rows = 4, mul = 14;
-            const pW = (totW - (cols + 1) * mul) / cols;
-            const pH = (totH - (rows + 1) * mul) / rows;
+            // Flank Loft Window (+80° side wall azimuth: width * 0.72)
+            const winX = w * 0.72;
+            const winY = h * 0.34;
+            const totalW = 110;
+            const totalH = 150;
+            const cols = 2;
+            const rows = 4;
+            const mullion = 10;
+            const paneW = (totalW - (cols + 1) * mullion) / cols;
+            const paneH = (totalH - (rows + 1) * mullion) / rows;
 
-            const wGlow = ctx.createRadialGradient(wX, wY, 30, wX, wY, 180);
-            wGlow.addColorStop(0, 'rgba(235, 248, 255, 0.60)');
-            wGlow.addColorStop(1, 'rgba(200, 230, 255, 0)');
-            ctx.fillStyle = wGlow;
-            ctx.beginPath();
-            ctx.ellipse(wX, wY, totW * 1.1, totH * 1.1, 0, 0, Math.PI * 2);
-            ctx.fill();
-
-            ctx.fillStyle = '#ffffff';
-            const sX = wX - totW / 2 + mul;
-            const sY = wY - totH / 2 + mul;
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+            const startX = winX - totalW / 2 + mullion;
+            const startY = winY - totalH / 2 + mullion;
             for (let r = 0; r < rows; r++) {
                 for (let c = 0; c < cols; c++) {
-                    ctx.fillRect(sX + c * (pW + mul), sY + r * (pH + mul), pW, pH);
+                    ctx.fillRect(
+                        startX + c * (paneW + mullion),
+                        startY + r * (paneH + mullion),
+                        paneW,
+                        paneH
+                    );
                 }
             }
 
-            ctx.fillStyle = 'rgba(220, 240, 255, 0.60)';
-            ctx.fillRect(0, h * 0.50, w, 10);
+            // Opposite Flank Rim Scribe (width * 0.28)
+            ctx.fillStyle = 'rgba(215, 235, 255, 0.75)';
+            ctx.fillRect(w * 0.28 - 5, h * 0.26, 10, 110);
+
+            // Floor horizon line
+            ctx.fillStyle = 'rgba(200, 225, 255, 0.40)';
+            ctx.fillRect(0, h * 0.50, w, 4);
         }
 
         function drawBladesCanvas(ctx, w, h) {
             ctx.fillStyle = '#000000';
             ctx.fillRect(0, 0, w, h);
 
-            // Primary Twin Laser Blades
-            const b1X = w * 0.42, b2X = w * 0.49, bY = h * 0.35, bW = 34, bH = 340;
-            const glow = ctx.createRadialGradient(w * 0.455, bY, 25, w * 0.455, bY, 180);
-            glow.addColorStop(0, 'rgba(255, 255, 255, 0.60)');
-            glow.addColorStop(0.35, 'rgba(220, 245, 255, 0.35)');
-            glow.addColorStop(1, 'rgba(200, 235, 255, 0)');
-            ctx.fillStyle = glow;
-            ctx.beginPath();
-            ctx.ellipse(w * 0.455, bY, 160, 200, 0, 0, Math.PI * 2);
-            ctx.fill();
+            // Primary Twin Neon Laser Blades on Right Flank (+65° azimuth: width * 0.68)
+            const b1X = w * 0.67;
+            const b2X = w * 0.71;
+            const bY = h * 0.32;
+            const bW = 16;
+            const bH = 220;
 
+            // Twin crisp white laser ribbons
             ctx.fillStyle = '#ffffff';
             ctx.fillRect(b1X - bW / 2, bY - bH / 2, bW, bH);
             ctx.fillRect(b2X - bW / 2, bY - bH / 2, bW, bH);
 
-            // Horizontal Cross-Blade
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.90)';
-            ctx.fillRect(w * 0.32, bY - 8, w * 0.27, 16);
+            // Secondary Twin Laser Blades on Left Flank (-65° azimuth: width * 0.29)
+            const s1X = w * 0.29;
+            const s2X = w * 0.33;
+            ctx.fillStyle = 'rgba(225, 240, 255, 0.85)';
+            ctx.fillRect(s1X - bW / 2, bY - bH * 0.40, 14, bH * 0.80);
+            ctx.fillRect(s2X - bW / 2, bY - bH * 0.40, 14, bH * 0.80);
 
-            // Secondary Twin Blades
-            ctx.fillStyle = '#ffffff';
-            ctx.fillRect(w * 0.82, bY - bH * 0.40, 22, bH * 0.80);
-            ctx.fillRect(w * 0.87, bY - bH * 0.40, 22, bH * 0.80);
+            // Overhead Sleek Zenith Line
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.70)';
+            ctx.fillRect(0, h * 0.08, w, 6);
         }
 
         function generateEnvMap(drawFn) {
@@ -783,8 +784,7 @@
         window.selectDirection = function(preset) {
             activePreset = preset;
             scene.environment = envMaps[preset];
-            const intensities = { 'hero': 2.2, 'gallery': 2.4, 'blades': 2.8 };
-            scene.environmentIntensity = intensities[preset] || 2.2;
+            scene.environmentIntensity = 1.0;
 
             // Update UI
             document.querySelectorAll('.direction-option').forEach(el => el.classList.remove('selected'));

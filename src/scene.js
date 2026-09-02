@@ -87,14 +87,15 @@ export function createLights(scene) {
     // =========================================================================
     
     // 1. Ambient Light: Studio ambient baseline
-    // Lifted on mobile to ensure dark faces and shadow crevices remain clearly legible
-    const ambientIntensity = isMobileLike ? 0.62 : 0.48;
+    // 1. Ambient Light: Balanced baseline illumination - clear shadow legibility without bleaching
+    const ambientIntensity = isMobileLike ? 0.38 : 0.32;
     const ambientLight = new THREE.AmbientLight(0xdce8ff, ambientIntensity);
     scene.add(ambientLight);
     
-    // 2. Key Light: Primary warm directional sun & shadow caster (1.15 intensity)
-    // Positioned at (+32.0, 38.0, +20.0) -> Side 1 (+X) Brightest, Side 2 (+Z) Less bright
-    const keyLight = new THREE.DirectionalLight(0xfffcf2, 1.15);
+    // 2. Key Light: Primary warm directional sun & shadow caster
+    // Calibrated to 0.72 so the brightest face never washes out or bleaches colors
+    const keyIntensity = isMobileLike ? 0.70 : 0.75;
+    const keyLight = new THREE.DirectionalLight(0xfffcf2, keyIntensity);
     keyLight.position.set(32.0, 38.0, 20.0);
     keyLight.castShadow = true;
     
@@ -118,14 +119,14 @@ export function createLights(scene) {
     
     // 3. Fill Light: Soft cool blue sky fill (+4.0, 30.0, -32.0)
     // Targets Side 3 (-Z) for balanced illumination
-    const fillIntensity = isMobileLike ? 0.60 : 0.48;
+    const fillIntensity = isMobileLike ? 0.36 : 0.30;
     const fillLight = new THREE.DirectionalLight(0xc4dcff, fillIntensity);
     fillLight.position.set(4.0, 30.0, -32.0);
     scene.add(fillLight);
 
     // 4. Rim / Accent Light: Gentle shade accent (-28.0, 24.0, 2.0)
-    // Targets Side 4 (-X) - boosted so dark side is clearly legible and crisp on mobile
-    const rimIntensity = isMobileLike ? 0.46 : 0.32;
+    // Targets Side 4 (-X) - soft accent so dark side remains legible
+    const rimIntensity = isMobileLike ? 0.28 : 0.22;
     const rimLight = new THREE.DirectionalLight(0xd0e0ff, rimIntensity);
     rimLight.position.set(-28.0, 24.0, 2.0);
     scene.add(rimLight);
@@ -806,109 +807,85 @@ let isCameraRelative = true;
 
 /**
  * Direction 1: Hero Studio (Camera-Relative)
- * Cinematic Gold Sun Key + Electric Cyan Rim Blade.
- * High-contrast duo-tone lighting that tracks camera azimuth.
+ * Dual-flank key + rim glints positioned at grazing angles (+75° and -75°).
+ * Leaves front faces pure and saturated while defining contours with gold & cyan.
  */
 function renderHeroStudioCanvas(ctx, width, height) {
-    // 1. Deep space pitch-black base (zero diffuse washing)
-    ctx.fillStyle = '#010204';
+    // 1. Pitch black void (zero diffuse wash on tower faces)
+    ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, width, height);
 
-    // 2. Overhead Warm Skylight Arc
-    const haloGrad = ctx.createLinearGradient(0, height * 0.05, 0, height * 0.25);
-    haloGrad.addColorStop(0.0, 'rgba(255, 230, 180, 0.0)');
-    haloGrad.addColorStop(0.5, 'rgba(255, 240, 200, 0.85)');
-    haloGrad.addColorStop(1.0, 'rgba(255, 210, 150, 0.0)');
+    // 2. Overhead Zenith Rim Arc (grazing top bevels)
+    const haloGrad = ctx.createLinearGradient(0, height * 0.04, 0, height * 0.16);
+    haloGrad.addColorStop(0.0, 'rgba(255, 235, 200, 0.0)');
+    haloGrad.addColorStop(0.5, 'rgba(255, 235, 200, 0.70)');
+    haloGrad.addColorStop(1.0, 'rgba(255, 200, 140, 0.0)');
     ctx.fillStyle = haloGrad;
-    ctx.fillRect(0, height * 0.05, width, height * 0.20);
+    ctx.fillRect(0, height * 0.04, width, height * 0.12);
 
-    // 3. Gigantic Radiant Golden Sun Soft-Box (+35° azimuth, 42° elevation)
-    const keyX = width * 0.60;
-    const keyY = height * 0.32;
-    // Outer golden corona
-    const coronaGrad = ctx.createRadialGradient(keyX, keyY, 20, keyX, keyY, 180);
-    coronaGrad.addColorStop(0.0, 'rgba(255, 210, 100, 0.80)');
-    coronaGrad.addColorStop(0.5, 'rgba(255, 170, 50, 0.40)');
-    coronaGrad.addColorStop(1.0, 'rgba(255, 140, 20, 0.0)');
-    ctx.fillStyle = coronaGrad;
+    // 3. Flank Golden Key Soft-Box (+72° azimuth grazing)
+    const keyX = width * 0.70;
+    const keyY = height * 0.30;
+    const keyGrad = ctx.createRadialGradient(keyX, keyY, 8, keyX, keyY, 90);
+    keyGrad.addColorStop(0.0, 'rgba(255, 255, 255, 1.0)');
+    keyGrad.addColorStop(0.35, 'rgba(255, 230, 160, 0.90)');
+    keyGrad.addColorStop(0.70, 'rgba(255, 180, 70, 0.30)');
+    keyGrad.addColorStop(1.0, 'rgba(255, 140, 20, 0.0)');
+    ctx.fillStyle = keyGrad;
     ctx.beginPath();
-    ctx.ellipse(keyX, keyY, 170, 170, 0, 0, Math.PI * 2);
-    ctx.fill();
-    // Blazing white-hot core
-    const coreGrad = ctx.createRadialGradient(keyX, keyY, 5, keyX, keyY, 100);
-    coreGrad.addColorStop(0.0, 'rgba(255, 255, 255, 1.0)');
-    coreGrad.addColorStop(0.4, 'rgba(255, 250, 220, 0.95)');
-    coreGrad.addColorStop(0.8, 'rgba(255, 220, 130, 0.50)');
-    coreGrad.addColorStop(1.0, 'rgba(255, 200, 80, 0.0)');
-    ctx.fillStyle = coreGrad;
-    ctx.beginPath();
-    ctx.ellipse(keyX, keyY, 100, 135, -0.15, 0, Math.PI * 2);
+    ctx.ellipse(keyX, keyY, 55, 110, -0.10, 0, Math.PI * 2);
     ctx.fill();
 
-    // 4. Electric Vivid Cyan Rim Blade (-55° azimuth)
+    // 4. Opposite Electric Cyan Rim Blade (-72° azimuth grazing)
     const rimX = width * 0.30;
     const rimY = height * 0.30;
-    // Cyan glow
-    const rimGlow = ctx.createRadialGradient(rimX, rimY, 10, rimX, rimY, 120);
-    rimGlow.addColorStop(0.0, 'rgba(0, 240, 255, 0.90)');
-    rimGlow.addColorStop(0.45, 'rgba(0, 180, 255, 0.50)');
-    rimGlow.addColorStop(1.0, 'rgba(0, 120, 255, 0.0)');
-    ctx.fillStyle = rimGlow;
+    const rimGrad = ctx.createRadialGradient(rimX, rimY, 6, rimX, rimY, 60);
+    rimGrad.addColorStop(0.0, 'rgba(0, 240, 255, 0.90)');
+    rimGrad.addColorStop(0.5, 'rgba(0, 160, 255, 0.35)');
+    rimGrad.addColorStop(1.0, 'rgba(0, 100, 255, 0.0)');
+    ctx.fillStyle = rimGrad;
     ctx.beginPath();
-    ctx.ellipse(rimX, rimY, 70, 150, 0.18, 0, Math.PI * 2);
+    ctx.ellipse(rimX, rimY, 35, 100, 0.10, 0, Math.PI * 2);
     ctx.fill();
-    // Ultra-sharp cyan core ribbon
-    ctx.fillStyle = 'rgba(180, 255, 255, 1.0)';
-    ctx.fillRect(rimX - 12, rimY - 110, 24, 220);
+    // Slender bright cyan core
+    ctx.fillStyle = 'rgba(200, 255, 255, 0.95)';
+    ctx.fillRect(rimX - 6, rimY - 80, 12, 160);
 }
 
 /**
  * Direction 2: Modern Art Gallery (Architectural Fixed)
- * Monochromatic cool white daylight: Massive 8-Pane Loft Window + Triple Cathedral Skylights.
+ * Architectural loft window on side wall + triple ceiling skylight slits.
  */
 function renderGalleryCanvas(ctx, width, height) {
-    // 1. Deep charcoal gallery interior
-    ctx.fillStyle = '#05070a';
+    // 1. Pitch black gallery void
+    ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, width, height);
 
-    // 2. Triple Cathedral Skylights (angled overhead parallel beams)
+    // 2. Triple Cathedral Ceiling Skylights (grazing overhead top bevels)
     ctx.save();
-    ctx.translate(width * 0.50, height * 0.15);
-    ctx.rotate(-0.15);
-    const beamW = 420;
-    const beamH = 24;
-    const spacing = 36;
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-    // Beam 1
+    ctx.translate(width * 0.50, height * 0.12);
+    ctx.rotate(-0.12);
+    const beamW = 380;
+    const beamH = 14;
+    const spacing = 22;
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.90)';
     ctx.fillRect(-beamW / 2, -spacing - beamH, beamW, beamH);
-    // Beam 2 (Center)
     ctx.fillRect(-beamW / 2, -beamH / 2, beamW, beamH);
-    // Beam 3
     ctx.fillRect(-beamW / 2, spacing, beamW, beamH);
     ctx.restore();
 
-    // 3. Grand 8-Pane Industrial Loft Window (+X flank: width * 0.20)
-    const winX = width * 0.20;
-    const winY = height * 0.38;
-    const totalW = 190;
-    const totalH = 230;
+    // 3. Flank Loft Window (+80° side wall azimuth: width * 0.72)
+    const winX = width * 0.72;
+    const winY = height * 0.34;
+    const totalW = 110;
+    const totalH = 150;
     const cols = 2;
     const rows = 4;
-    const mullion = 14;
+    const mullion = 10;
     const paneW = (totalW - (cols + 1) * mullion) / cols;
     const paneH = (totalH - (rows + 1) * mullion) / rows;
 
-    // Window diffuse soft glow
-    const winGlow = ctx.createRadialGradient(winX, winY, 30, winX, winY, 180);
-    winGlow.addColorStop(0.0, 'rgba(235, 248, 255, 0.60)');
-    winGlow.addColorStop(1.0, 'rgba(200, 230, 255, 0.0)');
-    ctx.fillStyle = winGlow;
-    ctx.beginPath();
-    ctx.ellipse(winX, winY, totalW * 1.1, totalH * 1.1, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Draw the 8 distinct bright white panes with black mullions
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
     const startX = winX - totalW / 2 + mullion;
     const startY = winY - totalH / 2 + mullion;
     for (let r = 0; r < rows; r++) {
@@ -922,50 +899,47 @@ function renderGalleryCanvas(ctx, width, height) {
         }
     }
 
-    // 4. Razor-sharp floor horizon grazing line
-    ctx.fillStyle = 'rgba(220, 240, 255, 0.60)';
-    ctx.fillRect(0, height * 0.50, width, 10);
+    // 4. Opposite Flank Rim Scribe (width * 0.28)
+    ctx.fillStyle = 'rgba(215, 235, 255, 0.75)';
+    ctx.fillRect(width * 0.28 - 5, height * 0.26, 10, 110);
+
+    // 5. Floor horizon line
+    ctx.fillStyle = 'rgba(200, 225, 255, 0.40)';
+    ctx.fillRect(0, height * 0.50, width, 4);
 }
 
 /**
- * Direction 3: Twin Light-Blade (High-Voltage Neon Laser Studio)
- * Blazing dual vertical laser blades separated by a dark gap + horizontal cross-blade.
+ * Direction 3: Twin Light-Blade (Automotive Studio)
+ * Slender, razor-sharp dual vertical blades positioned on the flanks.
+ * Creates clean metallic pin-stripes along bevels with zero face flooding.
  */
 function renderTwinBladesCanvas(ctx, width, height) {
     // 1. Pure obsidian black void
     ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, width, height);
 
-    // 2. Primary Twin Neon Laser Blades (width * 0.42 and width * 0.49)
-    const b1X = width * 0.42;
-    const b2X = width * 0.49;
-    const bY = height * 0.35;
-    const bW = 34;
-    const bH = 340;
+    // 2. Primary Twin Neon Laser Blades on Right Flank (+65° azimuth: width * 0.68)
+    const b1X = width * 0.67;
+    const b2X = width * 0.71;
+    const bY = height * 0.32;
+    const bW = 16;
+    const bH = 220;
 
-    // Outer intense glow envelope
-    const glow = ctx.createRadialGradient(width * 0.455, bY, 25, width * 0.455, bY, 180);
-    glow.addColorStop(0.0, 'rgba(255, 255, 255, 0.60)');
-    glow.addColorStop(0.35, 'rgba(220, 245, 255, 0.35)');
-    glow.addColorStop(1.0, 'rgba(200, 235, 255, 0.0)');
-    ctx.fillStyle = glow;
-    ctx.beginPath();
-    ctx.ellipse(width * 0.455, bY, 160, 200, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Twin blazing solid white lasers
+    // Twin crisp white laser ribbons
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(b1X - bW / 2, bY - bH / 2, bW, bH);
     ctx.fillRect(b2X - bW / 2, bY - bH / 2, bW, bH);
 
-    // 3. Horizontal Neon Cross-Blade cutting through at 90°
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.90)';
-    ctx.fillRect(width * 0.32, bY - 8, width * 0.27, 16);
+    // 3. Secondary Twin Laser Blades on Left Flank (-65° azimuth: width * 0.29)
+    const s1X = width * 0.29;
+    const s2X = width * 0.33;
+    ctx.fillStyle = 'rgba(225, 240, 255, 0.85)';
+    ctx.fillRect(s1X - bW / 2, bY - bH * 0.40, 14, bH * 0.80);
+    ctx.fillRect(s2X - bW / 2, bY - bH * 0.40, 14, bH * 0.80);
 
-    // 4. Secondary Twin Laser Blades on Opposite Flank (width * 0.82 and width * 0.87)
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(width * 0.82, bY - bH * 0.40, 22, bH * 0.80);
-    ctx.fillRect(width * 0.87, bY - bH * 0.40, 22, bH * 0.80);
+    // 4. Overhead Sleek Zenith Line
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.70)';
+    ctx.fillRect(0, height * 0.08, width, 6);
 }
 
 /**
@@ -1023,8 +997,7 @@ export function setReflectionPreset(scene, renderer, presetName) {
     if (activeMap) {
         scene.environment = activeMap;
         if (typeof scene.environmentIntensity !== 'undefined') {
-            const intensities = { 'hero': 2.2, 'gallery': 2.4, 'blades': 2.8 };
-            scene.environmentIntensity = intensities[selected] || 2.2;
+            scene.environmentIntensity = 1.0;
         }
     }
 

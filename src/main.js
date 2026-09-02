@@ -651,7 +651,7 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, qualityCaps.dprCap
 
 // Cinematic Photographic Tone Mapping (prevents harsh blowouts, enriches contrast and shadow depth)
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = isMobileLike ? 1.10 : 1.05;
+renderer.toneMappingExposure = 1.0;
 
 renderer.shadowMap.enabled = true;
 // On iOS, prefer cheaper PCF shadows over PCFSoft (significant battery win)

@@ -540,7 +540,7 @@ export class Block {
 
         // Use Classic palette as default: original natural colors
         const colors = [0xff6b6b, 0x4ecdc4, 0xffc125]; // Red, Teal, Golden Yellow
-        const whiteColor = 0xf0f3f8; // Studio matte porcelain off-white (prevents harsh glare blowouts)
+        const whiteColor = 0xe6ebf2; // Studio ceramic porcelain off-white (prevents glare blowout, preserves rich arrow contrast)
 
         // Check global setting for default block color
         const useColored = (typeof window !== 'undefined' && window.useColoredBlocksDefault !== undefined)
