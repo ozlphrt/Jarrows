@@ -10709,6 +10709,7 @@ function animate() {
     const hasActiveAnimations = cachedHasActiveAnimations;
     const hasMovingTower = Math.abs(towerPositionOffset.y - targetTowerPositionOffset.y) > 0.005;
     const hasActiveTimeChallenge = isTimeBasedMode() && timeChallengeActive && !timeUpShown && !isPaused && !isTimeFrozen();
+    const hasCameraShake = (currentTime - cameraShakeStartTime) < cameraShakeDuration;
     const hasActiveBombs = Array.isArray(blocks) && blocks.some(b => b && b.isBomb && !b.isRemoved && !b.isExploding && !b.isCharred);
 
     const isUserActive = interacting || 

@@ -5678,22 +5678,26 @@ export class Block {
         const indicatorMaterials = [];
         if (this.arrow) {
             this.arrow.traverse((child) => {
-                if (child.isMesh && child.material) {
+                if (child.isMesh && child.material && !child.isOrganicGlow && !(child.parent && child.parent.isOrganicGlow)) {
                     const mats = Array.isArray(child.material) ? child.material : [child.material];
                     mats.forEach(m => {
-                        if (!m.emissive) m.emissive = new THREE.Color(0, 0, 0);
-                        indicatorMaterials.push(m);
+                        if (m && m.isMeshStandardMaterial) {
+                            if (!m.emissive) m.emissive = new THREE.Color(0, 0, 0);
+                            indicatorMaterials.push(m);
+                        }
                     });
                 }
             });
         }
         if (this.directionIndicators) {
             this.directionIndicators.traverse((child) => {
-                if (child.isMesh && child.material) {
+                if (child.isMesh && child.material && !child.isOrganicGlow && !(child.parent && child.parent.isOrganicGlow)) {
                     const mats = Array.isArray(child.material) ? child.material : [child.material];
                     mats.forEach(m => {
-                        if (!m.emissive) m.emissive = new THREE.Color(0, 0, 0);
-                        indicatorMaterials.push(m);
+                        if (m && m.isMeshStandardMaterial) {
+                            if (!m.emissive) m.emissive = new THREE.Color(0, 0, 0);
+                            indicatorMaterials.push(m);
+                        }
                     });
                 }
             });
@@ -5990,6 +5994,8 @@ export class Block {
         this.group.traverse((child) => {
             if (child.isMesh && this.cubes && !this.cubes.includes(child)) {
                 if (!child.material) return;
+                if (child.isOrganicGlow || (child.parent && child.parent.isOrganicGlow)) return;
+                if (!child.material.isMeshStandardMaterial) return;
 
                 if (frosted) {
                     // Frosting implied colors: configurable etched frost with crystal ice glow
