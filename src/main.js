@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { initPhysics, createPhysicsBlock, updatePhysics, isPhysicsStepping, hasPendingOperations, isPhysicsProcessing, removePhysicsBody } from './physics.js';
 import { Block, getTranslucentCluster, moveTranslucentCluster, updateWeldedTranslucentClusters, FROSTY_CONFIG, DEFAULT_FROSTY_CONFIG, getFrostyConfig, setFrostyConfig, regenerateIceAlphaMap } from './Block.js';
-import { createLights, createGrid, setGradientBackground, setupFog, applyLightPreset, LIGHT_PRESETS, globalUniforms, setShadowsEnabled, setupStudioEnvironment } from './scene.js';
+import { createLights, createGrid, setGradientBackground, setupFog, applyLightPreset, LIGHT_PRESETS, globalUniforms, setShadowsEnabled, setupStudioEnvironment, updateReflectionEnvironment, setReflectionPreset } from './scene.js';
 import { validateStructure, validateSolvability, calculateDifficulty, getBlockCells, fixOverlappingBlocks, checkAndFixAllOverlaps, canBlockExit } from './puzzle_validation.js';
 import { initStats, startLevelStats, trackMove, trackSpin, trackBlockRemoved, completeLevel, getLevelComparison, getElapsedTime } from './stats/stats.js';
 import { updateLevelCompleteModal, showOfflineIndicator, hideOfflineIndicator, showPersonalHistoryModal, showProfileModal } from './stats/statsUI.js';
@@ -857,7 +857,8 @@ renderer.domElement.addEventListener('wheel', (event) => {
 
 // Setup scene elements
 const lights = createLights(scene);
-setupStudioEnvironment(scene, renderer);
+const initialReflectionPreset = (typeof window !== 'undefined') ? (new URLSearchParams(window.location.search).get('reflection') || 'hero') : 'hero';
+setupStudioEnvironment(scene, renderer, initialReflectionPreset);
 // Make lights globally accessible for UI and debug
 if (typeof window !== 'undefined') {
     window.lights = lights;
@@ -10721,6 +10722,9 @@ function animate() {
     if (globalUniforms && globalUniforms.uTime) {
         globalUniforms.uTime.value = currentTime * 0.001;
     }
+
+    // Update dynamic artistic reflection tracking (Direction 1: Hero Studio)
+    updateReflectionEnvironment(camera, scene);
 
     // 1. Update FPS Counter
     if (fpsEnabled) {

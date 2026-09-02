@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Artistic Surface Reflection Directions — Jarrows</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Inter:wght@400;500;600;700;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #080b12;
+            --bg-card: rgba(18, 25, 40, 0.85);
+            --bg-card-border: rgba(255, 255, 255, 0.12);
+            --accent-cyan: #00f0ff;
+            --accent-blue: #2563eb;
+            --accent-purple: #9333ea;
+            --accent-gold: #ffbe1a;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: radial-gradient(circle at 50% 15%, #151f32 0%, #080b12 75%);
+            color: var(--text-main);
+            font-family: 'Inter', -apple-system, sans-serif;
+            min-height: 100vh;
+            padding: 32px 20px 80px;
+            overflow-x: hidden;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 6px 14px;
+            border-radius: 999px;
+            background: rgba(0, 240, 255, 0.12);
+            border: 1px solid rgba(0, 240, 255, 0.35);
+            color: var(--accent-cyan);
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin-bottom: 12px;
+        }
+
+        .header h1 {
+            font-family: 'Fredoka', sans-serif;
+            font-size: clamp(28px, 5vw, 42px);
+            font-weight: 700;
+            background: linear-gradient(135deg, #ffffff 0%, #a5f3fc 45%, #00f0ff 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 15px;
+            color: var(--text-muted);
+            max-width: 720px;
+            margin: 0 auto;
+            line-height: 1.6;
+        }
+
+        /* Interactive 3D Studio Showcase Layout */
+        .showcase-grid {
+            display: grid;
+            grid-template-columns: 1.15fr 0.85fr;
+            gap: 24px;
+            margin-bottom: 40px;
+        }
+
+        @media (max-width: 960px) {
+            .showcase-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .viewport-card {
+            background: var(--bg-card);
+            border: 1px solid var(--bg-card-border);
+            border-radius: 20px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .viewport-container {
+            width: 100%;
+            height: 480px;
+            border-radius: 14px;
+            overflow: hidden;
+            position: relative;
+            background: radial-gradient(circle at 50% 30%, #172133 0%, #070a10 85%);
+            cursor: grab;
+        }
+
+        .viewport-container:active {
+            cursor: grabbing;
+        }
+
+        .viewport-overlay {
+            position: absolute;
+            top: 14px;
+            left: 14px;
+            display: flex;
+            gap: 8px;
+            z-index: 10;
+        }
+
+        .status-pill {
+            background: rgba(10, 14, 24, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            padding: 6px 12px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--accent-cyan);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent-cyan);
+            box-shadow: 0 0 10px var(--accent-cyan);
+        }
+
+        .viewport-controls-bottom {
+            position: absolute;
+            bottom: 14px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 8px;
+            z-index: 10;
+            background: rgba(10, 14, 24, 0.88);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            padding: 6px 12px;
+            border-radius: 999px;
+        }
+
+        .btn-mini {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            color: #f1f5f9;
+            padding: 5px 12px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-mini:hover {
+            background: rgba(255, 255, 255, 0.18);
+        }
+
+        .btn-mini.active {
+            background: linear-gradient(135deg, #00f0ff, #0077ff);
+            color: #fff;
+            border-color: transparent;
+            box-shadow: 0 0 12px rgba(0, 240, 255, 0.4);
+        }
+
+        /* Direction Cards Panel */
+        .controls-card {
+            background: var(--bg-card);
+            border: 1px solid var(--bg-card-border);
+            border-radius: 20px;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+        }
+
+        .controls-card h2 {
+            font-family: 'Fredoka', sans-serif;
+            font-size: 22px;
+            font-weight: 600;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .direction-option {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 14px;
+            padding: 16px;
+            cursor: pointer;
+            transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+            position: relative;
+        }
+
+        .direction-option:hover {
+            background: rgba(255, 255, 255, 0.06);
+            border-color: rgba(255, 255, 255, 0.22);
+            transform: translateY(-2px);
+        }
+
+        .direction-option.selected {
+            background: rgba(0, 240, 255, 0.08);
+            border-color: var(--accent-cyan);
+            box-shadow: 0 0 24px rgba(0, 240, 255, 0.2), inset 0 0 16px rgba(0, 240, 255, 0.05);
+        }
+
+        .direction-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .direction-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .direction-tag {
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            padding: 3px 8px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #cbd5e1;
+        }
+
+        .direction-option.selected .direction-tag {
+            background: var(--accent-cyan);
+            color: #050b14;
+        }
+
+        .direction-desc {
+            font-size: 13px;
+            color: var(--text-muted);
+            line-height: 1.5;
+            margin-bottom: 8px;
+        }
+
+        .direction-features {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .feature-chip {
+            font-size: 11px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            padding: 3px 8px;
+            border-radius: 6px;
+            color: #94a3b8;
+        }
+
+        /* Color Switcher & Sliders */
+        .color-palette {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-top: 6px;
+        }
+
+        .color-circle {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .color-circle:hover {
+            transform: scale(1.15);
+        }
+
+        .color-circle.active {
+            border-color: #fff;
+            box-shadow: 0 0 12px rgba(255, 255, 255, 0.5);
+            transform: scale(1.15);
+        }
+
+        .launch-game-btn {
+            background: linear-gradient(135deg, #00f0ff 0%, #0077ff 100%);
+            color: #fff;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            padding: 14px 20px;
+            border-radius: 14px;
+            font-weight: 700;
+            font-size: 14px;
+            box-shadow: 0 10px 25px rgba(0, 119, 255, 0.4);
+            transition: all 0.25s;
+            margin-top: 10px;
+        }
+
+        .launch-game-btn:hover {
+            box-shadow: 0 15px 35px rgba(0, 240, 255, 0.6);
+            transform: translateY(-2px);
+        }
+
+        /* Cards Comparison Section */
+        .deep-dive-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            margin-top: 32px;
+        }
+
+        @media (max-width: 900px) {
+            .deep-dive-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .dive-card {
+            background: var(--bg-card);
+            border: 1px solid var(--bg-card-border);
+            border-radius: 16px;
+            padding: 20px;
+        }
+
+        .dive-card h3 {
+            font-family: 'Fredoka', sans-serif;
+            font-size: 18px;
+            margin-bottom: 8px;
+            color: #fff;
+        }
+
+        .dive-card p {
+            font-size: 13px;
+            color: var(--text-muted);
+            line-height: 1.6;
+            margin-bottom: 12px;
+        }
+
+        .canvas-preview {
+            width: 100%;
+            height: 90px;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="badge">Artistic Studio Reflections Showcase</div>
+            <h1>Strategic Reflection Lighting</h1>
+            <p>Compare the three strategic lighting directions for block surface reflections. Rotate and tilt the 3D puzzle blocks below to inspect how light glides across faces, bevels, and the new Swept Delta arrows.</p>
+        </div>
+
+        <div class="showcase-grid">
+            <!-- 3D Interactive Viewport -->
+            <div class="viewport-card">
+                <div class="viewport-container" id="canvas-container">
+                    <div class="viewport-overlay">
+                        <div class="status-pill">
+                            <span class="status-dot"></span>
+                            <span id="active-preset-label">Direction 1: Hero Studio</span>
+                        </div>
+                    </div>
+                    <div class="viewport-controls-bottom">
+                        <button class="btn-mini active" id="btn-autorotate">Auto-Rotate: ON</button>
+                        <button class="btn-mini" id="btn-reset-cam">Reset View</button>
+                    </div>
+                </div>
+                <div style="margin-top: 14px; display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--text-muted);">
+                    <span>Drag with mouse / finger to orbit &bull; Scroll / pinch to zoom</span>
+                    <span id="cam-azimuth-label" style="font-family: 'JetBrains Mono', monospace;">Azimuth: 45°</span>
+                </div>
+            </div>
+
+            <!-- Direction Selection & Customizer -->
+            <div class="controls-card">
+                <h2>Select Lighting Direction</h2>
+
+                <!-- Direction 1 -->
+                <div class="direction-option selected" id="opt-hero" onclick="selectDirection('hero')">
+                    <div class="direction-header">
+                        <div class="direction-title">
+                            <span>✨</span> Direction 1: Hero Studio
+                        </div>
+                        <span class="direction-tag">Camera-Relative</span>
+                    </div>
+                    <div class="direction-desc">
+                        <b>Apple Keynote Style</b>: The primary soft-box & rim light dynamically track with your camera angle. Every face you look at is always in its optimal "hero angle" with a crisp diagonal sheen across its top bevel.
+                    </div>
+                    <div class="direction-features">
+                        <span class="feature-chip">Dynamic Tracking</span>
+                        <span class="feature-chip">No Dead Angles</span>
+                        <span class="feature-chip">Hot Key Diffuser</span>
+                    </div>
+                </div>
+
+                <!-- Direction 2 -->
+                <div class="direction-option" id="opt-gallery" onclick="selectDirection('gallery')">
+                    <div class="direction-header">
+                        <div class="direction-title">
+                            <span>🏛️</span> Direction 2: Art Gallery
+                        </div>
+                        <span class="direction-tag">Fixed Architectural</span>
+                    </div>
+                    <div class="direction-desc">
+                        <b>Modern Gallery Loft</b>: Fixed in world space. Features a high-contrast overhead Skylight Blade, a grand multi-pane Loft Window with mullions on the flank, and a razor-sharp horizon rim scribe.
+                    </div>
+                    <div class="direction-features">
+                        <span class="feature-chip">Window Mullion Reflection</span>
+                        <span class="feature-chip">Skylight Blade</span>
+                        <span class="feature-chip">World Space Depth</span>
+                    </div>
+                </div>
+
+                <!-- Direction 3 -->
+                <div class="direction-option" id="opt-blades" onclick="selectDirection('blades')">
+                    <div class="direction-header">
+                        <div class="direction-title">
+                            <span>⚡</span> Direction 3: Twin Light-Blade
+                        </div>
+                        <span class="direction-tag">Automotive Studio</span>
+                    </div>
+                    <div class="direction-desc">
+                        <b>Luxury Product Studio</b>: Two sleek, parallel vertical light blades separated by a dark gap. When reflected on rounded block bevels, they create signature dual metallic pin-stripes.
+                    </div>
+                    <div class="direction-features">
+                        <span class="feature-chip">Dual Parallel Stripes</span>
+                        <span class="feature-chip">High-Contrast Edge Pop</span>
+                        <span class="feature-chip">Obsidian Backdrop</span>
+                    </div>
+                </div>
+
+                <!-- Block Color Palette -->
+                <div style="margin-top: 6px;">
+                    <label style="font-size: 12px; font-weight: 700; color: #cbd5e1; text-transform: uppercase; letter-spacing: 0.5px;">Block Color Tone</label>
+                    <div class="color-palette">
+                        <div class="color-circle active" style="background: #2563eb;" onclick="setBlockColor('#2563eb', this)"></div>
+                        <div class="color-circle" style="background: #e11d48;" onclick="setBlockColor('#e11d48', this)"></div>
+                        <div class="color-circle" style="background: #059669;" onclick="setBlockColor('#059669', this)"></div>
+                        <div class="color-circle" style="background: #7c3aed;" onclick="setBlockColor('#7c3aed', this)"></div>
+                        <div class="color-circle" style="background: #1e293b;" onclick="setBlockColor('#1e293b', this)"></div>
+                    </div>
+                </div>
+
+                <!-- Launch into Live Game -->
+                <a href="/?reflection=hero" id="launch-btn" class="launch-game-btn">
+                    <span>Play Live Game with This Lighting</span>
+                    <span>&rarr;</span>
+                </a>
+            </div>
+        </div>
+
+        <!-- Deep Dive Comparison Cards -->
+        <div class="deep-dive-grid">
+            <div class="dive-card">
+                <h3>Direction 1: Hero Studio</h3>
+                <canvas id="preview-hero" class="canvas-preview"></canvas>
+                <p><b>Philosophy:</b> Never allow the user to look at a "dead angle". As the camera orbits, the light bank orbits in lockstep, guaranteeing consistent, flattering diagonal reflections on the blocks currently in focus.</p>
+            </div>
+            <div class="dive-card">
+                <h3>Direction 2: Art Gallery</h3>
+                <canvas id="preview-gallery" class="canvas-preview"></canvas>
+                <p><b>Philosophy:</b> Ground the puzzle in a tangible, physical space. Multipane window reflection lines and an overhead skylight bar create a realistic sense of architectural grandeur as the tower turns.</p>
+            </div>
+            <div class="dive-card">
+                <h3>Direction 3: Twin Light-Blade</h3>
+                <canvas id="preview-blades" class="canvas-preview"></canvas>
+                <p><b>Philosophy:</b> Graphic, high-end automotive luxury. Double parallel white ribbons carve out the curvature of the block bevels like precision-machined sports car bodywork.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Three.js from node_modules via Vite -->
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+
+        // 1. Setup Scene, Camera, Renderer
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(40, container.clientWidth / container.clientHeight, 0.1, 100);
+        camera.position.set(4.5, 4.0, 5.5);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.05;
+        container.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.08;
+        controls.target.set(0, 0, 0);
+        controls.minDistance = 3.5;
+        controls.maxDistance = 12.0;
+
+        // 2. Add Base Analytical Lights
+        const keyLight = new THREE.DirectionalLight(0xfffaed, 1.4);
+        keyLight.position.set(12, 16, 10);
+        scene.add(keyLight);
+
+        const fillLight = new THREE.DirectionalLight(0xdbeafe, 0.6);
+        fillLight.position.set(-10, 10, -10);
+        scene.add(fillLight);
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.45);
+        scene.add(ambientLight);
+
+        // 3. Create Swept Delta Wing Arrow Geometry Helper
+        function createSweptDeltaGeometry() {
+            const arrowShape = new THREE.Shape();
+            arrowShape.moveTo(0, 0.38);
+            arrowShape.lineTo(0.32, -0.16);
+            arrowShape.lineTo(0.18, -0.20);
+            arrowShape.lineTo(0, -0.02);
+            arrowShape.lineTo(-0.18, -0.20);
+            arrowShape.lineTo(-0.32, -0.16);
+            arrowShape.closePath();
+
+            const extrudeSettings = {
+                depth: 0.06,
+                bevelEnabled: true,
+                bevelThickness: 0.025,
+                bevelSize: 0.02,
+                bevelSegments: 3
+            };
+            const geo = new THREE.ExtrudeGeometry(arrowShape, extrudeSettings);
+            geo.center();
+            return geo;
+        }
+
+        const arrowGeo = createSweptDeltaGeometry();
+
+        // 4. Build a Mini Puzzle Cluster (3 interlocking blocks)
+        const clusterGroup = new THREE.Group();
+        scene.add(clusterGroup);
+
+        let currentBlockColor = new THREE.Color('#2563eb');
+        const blockMaterials = [];
+        const arrowMaterials = [];
+
+        function createBlockMesh(x, y, z, sx, sy, sz, arrowDir = 'up') {
+            const geo = new RoundedBoxGeometry(sx, sy, sz, 5, 0.12);
+            const mat = new THREE.MeshPhysicalMaterial({
+                color: currentBlockColor,
+                roughness: 0.24,
+                metalness: 0.04,
+                clearcoat: 0.85,
+                clearcoatRoughness: 0.18
+            });
+            blockMaterials.push(mat);
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.set(x, y, z);
+            clusterGroup.add(mesh);
+
+            // Add Swept Delta Arrow on top
+            const arrowMat = new THREE.MeshStandardMaterial({
+                color: currentBlockColor,
+                roughness: 0.24,
+                metalness: 0.14,
+                side: THREE.DoubleSide
+            });
+            arrowMaterials.push(arrowMat);
+            const arrowMesh = new THREE.Mesh(arrowGeo, arrowMat);
+            arrowMesh.rotation.x = -Math.PI / 2;
+            if (arrowDir === 'right') arrowMesh.rotation.z = -Math.PI / 2;
+            if (arrowDir === 'down') arrowMesh.rotation.z = Math.PI;
+            if (arrowDir === 'left') arrowMesh.rotation.z = Math.PI / 2;
+            arrowMesh.position.set(x, y + sy / 2 + 0.035, z);
+            clusterGroup.add(arrowMesh);
+        }
+
+        // Center 2-cell horizontal block
+        createBlockMesh(0, 0, 0, 1.95, 0.95, 0.95, 'right');
+        // Back 2-cell vertical block
+        createBlockMesh(0.5, 0.95, -0.5, 0.95, 0.95, 1.95, 'up');
+        // Side 1-cell block
+        createBlockMesh(-0.5, 0.95, 0.5, 0.95, 0.95, 0.95, 'left');
+
+        // 5. Procedural Reflection Rigs Generation
+        const pmrem = new THREE.PMREMGenerator(renderer);
+        pmrem.compileEquirectangularShader();
+        const envMaps = {};
+
+        function drawHeroCanvas(ctx, w, h) {
+            const bgGrad = ctx.createLinearGradient(0, 0, 0, h);
+            bgGrad.addColorStop(0, '#131c2b');
+            bgGrad.addColorStop(0.4, '#0a101a');
+            bgGrad.addColorStop(1, '#020407');
+            ctx.fillStyle = bgGrad;
+            ctx.fillRect(0, 0, w, h);
+
+            const halo = ctx.createLinearGradient(0, h * 0.08, 0, h * 0.24);
+            halo.addColorStop(0, 'rgba(255,255,255,0)');
+            halo.addColorStop(0.5, 'rgba(235,248,255,0.7)');
+            halo.addColorStop(1, 'rgba(180,215,255,0)');
+            ctx.fillStyle = halo;
+            ctx.fillRect(0, h * 0.08, w, h * 0.16);
+
+            const keyGrad = ctx.createRadialGradient(w * 0.6, h * 0.32, 10, w * 0.6, h * 0.32, 130);
+            keyGrad.addColorStop(0, 'rgba(255,253,248,0.98)');
+            keyGrad.addColorStop(0.35, 'rgba(255,242,225,0.75)');
+            keyGrad.addColorStop(1, 'rgba(180,215,255,0)');
+            ctx.fillStyle = keyGrad;
+            ctx.beginPath();
+            ctx.ellipse(w * 0.6, h * 0.32, 95, 135, -0.15, 0, Math.PI * 2);
+            ctx.fill();
+
+            const rimGrad = ctx.createRadialGradient(w * 0.32, h * 0.3, 8, w * 0.32, h * 0.3, 90);
+            rimGrad.addColorStop(0, 'rgba(225,245,255,0.88)');
+            rimGrad.addColorStop(0.4, 'rgba(175,215,255,0.45)');
+            rimGrad.addColorStop(1, 'rgba(160,205,255,0)');
+            ctx.fillStyle = rimGrad;
+            ctx.beginPath();
+            ctx.ellipse(w * 0.32, h * 0.3, 45, 110, 0.2, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        function drawGalleryCanvas(ctx, w, h) {
+            const bgGrad = ctx.createLinearGradient(0, 0, 0, h);
+            bgGrad.addColorStop(0, '#10141d');
+            bgGrad.addColorStop(0.5, '#070a10');
+            bgGrad.addColorStop(1, '#020305');
+            ctx.fillStyle = bgGrad;
+            ctx.fillRect(0, 0, w, h);
+
+            // Skylight Blade
+            ctx.save();
+            ctx.translate(w * 0.52, h * 0.16);
+            ctx.rotate(-0.18);
+            const blade = ctx.createLinearGradient(-180, 0, 180, 0);
+            blade.addColorStop(0, 'rgba(255,255,255,0)');
+            blade.addColorStop(0.3, 'rgba(255,255,255,0.95)');
+            blade.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.fillStyle = blade;
+            ctx.fillRect(-200, -22, 400, 44);
+            ctx.restore();
+
+            // Loft Window Panes
+            const wx = w * 0.22, wy = h * 0.35, ww = 120, wh = 150;
+            ctx.fillStyle = 'rgba(235, 248, 255, 0.88)';
+            const pw = (ww - 14) / 2, ph = (wh - 14) / 2;
+            ctx.fillRect(wx - ww/2, wy - wh/2, pw, ph);
+            ctx.fillRect(wx + 7, wy - wh/2, pw, ph);
+            ctx.fillRect(wx - ww/2, wy + 7, pw, ph);
+            ctx.fillRect(wx + 7, wy + 7, pw, ph);
+
+            // Rim Scribe
+            const scribe = ctx.createRadialGradient(w * 0.75, h * 0.32, 10, w * 0.75, h * 0.32, 85);
+            scribe.addColorStop(0, 'rgba(255,255,255,0.85)');
+            scribe.addColorStop(0.4, 'rgba(200,230,255,0.35)');
+            scribe.addColorStop(1, 'rgba(200,230,255,0)');
+            ctx.fillStyle = scribe;
+            ctx.beginPath();
+            ctx.ellipse(w * 0.75, h * 0.32, 50, 90, 0.15, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        function drawBladesCanvas(ctx, w, h) {
+            const bgGrad = ctx.createLinearGradient(0, 0, 0, h);
+            bgGrad.addColorStop(0, '#0c1018');
+            bgGrad.addColorStop(0.5, '#06080d');
+            bgGrad.addColorStop(1, '#020305');
+            ctx.fillStyle = bgGrad;
+            ctx.fillRect(0, 0, w, h);
+
+            // Twin vertical blades
+            const by = h * 0.34, bw = 22, bh = 160;
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.98)';
+            ctx.fillRect(w * 0.42 - bw/2, by - bh/2, bw, bh);
+            ctx.fillRect(w * 0.47 - bw/2, by - bh/2, bw, bh);
+
+            // Secondary blades
+            ctx.fillStyle = 'rgba(210, 235, 255, 0.75)';
+            ctx.fillRect(w * 0.82, by - bh * 0.38, 14, bh * 0.76);
+            ctx.fillRect(w * 0.855, by - bh * 0.38, 14, bh * 0.76);
+
+            // Halo Arc
+            const halo = ctx.createLinearGradient(0, h * 0.09, 0, h * 0.2);
+            halo.addColorStop(0, 'rgba(255,255,255,0)');
+            halo.addColorStop(0.5, 'rgba(255,255,255,0.6)');
+            halo.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.fillStyle = halo;
+            ctx.fillRect(0, h * 0.09, w, h * 0.11);
+        }
+
+        function generateEnvMap(drawFn) {
+            const c = document.createElement('canvas');
+            c.width = 1024;
+            c.height = 512;
+            const ctx = c.getContext('2d');
+            drawFn(ctx, 1024, 512);
+
+            const tex = new THREE.CanvasTexture(c);
+            tex.mapping = THREE.EquirectangularReflectionMapping;
+            tex.colorSpace = THREE.SRGBColorSpace;
+            const env = pmrem.fromEquirectangular(tex).texture;
+            tex.dispose();
+            return env;
+        }
+
+        envMaps['hero'] = generateEnvMap(drawHeroCanvas);
+        envMaps['gallery'] = generateEnvMap(drawGalleryCanvas);
+        envMaps['blades'] = generateEnvMap(drawBladesCanvas);
+
+        // Draw preview thumbnails in the deep-dive section
+        function drawPreview(canvasId, drawFn) {
+            const c = document.getElementById(canvasId);
+            if (!c) return;
+            c.width = c.clientWidth * 2;
+            c.height = c.clientHeight * 2;
+            const ctx = c.getContext('2d');
+            drawFn(ctx, c.width, c.height);
+        }
+        drawPreview('preview-hero', drawHeroCanvas);
+        drawPreview('preview-gallery', drawGalleryCanvas);
+        drawPreview('preview-blades', drawBladesCanvas);
+
+        // 6. Active Preset Management
+        let activePreset = 'hero';
+        let autoRotate = true;
+
+        window.selectDirection = function(preset) {
+            activePreset = preset;
+            scene.environment = envMaps[preset];
+            scene.environmentIntensity = preset === 'blades' ? 1.15 : 1.05;
+
+            // Update UI
+            document.querySelectorAll('.direction-option').forEach(el => el.classList.remove('selected'));
+            document.getElementById('opt-' + preset).classList.add('selected');
+
+            const labels = {
+                'hero': 'Direction 1: Hero Studio (Camera-Relative)',
+                'gallery': 'Direction 2: Art Gallery (Fixed Architecture)',
+                'blades': 'Direction 3: Twin Light-Blade (Automotive Studio)'
+            };
+            document.getElementById('active-preset-label').textContent = labels[preset];
+            document.getElementById('launch-btn').href = `/?reflection=${preset}`;
+        };
+
+        // Initialize with Hero
+        window.selectDirection('hero');
+
+        // Color Changer
+        window.setBlockColor = function(hex, elem) {
+            currentBlockColor = new THREE.Color(hex);
+            blockMaterials.forEach(m => m.color.copy(currentBlockColor));
+            arrowMaterials.forEach(m => m.color.copy(currentBlockColor));
+            document.querySelectorAll('.color-circle').forEach(el => el.classList.remove('active'));
+            elem.classList.add('active');
+        };
+
+        // Controls
+        const btnAuto = document.getElementById('btn-autorotate');
+        btnAuto.addEventListener('click', () => {
+            autoRotate = !autoRotate;
+            btnAuto.textContent = `Auto-Rotate: ${autoRotate ? 'ON' : 'OFF'}`;
+            btnAuto.classList.toggle('active', autoRotate);
+        });
+
+        document.getElementById('btn-reset-cam').addEventListener('click', () => {
+            camera.position.set(4.5, 4.0, 5.5);
+            controls.target.set(0, 0, 0);
+        });
+
+        // 7. Render Loop
+        const azimuthLabel = document.getElementById('cam-azimuth-label');
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (autoRotate) {
+                clusterGroup.rotation.y += 0.008;
+            }
+
+            controls.update();
+
+            // Calculate camera azimuth in degrees
+            const azRad = Math.atan2(camera.position.x, camera.position.z);
+            const azDeg = Math.round(((azRad * 180 / Math.PI) + 360) % 360);
+            azimuthLabel.textContent = `Camera Azimuth: ${azDeg}°`;
+
+            // If Hero Studio is active, track camera azimuth so key soft-box always glints on the face in focus!
+            if (activePreset === 'hero' && scene.environmentRotation) {
+                scene.environmentRotation.y = azRad;
+            } else if (scene.environmentRotation) {
+                scene.environmentRotation.y = 0;
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        // Responsive resize
+        window.addEventListener('resize', () => {
+            const w = container.clientWidth;
+            const h = container.clientHeight;
+            camera.aspect = w / h;
+            camera.updateProjectionMatrix();
+            renderer.setSize(w, h);
+        });
+    </script>
+</body>
+</html>

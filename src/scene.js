@@ -799,104 +799,281 @@ export function setupGlowQuadMaterial(material, options = {}) {
  * @param {THREE.Scene} scene
  * @param {THREE.WebGLRenderer} renderer
  */
-export function setupStudioEnvironment(scene, renderer) {
+// Cache for pre-filtered artistic environment maps
+const reflectionEnvMapCache = new Map();
+let currentReflectionPreset = 'hero';
+let isCameraRelative = true;
+
+/**
+ * Direction 1: Hero Studio (Camera-Relative)
+ * Angled key soft-box + slender edge scribe + overhead halo.
+ * Tracks camera azimuth so the face being viewed is always in the hero reflection sweet spot.
+ */
+function renderHeroStudioCanvas(ctx, width, height) {
+    // 1. Midnight-charcoal base floor (zero color washing)
+    const bgGrad = ctx.createLinearGradient(0, 0, 0, height);
+    bgGrad.addColorStop(0.0, '#131c2b');
+    bgGrad.addColorStop(0.40, '#0a101a');
+    bgGrad.addColorStop(0.70, '#05080e');
+    bgGrad.addColorStop(1.0, '#020407');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, width, height);
+
+    // 2. Overhead Halo Arc (soft zenith rim)
+    const haloGrad = ctx.createLinearGradient(0, height * 0.08, 0, height * 0.24);
+    haloGrad.addColorStop(0.0, 'rgba(255, 255, 255, 0.0)');
+    haloGrad.addColorStop(0.4, 'rgba(240, 250, 255, 0.65)');
+    haloGrad.addColorStop(0.7, 'rgba(215, 235, 255, 0.70)');
+    haloGrad.addColorStop(1.0, 'rgba(180, 215, 255, 0.0)');
+    ctx.fillStyle = haloGrad;
+    ctx.fillRect(0, height * 0.08, width, height * 0.16);
+
+    // 3. Hero Key Soft-Box (+35° azimuth, 45° elevation)
+    const keyX = width * 0.60;
+    const keyY = height * 0.32;
+    const keyGrad = ctx.createRadialGradient(keyX, keyY, 12, keyX, keyY, 130);
+    keyGrad.addColorStop(0.0, 'rgba(255, 253, 248, 0.98)');
+    keyGrad.addColorStop(0.35, 'rgba(255, 242, 225, 0.75)');
+    keyGrad.addColorStop(0.70, 'rgba(195, 225, 255, 0.25)');
+    keyGrad.addColorStop(1.0, 'rgba(180, 215, 255, 0.0)');
+    ctx.fillStyle = keyGrad;
+    ctx.beginPath();
+    ctx.ellipse(keyX, keyY, 95, 135, -0.15, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 4. Edge Scribe Blade (-55° azimuth)
+    const rimX = width * 0.32;
+    const rimY = height * 0.30;
+    const rimGrad = ctx.createRadialGradient(rimX, rimY, 8, rimX, rimY, 90);
+    rimGrad.addColorStop(0.0, 'rgba(225, 245, 255, 0.88)');
+    rimGrad.addColorStop(0.40, 'rgba(175, 215, 255, 0.45)');
+    rimGrad.addColorStop(1.0, 'rgba(160, 205, 255, 0.0)');
+    ctx.fillStyle = rimGrad;
+    ctx.beginPath();
+    ctx.ellipse(rimX, rimY, 45, 110, 0.20, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 5. Direct Zenith Soft Dome
+    const zenithGrad = ctx.createRadialGradient(width * 0.5, 0, 5, width * 0.5, 0, 80);
+    zenithGrad.addColorStop(0.0, 'rgba(255, 255, 255, 0.90)');
+    zenithGrad.addColorStop(0.5, 'rgba(220, 240, 255, 0.30)');
+    zenithGrad.addColorStop(1.0, 'rgba(220, 240, 255, 0.0)');
+    ctx.fillStyle = zenithGrad;
+    ctx.beginPath();
+    ctx.ellipse(width * 0.5, 0, 140, 55, 0, 0, Math.PI * 2);
+    ctx.fill();
+}
+
+/**
+ * Direction 2: Modern Art Gallery (Architectural Fixed)
+ * High-contrast architectural skylight blade + multi-pane loft window with mullions + horizon floor scribe.
+ */
+function renderGalleryCanvas(ctx, width, height) {
+    // 1. Dark graphite gallery walls
+    const bgGrad = ctx.createLinearGradient(0, 0, 0, height);
+    bgGrad.addColorStop(0.0, '#10141d');
+    bgGrad.addColorStop(0.40, '#0a0d14');
+    bgGrad.addColorStop(0.70, '#05070a');
+    bgGrad.addColorStop(1.0, '#020305');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, width, height);
+
+    // 2. The Skylight Blade: long, angled overhead rectangular aperture
+    ctx.save();
+    ctx.translate(width * 0.52, height * 0.16);
+    ctx.rotate(-0.18);
+    const bladeGrad = ctx.createLinearGradient(-180, 0, 180, 0);
+    bladeGrad.addColorStop(0.0, 'rgba(255, 255, 255, 0.0)');
+    bladeGrad.addColorStop(0.2, 'rgba(255, 255, 255, 0.90)');
+    bladeGrad.addColorStop(0.5, 'rgba(255, 255, 255, 0.98)');
+    bladeGrad.addColorStop(0.8, 'rgba(255, 255, 255, 0.90)');
+    bladeGrad.addColorStop(1.0, 'rgba(255, 255, 255, 0.0)');
+    ctx.fillStyle = bladeGrad;
+    ctx.fillRect(-200, -22, 400, 44);
+    ctx.restore();
+
+    // 3. Multi-Pane Loft Window (+X flank: width * 0.22)
+    const winX = width * 0.22;
+    const winY = height * 0.35;
+    const winW = 120;
+    const winH = 150;
+    // Window panes
+    ctx.fillStyle = 'rgba(235, 248, 255, 0.88)';
+    // 4 Panes with black mullion divider
+    const paneW = (winW - 14) / 2;
+    const paneH = (winH - 14) / 2;
+    ctx.fillRect(winX - winW/2, winY - winH/2, paneW, paneH);
+    ctx.fillRect(winX + 7, winY - winH/2, paneW, paneH);
+    ctx.fillRect(winX - winW/2, winY + 7, paneW, paneH);
+    ctx.fillRect(winX + 7, winY + 7, paneW, paneH);
+
+    // Soft glow around window
+    const winGlow = ctx.createRadialGradient(winX, winY, 20, winX, winY, 120);
+    winGlow.addColorStop(0.0, 'rgba(210, 235, 255, 0.35)');
+    winGlow.addColorStop(1.0, 'rgba(210, 235, 255, 0.0)');
+    ctx.fillStyle = winGlow;
+    ctx.beginPath();
+    ctx.ellipse(winX, winY, winW * 0.9, winH * 0.9, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 4. Horizon Rim Scribe (grazing edge pop on opposite side)
+    const scribeGrad = ctx.createRadialGradient(width * 0.75, height * 0.32, 10, width * 0.75, height * 0.32, 85);
+    scribeGrad.addColorStop(0.0, 'rgba(255, 255, 255, 0.85)');
+    scribeGrad.addColorStop(0.35, 'rgba(200, 230, 255, 0.40)');
+    scribeGrad.addColorStop(1.0, 'rgba(200, 230, 255, 0.0)');
+    ctx.fillStyle = scribeGrad;
+    ctx.beginPath();
+    ctx.ellipse(width * 0.75, height * 0.32, 50, 90, 0.15, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 5. Floor grazing horizon line
+    const floorGrad = ctx.createLinearGradient(0, height * 0.45, 0, height * 0.52);
+    floorGrad.addColorStop(0.0, 'rgba(180, 210, 245, 0.0)');
+    floorGrad.addColorStop(0.5, 'rgba(180, 210, 245, 0.28)');
+    floorGrad.addColorStop(1.0, 'rgba(180, 210, 245, 0.0)');
+    ctx.fillStyle = floorGrad;
+    ctx.fillRect(0, height * 0.45, width, height * 0.07);
+}
+
+/**
+ * Direction 3: Twin Light-Blade (Automotive / Luxury Product Studio)
+ * Parallel vertical light ribbons producing dual pin-stripes across curved bevels.
+ */
+function renderTwinBladesCanvas(ctx, width, height) {
+    // 1. Obsidian black backdrop
+    const bgGrad = ctx.createLinearGradient(0, 0, 0, height);
+    bgGrad.addColorStop(0.0, '#0c1018');
+    bgGrad.addColorStop(0.50, '#06080d');
+    bgGrad.addColorStop(1.0, '#020305');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, width, height);
+
+    // 2. Twin Light Blades (Hero Key: width * 0.42 and width * 0.48)
+    const blade1X = width * 0.42;
+    const blade2X = width * 0.47;
+    const bladeY = height * 0.34;
+    const bladeW = 22;
+    const bladeH = 160;
+
+    // Outer soft glow envelope
+    const twinGlow = ctx.createRadialGradient(width * 0.445, bladeY, 20, width * 0.445, bladeY, 130);
+    twinGlow.addColorStop(0.0, 'rgba(220, 240, 255, 0.40)');
+    twinGlow.addColorStop(1.0, 'rgba(220, 240, 255, 0.0)');
+    ctx.fillStyle = twinGlow;
+    ctx.beginPath();
+    ctx.ellipse(width * 0.445, bladeY, 110, 110, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Twin crisp ribbons
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.98)';
+    ctx.fillRect(blade1X - bladeW/2, bladeY - bladeH/2, bladeW, bladeH);
+    ctx.fillRect(blade2X - bladeW/2, bladeY - bladeH/2, bladeW, bladeH);
+
+    // 3. Secondary Twin Blades on Opposite Flank (width * 0.82 and width * 0.86)
+    ctx.fillStyle = 'rgba(210, 235, 255, 0.75)';
+    ctx.fillRect(width * 0.82, bladeY - bladeH * 0.38, 14, bladeH * 0.76);
+    ctx.fillRect(width * 0.855, bladeY - bladeH * 0.38, 14, bladeH * 0.76);
+
+    // 4. Overhead Sleek Halo Arc
+    const haloGrad = ctx.createLinearGradient(0, height * 0.09, 0, height * 0.20);
+    haloGrad.addColorStop(0.0, 'rgba(255, 255, 255, 0.0)');
+    haloGrad.addColorStop(0.5, 'rgba(255, 255, 255, 0.60)');
+    haloGrad.addColorStop(1.0, 'rgba(255, 255, 255, 0.0)');
+    ctx.fillStyle = haloGrad;
+    ctx.fillRect(0, height * 0.09, width, height * 0.11);
+}
+
+/**
+ * Generate a compiled PMREM environment map for a given artistic preset
+ */
+function createArtisticEnvMap(renderer, presetName) {
+    const width = 1024;
+    const height = 512;
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    if (presetName === 'gallery') {
+        renderGalleryCanvas(ctx, width, height);
+    } else if (presetName === 'blades') {
+        renderTwinBladesCanvas(ctx, width, height);
+    } else {
+        renderHeroStudioCanvas(ctx, width, height);
+    }
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.mapping = THREE.EquirectangularReflectionMapping;
+    texture.colorSpace = THREE.SRGBColorSpace;
+
+    const pmremGenerator = new THREE.PMREMGenerator(renderer);
+    pmremGenerator.compileEquirectangularShader();
+    const envMap = pmremGenerator.fromEquirectangular(texture).texture;
+
+    texture.dispose();
+    pmremGenerator.dispose();
+    return envMap;
+}
+
+/**
+ * Switch artistic reflection preset dynamically
+ * @param {THREE.Scene} scene
+ * @param {THREE.WebGLRenderer} renderer
+ * @param {'hero' | 'gallery' | 'blades'} presetName
+ */
+export function setReflectionPreset(scene, renderer, presetName) {
     if (!scene || !renderer) return;
+    const validPresets = ['hero', 'gallery', 'blades'];
+    const selected = validPresets.includes(presetName) ? presetName : 'hero';
+    currentReflectionPreset = selected;
+    isCameraRelative = (selected === 'hero');
 
-    try {
-        const width = 1024;
-        const height = 512;
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
+    if (!reflectionEnvMapCache.has(selected)) {
+        const envMap = createArtisticEnvMap(renderer, selected);
+        if (envMap) reflectionEnvMapCache.set(selected, envMap);
+    }
 
-        // 1. Dark, contrast-preserving base (deep midnight-charcoal)
-        // Keeps diffuse illumination low so tower colors NEVER get washed out
-        const bgGradient = ctx.createLinearGradient(0, 0, 0, height);
-        bgGradient.addColorStop(0.0, '#151f30'); // Soft zenith
-        bgGradient.addColorStop(0.35, '#0b111c'); // Horizon
-        bgGradient.addColorStop(0.70, '#060910'); // Lower hemisphere
-        bgGradient.addColorStop(1.0, '#030508'); // Dark ground floor
-        ctx.fillStyle = bgGradient;
-        ctx.fillRect(0, 0, width, height);
-
-        // 2. Continuous 360° Overhead Halo Light Strip
-        // Guarantees that at ANY camera angle, the top faces and upper bevels
-        // always catch a clean, elegant specular reflection ribbon
-        const overheadGrad = ctx.createLinearGradient(0, height * 0.08, 0, height * 0.26);
-        overheadGrad.addColorStop(0.0, 'rgba(255, 255, 255, 0.0)');
-        overheadGrad.addColorStop(0.35, 'rgba(245, 252, 255, 0.55)');
-        overheadGrad.addColorStop(0.60, 'rgba(225, 242, 255, 0.65)');
-        overheadGrad.addColorStop(0.85, 'rgba(180, 220, 255, 0.25)');
-        overheadGrad.addColorStop(1.0, 'rgba(180, 220, 255, 0.0)');
-        ctx.fillStyle = overheadGrad;
-        ctx.fillRect(0, height * 0.08, width, height * 0.18);
-
-        // 3. Four Primary Soft-box Light Banks (45°, 135°, 225°, 315°)
-        // Large, bright vertical studio diffusers giving broad, gorgeous reflections
-        const primaryPanels = [0.125, 0.375, 0.625, 0.875];
-        primaryPanels.forEach((normX, i) => {
-            const px = normX * width;
-            const py = height * 0.34;
-            const grad = ctx.createRadialGradient(px, py, 12, px, py, 120);
-            const isWarm = (i % 2 === 0);
-            const coreColor = isWarm ? 'rgba(255, 253, 245, 0.98)' : 'rgba(240, 250, 255, 0.95)';
-            const midColor = isWarm ? 'rgba(255, 242, 220, 0.55)' : 'rgba(205, 235, 255, 0.50)';
-            grad.addColorStop(0.0, coreColor);
-            grad.addColorStop(0.35, midColor);
-            grad.addColorStop(0.70, 'rgba(170, 210, 245, 0.18)');
-            grad.addColorStop(1.0, 'rgba(170, 210, 245, 0.0)');
-            ctx.fillStyle = grad;
-            ctx.beginPath();
-            ctx.ellipse(px, py, 85, 125, 0, 0, Math.PI * 2);
-            ctx.fill();
-        });
-
-        // 4. Four Interleaved Secondary Accent Strips (0°, 90°, 180°, 270°)
-        // Eliminates dead zones so specular highlights roll continuously across all rotation angles
-        const secondaryPanels = [0.0, 0.25, 0.50, 0.75, 1.0];
-        secondaryPanels.forEach((normX) => {
-            const px = normX * width;
-            const py = height * 0.30;
-            const grad = ctx.createRadialGradient(px, py, 6, px, py, 75);
-            grad.addColorStop(0.0, 'rgba(255, 255, 255, 0.80)');
-            grad.addColorStop(0.40, 'rgba(215, 238, 255, 0.35)');
-            grad.addColorStop(0.80, 'rgba(160, 205, 245, 0.10)');
-            grad.addColorStop(1.0, 'rgba(160, 205, 245, 0.0)');
-            ctx.fillStyle = grad;
-            ctx.beginPath();
-            ctx.ellipse(px, py, 50, 75, 0.15, 0, Math.PI * 2);
-            ctx.fill();
-        });
-
-        // 5. Direct Zenith Soft Light Dome (overhead view reflection)
-        const zenithGrad = ctx.createRadialGradient(width * 0.5, 0, 5, width * 0.5, 0, 90);
-        zenithGrad.addColorStop(0.0, 'rgba(255, 255, 255, 0.90)');
-        zenithGrad.addColorStop(0.5, 'rgba(220, 240, 255, 0.35)');
-        zenithGrad.addColorStop(1.0, 'rgba(220, 240, 255, 0.0)');
-        ctx.fillStyle = zenithGrad;
-        ctx.beginPath();
-        ctx.ellipse(width * 0.5, 0, 160, 60, 0, 0, Math.PI * 2);
-        ctx.fill();
-
-        // 6. Convert to Three.js Equirectangular Texture and PMREM
-        const texture = new THREE.CanvasTexture(canvas);
-        texture.mapping = THREE.EquirectangularReflectionMapping;
-        texture.colorSpace = THREE.SRGBColorSpace;
-
-        const pmremGenerator = new THREE.PMREMGenerator(renderer);
-        pmremGenerator.compileEquirectangularShader();
-        const envMap = pmremGenerator.fromEquirectangular(texture).texture;
-
-        scene.environment = envMap;
+    const activeMap = reflectionEnvMapCache.get(selected);
+    if (activeMap) {
+        scene.environment = activeMap;
         if (typeof scene.environmentIntensity !== 'undefined') {
-            scene.environmentIntensity = 1.05;
+            scene.environmentIntensity = selected === 'blades' ? 1.15 : 1.05;
         }
+    }
 
-        // Cleanup temporary resources
-        texture.dispose();
-        pmremGenerator.dispose();
+    if (!isCameraRelative && scene.environmentRotation) {
+        scene.environmentRotation.y = 0;
+    }
+}
+
+/**
+ * Update dynamic reflection tracking in the render loop
+ * @param {THREE.Camera} camera
+ * @param {THREE.Scene} scene
+ */
+export function updateReflectionEnvironment(camera, scene) {
+    if (!scene || !camera) return;
+    if (isCameraRelative && scene.environmentRotation) {
+        const azimuth = Math.atan2(camera.position.x, camera.position.z);
+        scene.environmentRotation.y = azimuth;
+    }
+}
+
+/**
+ * Procedural Soft-Box Studio Reflection Environment Map
+ * Initializes default artistic environment
+ * @param {THREE.Scene} scene
+ * @param {THREE.WebGLRenderer} renderer
+ */
+export function setupStudioEnvironment(scene, renderer, initialPreset = 'hero') {
+    if (!scene || !renderer) return;
+    try {
+        setReflectionPreset(scene, renderer, initialPreset);
+        if (typeof window !== 'undefined') {
+            window.setReflectionPreset = (preset) => setReflectionPreset(scene, renderer, preset);
+            window.getReflectionPreset = () => currentReflectionPreset;
+        }
     } catch (err) {
         console.warn('Failed to generate procedural studio environment:', err);
     }
