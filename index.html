@@ -195,9 +195,9 @@
             to { opacity: 0; transform: translateY(-10px) scale(0.95); }
         }
 
-        /* Floating corner items — pure text, no background */
-        #level-container, #timer-container {
-            pointer-events: auto;
+        /* Floating corner items — pure text, no background, non-blocking */
+        #level-container, #timer-container, #block-container, #bomb-container {
+            pointer-events: none !important;
             background: none;
             backdrop-filter: none;
             -webkit-backdrop-filter: none;
@@ -209,6 +209,14 @@
             align-items: center;
             gap: 2px;
             box-shadow: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        .stats-item, .stats-label, .stats-value {
+            pointer-events: none !important;
+            user-select: none;
+            -webkit-user-select: none;
         }
 
         .stats-item {
@@ -216,6 +224,197 @@
             flex-direction: column;
             align-items: center;
             gap: 4px;
+        }
+
+        /* High-Contrast Flying Countdown Callout Overlay - Top Compact Non-Obstructive Warning */
+        .countdown-callout-overlay {
+            position: fixed;
+            top: calc(65px + env(safe-area-inset-top, 0px));
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 2500;
+            pointer-events: none !important;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            -webkit-user-select: none;
+            filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.6));
+        }
+
+        .countdown-callout-badge {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            background: rgba(18, 0, 4, 0.85);
+            border: 2px solid rgba(255, 45, 85, 0.95);
+            border-radius: 24px;
+            padding: 6px 20px;
+            box-shadow: 0 0 30px rgba(255, 0, 60, 0.5), inset 0 0 15px rgba(255, 0, 60, 0.25);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            animation: countdown-heartbeat 0.9s infinite alternate ease-in-out;
+        }
+
+        .countdown-warning-title {
+            font-size: 10px;
+            font-weight: 800;
+            letter-spacing: 1.5px;
+            color: #ff6b81;
+            text-transform: uppercase;
+        }
+
+        .countdown-callout-number {
+            font-family: 'Fredoka', 'Outfit', Arial, sans-serif;
+            font-size: 26px;
+            font-weight: 900;
+            line-height: 1;
+            margin: 0 4px;
+            color: #ffffff;
+            text-shadow: 0 0 15px #ff0055, 0 0 30px #ff0033;
+            animation: kinetic-fly-pulse 0.9s cubic-bezier(0.1, 0.9, 0.2, 1.2) forwards;
+        }
+
+        .countdown-seconds-label {
+            font-size: 10px;
+            font-weight: 800;
+            letter-spacing: 1.2px;
+            color: rgba(255, 255, 255, 0.75);
+            text-transform: uppercase;
+        }
+
+        @keyframes kinetic-fly-pulse {
+            0% {
+                transform: scale(0.6);
+                filter: brightness(2.2);
+            }
+            30% {
+                transform: scale(1.22);
+                filter: brightness(1.5);
+            }
+            100% {
+                transform: scale(1.0);
+                filter: brightness(1.0);
+            }
+        }
+
+        @keyframes countdown-heartbeat {
+            0% {
+                box-shadow: 0 0 35px rgba(255, 0, 60, 0.45), inset 0 0 15px rgba(255, 0, 60, 0.25);
+                border-color: rgba(255, 45, 85, 0.75);
+            }
+            100% {
+                box-shadow: 0 0 70px rgba(255, 0, 60, 0.85), inset 0 0 35px rgba(255, 0, 60, 0.55);
+                border-color: rgba(255, 75, 110, 1.0);
+            }
+        }
+
+        /* Critical Timer Pulse on HUD */
+        .timer-critical-pulse {
+            animation: timer-danger-glow 0.8s infinite alternate ease-in-out !important;
+            color: #ff3344 !important;
+            text-shadow: 0 0 18px rgba(255, 50, 70, 0.9) !important;
+        }
+
+        @keyframes timer-danger-glow {
+            0% { transform: scale(1); filter: brightness(1); }
+            100% { transform: scale(1.15); filter: brightness(1.6); }
+        }
+
+        /* Level Complete Hero Card & Sub-scores */
+        .level-complete-hero-card {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border-radius: 20px;
+            padding: 14px 28px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            width: 85%;
+            box-sizing: border-box;
+        }
+
+        .hero-label {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            color: rgba(255, 255, 255, 0.6);
+            text-transform: uppercase;
+        }
+
+        .hero-value-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .hero-icon {
+            font-size: 26px;
+        }
+
+        .hero-time-value {
+            font-family: 'Fredoka', 'Outfit', sans-serif;
+            font-size: 42px;
+            font-weight: 800;
+            color: #38bdf8;
+            letter-spacing: 1px;
+            text-shadow: 0 0 20px rgba(56, 189, 248, 0.4);
+        }
+
+        .level-complete-pb-badge {
+            font-size: 12px;
+            font-weight: 700;
+            color: #fbbf24;
+            background: rgba(251, 191, 36, 0.15);
+            border: 1px solid rgba(251, 191, 36, 0.4);
+            padding: 3px 10px;
+            border-radius: 12px;
+            margin-top: 2px;
+            animation: pulsePB 1.5s infinite;
+        }
+
+        @keyframes pulsePB {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.06); }
+        }
+
+        .level-complete-subscores {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            width: 85%;
+            box-sizing: border-box;
+        }
+
+        .subscore-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 14px;
+            padding: 10px 12px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
+        }
+
+        .subscore-label {
+            font-size: 9px;
+            font-weight: 600;
+            letter-spacing: 1.2px;
+            color: rgba(255, 255, 255, 0.5);
+            text-transform: uppercase;
+        }
+
+        .subscore-value {
+            font-size: 20px;
+            font-weight: 700;
+            color: rgba(255, 255, 255, 0.95);
         }
 
         .stats-label {
@@ -488,14 +687,14 @@
             }
         }
 
-        /* Extended Stats Modal Styling (applied to all modals) */
+        /* Extended Stats Modal Styling (applied to all modals) - Translucent, Non-Blocking Backdrop */
         /* Optimized for portrait mode - primary use case */
         .extended-stats-modal-overlay {
             position: fixed;
             inset: 0;
-            background: rgba(10, 15, 29, 0.78);
-            backdrop-filter: blur(20px) saturate(160%);
-            -webkit-backdrop-filter: blur(20px) saturate(160%);
+            background: rgba(5, 10, 22, 0.52);
+            backdrop-filter: blur(8px) saturate(140%);
+            -webkit-backdrop-filter: blur(8px) saturate(140%);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -864,42 +1063,42 @@
             justify-content: space-between;
         }
 
-        /* Spin Feedback Toast (Success/Failure) */
+        /* Spin Feedback Toast (Success/Failure) - Top Floating Pill, Non-Blocking */
         .spin-feedback-toast {
             position: fixed;
-            top: 40%;
+            top: calc(65px + env(safe-area-inset-top, 0px));
             left: 50%;
-            transform: translate(-50%, -50%);
+            transform: translate(-50%, -20px);
             z-index: 5000;
-            padding: 16px 32px;
-            border-radius: 40px;
+            padding: 8px 20px;
+            border-radius: 30px;
             font-family: 'Fredoka', sans-serif;
-            font-size: 20px;
+            font-size: 15px;
             font-weight: 800;
             color: white;
             pointer-events: none;
             opacity: 0;
-            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            transition: all 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
             display: flex;
             align-items: center;
-            gap: 12px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+            gap: 8px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
             white-space: nowrap;
         }
 
         .spin-feedback-toast.success {
-            background: rgba(46, 204, 113, 0.9);
-            border: 2px solid rgba(255, 255, 255, 0.3);
+            background: rgba(46, 204, 113, 0.92);
+            border: 1.5px solid rgba(255, 255, 255, 0.4);
         }
 
         .spin-feedback-toast.failure {
-            background: rgba(231, 76, 60, 0.9);
-            border: 2px solid rgba(255, 255, 255, 0.3);
+            background: rgba(231, 76, 60, 0.92);
+            border: 1.5px solid rgba(255, 255, 255, 0.4);
         }
 
         .spin-feedback-toast.show {
             opacity: 1;
-            transform: translate(-50%, -100%); /* Slide up when showing */
+            transform: translate(-50%, 0);
         }
 
         #debug-panel-content .modal-title {
@@ -1277,7 +1476,7 @@
             }
         }
 
-        /* Level Complete Modal (Ultra-Minimalist Floating Overlay) */
+        /* Level Complete Modal - Transparent Non-Blocking Floating Overlay */
         #level-complete-modal {
             display: none;
             position: fixed;
@@ -1285,55 +1484,98 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.25);
-            backdrop-filter: blur(4px);
-            -webkit-backdrop-filter: blur(4px);
+            background: transparent !important;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
             z-index: 2000;
-            justify-content: center;
+            justify-content: flex-end; /* Position at bottom so entire 3D tower is completely visible */
             align-items: center;
-            padding: 20px;
+            padding: 16px 16px calc(24px + env(safe-area-inset-bottom, 0px)) 16px;
             box-sizing: border-box;
+            pointer-events: none; /* Let background clicks/rotations pass through to 3D canvas */
         }
 
         #level-complete-modal.show {
             display: flex;
         }
 
-        .modal-content {
-            background: transparent !important;
-            border: none !important;
-            box-shadow: none !important;
-            backdrop-filter: none !important;
-            -webkit-backdrop-filter: none !important;
+        #level-complete-modal .modal-content {
+            background: rgba(15, 23, 42, 0.88) !important;
+            border: 1.5px solid rgba(255, 255, 255, 0.16) !important;
+            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.08) !important;
+            backdrop-filter: blur(24px) saturate(160%) !important;
+            -webkit-backdrop-filter: blur(24px) saturate(160%) !important;
+            border-radius: 24px !important;
             width: 100% !important;
-            max-width: 420px !important;
+            max-width: 360px !important;
             height: auto !important;
-            padding: 0 !important;
+            padding: 18px 20px !important;
             text-align: center;
             animation: modalFadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
             position: relative;
             display: flex !important;
             flex-direction: column !important;
             align-items: center !important;
-            gap: 28px !important;
+            gap: 12px !important;
+            pointer-events: auto !important; /* Enable interaction with buttons */
             font-family: 'Fredoka', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
         }
 
-        .modal-title {
+        #level-complete-modal .modal-title {
             color: white;
-            font-size: 48px;
+            font-size: 24px;
             font-weight: 900;
             margin: 0;
-            text-shadow: 0 4px 20px rgba(0, 0, 0, 0.8), 0 2px 6px rgba(0, 0, 0, 0.6);
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.6);
             letter-spacing: 0.5px;
         }
 
-        .modal-level-number-inline {
-            color: #fbbf24;
-            font-size: 56px;
+        #level-complete-modal .level-complete-hero-card {
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            border-radius: 16px;
+            padding: 8px 16px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        #level-complete-modal .hero-time-value {
+            font-size: 28px;
             font-weight: 900;
-            display: inline-block;
-            filter: drop-shadow(0 2px 12px rgba(251, 191, 36, 0.5));
+            color: #38bdf8;
+            text-shadow: 0 0 15px rgba(56, 189, 248, 0.35);
+        }
+
+        #level-complete-modal .hero-icon {
+            font-size: 18px;
+        }
+
+        #level-complete-modal .level-complete-subscores {
+            width: 100%;
+            gap: 8px;
+        }
+
+        #level-complete-modal .subscore-card {
+            padding: 6px 8px;
+            border-radius: 12px;
+        }
+
+        #level-complete-modal .subscore-value {
+            font-size: 18px;
+        }
+
+        #level-complete-modal .subscore-label {
+            font-size: 9px;
+        }
+
+        #level-complete-modal .modal-button {
+            padding: 12px 20px;
+            font-size: 17px;
+            border-radius: 14px;
         }
 
         /* Hide scrollbar for modal content */
@@ -1569,6 +1811,46 @@
             text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
         }
 
+        /* Level Complete Subscore Cards (Moves, Blocks, Max Combo, Time Banked) */
+        .level-complete-subscores {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            width: 85%;
+            margin: 0 auto;
+        }
+
+        .subscore-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 14px;
+            padding: 10px 14px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            transition: all 0.2s ease;
+        }
+
+        .subscore-label {
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 1.2px;
+            text-transform: uppercase;
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .subscore-value {
+            font-size: 22px;
+            font-weight: 900;
+            color: #ffffff;
+            font-family: 'Fredoka', 'Inter', sans-serif;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+        }
+
         .modal-button {
             background: rgba(255, 255, 255, 0.08);
             backdrop-filter: blur(10px);
@@ -1749,28 +2031,98 @@
             100% { opacity: 0; transform: translate(-50%, -80px) scale(1); }
         }
 
+        /* Spin Counter Badge - Clean, Vibrant, Attention-Pulling Power Badge */
         .spin-counter-badge {
             position: absolute;
-            top: -4px;
-            right: -4px;
-            min-width: 18px;
-            height: 18px;
+            top: -6px;
+            right: -6px;
+            min-width: 24px;
+            height: 24px;
             padding: 0 4px;
-            border-radius: 9px;
-            background: rgba(255, 255, 255, 0.2);
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 12px;
+            background: rgba(30, 41, 59, 0.9);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border: 1.5px solid rgba(255, 255, 255, 0.4);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 11px;
-            font-weight: 800;
-            color: #fff;
-            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+            font-size: 13px;
+            font-weight: 900;
+            font-family: 'Fredoka', 'Inter', -apple-system, sans-serif;
+            color: #ffffff;
+            box-shadow: 0 3px 8px rgba(0, 0, 0, 0.5);
             pointer-events: none;
-            transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
-            z-index: 10;
+            line-height: 1;
+            z-index: 15;
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        /* Available Spins - Radiant Glowing Golden Power Badge */
+        .spin-counter-badge.has-spins {
+            background: linear-gradient(135deg, #fef08a 0%, #f59e0b 55%, #d97706 100%) !important;
+            border: 2px solid #ffffff !important;
+            color: #1e1b4b !important;
+            font-size: 14px !important;
+            font-weight: 900 !important;
+            box-shadow: 0 0 14px rgba(245, 158, 11, 0.95), 0 3px 8px rgba(0, 0, 0, 0.5) !important;
+            text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6) !important;
+            animation: spin-badge-glow-pulse 2.2s infinite ease-in-out !important;
+        }
+
+        /* Rhythmic glow pulse to pull peripheral attention while player focuses on blocks */
+        @keyframes spin-badge-glow-pulse {
+            0%, 100% {
+                transform: scale(1);
+                box-shadow: 0 0 10px rgba(245, 158, 11, 0.75), 0 3px 8px rgba(0, 0, 0, 0.5);
+            }
+            50% {
+                transform: scale(1.22);
+                box-shadow: 0 0 22px rgba(251, 191, 36, 1), 0 0 35px rgba(245, 158, 11, 0.8), 0 4px 12px rgba(0, 0, 0, 0.6);
+            }
+        }
+
+        /* Flash burst when a spin token is awarded / collected */
+        .spin-counter-badge.spin-awarded-burst {
+            animation: spin-award-pop 0.65s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important;
+        }
+
+        @keyframes spin-award-pop {
+            0% {
+                transform: scale(0.3);
+                filter: brightness(2.5);
+            }
+            50% {
+                transform: scale(1.6);
+                filter: brightness(1.8);
+                box-shadow: 0 0 30px #f59e0b, 0 0 50px #fbbf24;
+            }
+            100% {
+                transform: scale(1);
+                filter: brightness(1);
+            }
+        }
+
+        /* Dice Button Aura when free spins are available */
+        #dice-button.stats-control-btn.has-spins {
+            border: 1.5px solid rgba(245, 158, 11, 0.75) !important;
+            background: radial-gradient(circle, rgba(245, 158, 11, 0.25) 0%, rgba(245, 158, 11, 0.08) 100%) !important;
+            box-shadow: 0 0 18px rgba(245, 158, 11, 0.5), inset 0 0 10px rgba(245, 158, 11, 0.2) !important;
+            animation: spin-button-halo 2.2s infinite ease-in-out !important;
+        }
+
+        #dice-button.stats-control-btn.has-spins .btn-icon {
+            stroke: #fcd34d !important;
+            filter: drop-shadow(0 0 5px rgba(245, 158, 11, 0.9)) !important;
+        }
+
+        @keyframes spin-button-halo {
+            0%, 100% {
+                box-shadow: 0 0 12px rgba(245, 158, 11, 0.4), inset 0 0 6px rgba(245, 158, 11, 0.15);
+            }
+            50% {
+                box-shadow: 0 0 24px rgba(251, 191, 36, 0.75), inset 0 0 14px rgba(245, 158, 11, 0.35);
+            }
         }
 
         /* Active countdown: Covers the ENTIRE spin button with prominent, color-coded timer */
@@ -1991,30 +2343,6 @@
             height: 42px;
         }
 
-        /* Spin Counter Badge */
-        .spin-counter-badge {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: rgba(0, 0, 0, 0.65); /* Dark semi-transparent circle for contrast, no blur for performance */
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            color: #fff;
-            font-size: 14px; /* Slightly smaller to fit in the circle */
-            font-weight: 900;
-            width: 22px;
-            height: 22px;
-            border-radius: 50%; /* Circle shape */
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 0;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-            text-shadow: 0 1px 2px rgba(0,0,0,0.8);
-            pointer-events: none;
-            line-height: 1;
-            z-index: 5; /* Ensure it stays on top of SVG */
-        }
 
         /* Responsive adjustments */
         @media (max-width: 600px) {
@@ -2055,7 +2383,7 @@
 
 <body>
     <div id="top-bar">
-        <div id="stats-row" style="display: flex; gap: 32px; width: 100%; justify-content: center; align-items: center; pointer-events: auto;">
+        <div id="stats-row" style="display: flex; gap: 32px; width: 100%; justify-content: center; align-items: center; pointer-events: none !important;">
             <span class="stats-item" id="level-container">
                 <span class="stats-label">LEVEL</span>
                 <span class="stats-value" id="timer-level">0</span>
@@ -2149,6 +2477,14 @@
                     </svg>
                     <div id="light-preset-popup" class="preset-popup">Balanced</div>
                 </button>
+                <button class="toggle-icon active" id="shadows-toggle" title="Dynamic Shadows (On/Off)">
+                    <span style="font-size: 11px; font-weight: 900; letter-spacing: 0.8px;">SHD</span>
+                    <div id="shadows-popup" class="preset-popup">Shadows: ON</div>
+                </button>
+                <button class="toggle-icon active" id="quality-toggle" title="Quality & Battery Preset">
+                    <span style="font-size: 11px; font-weight: 900; letter-spacing: 0.8px;">PWR</span>
+                    <div id="quality-popup" class="preset-popup">Balanced</div>
+                </button>
                 <button class="toggle-icon" id="mode-toggle" title="Game Mode" style="display: none;">
                     <span style="font-size: 11px; font-weight: 900; letter-spacing: 0.8px;">MODE</span>
                 </button>
@@ -2176,18 +2512,57 @@
     </div>
 
 
+    <!-- Flying Countdown Callout Overlay (<= 10s urgent visual timer) -->
+    <div id="countdown-callout-overlay" class="countdown-callout-overlay" style="display: none;">
+        <div class="countdown-callout-badge">
+            <span class="countdown-warning-title">TIME RUNNING OUT</span>
+            <div id="countdown-callout-number" class="countdown-callout-number">10</div>
+            <span class="countdown-seconds-label">SECONDS LEFT</span>
+        </div>
+    </div>
+
     <!-- FPS Display - top right -->
     <div id="fps-display" style="display: none;">
         <span id="fps-value">60</span> FPS
     </div>
 
-    <!-- Level Complete Modal (Ultra Minimal) -->
+    <!-- Level Complete Modal -->
     <div id="level-complete-modal">
         <div class="modal-content">
             <h2 class="modal-title" id="level-complete-title">Level Complete!</h2>
 
-            <div class="modal-actions" style="margin-top: 6px;">
-                <button class="modal-button" id="next-level-button" type="button">
+            <!-- Primary Hero Metric: Elapsed Time -->
+            <div id="level-complete-hero-card" class="level-complete-hero-card">
+                <span class="hero-label">TIME ELAPSED</span>
+                <div class="hero-value-row">
+                    <span class="hero-icon">⏱</span>
+                    <span id="level-complete-time" class="hero-time-value">00:00</span>
+                </div>
+                <div id="level-complete-pb-badge" class="level-complete-pb-badge" style="display:none;">🏆 Personal Best!</div>
+            </div>
+
+            <!-- Sub-scores breakdown grid -->
+            <div id="level-complete-subscores" class="level-complete-subscores">
+                <div class="subscore-card">
+                    <span class="subscore-label">MOVES</span>
+                    <span id="level-complete-moves" class="subscore-value">0</span>
+                </div>
+                <div class="subscore-card">
+                    <span class="subscore-label">BLOCKS</span>
+                    <span id="level-complete-blocks" class="subscore-value">0</span>
+                </div>
+                <div class="subscore-card" id="subscore-combo-card">
+                    <span class="subscore-label">MAX COMBO</span>
+                    <span id="level-complete-combo" class="subscore-value">x1.0</span>
+                </div>
+                <div class="subscore-card" id="subscore-bonus-card">
+                    <span class="subscore-label">TIME BANKED</span>
+                    <span id="level-complete-bonus" class="subscore-value">+0s</span>
+                </div>
+            </div>
+
+            <div class="modal-actions" style="margin-top: 10px; width: 85%;">
+                <button class="modal-button" id="next-level-button" type="button" style="width: 100%;">
                     <span>Next Level</span>
                     <span class="modal-button-arrow" aria-hidden="true">→</span>
                 </button>
@@ -2196,9 +2571,6 @@
             <!-- Hidden elements for JS compatibility -->
             <p class="modal-message" id="level-complete-message" style="display: none;"></p>
             <div class="modal-level-number" id="level-complete-level" style="display: none;">1</div>
-            <div id="level-complete-time" style="display: none;">00:00</div>
-            <span id="level-complete-blocks" style="display:none;">0</span>
-            <span id="level-complete-moves" style="display:none;">0</span>
         </div>
     </div>
 
@@ -2689,6 +3061,162 @@
                 </div>
             </div>
 
+            <!-- Frosty Cluster Controls (Collapsible) -->
+            <div style="margin-bottom: 16px;">
+                <div id="frost-controls-header"
+                    style="font-size: 11px; font-weight: bold; margin-bottom: 4px; cursor: pointer; user-select: none; padding: 4px 6px; background: #2d2d2d; border-radius: 2px; color: #fff; font-family: 'Lucida Grande', 'Lucida Sans Unicode', 'Arial', sans-serif;">
+                    <span id="frost-controls-arrow"
+                        style="display: inline-block; margin-right: 6px; transition: transform 0.2s; font-size: 10px;">▶</span>❄️
+                    Frosty Cluster Controls
+                </div>
+                <div id="frost-controls-content" style="display: none; padding-top: 6px;">
+
+                    <!-- Block Ice Color -->
+                    <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                        <label style="font-size: 11px; opacity: 0.85; min-width: 115px; flex-shrink: 0;">Ice Block Color</label>
+                        <input type="color" id="frost-block-color-picker" value="#cbd4d8"
+                            style="width: 34px; height: 24px; border: 1px solid #3a3a3a; background: #252525; cursor: pointer; padding: 0;" />
+                        <span id="frost-block-color-value"
+                            style="font-size: 11px; opacity: 0.7; min-width: 60px; text-align: right; flex-shrink: 0;">#CBD4D8</span>
+                    </div>
+
+                    <!-- Block Emissive Color -->
+                    <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                        <label style="font-size: 11px; opacity: 0.85; min-width: 115px; flex-shrink: 0;">Ice Emissive Color</label>
+                        <input type="color" id="frost-block-emissive-picker" value="#309ccf"
+                            style="width: 34px; height: 24px; border: 1px solid #3a3a3a; background: #252525; cursor: pointer; padding: 0;" />
+                        <span id="frost-block-emissive-value"
+                            style="font-size: 11px; opacity: 0.7; min-width: 60px; text-align: right; flex-shrink: 0;">#309CCF</span>
+                    </div>
+
+                    <!-- Block Emissive Intensity -->
+                    <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                        <label style="font-size: 11px; opacity: 0.85; min-width: 115px; flex-shrink: 0;">Ice Emissive Int.</label>
+                        <input type="range" id="frost-block-emissive-slider" min="0" max="1" step="0.01" value="0.38"
+                            style="flex: 1; height: 4px; border-radius: 0px; background: #252525; border: 1px solid #3a3a3a; outline: none; cursor: pointer; -webkit-appearance: none; appearance: none;" />
+                        <span id="frost-block-emissive-intensity-value"
+                            style="font-size: 11px; opacity: 0.7; min-width: 35px; text-align: right; flex-shrink: 0;">0.38</span>
+                    </div>
+
+                    <!-- Block Opacity -->
+                    <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                        <label style="font-size: 11px; opacity: 0.85; min-width: 115px; flex-shrink: 0;">Ice Opacity</label>
+                        <input type="range" id="frost-block-opacity-slider" min="0.10" max="1" step="0.01" value="1.00"
+                            style="flex: 1; height: 4px; border-radius: 0px; background: #252525; border: 1px solid #3a3a3a; outline: none; cursor: pointer; -webkit-appearance: none; appearance: none;" />
+                        <span id="frost-block-opacity-value"
+                            style="font-size: 11px; opacity: 0.7; min-width: 35px; text-align: right; flex-shrink: 0;">1.00</span>
+                    </div>
+
+                    <!-- Block Roughness -->
+                    <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                        <label style="font-size: 11px; opacity: 0.85; min-width: 115px; flex-shrink: 0;">Ice Roughness</label>
+                        <input type="range" id="frost-block-roughness-slider" min="0" max="1" step="0.01" value="1.00"
+                            style="flex: 1; height: 4px; border-radius: 0px; background: #252525; border: 1px solid #3a3a3a; outline: none; cursor: pointer; -webkit-appearance: none; appearance: none;" />
+                        <span id="frost-block-roughness-value"
+                            style="font-size: 11px; opacity: 0.7; min-width: 35px; text-align: right; flex-shrink: 0;">1.00</span>
+                    </div>
+
+                    <!-- Block Metalness -->
+                    <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                        <label style="font-size: 11px; opacity: 0.85; min-width: 115px; flex-shrink: 0;">Ice Metalness</label>
+                        <input type="range" id="frost-block-metalness-slider" min="0" max="1" step="0.01" value="0.62"
+                            style="flex: 1; height: 4px; border-radius: 0px; background: #252525; border: 1px solid #3a3a3a; outline: none; cursor: pointer; -webkit-appearance: none; appearance: none;" />
+                        <span id="frost-block-metalness-value"
+                            style="font-size: 11px; opacity: 0.7; min-width: 35px; text-align: right; flex-shrink: 0;">0.62</span>
+                    </div>
+
+                    <!-- Stained Alpha Map Noise Contrast -->
+                    <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                        <label style="font-size: 11px; opacity: 0.85; min-width: 115px; flex-shrink: 0;">Stain Contrast</label>
+                        <input type="range" id="frost-alpha-contrast-slider" min="0" max="1" step="0.05" value="0.00"
+                            style="flex: 1; height: 4px; border-radius: 0px; background: #252525; border: 1px solid #3a3a3a; outline: none; cursor: pointer; -webkit-appearance: none; appearance: none;" />
+                        <span id="frost-alpha-contrast-value"
+                            style="font-size: 11px; opacity: 0.7; min-width: 35px; text-align: right; flex-shrink: 0;">0.00</span>
+                    </div>
+
+                    <div style="margin-top: 10px; margin-bottom: 6px; font-size: 10px; font-weight: bold; opacity: 0.6; text-transform: uppercase;">
+                        Indicator Styling
+                    </div>
+
+                    <!-- Indicator Color -->
+                    <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                        <label style="font-size: 11px; opacity: 0.85; min-width: 115px; flex-shrink: 0;">Indicator Color</label>
+                        <input type="color" id="frost-ind-color-picker" value="#d9f0fc"
+                            style="width: 34px; height: 24px; border: 1px solid #3a3a3a; background: #252525; cursor: pointer; padding: 0;" />
+                        <span id="frost-ind-color-value"
+                            style="font-size: 11px; opacity: 0.7; min-width: 60px; text-align: right; flex-shrink: 0;">#D9F0FC</span>
+                    </div>
+
+                    <!-- Indicator Emissive Color -->
+                    <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                        <label style="font-size: 11px; opacity: 0.85; min-width: 115px; flex-shrink: 0;">Indicator Emissive</label>
+                        <input type="color" id="frost-ind-emissive-picker" value="#38bdf8"
+                            style="width: 34px; height: 24px; border: 1px solid #3a3a3a; background: #252525; cursor: pointer; padding: 0;" />
+                        <span id="frost-ind-emissive-value"
+                            style="font-size: 11px; opacity: 0.7; min-width: 60px; text-align: right; flex-shrink: 0;">#38BDF8</span>
+                    </div>
+
+                    <!-- Indicator Emissive Intensity -->
+                    <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                        <label style="font-size: 11px; opacity: 0.85; min-width: 115px; flex-shrink: 0;">Ind. Emissive Int.</label>
+                        <input type="range" id="frost-ind-emissive-slider" min="0" max="1" step="0.01" value="0.00"
+                            style="flex: 1; height: 4px; border-radius: 0px; background: #252525; border: 1px solid #3a3a3a; outline: none; cursor: pointer; -webkit-appearance: none; appearance: none;" />
+                        <span id="frost-ind-emissive-intensity-value"
+                            style="font-size: 11px; opacity: 0.7; min-width: 35px; text-align: right; flex-shrink: 0;">0.00</span>
+                    </div>
+
+                    <!-- Indicator Opacity -->
+                    <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                        <label style="font-size: 11px; opacity: 0.85; min-width: 115px; flex-shrink: 0;">Indicator Opacity</label>
+                        <input type="range" id="frost-ind-opacity-slider" min="0.10" max="1" step="0.01" value="0.18"
+                            style="flex: 1; height: 4px; border-radius: 0px; background: #252525; border: 1px solid #3a3a3a; outline: none; cursor: pointer; -webkit-appearance: none; appearance: none;" />
+                        <span id="frost-ind-opacity-value"
+                            style="font-size: 11px; opacity: 0.7; min-width: 35px; text-align: right; flex-shrink: 0;">0.18</span>
+                    </div>
+
+                    <!-- Indicator Roughness -->
+                    <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                        <label style="font-size: 11px; opacity: 0.85; min-width: 115px; flex-shrink: 0;">Indicator Roughness</label>
+                        <input type="range" id="frost-ind-roughness-slider" min="0" max="1" step="0.01" value="0.59"
+                            style="flex: 1; height: 4px; border-radius: 0px; background: #252525; border: 1px solid #3a3a3a; outline: none; cursor: pointer; -webkit-appearance: none; appearance: none;" />
+                        <span id="frost-ind-roughness-value"
+                            style="font-size: 11px; opacity: 0.7; min-width: 35px; text-align: right; flex-shrink: 0;">0.59</span>
+                    </div>
+
+                    <div style="margin-top: 10px; margin-bottom: 6px; font-size: 10px; font-weight: bold; opacity: 0.6; text-transform: uppercase;">
+                        Cluster Logic
+                    </div>
+
+                    <!-- Min Cluster Size -->
+                    <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                        <label style="font-size: 11px; opacity: 0.85; min-width: 115px; flex-shrink: 0;">Min Cluster Size</label>
+                        <input type="range" id="frost-min-size-slider" min="2" max="6" step="1" value="3"
+                            style="flex: 1; height: 4px; border-radius: 0px; background: #252525; border: 1px solid #3a3a3a; outline: none; cursor: pointer; -webkit-appearance: none; appearance: none;" />
+                        <span id="frost-min-size-value"
+                            style="font-size: 11px; opacity: 0.7; min-width: 35px; text-align: right; flex-shrink: 0;">3</span>
+                    </div>
+
+                    <!-- Frost Config JSON text box -->
+                    <div style="margin-top: 14px; margin-bottom: 8px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1);">
+                        <label for="debug-frost-values-input"
+                            style="display: block; margin-bottom: 6px; font-size: 11px; opacity: 0.85;">Frosty Config (JSON):</label>
+                        <textarea id="debug-frost-values-input" rows="4"
+                            style="width: 100%; padding: 6px 8px; border-radius: 4px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.16); color: rgba(255,255,255,0.92); font-size: 11px; box-sizing: border-box; font-family: monospace; resize: vertical;"
+                            placeholder='Paste or capture frosty config JSON...'></textarea>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div style="display: flex; gap: 6px; margin-top: 8px;">
+                        <button id="debug-load-frost-button" class="game-button"
+                            style="padding: 6px 8px; flex: 1; font-size: 11px;">⚡ Load</button>
+                        <button id="debug-capture-frost-button" class="game-button"
+                            style="padding: 6px 8px; flex: 1; font-size: 11px;">📋 Capture</button>
+                        <button id="debug-reset-frost-button" class="game-button"
+                            style="padding: 6px 8px; flex: 1; font-size: 11px;">🔄 Reset</button>
+                    </div>
+                </div>
+            </div>
+
             <div class="modal-actions" style="flex-direction: column; gap: 10px;">
                 <button id="debug-investigate-button" class="game-button" style="padding: 10px 14px; width: 100%;">🔍
                     Investigate Bug</button>
@@ -3071,6 +3599,63 @@
                     }
                     
                     savePreferences();
+                });
+            }
+
+            // Shadows toggle handler (Option 3)
+            const shadowsToggle = document.getElementById('shadows-toggle');
+            if (shadowsToggle) {
+                const updateShadowsIcon = () => {
+                    const isEnabled = window.isShadowsEnabled ? window.isShadowsEnabled() : true;
+                    if (isEnabled) {
+                        shadowsToggle.classList.add('active');
+                    } else {
+                        shadowsToggle.classList.remove('active');
+                    }
+                };
+                updateShadowsIcon();
+
+                shadowsToggle.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (window.updateIdleTimers) window.updateIdleTimers();
+                    if (window.toggleShadows) {
+                        const state = window.toggleShadows();
+                        updateShadowsIcon();
+                        const popup = document.getElementById('shadows-popup');
+                        if (popup) {
+                            popup.textContent = state ? 'Shadows: ON' : 'Shadows: OFF';
+                            popup.classList.add('show');
+                            if (window.shadowPopupTimeout) clearTimeout(window.shadowPopupTimeout);
+                            window.shadowPopupTimeout = setTimeout(() => popup.classList.remove('show'), 1500);
+                        }
+                    }
+                });
+            }
+
+            // Quality & Battery preset toggle handler (Option 2)
+            const qualityToggle = document.getElementById('quality-toggle');
+            if (qualityToggle) {
+                qualityToggle.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (window.updateIdleTimers) window.updateIdleTimers();
+                    const presets = ['balanced', 'performance', 'battery'];
+                    const current = qualityPreset || 'balanced';
+                    const nextIdx = (presets.indexOf(current) + 1) % presets.length;
+                    qualityPreset = presets[nextIdx];
+                    if (window.applyQualityPreset) {
+                        window.applyQualityPreset(qualityPreset);
+                    }
+                    savePreferences();
+                    const popup = document.getElementById('quality-popup');
+                    if (popup) {
+                        const labels = { balanced: 'Balanced', performance: 'Performance', battery: 'Battery Saver' };
+                        popup.textContent = labels[qualityPreset] || qualityPreset;
+                        popup.classList.add('show');
+                        if (window.qualityPopupTimeout) clearTimeout(window.qualityPopupTimeout);
+                        window.qualityPopupTimeout = setTimeout(() => popup.classList.remove('show'), 1500);
+                    }
                 });
             }
 

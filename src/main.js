@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { initPhysics, createPhysicsBlock, updatePhysics, isPhysicsStepping, hasPendingOperations, isPhysicsProcessing, removePhysicsBody } from './physics.js';
-import { Block, getTranslucentCluster, moveTranslucentCluster, updateWeldedTranslucentClusters } from './Block.js';
-import { createLights, createGrid, setGradientBackground, setupFog, applyLightPreset, LIGHT_PRESETS, globalUniforms } from './scene.js';
+import { Block, getTranslucentCluster, moveTranslucentCluster, updateWeldedTranslucentClusters, FROSTY_CONFIG, DEFAULT_FROSTY_CONFIG, getFrostyConfig, setFrostyConfig, regenerateIceAlphaMap } from './Block.js';
+import { createLights, createGrid, setGradientBackground, setupFog, applyLightPreset, LIGHT_PRESETS, globalUniforms, setShadowsEnabled } from './scene.js';
 import { validateStructure, validateSolvability, calculateDifficulty, getBlockCells, fixOverlappingBlocks, checkAndFixAllOverlaps, canBlockExit } from './puzzle_validation.js';
 import { initStats, startLevelStats, trackMove, trackSpin, trackBlockRemoved, completeLevel, getLevelComparison, getElapsedTime } from './stats/stats.js';
 import { updateLevelCompleteModal, showOfflineIndicator, hideOfflineIndicator, showPersonalHistoryModal, showProfileModal } from './stats/statsUI.js';
@@ -179,127 +179,27 @@ window.triggerRadialTowerShake = triggerRadialTowerShake;
 const activeBlocks = new Set();
 let renderKeepAliveUntilMs = 0;
 let settleFramesRemaining = 5;
+let isRenderSleeping = false;
 let towerBoundsDirty = true;
 
 /**
  * Request frames to be rendered (wake-on-demand)
  * @param {number} durationMs - Duration in milliseconds to keep rendering active
  */
-export function markNeedsRender(durationMs = 100) {
+export function markNeedsRender(durationMs = 500) {
     const now = performance.now();
     renderKeepAliveUntilMs = Math.max(renderKeepAliveUntilMs, now + durationMs);
     settleFramesRemaining = 5;
+    if (isRenderSleeping) {
+        isRenderSleeping = false;
+        if (typeof scheduleNextFrame === 'function') {
+            scheduleNextFrame();
+        }
+    }
 }
 window.markNeedsRender = markNeedsRender;
 
-// --- Soft Localized 3D Sign Light Pool (Illuminates adjacent neighboring blocks naturally) ---
-const MAX_SIGN_LIGHTS = 6;
-let signLightsPool = [];
 
-function initSignLights(targetScene) {
-    if (signLightsPool.length > 0) return;
-    for (let i = 0; i < MAX_SIGN_LIGHTS; i++) {
-        const light = new THREE.PointLight(0xff2252, 0, 2.4, 2.0);
-        light.visible = false;
-        targetScene.add(light);
-        signLightsPool.push(light);
-    }
-}
-
-const _signWorldPos = new THREE.Vector3();
-const _signCamDir = new THREE.Vector3();
-const _signToCam = new THREE.Vector3();
-
-function updateSignLights(allBlocks, targetCamera, targetScene) {
-    if (!targetScene || !targetCamera || !Array.isArray(allBlocks)) return;
-    if (signLightsPool.length === 0) {
-        initSignLights(targetScene);
-    }
-
-    targetCamera.getWorldDirection(_signCamDir);
-
-    const candidates = [];
-    const maxColors = [0xff2252, 0x00e5ff, 0xffa000];
-
-    for (let i = 0; i < allBlocks.length; i++) {
-        const b = allBlocks[i];
-        if (b.isBomb && !b.isRemoved && !b.isTranslucent && !b.isLocked && b.group) {
-            const colorHex = maxColors[b.length - 1] || maxColors[0];
-
-            // Top arrow sign
-            if (b.arrow && b.arrow.children.length > 0) {
-                b.arrow.children[0].getWorldPosition(_signWorldPos);
-                const dist = _signWorldPos.distanceTo(targetCamera.position);
-                _signToCam.subVectors(targetCamera.position, _signWorldPos).normalize();
-                if (_signToCam.y > -0.2) {
-                    candidates.push({
-                        pos: _signWorldPos.clone().add(new THREE.Vector3(0, 0.08, 0)),
-                        color: colorHex,
-                        dist: dist,
-                        priority: 1.0 / (dist + 0.1)
-                    });
-                }
-            }
-
-            // Direction indicators (Dot & Circle)
-            if (b.directionIndicators && b.directionIndicators.children.length >= 2) {
-                const dotMesh = b.directionIndicators.children[0];
-                const circleMesh = b.directionIndicators.children[1];
-
-                if (dotMesh) {
-                    dotMesh.getWorldPosition(_signWorldPos);
-                    const dist = _signWorldPos.distanceTo(targetCamera.position);
-                    _signToCam.subVectors(targetCamera.position, _signWorldPos).normalize();
-                    const dotFacing = -_signToCam.dot(_signCamDir);
-                    if (dotFacing > 0.1) {
-                        candidates.push({
-                            pos: _signWorldPos.clone().addScaledVector(_signCamDir, -0.08),
-                            color: colorHex,
-                            dist: dist,
-                            priority: dotFacing / (dist + 0.1)
-                        });
-                    }
-                }
-
-                if (circleMesh) {
-                    circleMesh.getWorldPosition(_signWorldPos);
-                    const dist = _signWorldPos.distanceTo(targetCamera.position);
-                    _signToCam.subVectors(targetCamera.position, _signWorldPos).normalize();
-                    const circleFacing = -_signToCam.dot(_signCamDir);
-                    if (circleFacing > 0.1) {
-                        candidates.push({
-                            pos: _signWorldPos.clone().addScaledVector(_signCamDir, -0.08),
-                            color: colorHex,
-                            dist: dist,
-                            priority: circleFacing / (dist + 0.1)
-                        });
-                    }
-                }
-            }
-        }
-    }
-
-    candidates.sort((a, b) => b.priority - a.priority);
-
-    const now = performance.now() * 0.001;
-    const breath = Math.sin(now * 2.4) * 0.15 + 1.0;
-
-    for (let i = 0; i < MAX_SIGN_LIGHTS; i++) {
-        const light = signLightsPool[i];
-        if (i < candidates.length) {
-            const cand = candidates[i];
-            light.color.setHex(cand.color);
-            light.position.copy(cand.pos);
-            light.intensity = 0.35 * breath;
-            light.distance = 1.5;
-            light.decay = 2.0;
-            light.visible = true;
-        } else {
-            light.visible = false;
-            light.intensity = 0;
-        }
-    }
-}
 
 /**
  * Register a block that is in motion or requires per-frame updates
@@ -429,7 +329,7 @@ window.rechargeSpin = function () {
     // Plus the Free Spin token
     if (remainingSpins < 5) {
         remainingSpins++;
-        updateSpinCounterDisplay();
+        updateSpinCounterDisplay(true); // Trigger celebratory pop-in animation
         console.log(`[Spin] 💎 COLLECTED! +10s Time + 1 Free Spin. Total Free Spins: ${remainingSpins}`);
     } else {
         console.log('[Spin] 💎 COLLECTED! +10s Time (Free Spins already at max 5)');
@@ -439,9 +339,11 @@ window.rechargeSpin = function () {
 let gameMode = 'inferno';
 let timeLeftSec = 30;
 let currentLevelParTime = 60;
-let currentLevelMaxTimeCap = 120;
+let currentLevelMaxTimeCap = 180;
 let lastBlockRemovalTime = 0;
 let removalComboStreak = 0;
+let levelMaxComboStreak = 0;
+let levelMaxComboMult = 1.0;
 let lastSpinTimestamp = 0;
 let consecutiveSpinCount = 0;
 
@@ -449,7 +351,7 @@ function setTimeLeftSec(val) {
     if (typeof val !== 'number' || isNaN(val)) {
         val = 30;
     }
-    const maxCap = (typeof currentLevelMaxTimeCap === 'number' && !isNaN(currentLevelMaxTimeCap)) ? currentLevelMaxTimeCap : 300;
+    const maxCap = (typeof currentLevelMaxTimeCap === 'number' && !isNaN(currentLevelMaxTimeCap)) ? currentLevelMaxTimeCap : 420;
     timeLeftSec = Math.max(0, Math.min(maxCap, val));
 }
 let timeChallengeActive = false;
@@ -742,6 +644,11 @@ const renderer = new THREE.WebGLRenderer({
 renderer.setSize(window.innerWidth, window.innerHeight);
 // Limit pixel ratio via quality preset (keeps UI size the same; changes internal render resolution)
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, qualityCaps.dprCap));
+
+// Cinematic Photographic Tone Mapping (prevents harsh blowouts, enriches contrast and shadow depth)
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.04;
+
 renderer.shadowMap.enabled = true;
 // On iOS, prefer cheaper PCF shadows over PCFSoft (significant battery win)
 renderer.shadowMap.type = isIOS ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
@@ -1058,15 +965,15 @@ function createCountdownTimer() {
     texture.magFilter = THREE.LinearFilter;
     countdownTimerTexture = texture;
 
-    // Create material with transparency
+    // Create material with high visibility
     const material = new THREE.MeshStandardMaterial({
         map: texture,
         transparent: true,
-        opacity: 0.4, // Transparent enough to see base plate and gridlines
-        emissive: 0xff0000, // Red neon glow
-        emissiveIntensity: 0.3,
+        opacity: 0.85, // High opacity for sharp visibility
+        emissive: 0xff0044, // Red neon glow
+        emissiveIntensity: 0.8,
         side: THREE.DoubleSide,
-        alphaTest: 0.1 // Discard transparent pixels
+        alphaTest: 0.05
     });
     countdownTimerMaterial = material;
 
@@ -1125,6 +1032,54 @@ function updateCountdownBounce(timeLeftSec) {
     return bounceScale;
 }
 
+let lastKineticCountdownSecond = null;
+
+/**
+ * Large glowing kinetic numeral overlay flying towards the user when time <= 10s.
+ */
+function updateKineticCountdownCallout(secondsRemaining) {
+    const overlay = document.getElementById('countdown-callout-overlay');
+    const numEl = document.getElementById('countdown-callout-number');
+    const timerContainer = document.getElementById('timer-container');
+
+    if (!isTimeBasedMode() || !timeChallengeActive || timeUpShown || secondsRemaining <= 0 || secondsRemaining > 10.2) {
+        if (overlay && overlay.style.display !== 'none') {
+            overlay.style.display = 'none';
+        }
+        if (timerContainer) {
+            timerContainer.classList.remove('timer-critical-pulse');
+        }
+        lastKineticCountdownSecond = null;
+        return;
+    }
+
+    if (timerContainer) {
+        timerContainer.classList.add('timer-critical-pulse');
+    }
+
+    const currentSec = Math.ceil(secondsRemaining);
+    if (currentSec <= 10 && currentSec >= 1) {
+        if (currentSec !== lastKineticCountdownSecond) {
+            lastKineticCountdownSecond = currentSec;
+            if (numEl) numEl.textContent = String(currentSec);
+            if (overlay) {
+                overlay.style.display = 'flex';
+                // Restart kinetic flying animation
+                if (numEl) {
+                    numEl.style.animation = 'none';
+                    void numEl.offsetHeight; // trigger reflow
+                    numEl.style.animation = 'kinetic-fly-pulse 0.9s cubic-bezier(0.1, 0.9, 0.2, 1.2) forwards';
+                }
+            }
+            if (typeof playSound === 'function') {
+                playSound('timeRemoved', 0.45).catch(() => {});
+            }
+        }
+    } else {
+        if (overlay && overlay.style.display !== 'none') overlay.style.display = 'none';
+    }
+}
+
 // Update the countdown timer display with smooth transitions
 function updateCountdownDisplay(bounceScale = 1.0) {
     if (!countdownTimerCanvas || !countdownTimerTexture) return;
@@ -1147,39 +1102,33 @@ function updateCountdownDisplay(bounceScale = 1.0) {
     const text = Math.ceil(displaySeconds).toString();
 
     // Base font size
-    const baseFontSize = Math.round(size * 0.6); // ~614px for 1024px canvas - fills extended base plate
+    const baseFontSize = Math.round(size * 0.65); // ~665px for 1024px canvas
 
     // Apply bounce scale to font size
     const fontSize = Math.round(baseFontSize * bounceScale);
 
-    // Red neon outlined font styling
-    ctx.fillStyle = 'rgba(0, 0, 0, 0)'; // Transparent fill
-    ctx.strokeStyle = '#ff0000'; // Red outline
-    ctx.lineWidth = 12;
-    ctx.lineJoin = 'round';
-    ctx.lineCap = 'round';
-
-    // Use a bold, outlined font
-    ctx.font = `900 ${fontSize}px Arial, sans-serif`;
+    // Solid High-Contrast Laser Typography
+    ctx.font = `900 ${fontSize}px 'Fredoka', 'Outfit', Arial, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    // Add neon glow effect with multiple shadow layers
-    ctx.shadowColor = '#ff0000';
-    ctx.shadowBlur = 40;
-    ctx.shadowOffsetX = 0;
-    ctx.shadowOffsetY = 0;
+    // 1. Thick crimson outer stroke with laser glow
+    ctx.fillStyle = '#ffffff'; // Solid white core
+    ctx.strokeStyle = '#ff0033'; // Vibrant neon red border
+    ctx.lineWidth = 22;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.shadowColor = '#ff0033';
+    ctx.shadowBlur = 50;
 
-    // Draw outline multiple times for thicker neon effect
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 2; i++) {
         ctx.strokeText(text, size / 2, size / 2);
     }
 
-    // Add inner glow with slightly brighter red
-    ctx.strokeStyle = '#ff3333';
-    ctx.lineWidth = 6;
-    ctx.shadowBlur = 20;
-    ctx.strokeText(text, size / 2, size / 2);
+    // 2. High-brightness solid white fill with soft glow
+    ctx.shadowColor = '#ffffff';
+    ctx.shadowBlur = 25;
+    ctx.fillText(text, size / 2, size / 2);
 
     // Reset shadow
     ctx.shadowBlur = 0;
@@ -1267,24 +1216,24 @@ function centerTowerVertically() {
 }
 
 // Camera system constants
-const MIN_RADIUS_DESKTOP = 6.5; // Allow closer zoom on desktop (down from 13.5)
-const MIN_RADIUS_MOBILE = 5.0; // Keep tight for mobile
+const MIN_RADIUS_DESKTOP = 8.0; // Balanced framing on desktop
+const MIN_RADIUS_MOBILE = 6.4; // Balanced framing on mobile
 const MAX_RADIUS = 50;
 const MIN_ELEVATION = -Math.PI * 0.65; // Allow rotating below the horizon (approx. -117°)
 const MAX_ELEVATION = Math.PI * 0.65; // Allow rotating below the horizon (approx. 117°)
-const ZOOM_PADDING = 0.5; // Tighter padding for closer framing
-const ZOOM_PADDING_MOBILE = 0.2; // Minimal padding for mobile
-const AUTO_ZOOM_MIN_BOUNDING_SIZE = 3; // Minimum bounding box size to prevent zooming in too much with few blocks
-const SPAWN_ZOOM_PADDING = 0.5; // Minimal extra padding during spawn
-const SPAWN_ZOOM_MULTIPLIER = 1.0; // Minimal additional multiplier for spawn zoom
+const ZOOM_PADDING = 1.6; // Balanced padding for comfortable framing
+const ZOOM_PADDING_MOBILE = 1.1; // Balanced padding for mobile framing
+const AUTO_ZOOM_MIN_BOUNDING_SIZE = 3.5; // Minimum bounding box size
+const SPAWN_ZOOM_PADDING = 1.2; // Extra padding during spawn
+const SPAWN_ZOOM_MULTIPLIER = 1.08; // Additional multiplier for spawn zoom
 // Auto-zoom multiplier: platform-aware
-const AUTO_ZOOM_MULTIPLIER_DESKTOP = 1.0; // Desktop: tight framing, focusing on the tower
-const AUTO_ZOOM_MULTIPLIER_MOBILE = 1.0; // Mobile: tight fit
+const AUTO_ZOOM_MULTIPLIER_DESKTOP = 1.18; // Desktop: balanced framing (~18% pulled out)
+const AUTO_ZOOM_MULTIPLIER_MOBILE = 1.18; // Mobile: balanced fit (~18% pulled out)
 // Desktop-specific padding multiplier to ensure all blocks stay visible
-const DESKTOP_ZOOM_PADDING_MULTIPLIER = 1.0;
+const DESKTOP_ZOOM_PADDING_MULTIPLIER = 1.08;
 const DESKTOP_FULL_TOWER_VISIBILITY_LEVEL = 100;
-const DESKTOP_HIGH_LEVEL_VERTICAL_FIT_MULTIPLIER = 1.05;
-const DESKTOP_HIGH_LEVEL_MIN_RADIUS = 8.5;
+const DESKTOP_HIGH_LEVEL_VERTICAL_FIT_MULTIPLIER = 1.08;
+const DESKTOP_HIGH_LEVEL_MIN_RADIUS = 9.2;
 // During generation, computing a world-space bounding box by expanding each block object
 // (updateMatrixWorld + expandByObject) is expensive. Throttle it to avoid long rAF frames.
 const SPAWN_ZOOM_UPDATE_INTERVAL_MS = 120;
@@ -1296,7 +1245,7 @@ const TOUCH_DRAG_SENSITIVITY = 0.004; // 60% faster than desktop for better mobi
 // Spherical coordinates (target values - set by user input)
 let cameraRadius = 8;
 let cameraAzimuth = Math.PI / 4; // 45° (diagonal view)
-let cameraElevation = Math.PI / 4; // 45° above horizontal
+let cameraElevation = 1.35; // ~77° from zenith (slightly above base plate, looking slightly upwards)
 
 // Target values (set by user input)
 let targetRadius = cameraRadius;
@@ -1334,12 +1283,12 @@ function calculateInitialCameraPosition() {
     const estimatedTowerHeight = 5;
     const verticalDistance = (estimatedTowerHeight + initialPadding) / (2 * Math.tan(fov / 2));
 
-    const requiredDistance = Math.max(horizontalDistance * 0.85, verticalDistance);
+    const requiredDistance = Math.max(horizontalDistance * 0.90, verticalDistance) * 1.08;
 
     // Set initial values
     const minRadius = isMobileLike ? MIN_RADIUS_MOBILE : MIN_RADIUS_DESKTOP;
     cameraRadius = Math.max(minRadius, Math.min(MAX_RADIUS, requiredDistance));
-    cameraElevation = Math.PI / 4; // 45° above horizontal
+    cameraElevation = 1.35; // ~77° from zenith (slightly above base plate, looking slightly upwards)
     cameraAzimuth = Math.PI / 4; // 45° (diagonal view)
 
     // #region agent log
@@ -1396,7 +1345,7 @@ if (typeof window !== 'undefined') {
 // - towerCenter/towerPositionOffset: world
 // - lookAt target: world
 // - Matrix trace: vec_ndc = projection * view * model * vec_local
-const DEFAULT_FRAMING_OFFSET_Y = 0.5; // Lower target raises the tower up
+const DEFAULT_FRAMING_OFFSET_Y = 2.4; // Perfectly centers the tower vertically, eliminating empty bottom padding
 const MIN_FRAMING_OFFSET_Y = -5.0;
 const MAX_FRAMING_OFFSET_Y = 10.0;
 // Two-finger drag (non-pinch): pixels → world-Y offset mapping:
@@ -1409,7 +1358,7 @@ function clampFramingOffsetY(value) {
 
 function loadFramingOffsetY() {
     try {
-        const saved = localStorage.getItem('jarrows_framing_v2'); // bumped to override old 4.8 value
+        const saved = localStorage.getItem('jarrows_framing_v3'); // bumped to v3 for optimal 2.4 default
         const parsed = saved !== null ? parseFloat(saved) : NaN;
         if (!Number.isFinite(parsed)) return DEFAULT_FRAMING_OFFSET_Y;
         return clampFramingOffsetY(parsed);
@@ -1446,11 +1395,15 @@ function updateTargetBlockCenter() {
         if (block.isRemoved || block.isFalling || block.isAnimating || block.removalStartTime) continue;
 
         const pos = block.group.position;
+        const blockHeight = block.isVertical ? (block.length || 1) * (block.cubeSize || 1) : (block.cubeSize || 1);
+        const blockBottom = block.yOffset || 0;
+        const blockTop = blockBottom + blockHeight;
+
         if (pos.x < minX) minX = pos.x;
-        if (pos.y < minY) minY = pos.y;
+        if (blockBottom < minY) minY = blockBottom;
         if (pos.z < minZ) minZ = pos.z;
         if (pos.x > maxX) maxX = pos.x;
-        if (pos.y > maxY) maxY = pos.y;
+        if (blockTop > maxY) maxY = blockTop;
         if (pos.z > maxZ) maxZ = pos.z;
         validBlocks++;
     }
@@ -2124,34 +2077,35 @@ function timeChallengeStartNewLevel(blocksArray) {
     if (!isTimeBasedMode()) return;
 
     // Calculate level par time based on block count, bomb efficiency, and average solve duration
-    let estimatedTotalTime = 0;
+    let estimatedTotalTime = 30;
     if (blocksArray && blocksArray.length > 0) {
         let bombCount = 0;
+        let nonBombEstimate = 0;
         for (const block of blocksArray) {
             if (block && block.isBomb) {
                 bombCount++;
+            } else if (block) {
+                // Base estimated duration per block
+                const blockEst = block.length >= 3 ? 1.5 : (block.length === 2 ? 1.1 : 0.7);
+                nonBombEstimate += blockEst;
             }
-            // Base estimated duration per block
-            const blockEst = block.length >= 3 ? 1.6 : (block.length === 2 ? 1.2 : 0.7);
-            estimatedTotalTime += blockEst;
         }
 
-        // Bombs clear large clusters in single detonations (discount bulk-cleared blocks)
-        if (bombCount > 0) {
-            const bulkBlocksDiscount = bombCount * 14;
-            const discountedSeconds = bulkBlocksDiscount * 0.9;
-            estimatedTotalTime = Math.max(35, estimatedTotalTime - discountedSeconds + (bombCount * 1.8));
-        }
+        // Bombs clear surrounding clusters (~4.5 blocks per bomb on average)
+        // Give realistic strategic inspection & planning time per bomb
+        const bombTime = bombCount * 2.2;
+        const netNonBombTime = Math.max(15, nonBombEstimate - (bombCount * 3.5));
+        estimatedTotalTime = netNonBombTime + bombTime;
     }
 
-    // Par time: at least 35s, with a firm ceiling of 210s (3:30 min) for urgent pacing on mega levels
-    const parTime = Math.max(35, Math.min(210, Math.round(estimatedTotalTime)));
+    // Par time: at least 40s, with a healthy ceiling of 240s (4:00 min) for mega levels
+    const parTime = Math.max(40, Math.min(240, Math.round(estimatedTotalTime)));
     currentLevelParTime = parTime;
-    // Level capacity: 1.4x Par Time, capped at 270s (4:30 min)
-    currentLevelMaxTimeCap = Math.max(50, Math.min(270, Math.round(parTime * 1.4)));
+    // Level capacity: generous headroom (at least 150s, up to 1.8x Par Time, capped at 420s / 7:00 min)
+    currentLevelMaxTimeCap = Math.max(150, Math.min(420, Math.round(parTime * 1.8)));
 
-    // Carryover bonus: carry over up to 25% of the new level's par time as a skill head-start
-    const maxCarryover = Math.round(parTime * 0.25);
+    // Carryover bonus: carry over up to 30% of the new level's par time as a skill head-start
+    const maxCarryover = Math.round(parTime * 0.30);
     const carryoverBonus = Math.min(timeChallengeResidualSec, maxCarryover);
 
     // Initial time for the level = Par Time + Carryover Bonus, capped at Max Capacity
@@ -2166,8 +2120,10 @@ function timeChallengeStartNewLevel(blocksArray) {
     timeChallengeSpinCost = 0;
     timeChallengeResidualSec = 0; // Clear residual after applying carryover
 
-    // Reset combo streak for the new level
+    // Reset combo streak and peak level combo for the new level
     removalComboStreak = 0;
+    levelMaxComboStreak = 0;
+    levelMaxComboMult = 1.0;
     lastBlockRemovalTime = 0;
     consecutiveSpinCount = 0;
 
@@ -2216,6 +2172,10 @@ function timeChallengeAwardForBlockRemoved(blockLength) {
     // Combo multiplier: 1x, 1.4x, 1.8x, 2.2x, 2.5x
     const comboMult = removalComboStreak >= 4 ? 2.5 : (removalComboStreak === 3 ? 1.8 : (removalComboStreak === 2 ? 1.4 : 1.0));
     const gained = Math.round(baseBonus * comboMult * 10) / 10;
+
+    // Track peak combo streak and multiplier for this level
+    levelMaxComboStreak = Math.max(levelMaxComboStreak, removalComboStreak);
+    levelMaxComboMult = Math.max(levelMaxComboMult, comboMult);
 
     timeChallengeTimeCollected = (timeChallengeTimeCollected || 0) + gained;
     timeChallengeTimeCollectedAllTime = (timeChallengeTimeCollectedAllTime || 0) + gained;
@@ -2362,6 +2322,10 @@ async function restartTimeChallengeLevelFromTimeUp() {
     // Reset level-specific stats (but keep run stats like timeChallengeRemovals, timeChallengeTimeCollectedAllTime)
     timeChallengeTimeCollected = 0;
     timeChallengeSpinCost = 0;
+    removalComboStreak = 0;
+    levelMaxComboStreak = 0;
+    levelMaxComboMult = 1.0;
+    lastBlockRemovalTime = 0;
 
     // Clear move history
     moveHistory = [];
@@ -2607,6 +2571,73 @@ function computeBlastCellStats(eligibleBlocks) {
     return { totalCells, bombCells, actualPercent };
 }
 
+function getBlockSpatialCenter(block) {
+    if (!block) return { x: 0, y: 0, z: 0 };
+    const isXAligned = Math.abs(block.direction.x) > 0;
+    const len = block.length || 1;
+    if (block.isVertical) {
+        return {
+            x: block.gridX,
+            y: block.yOffset + (len - 1) * 0.5,
+            z: block.gridZ
+        };
+    }
+    return {
+        x: block.gridX + (isXAligned ? (len - 1) * 0.5 : 0),
+        y: block.yOffset,
+        z: block.gridZ + (isXAligned ? 0 : (len - 1) * 0.5)
+    };
+}
+
+function calculateBlockBombScore(block, currentGridSize) {
+    const center = getBlockSpatialCenter(block);
+    const isXAligned = Math.abs(block.direction.x) > 0;
+    const len = block.length || 1;
+
+    // Check if any cell of the block touches the outer perimeter boundary
+    const minX = block.gridX;
+    const maxX = block.gridX + (block.isVertical ? 0 : (isXAligned ? len - 1 : 0));
+    const minZ = block.gridZ;
+    const maxZ = block.gridZ + (block.isVertical ? 0 : (isXAligned ? 0 : len - 1));
+
+    const touchesEdge = (
+        minX <= 0 || minZ <= 0 ||
+        maxX >= currentGridSize - 1 || maxZ >= currentGridSize - 1
+    );
+
+    // Near-Corner Target Anchor Points (approx 1.5 - 2.0 units inward from each corner)
+    const cornerOffset = Math.min(2.0, Math.max(1.2, (currentGridSize - 1) * 0.25));
+    const minCorner = cornerOffset;
+    const maxCorner = (currentGridSize - 1) - cornerOffset;
+
+    const cornerTargets = [
+        { x: minCorner, z: minCorner },
+        { x: minCorner, z: maxCorner },
+        { x: maxCorner, z: minCorner },
+        { x: maxCorner, z: maxCorner }
+    ];
+
+    // Find distance to the nearest inner corner anchor
+    let minCornerDist = Infinity;
+    for (const target of cornerTargets) {
+        const dist = Math.hypot(center.x - target.x, center.z - target.z);
+        if (dist < minCornerDist) {
+            minCornerDist = dist;
+        }
+    }
+
+    // 1. High bonus for proximity to near-corners (creates the crater view)
+    const cornerScore = 10.0 / (1.0 + minCornerDist);
+
+    // 2. Strong preference for lower layers of the tower (center.y or yOffset near 0)
+    const layerScore = -3.0 * (center.y || block.yOffset || 0);
+
+    // 3. Heavy penalty for touching outer perimeter edge (must NOT be at the outer edge)
+    const edgePenalty = touchesEdge ? -20.0 : 0.0;
+
+    return cornerScore + layerScore + edgePenalty;
+}
+
 function applyBlastCellPercentToCurrentTower(targetPercent) {
     const eligibleBlocks = getEligibleBlocksForBlastTuning();
     if (eligibleBlocks.length === 0) return null;
@@ -2616,31 +2647,67 @@ function applyBlastCellPercentToCurrentTower(targetPercent) {
 
     const clampedPercent = Math.max(0, Math.min(MAX_BLAST_CELL_PERCENT, targetPercent));
     const targetBombCells = Math.round((clampedPercent / 100) * totalCells);
-    let currentBombCells = eligibleBlocks.reduce((sum, block) => (
-        sum + (block.isBomb ? getBlockFootprintCellCount(block) : 0)
-    ), 0);
 
-    if (currentBombCells < targetBombCells) {
-        const candidatesToEnable = eligibleBlocks
-            .filter((block) => !block.isBomb)
-            .sort((a, b) => getBlockFootprintCellCount(a) - getBlockFootprintCellCount(b));
+    // Score all eligible blocks by near-corner proximity, lower layers, and edge exclusion
+    const currentGridSize = typeof gridSize === 'number' ? gridSize : 9;
+    const scoredCandidates = eligibleBlocks.map(block => ({
+        block,
+        score: calculateBlockBombScore(block, currentGridSize),
+        center: getBlockSpatialCenter(block),
+        cells: getBlockFootprintCellCount(block)
+    })).sort((a, b) => b.score - a.score); // Highest near-corner/lower-layer preference first
 
-        for (const block of candidatesToEnable) {
-            if (currentBombCells >= targetBombCells) break;
-            if (typeof block.setBombState === 'function') block.setBombState(true);
-            else block.isBomb = true;
-            currentBombCells += getBlockFootprintCellCount(block);
+    const selectedBombs = [];
+    let accumulatedBombCells = 0;
+
+    // Pass 1: Strict spatial spacing (minimum 2.0 grid units in 3D between any two bombs)
+    const MIN_SPACING_SQ_STRICT = 4.0;
+    for (const cand of scoredCandidates) {
+        if (accumulatedBombCells >= targetBombCells) break;
+
+        const isTooClose = selectedBombs.some(b => {
+            const dx = cand.center.x - b.center.x;
+            const dy = cand.center.y - b.center.y;
+            const dz = cand.center.z - b.center.z;
+            return (dx * dx + dy * dy + dz * dz) < MIN_SPACING_SQ_STRICT;
+        });
+
+        if (!isTooClose) {
+            selectedBombs.push(cand);
+            accumulatedBombCells += cand.cells;
         }
-    } else if (currentBombCells > targetBombCells) {
-        const candidatesToDisable = eligibleBlocks
-            .filter((block) => block.isBomb)
-            .sort((a, b) => getBlockFootprintCellCount(a) - getBlockFootprintCellCount(b));
+    }
 
-        for (const block of candidatesToDisable) {
-            if (currentBombCells <= targetBombCells) break;
-            if (typeof block.setBombState === 'function') block.setBombState(false);
-            else block.isBomb = false;
-            currentBombCells -= getBlockFootprintCellCount(block);
+    // Pass 2: Relaxed spatial spacing (minimum 1.5 grid units) if quota not met
+    const MIN_SPACING_SQ_RELAXED = 2.25;
+    if (accumulatedBombCells < targetBombCells) {
+        for (const cand of scoredCandidates) {
+            if (accumulatedBombCells >= targetBombCells) break;
+            if (selectedBombs.includes(cand)) continue;
+
+            const isTooClose = selectedBombs.some(b => {
+                const dx = cand.center.x - b.center.x;
+                const dy = cand.center.y - b.center.y;
+                const dz = cand.center.z - b.center.z;
+                return (dx * dx + dy * dy + dz * dz) < MIN_SPACING_SQ_RELAXED;
+            });
+
+            if (!isTooClose) {
+                selectedBombs.push(cand);
+                accumulatedBombCells += cand.cells;
+            }
+        }
+    }
+
+    const selectedSet = new Set(selectedBombs.map(s => s.block));
+    for (const block of eligibleBlocks) {
+        const shouldBeBomb = selectedSet.has(block);
+        if (block.isBomb !== shouldBeBomb) {
+            if (typeof block.setBombState === 'function') {
+                block.setBombState(shouldBeBomb);
+            } else {
+                block.isBomb = shouldBeBomb;
+            }
         }
     }
 
@@ -4969,6 +5036,11 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
     levelInitialBlockCount = blocks.length;
     console.log(`[Progress] Level ${level} initialized with ${levelInitialBlockCount} blocks`);
     
+    // Core-prioritized and spatially-spaced bomb assignment pass
+    if (currentLevel >= 10) {
+        applyBlastCellPercentToCurrentTower(blastCellPercent);
+    }
+
     // Explicitly update dial now
     updateProgressDial();
 
@@ -6229,15 +6301,52 @@ function showLevelCompleteModal(completedLevel) {
             timeElement.textContent = timeString;
         }
 
+        // Check if this run is a new Personal Best time
+        const pbBadge = document.getElementById('level-complete-pb-badge');
+        if (pbBadge) {
+            try {
+                const bestKey = `jarrows_level_${completedLevel}_best_time`;
+                const currentBest = parseFloat(localStorage.getItem(bestKey));
+                if (!Number.isFinite(currentBest) || elapsedSeconds < currentBest) {
+                    pbBadge.style.display = 'block';
+                    localStorage.setItem(bestKey, String(elapsedSeconds));
+                } else {
+                    pbBadge.style.display = 'none';
+                }
+            } catch (e) {
+                pbBadge.style.display = 'none';
+            }
+        }
+
         // Get move count (use totalMoves for accurate count)
         if (movesElement) {
-            movesElement.textContent = String(totalMoves);
+            movesElement.textContent = String(totalMoves || 0);
         }
 
         // Get number of blocks cleared (initial block count for this level)
-        const initialBlockCount = getBlocksForLevel(completedLevel);
+        const initialBlockCount = levelInitialBlockCount || getBlocksForLevel(completedLevel);
         if (blocksElement) {
             blocksElement.textContent = String(initialBlockCount);
+        }
+
+        // Max Combo / Multiplier subscore
+        const comboElement = document.getElementById('level-complete-combo');
+        if (comboElement) {
+            if (levelMaxComboStreak >= 2) {
+                comboElement.textContent = `x${levelMaxComboMult.toFixed(1)}`;
+                comboElement.style.color = levelMaxComboMult >= 1.8 ? '#fbbf24' : '#ffffff';
+            } else {
+                comboElement.textContent = 'x1.0';
+                comboElement.style.color = '#ffffff';
+            }
+        }
+
+        // Time banked (bonus time collected/earned during this level)
+        const bonusElement = document.getElementById('level-complete-bonus');
+        if (bonusElement) {
+            const bankedSeconds = Math.max(0, Math.round(timeChallengeTimeCollected || 0));
+            bonusElement.textContent = `+${bankedSeconds}s`;
+            bonusElement.style.color = bankedSeconds > 0 ? '#34d399' : '#ffffff';
         }
 
         // Time Challenge/Inferno: save residual time for next level
@@ -6311,6 +6420,8 @@ function showDebugPanel() {
         if (levelInput) {
             levelInput.value = currentLevel;
         }
+        setupLightControls();
+        setupFrostyClusterControls();
     }
 }
 
@@ -7083,6 +7194,172 @@ if (debugCaptureLightsButton) {
     });
 }
 
+// Frosty Cluster controls setup
+let frostyControlsInitialized = false;
+function setupFrostyClusterControls() {
+    if (frostyControlsInitialized) return;
+    frostyControlsInitialized = true;
+
+    // Collapsible header toggle
+    const frostHeader = document.getElementById('frost-controls-header');
+    const frostContent = document.getElementById('frost-controls-content');
+    const frostArrow = document.getElementById('frost-controls-arrow');
+    if (frostHeader && frostContent && frostArrow) {
+        frostHeader.addEventListener('click', () => {
+            const isHidden = frostContent.style.display === 'none';
+            frostContent.style.display = isHidden ? 'block' : 'none';
+            frostArrow.textContent = isHidden ? '▼' : '▶';
+        });
+    }
+
+    // Helper to sync all UI elements with current FROSTY_CONFIG
+    const syncFrostyUI = () => {
+        const config = getFrostyConfig();
+        const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+        const setText = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+
+        setVal('frost-block-color-picker', config.blockColor);
+        setText('frost-block-color-value', String(config.blockColor).toUpperCase());
+
+        setVal('frost-block-emissive-picker', config.blockEmissive);
+        setText('frost-block-emissive-value', String(config.blockEmissive).toUpperCase());
+
+        setVal('frost-block-emissive-slider', config.blockEmissiveIntensity);
+        setText('frost-block-emissive-intensity-value', Number(config.blockEmissiveIntensity).toFixed(2));
+
+        setVal('frost-block-opacity-slider', config.blockOpacity);
+        setText('frost-block-opacity-value', Number(config.blockOpacity).toFixed(2));
+
+        setVal('frost-block-roughness-slider', config.blockRoughness);
+        setText('frost-block-roughness-value', Number(config.blockRoughness).toFixed(2));
+
+        setVal('frost-block-metalness-slider', config.blockMetalness);
+        setText('frost-block-metalness-value', Number(config.blockMetalness).toFixed(2));
+
+        setVal('frost-alpha-contrast-slider', config.alphaMapContrast);
+        setText('frost-alpha-contrast-value', Number(config.alphaMapContrast).toFixed(2));
+
+        setVal('frost-ind-color-picker', config.indicatorColor);
+        setText('frost-ind-color-value', String(config.indicatorColor).toUpperCase());
+
+        setVal('frost-ind-emissive-picker', config.indicatorEmissive);
+        setText('frost-ind-emissive-value', String(config.indicatorEmissive).toUpperCase());
+
+        setVal('frost-ind-emissive-slider', config.indicatorEmissiveIntensity);
+        setText('frost-ind-emissive-intensity-value', Number(config.indicatorEmissiveIntensity).toFixed(2));
+
+        setVal('frost-ind-opacity-slider', config.indicatorOpacity);
+        setText('frost-ind-opacity-value', Number(config.indicatorOpacity).toFixed(2));
+
+        setVal('frost-ind-roughness-slider', config.indicatorRoughness);
+        setText('frost-ind-roughness-value', Number(config.indicatorRoughness).toFixed(2));
+
+        setVal('frost-min-size-slider', config.minClusterSize);
+        setText('frost-min-size-value', String(config.minClusterSize));
+
+        const jsonBox = document.getElementById('debug-frost-values-input');
+        if (jsonBox) jsonBox.value = JSON.stringify(config, null, 2);
+    };
+
+    syncFrostyUI();
+
+    // Bind block controls
+    const bindColor = (pickerId, textId, configKey) => {
+        const picker = document.getElementById(pickerId);
+        const text = document.getElementById(textId);
+        if (picker && text) {
+            picker.addEventListener('input', (e) => {
+                const val = e.target.value;
+                text.textContent = val.toUpperCase();
+                setFrostyConfig({ [configKey]: val }, blocks);
+                updateWeldedTranslucentClusters(blocks);
+            });
+        }
+    };
+
+    const bindSlider = (sliderId, textId, configKey, isFloat = true) => {
+        const slider = document.getElementById(sliderId);
+        const text = document.getElementById(textId);
+        if (slider && text) {
+            slider.addEventListener('input', (e) => {
+                const val = isFloat ? parseFloat(e.target.value) : parseInt(e.target.value, 10);
+                text.textContent = isFloat ? val.toFixed(2) : String(val);
+                setFrostyConfig({ [configKey]: val }, blocks);
+                updateWeldedTranslucentClusters(blocks);
+            });
+        }
+    };
+
+    bindColor('frost-block-color-picker', 'frost-block-color-value', 'blockColor');
+    bindColor('frost-block-emissive-picker', 'frost-block-emissive-value', 'blockEmissive');
+    bindSlider('frost-block-emissive-slider', 'frost-block-emissive-intensity-value', 'blockEmissiveIntensity', true);
+    bindSlider('frost-block-opacity-slider', 'frost-block-opacity-value', 'blockOpacity', true);
+    bindSlider('frost-block-roughness-slider', 'frost-block-roughness-value', 'blockRoughness', true);
+    bindSlider('frost-block-metalness-slider', 'frost-block-metalness-value', 'blockMetalness', true);
+    bindSlider('frost-alpha-contrast-slider', 'frost-alpha-contrast-value', 'alphaMapContrast', true);
+
+    bindColor('frost-ind-color-picker', 'frost-ind-color-value', 'indicatorColor');
+    bindColor('frost-ind-emissive-picker', 'frost-ind-emissive-value', 'indicatorEmissive');
+    bindSlider('frost-ind-emissive-slider', 'frost-ind-emissive-intensity-value', 'indicatorEmissiveIntensity', true);
+    bindSlider('frost-ind-opacity-slider', 'frost-ind-opacity-value', 'indicatorOpacity', true);
+    bindSlider('frost-ind-roughness-slider', 'frost-ind-roughness-value', 'indicatorRoughness', true);
+
+    bindSlider('frost-min-size-slider', 'frost-min-size-value', 'minClusterSize', false);
+
+    // Capture Frosty Config
+    const captureBtn = document.getElementById('debug-capture-frost-button');
+    if (captureBtn) {
+        captureBtn.addEventListener('click', () => {
+            const config = getFrostyConfig();
+            const jsonStr = JSON.stringify(config, null, 2);
+            const input = document.getElementById('debug-frost-values-input');
+            if (input) input.value = jsonStr;
+            try {
+                navigator.clipboard.writeText(jsonStr);
+                alert('✅ Frosty config copied to clipboard & populated in box!');
+            } catch {
+                alert('✅ Frosty config populated in box!');
+            }
+        });
+    }
+
+    // Load Frosty Config
+    const loadBtn = document.getElementById('debug-load-frost-button');
+    if (loadBtn) {
+        loadBtn.addEventListener('click', () => {
+            const input = document.getElementById('debug-frost-values-input');
+            if (!input || !input.value.trim()) {
+                alert('Please paste a JSON config first.');
+                return;
+            }
+            try {
+                const parsed = JSON.parse(input.value.trim());
+                setFrostyConfig(parsed, blocks);
+                updateWeldedTranslucentClusters(blocks);
+                syncFrostyUI();
+                alert('✅ Frosty config loaded and applied live!');
+            } catch (e) {
+                alert('❌ Invalid JSON: ' + e.message);
+            }
+        });
+    }
+
+    // Reset Frosty Config
+    const resetBtn = document.getElementById('debug-reset-frost-button');
+    if (resetBtn) {
+        resetBtn.addEventListener('click', () => {
+            setFrostyConfig({ ...DEFAULT_FROSTY_CONFIG }, blocks);
+            updateWeldedTranslucentClusters(blocks);
+            syncFrostyUI();
+            const input = document.getElementById('debug-frost-values-input');
+            if (input) input.value = JSON.stringify(DEFAULT_FROSTY_CONFIG, null, 2);
+            alert('🔄 Frosty cluster parameters reset to defaults!');
+        });
+    }
+}
+window.setupFrostyClusterControls = setupFrostyClusterControls;
+setupFrostyClusterControls();
+
 // Game control button handlers (undo and remove buttons removed)
 
 // --- DEBUG: movement diagnostics (headless) ---
@@ -7364,8 +7641,10 @@ function revertTemporarySpin() {
 }
 
 // Update spin counter display
-function updateSpinCounterDisplay() {
+function updateSpinCounterDisplay(triggerAwardEffect = false) {
     const spinCounter = document.getElementById('spin-counter');
+    const diceButton = document.getElementById('dice-button');
+
     if (spinCounter) {
         if (temporarySpinActive) {
             const remainingMs = Math.max(0, temporarySpinEndTime - performance.now());
@@ -7376,6 +7655,7 @@ function updateSpinCounterDisplay() {
             spinCounter.style.display = 'flex';
             spinCounter.textContent = String(remainingSec);
             spinCounter.classList.add('spin-countdown-active');
+            spinCounter.classList.remove('has-spins', 'spin-awarded-burst');
 
             // Dynamic color coding:
             // High (> 45% & > 5s): Green/Teal
@@ -7391,25 +7671,44 @@ function updateSpinCounterDisplay() {
             }
 
             spinCounter.title = `Temporary spin active: ${remainingSec}s remaining (move time rewards paused)`;
+            if (diceButton) {
+                diceButton.classList.remove('has-spins');
+            }
         } else {
             spinCounter.classList.remove('spin-countdown-active', 'countdown-phase-high', 'countdown-phase-med', 'countdown-phase-low');
-            spinCounter.style.display = 'flex';
             
-            if (remainingSpins > 0) {
-                spinCounter.textContent = remainingSpins.toString();
-                spinCounter.style.fontSize = '14px';
-                spinCounter.style.color = '#fff';
+            const hasSpins = (remainingSpins > 0) || (remainingSpins === Number.POSITIVE_INFINITY);
+
+            if (hasSpins) {
+                spinCounter.style.display = 'flex';
+                spinCounter.textContent = (remainingSpins === Number.POSITIVE_INFINITY) ? '∞' : remainingSpins.toString();
+                spinCounter.classList.add('has-spins');
                 spinCounter.title = `${remainingSpins} Free Spins available`;
+                if (diceButton) {
+                    diceButton.classList.add('has-spins');
+                }
+                if (triggerAwardEffect) {
+                    spinCounter.classList.remove('spin-awarded-burst');
+                    void spinCounter.offsetWidth; // trigger reflow
+                    spinCounter.classList.add('spin-awarded-burst');
+                }
             } else if (isTimeBasedMode()) {
                 spinCounter.textContent = ''; 
-                spinCounter.style.display = 'none'; // Hide if no free spins
+                spinCounter.style.display = 'none'; // Hide badge when 0 spins
+                spinCounter.classList.remove('has-spins');
+                if (diceButton) {
+                    diceButton.classList.remove('has-spins');
+                }
             } else {
+                spinCounter.style.display = 'flex';
                 spinCounter.textContent = '0';
-                spinCounter.style.fontSize = '14px';
+                spinCounter.classList.remove('has-spins');
+                if (diceButton) {
+                    diceButton.classList.remove('has-spins');
+                }
             }
             
             if (remainingSpins === Number.POSITIVE_INFINITY) {
-                spinCounter.textContent = '∞';
                 spinCounter.setAttribute('data-infinity', 'true');
             } else {
                 spinCounter.removeAttribute('data-infinity');
@@ -7417,7 +7716,6 @@ function updateSpinCounterDisplay() {
         }
     }
 
-    const diceButton = document.getElementById('dice-button');
     if (diceButton) {
         const wasDisabled = diceButton.disabled;
         
@@ -7982,7 +8280,7 @@ function setupFramingSlider() {
                 updateCameraPosition(); // Update camera immediately
                 // Save framing preference to localStorage
                 try {
-                    localStorage.setItem('jarrows_framing_v2', newOffset.toString());
+                    localStorage.setItem('jarrows_framing_v3', newOffset.toString());
                 } catch (e) {
                     console.warn('Failed to save framing preference:', e);
                 }
@@ -8038,7 +8336,7 @@ function setupFramingSlider() {
         // Load framing preference from localStorage if not already set
         if (window.framingOffsetY === undefined || window.framingOffsetY === null) {
             try {
-                const savedFraming = localStorage.getItem('jarrows_framing_v2');
+                const savedFraming = localStorage.getItem('jarrows_framing_v3');
                 if (savedFraming !== null) {
                     const parsedFraming = parseFloat(savedFraming);
                     if (!isNaN(parsedFraming)) {
@@ -8399,8 +8697,10 @@ function onMouseClick(event) {
     // Prevent locked/translucent blocks from being moved or detonated - shake the entire tower with radial falloff
     if (block.isLocked || block.isTranslucent) {
         triggerRadialTowerShake(block, blocks, 0.28, 380);
-        if (typeof playSound === 'function') {
-            playSound('tap', 0.8).catch(() => {});
+        if (typeof block.onBlockedTap === 'function') {
+            block.onBlockedTap(block.direction);
+        } else if (typeof playSound === 'function') {
+            playSound('syntheticLockedThud', 0.5).catch(() => {});
         }
         showLockTimeRemaining(block);
         return;
@@ -8417,6 +8717,35 @@ function onMouseClick(event) {
         }
         block.detonate();
         updateUndoButtonState();
+        return;
+    }
+
+    // Check if the block is blocked by adjacent obstacles
+    const moveStatus = typeof block.canMove === 'function' ? block.canMove(blocks) : 'ok';
+    if (moveStatus === 'blocked') {
+        if (typeof block.onBlockedTap === 'function') {
+            block.onBlockedTap(block.direction);
+        }
+
+        // Apply collision penalty: lock this block and all colliding obstacles in front
+        const remTime = (isTimeBasedMode() && typeof timeLeftSec === 'number') ? timeLeftSec : null;
+        if (!block.isLocked && !block.isFalling && !block.isRemoved) {
+            block.lockBlock(currentLevel, remTime);
+        }
+
+        const directBlockers = typeof block.findAllDirectBlockers === 'function'
+            ? block.findAllDirectBlockers(blocks)
+            : (typeof block.findDirectBlocker === 'function' ? [block.findDirectBlocker(blocks)].filter(Boolean) : []);
+
+        for (const blocker of directBlockers) {
+            if (blocker && !blocker.isLocked && !blocker.isFalling && !blocker.isRemoved && !blocker.isExploding) {
+                blocker.lockBlock(currentLevel, remTime);
+            }
+        }
+
+        if (typeof updateWeldedTranslucentClusters === 'function') {
+            updateWeldedTranslucentClusters(blocks);
+        }
         return;
     }
 
@@ -8441,7 +8770,7 @@ function onMouseClick(event) {
     }
 
     // Store if this block will fall (to update solution tracking)
-    const willFall = block.canMove(blocks) === 'fall';
+    const willFall = moveStatus === 'fall';
 
     block.move(blocks, gridSize);
     updateSupportGrid();
@@ -8451,8 +8780,8 @@ function onMouseClick(event) {
         checkAndTriggerFalling(blocks);
         setTimeout(() => {
             checkAndTriggerFalling(blocks);
-        }, 400);
-    }, 200);
+        }, 250);
+    }, 100);
 
     // Update button states after move
     if (typeof updateUndoButtonState === 'function') {
@@ -8786,6 +9115,63 @@ function tickThermalBlasts() {
         thermalAnimationRunning = false;
     }
 }
+// ==========================================
+// CINEMATIC DETONATION SLOW-MOTION ENGINE
+// ==========================================
+let slowMotionTimeoutId = null;
+let slowMotionRampInterval = null;
+window.detonationTimeScale = 1.0;
+window.detonationSlowMotionActive = false;
+
+/**
+ * Trigger cinematic slow motion during explosion / detonation block removals.
+ * Slows time down to 0.32x speed during the block disintegration moment,
+ * then smoothly ramps back to 1.0x so gravity & falling physics settle normally.
+ */
+export function triggerDetonationSlowMotion(durationMs = 850) {
+    window.detonationSlowMotionActive = true;
+    window.detonationTimeScale = 0.32; // 32% bullet-time speed for dramatic cinematic feel
+
+    if (slowMotionTimeoutId) clearTimeout(slowMotionTimeoutId);
+    if (slowMotionRampInterval) clearInterval(slowMotionRampInterval);
+
+    // Keep rendering active throughout slow-motion window
+    if (typeof markNeedsRender === 'function') {
+        markNeedsRender(durationMs + 350);
+    }
+
+    // Camera cinematic micro-rumble
+    if (typeof window.shakeCamera === 'function') {
+        window.shakeCamera(0.08, Math.min(650, durationMs * 0.75));
+    }
+
+    // Hold slow motion for the duration of the block removals, then smoothly ramp back to 1.0x
+    slowMotionTimeoutId = setTimeout(() => {
+        const rampStartTime = performance.now();
+        const rampDuration = 180; // 180ms smooth cubic ramp
+        const startScale = window.detonationTimeScale;
+
+        slowMotionRampInterval = setInterval(() => {
+            const elapsed = performance.now() - rampStartTime;
+            const t = Math.min(1.0, elapsed / rampDuration);
+            // Smooth step (3t^2 - 2t^3)
+            const easedT = t * t * (3 - 2 * t);
+            window.detonationTimeScale = startScale + (1.0 - startScale) * easedT;
+
+            if (typeof markNeedsRender === 'function') {
+                markNeedsRender(100);
+            }
+
+            if (t >= 1.0) {
+                clearInterval(slowMotionRampInterval);
+                slowMotionRampInterval = null;
+                window.detonationTimeScale = 1.0;
+                window.detonationSlowMotionActive = false;
+            }
+        }, 16);
+    }, durationMs);
+}
+window.triggerDetonationSlowMotion = triggerDetonationSlowMotion;
 
 /**
  * Trigger explosion aftermath with independent concurrent blast processing.
@@ -8953,11 +9339,12 @@ function checkAndTriggerFalling(blocks, force = false) {
     // 1. Seed groundSupported with all blocks directly resting on the ground base plate (yOffset <= 0.05)
     for (const b of activeBlocks) {
         if (b.yOffset <= 0.05) {
+            groundSupported.add(b);
             if (b.isTranslucent || b.isLocked) {
                 const cluster = getTranslucentCluster(b, activeBlocks);
-                cluster.forEach(m => groundSupported.add(m));
-            } else {
-                groundSupported.add(b);
+                if (cluster.length >= 3) {
+                    cluster.forEach(m => groundSupported.add(m));
+                }
             }
         }
     }
@@ -8969,7 +9356,9 @@ function checkAndTriggerFalling(blocks, force = false) {
         for (const b of activeBlocks) {
             if (groundSupported.has(b)) continue;
 
-            const cluster = (b.isTranslucent || b.isLocked) ? getTranslucentCluster(b, activeBlocks) : [b];
+            const rawCluster = (b.isTranslucent || b.isLocked) ? getTranslucentCluster(b, activeBlocks) : [b];
+            const isWelded = rawCluster.length >= 3;
+            const cluster = isWelded ? rawCluster : [b];
             let clusterHasSupport = false;
 
             for (const member of cluster) {
@@ -9173,14 +9562,14 @@ function startBlockFallingToTarget(block, targetYOffset) {
     const startTime = performance.now();
     const fallDistance = startY - targetYOffset;
 
-    // Task 1.2: Detect high-impact falls (distance > 2.0 units) at Level 10+
-    const isCrushingFall = (currentLevel >= 10) && (fallDistance > 2.0);
+    // High-impact / explosion fall: blasted if falling 2 or more layers (distance >= 1.95 units)
+    const isBlastedFall = (fallDistance >= 1.95);
 
-    // Fast slam: higher effective gravity and tighter caps, with acceleration curve.
-    const SUPPORT_FALL_EFFECTIVE_G = 85;
-    const SUPPORT_FALL_MIN_MS = 80;
-    const SUPPORT_FALL_MAX_MS = 450;
-    const fallDuration = Math.min(
+    // Balanced physical gravity slam with natural acceleration curve
+    const SUPPORT_FALL_EFFECTIVE_G = 135; // Balanced gravity speed
+    const SUPPORT_FALL_MIN_MS = 75;
+    const SUPPORT_FALL_MAX_MS = 280;
+    const baseDuration = Math.min(
         SUPPORT_FALL_MAX_MS,
         Math.max(
             SUPPORT_FALL_MIN_MS,
@@ -9188,9 +9577,17 @@ function startBlockFallingToTarget(block, targetYOffset) {
         )
     );
 
-    if (typeof markNeedsRender === 'function') markNeedsRender(fallDuration + 500);
+    // Check if falling occurred during a blast / detonation slow-motion scenario
+    const isBlastScenario = !!window.detonationSlowMotionActive;
+
+    if (typeof markNeedsRender === 'function') {
+        markNeedsRender(isBlastScenario ? 1400 : (baseDuration + 500));
+    }
 
     let fallAnimationId = null;
+    let virtualElapsed = 0;
+    let lastFrameTime = performance.now();
+
     const animateFall = () => {
         if (block.isRemoved || !blocks.includes(block) || isGeneratingLevel) {
             if (fallAnimationId !== null) cancelAnimationFrame(fallAnimationId);
@@ -9200,9 +9597,18 @@ function startBlockFallingToTarget(block, targetYOffset) {
             return;
         }
 
-        const elapsed = performance.now() - startTime;
-        const progress = Math.min(elapsed / fallDuration, 1);
-        const eased = progress * progress; // accelerating downward
+        const currentFrameTime = performance.now();
+        const dt = Math.min(50, currentFrameTime - lastFrameTime);
+        lastFrameTime = currentFrameTime;
+
+        // Apply slow-motion time dilation multiplier if in blast scenario or slow-mo active
+        const currentTimeScale = (window.detonationSlowMotionActive || isBlastScenario)
+            ? (window.detonationTimeScale !== undefined ? window.detonationTimeScale : 0.32)
+            : 1.0;
+
+        virtualElapsed += dt * currentTimeScale;
+        const progress = Math.min(virtualElapsed / baseDuration, 1);
+        const eased = progress * progress; // accelerating downward with bullet-time physics
 
         block.yOffset = startY + (targetYOffset - startY) * eased;
         block.updateWorldPosition();
@@ -9238,22 +9644,19 @@ function startBlockFallingToTarget(block, targetYOffset) {
                 }
             }
 
-            // Task: Trace 1.2: Trigger crushing effect only for non-locked blocks
-            if (isCrushingFall && !block.isRemoved && !block.isLocked) {
-                (async () => {
-                    // Task 1.2 Revision: Crush blocks beneath sequentially FIRST
-                    await crushBlocksBelow(block, targetYOffset);
-                    
-                    // Task 1.2 Revision: Then crush the falling block itself
-                    if (!block.isRemoved && typeof block.onCrushed === 'function') {
-                        block.onCrushed(window.particleSystem);
-                    }
+            // If the block falls 2 or more layers (fallDistance >= 1.95), blast it upon landing
+            if (isBlastedFall && !block.isRemoved && !block.isLocked) {
+                if (typeof block.onCrushed === 'function') {
+                    block.onCrushed(window.particleSystem);
+                } else if (window.particleSystem) {
+                    block.explodeWithParticles(window.particleSystem, 0, true);
+                } else {
+                    block.remove();
+                }
 
-                    // Task 1.2 Revision: Beefier screen shake for "weight"
-                    if (typeof window.shakeCamera === 'function') {
-                        window.shakeCamera(0.07, 140);
-                    }
-                })();
+                if (typeof window.shakeCamera === 'function') {
+                    window.shakeCamera(0.08, 160);
+                }
             }
         }
     };
@@ -9461,7 +9864,7 @@ renderer.domElement.addEventListener('touchmove', (event) => {
                 if (typeof window !== 'undefined') window.framingOffsetY = framingOffsetY;
                 updateCameraPosition(); // apply immediately; light/shadow updates are gated elsewhere
                 try {
-                    localStorage.setItem('jarrows_framing_v2', framingOffsetY.toString());
+                    localStorage.setItem('jarrows_framing_v3', framingOffsetY.toString());
                 } catch {
                     // ignore
                 }
@@ -9658,8 +10061,10 @@ function onTouchEnd(event) {
     // Prevent locked/translucent blocks from being moved or detonated - shake the entire tower with radial falloff
     if (block.isLocked || block.isTranslucent) {
         triggerRadialTowerShake(block, blocks, 0.28, 380);
-        if (typeof playSound === 'function') {
-            playSound('tap', 0.8).catch(() => {});
+        if (typeof block.onBlockedTap === 'function') {
+            block.onBlockedTap(block.direction);
+        } else if (typeof playSound === 'function') {
+            playSound('syntheticLockedThud', 0.5).catch(() => {});
         }
         showLockTimeRemaining(block);
         return; // Block intercepts tap but doesn't move
@@ -9676,6 +10081,35 @@ function onTouchEnd(event) {
         }
         block.detonate();
         updateUndoButtonState();
+        return;
+    }
+
+    // Check if the block is blocked by adjacent obstacles
+    const moveStatus = typeof block.canMove === 'function' ? block.canMove(blocks) : 'ok';
+    if (moveStatus === 'blocked') {
+        if (typeof block.onBlockedTap === 'function') {
+            block.onBlockedTap(block.direction);
+        }
+
+        // Apply collision penalty: lock this block and all colliding obstacles in front
+        const remTime = (isTimeBasedMode() && typeof timeLeftSec === 'number') ? timeLeftSec : null;
+        if (!block.isLocked && !block.isFalling && !block.isRemoved) {
+            block.lockBlock(currentLevel, remTime);
+        }
+
+        const directBlockers = typeof block.findAllDirectBlockers === 'function'
+            ? block.findAllDirectBlockers(blocks)
+            : (typeof block.findDirectBlocker === 'function' ? [block.findDirectBlocker(blocks)].filter(Boolean) : []);
+
+        for (const blocker of directBlockers) {
+            if (blocker && !blocker.isLocked && !blocker.isFalling && !blocker.isRemoved && !blocker.isExploding) {
+                blocker.lockBlock(currentLevel, remTime);
+            }
+        }
+
+        if (typeof updateWeldedTranslucentClusters === 'function') {
+            updateWeldedTranslucentClusters(blocks);
+        }
         return;
     }
 
@@ -9707,7 +10141,7 @@ function onTouchEnd(event) {
     // Check if this block is part of a translucent welded cluster
     if (block.isTranslucent) {
         const cluster = getTranslucentCluster(block, blocks);
-        if (cluster.length > 1) {
+        if (cluster.length >= 3) {
             moveTranslucentCluster(cluster, block.direction, blocks, gridSize);
             updateSupportGrid();
             setTimeout(() => checkAndTriggerFalling(blocks), 100);
@@ -9717,7 +10151,7 @@ function onTouchEnd(event) {
     }
 
     // Store if this block will fall
-    const willFall = block.canMove(blocks) === 'fall';
+    const willFall = moveStatus === 'fall';
 
     block.move(blocks, gridSize);
     updateSupportGrid();
@@ -9753,8 +10187,8 @@ function onTouchEnd(event) {
         checkAndTriggerFalling(blocks);
         setTimeout(() => {
             checkAndTriggerFalling(blocks);
-        }, 400);
-    }, 200);
+        }, 250);
+    }, 100);
 
     // Update button states after move
     updateUndoButtonState();
@@ -9938,13 +10372,76 @@ if (typeof window !== 'undefined') {
     window.applyQualityPreset = applyQualityPreset;
 }
 
-// Apply saved preset once lights exist (ensures shadow-quality overrides can take effect)
+// Option 3: Dynamic Shadow Map Bypass Toggle
+let shadowsEnabled = (() => {
+    try {
+        const saved = localStorage.getItem('jarrows_shadows');
+        return saved !== null ? saved === 'true' : true;
+    } catch {
+        return true;
+    }
+})();
+
+export function toggleShadows(enabled = null) {
+    shadowsEnabled = enabled !== null ? !!enabled : !shadowsEnabled;
+    try {
+        localStorage.setItem('jarrows_shadows', shadowsEnabled ? 'true' : 'false');
+    } catch(e) {}
+    setShadowsEnabled(scene, lights, renderer, shadowsEnabled);
+    markNeedsRender(600);
+    return shadowsEnabled;
+}
+
+if (typeof window !== 'undefined') {
+    window.toggleShadows = toggleShadows;
+    window.isShadowsEnabled = () => shadowsEnabled;
+}
+
+// Option 2: Hardware Battery Status API Auto-Switch
+async function initBatteryAutoSaver() {
+    if (typeof navigator !== 'undefined' && typeof navigator.getBattery === 'function') {
+        try {
+            const battery = await navigator.getBattery();
+            const checkBattery = () => {
+                if (!battery.charging && battery.level <= 0.20) {
+                    if (qualityPreset !== 'battery') {
+                        console.log(`[BatterySaver] ⚡ Auto-activating Battery Saver Mode (Level: ${Math.round(battery.level * 100)}%)`);
+                        applyQualityPreset('battery');
+                        if (typeof window.showToast === 'function') {
+                            window.showToast(`⚡ Battery low (${Math.round(battery.level * 100)}%) — Battery Saver activated`);
+                        }
+                    }
+                }
+            };
+            battery.addEventListener('levelchange', checkBattery);
+            battery.addEventListener('chargingchange', checkBattery);
+            checkBattery();
+        } catch (e) {}
+    }
+}
+initBatteryAutoSaver();
+
+// Wake-up event hooks for 0 FPS sleep (Option 1)
+if (typeof window !== 'undefined') {
+    window.addEventListener('pointerdown', () => markNeedsRender(1000), { passive: true });
+    window.addEventListener('pointermove', (e) => {
+        if (e.buttons > 0) markNeedsRender(500);
+    }, { passive: true });
+    window.addEventListener('touchstart', () => markNeedsRender(1000), { passive: true });
+    window.addEventListener('touchmove', () => markNeedsRender(500), { passive: true });
+    window.addEventListener('wheel', () => markNeedsRender(800), { passive: true });
+    window.addEventListener('keydown', () => markNeedsRender(800), { passive: true });
+    window.addEventListener('resize', () => markNeedsRender(1000), { passive: true });
+}
+
+// Apply saved preset and shadows once lights exist
 applyQualityPreset(qualityPreset);
-
-
+if (!shadowsEnabled) {
+    setShadowsEnabled(scene, lights, renderer, false);
+}
 
 function scheduleNextFrame() {
-    if (isPaused) return;
+    if (isPaused || isRenderSleeping) return;
     if (isIOS) {
         if (frameCapTimeoutId !== null) return;
         frameCapTimeoutId = window.setTimeout(() => {
@@ -9957,8 +10454,6 @@ function scheduleNextFrame() {
 }
 
 function animate() {
-    scheduleNextFrame();
-
     // Defensive check to recover from 0-size canvas when loading in background/mobile emulation
     if (renderer.domElement.width === 0 || renderer.domElement.height === 0) {
         resizeRenderer();
@@ -9966,6 +10461,7 @@ function animate() {
 
     const currentTime = performance.now();
     if (!isIOS && (currentTime - lastFrameTick) < (nextFrameDelayMs - 0.5)) {
+        scheduleNextFrame();
         return;
     }
     lastFrameTick = currentTime;
@@ -10008,8 +10504,13 @@ function animate() {
     }
 
     const isInFinalCountdown = isTimeBasedMode() && timeChallengeActive && !timeUpShown && timeLeftSec > 0 && timeLeftSec <= 30;
-    if (isInFinalCountdown) updatePulsingFinishAnimation(timeLeftSec, deltaTime);
-    else resetPulsingFinishAnimation();
+    if (isInFinalCountdown) {
+        updatePulsingFinishAnimation(timeLeftSec, deltaTime);
+        updateKineticCountdownCallout(timeLeftSec);
+    } else {
+        resetPulsingFinishAnimation();
+        updateKineticCountdownCallout(0);
+    }
 
     if (isInFinalCountdown && countdownTimerPlane) {
         const bounceScale = updateCountdownBounce(timeLeftSec);
@@ -10198,8 +10699,7 @@ function animate() {
                 const fov = camera.fov * (Math.PI / 180), aspect = camera.aspect;
                 const padding = isMobileLike ? ZOOM_PADDING_MOBILE : ZOOM_PADDING;
                 const hDist = (effectiveHeight + padding * 2) / (2 * Math.tan(fov / 2));
-                // Relax horizontal distance constraint so camera focuses tightly on the tower
-                const wDist = ((effectiveWidth + padding * 2) / (2 * Math.tan(fov / 2) * aspect)) * 0.82;
+                const wDist = ((effectiveWidth + padding * 2) / (2 * Math.tan(fov / 2) * aspect)) * 0.90;
                 const isDesktopHighLevel = !isMobileLike && currentLevel >= DESKTOP_FULL_TOWER_VISIBILITY_LEVEL;
                 const verticalFitDist = isDesktopHighLevel ? (hDist * DESKTOP_HIGH_LEVEL_VERTICAL_FIT_MULTIPLIER) : hDist;
                 const multiplier = isMobileLike ? AUTO_ZOOM_MULTIPLIER_MOBILE : AUTO_ZOOM_MULTIPLIER_DESKTOP;
@@ -10411,9 +10911,7 @@ function animate() {
         })();
     }
 
-    // 12. Render (Wake-on-Demand Invalidation Guard)
-    updateSignLights(blocks, camera, scene);
-
+    // 12. Render (Wake-on-Demand Invalidation Guard & 0 FPS Sleep)
     const shouldRender = isActiveFrame || (settleFramesRemaining > 0) || (qualityPreset === 'performance');
 
     if (shouldRender) {
@@ -10421,6 +10919,10 @@ function animate() {
             settleFramesRemaining--;
         }
         renderer.render(scene, camera);
+        scheduleNextFrame();
+    } else {
+        // Complete 0 FPS Dirty-Frame sleep (Option 1)
+        isRenderSleeping = true;
     }
 
 

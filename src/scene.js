@@ -66,45 +66,50 @@ export function createLights(scene) {
         }
     })();
 
-    // Exact user light controls setup
+    // =========================================================================
+    // CINEMATIC ASYMMETRICAL 3D STUDIO LIGHTING (v7.0)
+    // Asymmetrical Key/Fill ratio (3.5 : 1) for rich chiaroscuro depth,
+    // distinct sunny vs shaded faces, and crisp volumetric cast shadows.
+    // =========================================================================
     
-    // New Default Light Controls setup (from user tuning)
-    
-    // Ambient Light: Intensity 0.53, Color #FFFFFF
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.53);
+    // 1. Ambient Floor Light: Very soft cool ambient (0.20 intensity) preserving deep shadows
+    const ambientLight = new THREE.AmbientLight(0xd0dcfa, 0.20);
     scene.add(ambientLight);
     
-    // Key Light: Intensity 2.70, Color #FFFFFF, Position (22.5, 26.0, 19.5)
-    const keyLight = new THREE.DirectionalLight(0xffffff, 2.70);
-    keyLight.position.set(22.5, 26.0, 19.5);
+    // 2. Key Light: Dominant warm sunlight & primary shadow caster (1.25 intensity)
+    // Asymmetrical angle (28.0, 36.0, 10.0) produces clear distinction between lit face & shadow face
+    const keyLight = new THREE.DirectionalLight(0xfffaf0, 1.25);
+    keyLight.position.set(28.0, 36.0, 10.0);
     keyLight.castShadow = true;
     
-    // Shadow camera bounds
-    keyLight.shadow.camera.left = -20;
-    keyLight.shadow.camera.right = 20;
-    keyLight.shadow.camera.top = 28;
-    keyLight.shadow.camera.bottom = -28;
+    // Shadow camera bounds tailored for the whole tower
+    keyLight.shadow.camera.left = -24;
+    keyLight.shadow.camera.right = 24;
+    keyLight.shadow.camera.top = 34;
+    keyLight.shadow.camera.bottom = -34;
     keyLight.shadow.camera.near = 1.0;
-    keyLight.shadow.camera.far = isIOS ? 90.0 : 80.0;
+    keyLight.shadow.camera.far = isIOS ? 95.0 : 90.0;
     keyLight.shadow.camera.position.set(0, 26.0, 0);
     keyLight.shadow.camera.lookAt(0, 0, 0);
 
-    const shadowSize = isIOS ? 1024 : 2048; // Mobile gets 1024 for battery efficiency & thermals
+    const shadowSize = isIOS ? 1024 : 2048;
     keyLight.shadow.mapSize.width = shadowSize;
     keyLight.shadow.mapSize.height = shadowSize;
     keyLight.shadow.bias = -0.00015;
-    keyLight.shadow.radius = 6.0; // Soft penumbra shadow edges
+    keyLight.shadow.radius = 3.0; // Sharp, clear cinematic shadow penumbra
     keyLight.shadow.normalBias = 0.025;
     scene.add(keyLight);
     
-    // Fill Light: Intensity 1.57, Color #B0B4D8, Position (-5.5, 8.5, -4.0)
-    const fillLight = new THREE.DirectionalLight(0xB0B4D8, 1.57);
-    fillLight.position.set(-5.5, 8.5, -4.0);
+    // 3. Fill Light: Soft cool blue sky fill (-25.0, 20.0, -18.0)
+    // Keeps shadow side cleanly legible (0.35 intensity) without washing out the shadows
+    const fillLight = new THREE.DirectionalLight(0xb8ceff, 0.35);
+    fillLight.position.set(-25.0, 20.0, -18.0);
     scene.add(fillLight);
 
-    // Rim Light: Intensity 2.00, Color #DBE6FF, Position (-10.0, 30.0, -25.0)
-    const rimLight = new THREE.DirectionalLight(0xDBE6FF, 2.00);
-    rimLight.position.set(-10.0, 30.0, -25.0);
+    // 4. Rim / Accent Light: Delicate glancing edge sheen (-15.0, 30.0, 25.0)
+    // Catches block bevels on the shadowed side for 3D separation (0.25 intensity)
+    const rimLight = new THREE.DirectionalLight(0xd8e8ff, 0.25);
+    rimLight.position.set(-15.0, 30.0, 25.0);
     scene.add(rimLight);
     
     return { 
@@ -116,17 +121,35 @@ export function createLights(scene) {
 }
 
 /**
+ * Enable or disable real-time dynamic directional shadows (Option 3)
+ * @param {THREE.Scene} scene 
+ * @param {object} lights 
+ * @param {THREE.WebGLRenderer} renderer 
+ * @param {boolean} enabled 
+ */
+export function setShadowsEnabled(scene, lights, renderer, enabled = true) {
+    if (!lights || !renderer) return;
+    if (lights.keyLight) {
+        lights.keyLight.castShadow = !!enabled;
+    }
+    renderer.shadowMap.enabled = !!enabled;
+    if (renderer.shadowMap.enabled) {
+        renderer.shadowMap.needsUpdate = true;
+    }
+}
+
+/**
  * Professional Lighting Presets - Optimized for depth and subtle, dramatic shadows
  * These presets DO NOT modify background or fog, only lights.
  */
 export const LIGHT_PRESETS = {
     'default': {
-        name: 'Default Studio Settings',
-        ambient: { color: 0xffffff, intensity: 0.53 },
-        key: { color: 0xffffff, intensity: 2.70, pos: [22.5, 26.0, 19.5] },
-        fill: { color: 0xB0B4D8, intensity: 1.57, pos: [-5.5, 8.5, -4.0] },
-        rim: { color: 0xDBE6FF, intensity: 2.00, pos: [-10.0, 30.0, -25.0] },
-        shadowRadius: 6.0
+        name: 'Default Cinematic Studio',
+        ambient: { color: 0xd0dcfa, intensity: 0.20 },
+        key: { color: 0xfffaf0, intensity: 1.25, pos: [28.0, 36.0, 10.0] },
+        fill: { color: 0xb8ceff, intensity: 0.35, pos: [-25.0, 20.0, -18.0] },
+        rim: { color: 0xd8e8ff, intensity: 0.25, pos: [-15.0, 30.0, 25.0] },
+        shadowRadius: 3.0
     },
     'desert-dawn': {
         name: 'Desert Dawn',
@@ -201,21 +224,33 @@ export function applyLightPreset(scene, lights, presetId, instant = false) {
     const preset = LIGHT_PRESETS[presetId] || LIGHT_PRESETS['default'];
     
     // 1. Update Lights
-    if (lights.ambientLight) {
+    if (lights.ambientLight && preset.ambient) {
         lights.ambientLight.color.setHex(preset.ambient.color);
         lights.ambientLight.intensity = preset.ambient.intensity;
     }
     
-    if (lights.keyLight) {
+    if (lights.keyLight && preset.key) {
         lights.keyLight.color.setHex(preset.key.color);
         lights.keyLight.intensity = preset.key.intensity;
         lights.keyLight.position.set(...preset.key.pos);
     }
     
-    if (lights.fillLight) {
+    if (lights.fillLight && preset.fill) {
         lights.fillLight.color.setHex(preset.fill.color);
         lights.fillLight.intensity = preset.fill.intensity;
         lights.fillLight.position.set(...preset.fill.pos);
+    }
+
+    if (lights.lateralLight && preset.lateral) {
+        lights.lateralLight.color.setHex(preset.lateral.color);
+        lights.lateralLight.intensity = preset.lateral.intensity;
+        lights.lateralLight.position.set(...preset.lateral.pos);
+    }
+
+    if (lights.rimLight && preset.rim) {
+        lights.rimLight.color.setHex(preset.rim.color);
+        lights.rimLight.intensity = preset.rim.intensity;
+        lights.rimLight.position.set(...preset.rim.pos);
     }
     
     return preset.name;
@@ -591,9 +626,18 @@ export function setupPulsingMaterial(material, options = {}) {
                 #include <emissivemap_fragment>
                 // __PULSE_BOMB_HOOK__
                 {
-                    float t = uTime + uPulseOffset;
-                    float breath = sin(t * 3.0) * 0.7 + sin(t * 7.0) * 0.3;
-                    float pulseFactor = 0.33 + (breath + 1.0) * 0.5;
+                    // High-visibility hazard strobe flash cadence
+                    float t = uTime * 2.8 + uPulseOffset * 2.0;
+                    float cycle = fract(t * 0.45); // cycle repeats every ~0.8s
+                    
+                    // Double-burst strobe flash
+                    float flash1 = smoothstep(0.0, 0.03, cycle) * (1.0 - smoothstep(0.06, 0.12, cycle));
+                    float flash2 = smoothstep(0.15, 0.18, cycle) * (1.0 - smoothstep(0.21, 0.28, cycle));
+                    float strobe = max(flash1, flash2);
+                    
+                    // Resting baseline glow + intense flashing spike
+                    float baseGlow = 0.25;
+                    float pulseFactor = baseGlow + strobe * 3.2;
                     totalEmissiveRadiance *= pulseFactor;
 
                     // Extinguish emissive glow when ashed/locked by ANY active blast
@@ -666,9 +710,12 @@ export function setupGlowQuadMaterial(material, options = {}) {
         shader.vertexShader = shader.vertexShader.replace(
             '#include <begin_vertex>',
             `
-            float t = uTime + uPulseOffset;
-            float breath = sin(t * 3.0) * 0.7 + sin(t * 7.0) * 0.3;
-            float scaleFactor = 1.0 + breath * 0.25;
+            float t = uTime * 2.8 + uPulseOffset * 2.0;
+            float cycle = fract(t * 0.45);
+            float flash1 = smoothstep(0.0, 0.03, cycle) * (1.0 - smoothstep(0.06, 0.12, cycle));
+            float flash2 = smoothstep(0.15, 0.18, cycle) * (1.0 - smoothstep(0.21, 0.28, cycle));
+            float strobe = max(flash1, flash2);
+            float scaleFactor = 1.0 + strobe * 0.55;
             vec3 transformed = vec3( position.xy * scaleFactor, position.z );
             `
         );
@@ -689,9 +736,13 @@ export function setupGlowQuadMaterial(material, options = {}) {
             '#include <color_fragment>',
             `
             #include <color_fragment>
-            float t = uTime + uPulseOffset;
-            float breath = sin(t * 3.0) * 0.7 + sin(t * 7.0) * 0.3;
-            diffuseColor.a *= (0.7 + (breath + 1.0) * 0.25);
+            float t = uTime * 2.8 + uPulseOffset * 2.0;
+            float cycle = fract(t * 0.45);
+            float flash1 = smoothstep(0.0, 0.03, cycle) * (1.0 - smoothstep(0.06, 0.12, cycle));
+            float flash2 = smoothstep(0.15, 0.18, cycle) * (1.0 - smoothstep(0.21, 0.28, cycle));
+            float strobe = max(flash1, flash2);
+            diffuseColor.a *= (0.2 + strobe * 0.95);
+            diffuseColor.rgb *= (1.0 + strobe * 2.5);
 
             // Extinguish halo aura completely when covered in ash by ANY active blast
             float maxAshFactor = 0.0;

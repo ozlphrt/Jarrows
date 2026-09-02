@@ -274,8 +274,117 @@ const syntheticSounds = {
         whiteNoise.start(now);
         whiteNoise.stop(now + duration);
         return whiteNoise;
+    },
+
+    /**
+     * "Locked Thud": Crisp, punchy tactile mechanical resistance clack when attempting to move a blocked/locked block.
+     */
+    'syntheticLockedThud': (ctx, destination, volume = 0.35) => {
+        const now = ctx.currentTime;
+        const duration = 0.09;
+        const baseVol = volume * 0.28;
+
+        // Layer 1: Resonant plastic body thud
+        const bodyOsc = ctx.createOscillator();
+        const bodyGain = ctx.createGain();
+        const bodyFilter = ctx.createBiquadFilter();
+
+        bodyFilter.type = 'lowpass';
+        bodyFilter.frequency.setValueAtTime(450, now);
+        bodyFilter.frequency.exponentialRampToValueAtTime(120, now + duration);
+
+        bodyOsc.type = 'triangle';
+        bodyOsc.frequency.setValueAtTime(160, now);
+        bodyOsc.frequency.exponentialRampToValueAtTime(45, now + duration);
+
+        bodyGain.gain.setValueAtTime(0, now);
+        bodyGain.gain.linearRampToValueAtTime(baseVol, now + 0.005);
+        bodyGain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+
+        bodyOsc.connect(bodyFilter);
+        bodyFilter.connect(bodyGain);
+        bodyGain.connect(destination);
+
+        // Layer 2: Tight high-frequency latch resistance click
+        const clickOsc = ctx.createOscillator();
+        const clickGain = ctx.createGain();
+
+        clickOsc.type = 'sine';
+        clickOsc.frequency.setValueAtTime(950, now);
+        clickOsc.frequency.exponentialRampToValueAtTime(320, now + 0.03);
+
+        clickGain.gain.setValueAtTime(0, now);
+        clickGain.gain.linearRampToValueAtTime(baseVol * 0.5, now + 0.002);
+        clickGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.035);
+
+        clickOsc.connect(clickGain);
+        clickGain.connect(destination);
+
+        bodyOsc.start(now);
+        bodyOsc.stop(now + duration);
+        clickOsc.start(now);
+        clickOsc.stop(now + 0.035);
+
+        return bodyOsc;
     }
 };
+
+// Inactivity suspension timer to save battery & CPU audio threads (Option 4)
+const AUDIO_IDLE_SLEEP_MS = 45000;
+let _audioIdleTimer = null;
+
+function resetAudioIdleTimer() {
+    if (_audioIdleTimer) {
+        clearTimeout(_audioIdleTimer);
+    }
+    _audioIdleTimer = setTimeout(async () => {
+        if (audioContext && audioContext.state === 'running') {
+            try {
+                await audioContext.suspend();
+                // AudioContext suspended for battery savings
+            } catch (e) {}
+        }
+    }, AUDIO_IDLE_SLEEP_MS);
+}
+
+// Resume AudioContext if suspended or interrupted (e.g. returning from another app or background tab)
+async function resumeAudioContext() {
+    if (!audioEnabled) return;
+    if (!audioContext) {
+        initAudioContext();
+    }
+    resetAudioIdleTimer();
+    if (audioContext && (audioContext.state === 'suspended' || audioContext.state === 'interrupted')) {
+        try {
+            await audioContext.resume();
+        } catch (e) {
+            // Silently retry on next interaction
+        }
+    }
+}
+
+// Global lifecycle event listeners to ensure audio is always ON and immediately available when playing
+if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+            resumeAudioContext();
+        } else if (audioContext && audioContext.state === 'running') {
+            try { audioContext.suspend(); } catch(e) {}
+        }
+    });
+    window.addEventListener('focus', resumeAudioContext);
+    window.addEventListener('pageshow', resumeAudioContext);
+    // Pre-warm / unlock on first user gesture
+    const unlockHandler = () => {
+        resumeAudioContext();
+        window.removeEventListener('pointerdown', unlockHandler);
+        window.removeEventListener('touchstart', unlockHandler);
+        window.removeEventListener('keydown', unlockHandler);
+    };
+    window.addEventListener('pointerdown', unlockHandler, { passive: true });
+    window.addEventListener('touchstart', unlockHandler, { passive: true });
+    window.addEventListener('keydown', unlockHandler, { passive: true });
+}
 
 // Initialize audio context (required for playing sounds in modern browsers)
 // Deferred until first user interaction to avoid autoplay policy warnings
@@ -316,32 +425,8 @@ async function loadSound(name, path) {
 async function playSound(name, volume = 0.5) {
     if (!audioEnabled) return null;
 
-    // Initialize AudioContext on first user interaction
-    if (!audioContext) {
-        if (!initAudioContext()) {
-            return null; // Audio not supported
-        }
-        // Decode all pending sound buffers
-        for (const [soundName, arrayBuffer] of Object.entries(soundBuffers)) {
-            if (!sounds[soundName]) {
-                try {
-                    sounds[soundName] = await audioContext.decodeAudioData(arrayBuffer);
-                } catch (e) {
-                    // Skip if decode fails
-                }
-            }
-        }
-    }
-
-    // Resume audio context if suspended (required for autoplay policy)
-    if (audioContext.state === 'suspended') {
-        try {
-            await audioContext.resume();
-        } catch (e) {
-            // Silently fail - will retry next time
-            return null;
-        }
-    }
+    // Ensure AudioContext is ready and active
+    await resumeAudioContext();
 
     // Debounce check: Prevent playing the same sound multiple times within debounce threshold
     const now = Date.now();

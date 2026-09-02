@@ -86,6 +86,152 @@ function getOrCreateScorchTexture() {
     return texture;
 }
 
+export function asThreeColor(val, fallbackHex = 0xffffff) {
+    if (val instanceof THREE.Color) return val.clone();
+    if (val && typeof val === 'object') {
+        if (typeof val.r === 'number' && typeof val.g === 'number' && typeof val.b === 'number') {
+            return new THREE.Color(val.r, val.g, val.b);
+        }
+        if (typeof val.clone === 'function') {
+            try {
+                const res = val.clone();
+                if (res instanceof THREE.Color) return res;
+            } catch (_) {}
+        }
+    }
+    if (typeof val === 'number' || typeof val === 'string') {
+        try {
+            return new THREE.Color(val);
+        } catch (_) {}
+    }
+    return new THREE.Color(fallbackHex);
+}
+
+export const DEFAULT_FROSTY_CONFIG = {
+    blockColor: '#cbd4d8',
+    blockEmissive: '#309ccf',
+    blockEmissiveIntensity: 0.38,
+    blockOpacity: 1.0,
+    blockRoughness: 1.0,
+    blockMetalness: 0.62,
+    indicatorColor: '#d9f0fc',
+    indicatorEmissive: '#38bdf8',
+    indicatorEmissiveIntensity: 0.00,
+    indicatorOpacity: 0.18,
+    indicatorRoughness: 0.59,
+    indicatorMetalness: 0.02,
+    minClusterSize: 3,
+    alphaMapEnabled: true,
+    alphaMapContrast: 0.0
+};
+
+export const FROSTY_CONFIG = { ...DEFAULT_FROSTY_CONFIG };
+
+export function getFrostyConfig() {
+    return { ...FROSTY_CONFIG };
+}
+
+export function setFrostyConfig(newConfig, allBlocks = null) {
+    if (!newConfig || typeof newConfig !== 'object') return;
+    Object.assign(FROSTY_CONFIG, newConfig);
+
+    if (newConfig.alphaMapContrast !== undefined || newConfig.alphaMapEnabled !== undefined) {
+        regenerateIceAlphaMap();
+    }
+
+    const targetBlocks = allBlocks || (typeof window !== 'undefined' && window.blocks) || [];
+    if (Array.isArray(targetBlocks)) {
+        for (const block of targetBlocks) {
+            if (block && !block.isRemoved && !block.isFalling && !block.isExploding) {
+                if (block._isFrostedClusterState || block.isTranslucent) {
+                    block.setTranslucent(true);
+                }
+            }
+        }
+    }
+
+    if (typeof window !== 'undefined' && typeof window.markNeedsRender === 'function') {
+        window.markNeedsRender(400);
+    }
+}
+
+export function regenerateIceAlphaMap() {
+    if (TextureCache.has('iceAlphaMap')) {
+        const oldTex = TextureCache.get('iceAlphaMap');
+        if (oldTex) oldTex.dispose();
+        TextureCache.delete('iceAlphaMap');
+    }
+    return getOrCreateIceAlphaMap();
+}
+
+/**
+ * Procedural organic ice alpha map for non-uniform natural transparency
+ * (Some sections dense/frosted, other sections clearer/glassy)
+ */
+export function getOrCreateIceAlphaMap() {
+    if (!FROSTY_CONFIG.alphaMapEnabled) return null;
+    if (TextureCache.has('iceAlphaMap')) return TextureCache.get('iceAlphaMap');
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+
+    const contrast = typeof FROSTY_CONFIG.alphaMapContrast === 'number' ? FROSTY_CONFIG.alphaMapContrast : 0.65;
+    const baseVal = Math.round(180 * (1.0 - contrast * 0.3));
+
+    // 1. Base mid-opacity foundation (~70% white)
+    ctx.fillStyle = `rgb(${baseVal},${baseVal},${baseVal})`;
+    ctx.fillRect(0, 0, 512, 512);
+
+    // 2. High-transparency clear crystalline pockets (~35-45% opacity = darker grey)
+    for (let i = 0; i < 18; i++) {
+        const x = Math.random() * 512;
+        const y = Math.random() * 512;
+        const r = 35 + Math.random() * 75;
+        const grad = ctx.createRadialGradient(x, y, 0, x, y, r);
+        grad.addColorStop(0.0, `rgba(65, 65, 65, ${0.75 * contrast + 0.25})`);
+        grad.addColorStop(0.6, `rgba(110, 110, 110, ${0.35 * contrast + 0.15})`);
+        grad.addColorStop(1.0, 'rgba(180, 180, 180, 0.0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // 3. Dense milky frost crystal clusters (~90-98% opacity = bright white)
+    for (let i = 0; i < 22; i++) {
+        const x = Math.random() * 512;
+        const y = Math.random() * 512;
+        const r = 25 + Math.random() * 60;
+        const grad = ctx.createRadialGradient(x, y, 0, x, y, r);
+        grad.addColorStop(0.0, `rgba(255, 255, 255, ${0.85 * contrast + 0.15})`);
+        grad.addColorStop(0.5, `rgba(235, 235, 235, ${0.45 * contrast + 0.10})`);
+        grad.addColorStop(1.0, 'rgba(180, 180, 180, 0.0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // 4. Flowing diagonal ice density bands
+    const bandGrad = ctx.createLinearGradient(0, 0, 512, 512);
+    bandGrad.addColorStop(0.0, 'rgba(255, 255, 255, 0.15)');
+    bandGrad.addColorStop(0.3, 'rgba(50, 50, 50, 0.25)');
+    bandGrad.addColorStop(0.7, 'rgba(255, 255, 255, 0.20)');
+    bandGrad.addColorStop(0.85, 'rgba(80, 80, 80, 0.18)');
+    ctx.fillStyle = bandGrad;
+    ctx.fillRect(0, 0, 512, 512);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(1.5, 1.5);
+    texture.needsUpdate = true;
+    TextureCache.set('iceAlphaMap', texture);
+    return texture;
+}
+
 /**
  * Creates a procedural silky-smooth radial halo texture for emissive indicators.
  */
@@ -394,7 +540,7 @@ export class Block {
 
         // Use Classic palette as default: original natural colors
         const colors = [0xff6b6b, 0x4ecdc4, 0xffc125]; // Red, Teal, Golden Yellow
-        const whiteColor = 0xffffff;
+        const whiteColor = 0xf0f3f8; // Studio matte porcelain off-white (prevents harsh glare blowouts)
 
         // Check global setting for default block color
         const useColored = (typeof window !== 'undefined' && window.useColoredBlocksDefault !== undefined)
@@ -423,23 +569,32 @@ export class Block {
         let blockMaterial;
         if (this.isTranslucent) {
             blockMaterial = new THREE.MeshStandardMaterial({
-                color: 0xa5f3fc,
-                roughness: 0.08,
-                metalness: 0.05,
-                opacity: 0.65,
-                transparent: true,
-                emissive: new THREE.Color(0x38bdf8),
-                emissiveIntensity: 0.15
+                color: FROSTY_CONFIG.blockColor,
+                alphaMap: getOrCreateIceAlphaMap(),
+                roughness: FROSTY_CONFIG.blockRoughness,
+                metalness: FROSTY_CONFIG.blockMetalness,
+                opacity: FROSTY_CONFIG.blockOpacity,
+                transparent: FROSTY_CONFIG.blockOpacity < 1.0 || !!getOrCreateIceAlphaMap(),
+                emissive: new THREE.Color(FROSTY_CONFIG.blockEmissive),
+                emissiveIntensity: FROSTY_CONFIG.blockEmissiveIntensity
             });
         } else {
             blockMaterial = new THREE.MeshStandardMaterial({
                 color: materialColor,
-                roughness: 0.1, // Single standardized value
-                metalness: 0.0, // Single standardized value
+                roughness: 0.36, // Matte satin finish with soft specular sheen
+                metalness: 0.02,
                 opacity: 1.0, 
-                transparent: false 
+                transparent: false,
+                emissive: new THREE.Color(0x000000),
+                emissiveIntensity: 0.0
             });
         }
+        
+        blockMaterial.userData.baseBlockColor = (materialColor instanceof THREE.Color) ? materialColor.clone() : new THREE.Color(materialColor);
+        blockMaterial.userData.originalColor = blockMaterial.userData.baseBlockColor.clone();
+        blockMaterial.userData.originalOpacity = 1.0;
+        blockMaterial.userData.originalEmissive = new THREE.Color(0x000000);
+        blockMaterial.userData.originalEmissiveIntensity = 0.0;
 
         // Apply continuous GPU 3D thermal blast shader hook
         setupThermalMaterial(blockMaterial);
@@ -768,10 +923,6 @@ export class Block {
                 arrowGeometry = new THREE.ExtrudeGeometry(arrowShape, extrudeSettings);
                 arrowMaterial = new THREE.MeshStandardMaterial({
                     color: blockColor,
-                    emissive: blockColor,
-                    emissiveIntensity: 0.3,
-                    roughness: 0.3,
-                    metalness: 0.6,
                     side: THREE.DoubleSide
                 });
 
@@ -797,8 +948,7 @@ export class Block {
                 arrowGeometry = new THREE.ExtrudeGeometry(arrowShape, extrudeSettings);
                 arrowMaterial = new THREE.MeshStandardMaterial({
                     color: blockColor,
-                    roughness: 0.4,
-                    metalness: 0.3
+                    side: THREE.DoubleSide
                 });
 
             } else if (style === 3) {
@@ -1007,25 +1157,18 @@ export class Block {
 
         const topArrow = new THREE.Group();
         const topArrowData = createArrowGeometry(style);
-        setupThermalMaterial(topArrowData.material);
-        const topArrowMesh = new THREE.Mesh(topArrowData.geometry, topArrowData.material);
-
-        // Bomb styling: Add indicator material with emissive luminescence & halo
-        if (this.isBomb) {
-            if (this.bombIndicatorMaterials) this.bombIndicatorMaterials.push(topArrowData.material);
-            
+        if (this.isBomb && !this.isCharred && !this.isTranslucent) {
             const maxColors = [0xff2252, 0x00e5ff, 0xffa000];
             const bombColorHex = maxColors[this.length - 1] || maxColors[0];
-            topArrowData.material.color.setHex(bombColorHex);
             topArrowData.material.emissive = new THREE.Color(bombColorHex);
-            topArrowData.material.emissiveIntensity = this.length === 1 ? 0.70 : 0.55;
-            setupPulsingMaterial(topArrowData.material, { isBomb: true, pulseOffset: this.pulseOffset || 0.0 });
-
-            const halo = this.create3DArrowGlow(bombColorHex, topArrowData.geometry);
-            halo.position.copy(topArrowMesh.position);
-            topArrow.add(halo);
-            if (this.bombGlowSprites) this.bombGlowSprites.push(halo);
+            topArrowData.material.emissiveIntensity = 0.70;
+            setupPulsingMaterial(topArrowData.material, { isBomb: true, pulseOffset: this.pulseOffset });
+        } else {
+            setupThermalMaterial(topArrowData.material);
         }
+        const topArrowMesh = new THREE.Mesh(topArrowData.geometry, topArrowData.material);
+
+
 
         // Store original emissiveIntensity for later color updates
         if (topArrowMesh.material.emissive) {
@@ -1182,7 +1325,15 @@ export class Block {
             color: indicatorColor,
             side: THREE.DoubleSide
         });
-        setupThermalMaterial(dotMaterial);
+        if (this.isBomb && !this.isCharred && !this.isTranslucent) {
+            const maxColors = [0xff2252, 0x00e5ff, 0xffa000];
+            const bombColorHex = maxColors[this.length - 1] || maxColors[0];
+            dotMaterial.emissive = new THREE.Color(bombColorHex);
+            dotMaterial.emissiveIntensity = 0.70;
+            setupPulsingMaterial(dotMaterial, { isBomb: true, pulseOffset: this.pulseOffset });
+        } else {
+            setupThermalMaterial(dotMaterial);
+        }
 
         let dotMesh;
         if (this.isSpinGem) {
@@ -1192,22 +1343,6 @@ export class Block {
             // Battery/perf: receive only (avoid extra shadow casters for tiny details)
             dotMesh.castShadow = false;
             dotMesh.receiveShadow = true;
-        }
-
-        // Bomb styling: Add indicator material with emissive luminescence & halo
-        if (this.isBomb) {
-            if (this.bombIndicatorMaterials) this.bombIndicatorMaterials.push(dotMaterial);
-            
-            const maxColors = [0xff2252, 0x00e5ff, 0xffa000];
-            const bombColorHex = maxColors[this.length - 1] || maxColors[0];
-            dotMaterial.color.setHex(bombColorHex);
-            dotMaterial.emissive = new THREE.Color(bombColorHex);
-            dotMaterial.emissiveIntensity = this.length === 1 ? 0.70 : 0.55;
-            setupPulsingMaterial(dotMaterial, { isBomb: true, pulseOffset: this.pulseOffset || 0.0 });
-
-            const halo = this.create3DDotGlow(bombColorHex);
-            dotMesh.add(halo);
-            if (this.bombGlowSprites) this.bombGlowSprites.push(halo);
         }
 
         // Get Z offset to push indicators away from surface
@@ -1232,7 +1367,15 @@ export class Block {
             color: indicatorColor,
             side: THREE.DoubleSide
         });
-        setupThermalMaterial(circleMaterial);
+        if (this.isBomb && !this.isCharred && !this.isTranslucent) {
+            const maxColors = [0xff2252, 0x00e5ff, 0xffa000];
+            const bombColorHex = maxColors[this.length - 1] || maxColors[0];
+            circleMaterial.emissive = new THREE.Color(bombColorHex);
+            circleMaterial.emissiveIntensity = 0.70;
+            setupPulsingMaterial(circleMaterial, { isBomb: true, pulseOffset: this.pulseOffset });
+        } else {
+            setupThermalMaterial(circleMaterial);
+        }
 
         let circleMesh;
         if (this.isSpinGem) {
@@ -1245,21 +1388,7 @@ export class Block {
             circleMesh.receiveShadow = true;
         }
 
-        // Bomb styling: Add indicator material with emissive luminescence & halo
-        if (this.isBomb) {
-            if (this.bombIndicatorMaterials) this.bombIndicatorMaterials.push(circleMaterial);
-            
-            const maxColors = [0xff2252, 0x00e5ff, 0xffa000];
-            const bombColorHex = maxColors[this.length - 1] || maxColors[0];
-            circleMaterial.color.setHex(bombColorHex);
-            circleMaterial.emissive = new THREE.Color(bombColorHex);
-            circleMaterial.emissiveIntensity = this.length === 1 ? 0.70 : 0.55;
-            setupPulsingMaterial(circleMaterial, { isBomb: true, pulseOffset: this.pulseOffset || 0.0 });
 
-            const halo = this.create3DCircleGlow(bombColorHex);
-            circleMesh.add(halo);
-            if (this.bombGlowSprites) this.bombGlowSprites.push(halo);
-        }
 
         // Apply Z offset to make the circle stand out from the surface
         circleMesh.position.z = zOffset;
@@ -1439,12 +1568,6 @@ export class Block {
      * Applies dark grey tint with smooth color transition
      */
     lockBlock(level, remainingTime = null) {
-        // Task: Bottom layer blocks (yOffset < 0.1) should not become semi-transparent/locked
-        if (this.yOffset < 0.1) {
-            console.log('[Lock] Bottom layer block at', this.gridX, this.gridZ, 'skipping lock');
-            return;
-        }
-
         console.log('[Lock] lockBlock called for block at', this.gridX, this.gridZ, 'isLocked:', this.isLocked, 'isFalling:', this.isFalling, 'isRemoved:', this.isRemoved);
 
         if (this.isLocked || this.isFalling || this.isRemoved) {
@@ -1514,9 +1637,11 @@ export class Block {
                     if (cube.material.userData.originalOpacity === undefined) {
                         cube.material.userData.originalOpacity = cube.material.opacity !== undefined ? cube.material.opacity : 1.0;
                     }
-                    if (cube.material.userData.originalColor === undefined) {
-                        cube.material.userData.originalColor = cube.material.color.clone();
-                    }
+                    const origCol = asThreeColor(
+                        cube.material.userData.baseBlockColor || cube.material.userData.originalColor || cube.material.color || this.originalColor,
+                        0xffffff
+                    );
+                    cube.material.userData.originalColor = origCol.clone();
 
                     // Enable transparency
                     cube.material.transparent = true;
@@ -1542,13 +1667,15 @@ export class Block {
 
             for (const cube of this.cubes) {
                 if (cube.material) {
-                    if (!cube.material.userData.originalColor) {
-                        cube.material.userData.originalColor = cube.material.color.clone();
-                    }
+                    const originalColorObj = asThreeColor(
+                        cube.material.userData.baseBlockColor || cube.material.userData.originalColor || cube.material.color || this.originalColor,
+                        0xffffff
+                    );
+                    cube.material.userData.originalColor = originalColorObj.clone();
 
                     // Store original emissive properties for restoration
                     if (cube.material.userData.originalEmissive === undefined) {
-                        cube.material.userData.originalEmissive = cube.material.emissive ? cube.material.emissive.clone() : new THREE.Color(0x000000);
+                        cube.material.userData.originalEmissive = asThreeColor(cube.material.emissive, 0x000000);
                     }
                     if (cube.material.userData.originalEmissiveIntensity === undefined) {
                         cube.material.userData.originalEmissiveIntensity = cube.material.emissiveIntensity !== undefined ? cube.material.emissiveIntensity : 0.0;
@@ -1560,9 +1687,6 @@ export class Block {
 
                     // Apply tint: mix original block color with length-based tint color
                     // This ensures visible tint even for white blocks
-                    const originalColorObj = cube.material.userData.originalColor.clone();
-
-                    // Check if original color is white (or very close to white) - use stronger tint mix
                     const isWhite = originalColorObj.r > 0.95 && originalColorObj.g > 0.95 && originalColorObj.b > 0.95;
                     const tintMix = isWhite ? 0.50 : 0.35; // Reduced tint mix (50% for white, 35% for colored blocks)
 
@@ -1845,7 +1969,10 @@ export class Block {
         })();
 
         // Recalculate locked state values using same logic as lock (for accurate animation)
-        const originalColorObj = this.cubes[0]?.material?.userData?.originalColor?.clone() ?? new THREE.Color(0xffffff);
+        const originalColorObj = asThreeColor(
+            this.cubes[0]?.material?.userData?.baseBlockColor || this.cubes[0]?.material?.userData?.originalColor || this.cubes[0]?.material?.color || this.originalColor,
+            0xffffff
+        );
         const isWhite = originalColorObj.r > 0.95 && originalColorObj.g > 0.95 && originalColorObj.b > 0.95;
         const tintMix = isWhite ? 0.50 : 0.35; // Match lock logic (reduced tint mix)
         const emissiveIntensity = isIOS ? 0.25 : 0.15; // Match lock logic
@@ -1861,8 +1988,8 @@ export class Block {
         // Get target values (original state)
         const targetState = {
             opacity: this.cubes[0]?.material?.userData?.originalOpacity ?? 1.0,
-            color: this.cubes[0]?.material?.userData?.originalColor?.clone() ?? new THREE.Color(0xffffff),
-            emissive: this.cubes[0]?.material?.userData?.originalEmissive?.clone() ?? new THREE.Color(0x000000),
+            color: originalColorObj.clone(),
+            emissive: asThreeColor(this.cubes[0]?.material?.userData?.originalEmissive, 0x000000),
             emissiveIntensity: this.cubes[0]?.material?.userData?.originalEmissiveIntensity ?? 0.0
         };
 
@@ -1915,11 +2042,12 @@ export class Block {
                     cube.material.transparent = currentOpacity < 1.0;
 
                     // Update color: interpolate from tinted to original
-                    if (cube.material.userData.originalColor) {
-                        const originalColor = cube.material.userData.originalColor.clone();
-                        const tintedColor = originalColor.clone().lerp(tintColorObj, currentTintMix);
-                        cube.material.color.copy(tintedColor).multiplyScalar(currentBrightness);
-                    }
+                    const cubeOrigColor = asThreeColor(
+                        cube.material.userData?.baseBlockColor || cube.material.userData?.originalColor || cube.material.color || this.originalColor,
+                        0xffffff
+                    );
+                    const tintedColor = cubeOrigColor.clone().lerp(tintColorObj, currentTintMix);
+                    cube.material.color.copy(tintedColor).multiplyScalar(currentBrightness);
 
                     // Update emissive: flash uses tint color, then transitions to original
                     if (flashIntensity > 0.01) {
@@ -1953,20 +2081,19 @@ export class Block {
             } else {
                 // Animation complete - ensure final values are exactly correct
                 for (const cube of this.cubes) {
-                    if (cube.material && cube.material.userData.originalOpacity !== undefined) {
-                        const origOpacity = cube.material.userData.originalOpacity;
+                    if (cube.material) {
+                        const origOpacity = cube.material.userData?.originalOpacity !== undefined ? cube.material.userData.originalOpacity : 1.0;
                         cube.material.opacity = origOpacity;
                         cube.material.transparent = origOpacity < 1.0;
-                        if (cube.material.userData.originalColor) {
-                            cube.material.color.copy(cube.material.userData.originalColor);
-                        }
+                        const finalBaseColor = asThreeColor(
+                            cube.material.userData?.baseBlockColor || cube.material.userData?.originalColor || this.originalColor,
+                            0xffffff
+                        );
+                        cube.material.color.copy(finalBaseColor);
                         // Restore original emissive properties
-                        if (cube.material.userData.originalEmissive !== undefined) {
-                            cube.material.emissive.copy(cube.material.userData.originalEmissive);
-                        }
-                        if (cube.material.userData.originalEmissiveIntensity !== undefined) {
-                            cube.material.emissiveIntensity = cube.material.userData.originalEmissiveIntensity;
-                        }
+                        const finalEmissive = asThreeColor(cube.material.userData?.originalEmissive, 0x000000);
+                        cube.material.emissive.copy(finalEmissive);
+                        cube.material.emissiveIntensity = cube.material.userData?.originalEmissiveIntensity !== undefined ? cube.material.userData.originalEmissiveIntensity : 0.0;
                         cube.material.needsUpdate = true;
                     }
                 }
@@ -2411,6 +2538,30 @@ export class Block {
     }
 
     /**
+     * Tactile feedback when player attempts to move a non-moveable / blocked / locked block.
+     * Triggers high-frequency resistance wobble shake, syntheticLockedThud sound, and subtle micro-spark contact flash.
+     */
+    onBlockedTap(pushDir = null) {
+        if (this.isRemoved || this.isExploding) return;
+
+        // Tight, punchy resistance wobble
+        this.shakeViolently(140, 0.22);
+
+        // Crisp mechanical resistance thud
+        if (typeof window.playSound === 'function') {
+            window.playSound('syntheticLockedThud', 0.45);
+        }
+
+        // Subtle micro-spark friction pulse at block position
+        if (window.particleSystem && typeof window.particleSystem.addFireSparks === 'function') {
+            this.group.updateMatrixWorld(true);
+            const pos = new THREE.Vector3();
+            this.group.getWorldPosition(pos);
+            window.particleSystem.addFireSparks(pos, 4);
+        }
+    }
+
+    /**
      * Set charred cooling state and dynamically update arrow/dot/circle indicator colors.
      */
     setCharred(val) {
@@ -2468,17 +2619,23 @@ export class Block {
                 const maxColors = [0xff2252, 0x00e5ff, 0xffa000];
                 targetColorHex = maxColors[this.length - 1] || maxColors[0];
                 targetEmissiveHex = targetColorHex;
-                targetEmissiveIntensity = this.length === 1 ? 0.70 : 0.55;
+                targetEmissiveIntensity = 0.70;
             } else {
                 const colors = [0xff6b6b, 0x4ecdc4, 0xffc125];
                 targetColorHex = colors[this.length - 1] || colors[0];
-                targetEmissiveHex = targetColorHex;
-                targetEmissiveIntensity = 0.3;
+                targetEmissiveHex = 0x000000;
+                targetEmissiveIntensity = 0.0;
             }
 
-            // Apply color & emissive to arrow meshes and hide glowing shells during cooldown
-            const arrowEmissiveHex = this.isCharred ? 0x141414 : targetEmissiveHex;
-            const arrowEmissiveIntensity = this.isCharred ? 0.05 : targetEmissiveIntensity;
+            // Opacity & transparency for indicators:
+            // When cooling (isCharred): 80% translucent (20% opacity = 0.20), transparent = true
+            // When restored: opaque (100% opacity = 1.0), transparent = false
+            const targetOpacity = this.isCharred ? 0.20 : 1.0;
+            const targetTransparent = this.isCharred ? true : false;
+
+            // Apply color & emissive to arrow meshes
+            const arrowEmissiveHex = (this.isBomb && !this.isCharred) ? targetEmissiveHex : 0x000000;
+            const arrowEmissiveIntensity = (this.isBomb && !this.isCharred) ? targetEmissiveIntensity : (this.isCharred ? 0.05 : 0.0);
 
             if (this.arrow) {
                 this.arrow.traverse((child) => {
@@ -2497,15 +2654,17 @@ export class Block {
                             if (mat && mat.emissiveIntensity !== undefined) {
                                 mat.emissiveIntensity = arrowEmissiveIntensity;
                             }
+                            mat.transparent = targetTransparent;
+                            mat.opacity = targetOpacity;
+                            mat.needsUpdate = true;
                         });
                     }
                 });
             }
 
             // Apply color & emissive to direction indicators (dots & circles)
-            // During cooldown, all indicators (including bombs) are dimmed & matte without glow
             const indicatorEmissiveHex = (this.isBomb && !this.isCharred) ? targetEmissiveHex : 0x000000;
-            const indicatorEmissiveIntensity = (this.isBomb && !this.isCharred) ? targetEmissiveIntensity : 0.0;
+            const indicatorEmissiveIntensity = (this.isBomb && !this.isCharred) ? targetEmissiveIntensity : (this.isCharred ? 0.05 : 0.0);
 
             if (this.directionIndicators) {
                 this.directionIndicators.traverse((child) => {
@@ -2524,6 +2683,9 @@ export class Block {
                             if (mat && mat.emissiveIntensity !== undefined) {
                                 mat.emissiveIntensity = indicatorEmissiveIntensity;
                             }
+                            mat.transparent = targetTransparent;
+                            mat.opacity = targetOpacity;
+                            mat.needsUpdate = true;
                         });
                     }
                 });
@@ -2543,9 +2705,33 @@ export class Block {
     }
 
     /**
+     * Get the exact resting emissive color & intensity for this block based on its true state.
+     */
+    getRestingEmissive() {
+        if (this._isFrostedClusterState || this.isTranslucent) {
+            return {
+                color: new THREE.Color(0x7dd3fc),
+                intensity: 0.20
+            };
+        }
+        if (this.isLocked) {
+            const colors = [0xff6b6b, 0x4ecdc4, 0xffc125];
+            const tintColorHex = colors[this.length - 1] || colors[0];
+            return {
+                color: new THREE.Color(tintColorHex),
+                intensity: 0.20
+            };
+        }
+        return {
+            color: new THREE.Color(0x000000),
+            intensity: 0.0
+        };
+    }
+
+    /**
      * Flash the block and its indicators with a luminous emissive pulse when spinning.
      */
-    flashHighlight(duration = 320, flashColorHex = 0xffffff, peakIntensity = 0.85) {
+    flashHighlight(duration = 320, flashColorHex = 0xffffff, peakIntensity = 0.6) {
         if (!this.cubes || !this.cubes[0] || !this.cubes[0].material) return;
         const mat = this.cubes[0].material;
 
@@ -2554,14 +2740,17 @@ export class Block {
             this._flashAnimId = null;
         }
 
-        const origEmissive = this._origEmissive ? this._origEmissive : mat.emissive.clone();
-        if (!this._origEmissive) this._origEmissive = origEmissive;
-        const origIntensity = this._origEmissiveIntensity !== undefined ? this._origEmissiveIntensity : (mat.emissiveIntensity || 0);
-        if (this._origEmissiveIntensity === undefined) this._origEmissiveIntensity = origIntensity;
+        const resting = this.getRestingEmissive();
+        const origEmissive = resting.color.clone();
+        const origIntensity = resting.intensity;
 
         const flashColor = new THREE.Color(flashColorHex);
         const startTime = performance.now();
-        const attackDuration = duration * 0.25; // Snappy 80ms attack
+        const attackDuration = duration * 0.25; // Snappy attack
+
+        if (typeof window !== 'undefined' && typeof window.markNeedsRender === 'function') {
+            window.markNeedsRender(duration + 200);
+        }
 
         const animateFlash = () => {
             const now = performance.now();
@@ -2584,8 +2773,9 @@ export class Block {
                 this.isDirty = true;
                 this._flashAnimId = requestAnimationFrame(animateFlash);
             } else {
-                mat.emissive.copy(origEmissive);
-                mat.emissiveIntensity = origIntensity;
+                const currentResting = this.getRestingEmissive();
+                mat.emissive.copy(currentResting.color);
+                mat.emissiveIntensity = currentResting.intensity;
                 this.isDirty = true;
                 this._flashAnimId = null;
             }
@@ -3351,6 +3541,66 @@ export class Block {
         }
     }
 
+    /**
+    /**
+     * Find all immediate obstacle blocks obstructing this block's forward movement path.
+     * @param {Block[]} blocks 
+     * @returns {Block[]} The obstacle blocks in front
+     */
+    findAllDirectBlockers(blocks) {
+        if (!blocks || !Array.isArray(blocks)) return [];
+        const newGridX = this.gridX + this.direction.x;
+        const newGridZ = this.gridZ + this.direction.z;
+        const thisHeight = this.isVertical ? this.length * this.cubeSize : this.cubeSize;
+        const thisYBottom = this.yOffset;
+        const thisYTop = this.yOffset + thisHeight;
+        const isXAligned = Math.abs(this.direction.x) > 0;
+        const len = this.isVertical ? 1 : this.length;
+
+        const blockers = [];
+        for (let i = 0; i < len; i++) {
+            const checkX = newGridX + (this.isVertical ? 0 : (isXAligned ? i : 0));
+            const checkZ = newGridZ + (this.isVertical ? 0 : (isXAligned ? 0 : i));
+
+            for (const other of blocks) {
+                if (!other || other === this || other.isFalling || other.isRemoved || other.isExploding || other.removalStartTime) continue;
+                if (blockers.includes(other)) continue;
+
+                const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
+                const otherYBottom = other.yOffset;
+                const otherYTop = other.yOffset + otherHeight;
+                if (!yRangesOverlapForMovement(this, other, thisYBottom, thisYTop, otherYBottom, otherYTop)) continue;
+
+                if (other.isVertical) {
+                    if (checkX === other.gridX && checkZ === other.gridZ) {
+                        blockers.push(other);
+                    }
+                } else {
+                    const otherIsX = Math.abs(other.direction.x) > 0;
+                    for (let j = 0; j < other.length; j++) {
+                        const ox = other.gridX + (otherIsX ? j : 0);
+                        const oz = other.gridZ + (otherIsX ? 0 : j);
+                        if (checkX === ox && checkZ === oz) {
+                            blockers.push(other);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        return blockers;
+    }
+
+    /**
+     * Find the immediate obstacle block obstructing this block's forward movement path.
+     * @param {Block[]} blocks 
+     * @returns {Block|null} The obstacle block in front
+     */
+    findDirectBlocker(blocks) {
+        const list = this.findAllDirectBlockers(blocks);
+        return list.length > 0 ? list[0] : null;
+    }
+
     canMove(blocks) {
         // Locked or charred/cooling blocks cannot move
         if (this.isLocked || this.isCharred) {
@@ -4096,6 +4346,9 @@ export class Block {
         // If blocked immediately with no movement, add bounce effect
         if (stepsToObstacle === 0 && hitObstacle) {
             this.addBounceEffect(blocks);
+            if (typeof updateWeldedTranslucentClusters === 'function') {
+                updateWeldedTranslucentClusters(blocks);
+            }
             return; // Can't move
         }
 
@@ -4484,6 +4737,9 @@ export class Block {
                     }
                     if (typeof window !== 'undefined' && typeof window.markSupportCheckDirty === 'function') {
                         window.markSupportCheckDirty();
+                    }
+                    if (typeof updateWeldedTranslucentClusters === 'function') {
+                        updateWeldedTranslucentClusters(blocks);
                     }
                 }
             }
@@ -5032,26 +5288,37 @@ export class Block {
                     blockColor = this.cubes[0].material.color.clone();
                 }
 
-                // Spawn particles with movement momentum
-                const particleCount = 20 + Math.floor(Math.random() * 30); // 20-50 particles
-                const velocity = 2.0 + Math.random() * 2.0; // 2.0-4.0 velocity
+                // Spawn particles with movement momentum - enhanced count for cinematic detonations
+                const particleCount = isBlasted ? (35 + Math.floor(Math.random() * 35)) : (20 + Math.floor(Math.random() * 25));
+                const velocity = isBlasted ? (3.5 + Math.random() * 2.5) : (2.0 + Math.random() * 2.0);
                 const moveDir = this.direction ? new THREE.Vector3(this.direction.x, 0, this.direction.z) : null;
                 particleSystem.addExplosion(blockCenter, blockColor, particleCount, velocity, moveDir);
 
-                // Animate block: scale down + fade out
+                if (isBlasted && typeof particleSystem.addFireSparks === 'function') {
+                    particleSystem.addFireSparks(blockCenter, 8);
+                }
+
+                // Animate block: scale down + fade out (Cinematic slow-motion 720ms when blasted by detonation)
                 const startTime = performance.now();
-                const explosionDuration = 400; // 400ms explosion animation
+                const explosionDuration = isBlasted ? 720 : 350; // 720ms cinematic slow-motion dissolution
                 const originalScale = this.group.scale.clone();
                 const originalOpacity = this.cubes && this.cubes[0] && this.cubes[0].material
                     ? this.cubes[0].material.opacity
                     : 1.0;
 
-                // Pre-collect all materials to avoid expensive scene-graph traversal every frame
+                // Pre-collect all materials and setup emissive thermal surge for blasted blocks
                 const fadeMaterials = [];
+                const emissiveMaterials = [];
+                const indicatorMaterials = [];
+
                 this.cubes.forEach(cube => {
                     if (cube.material) {
                         cube.material.transparent = true;
                         fadeMaterials.push(cube.material);
+                        if (isBlasted) {
+                            if (!cube.material.emissive) cube.material.emissive = new THREE.Color(0, 0, 0);
+                            emissiveMaterials.push(cube.material);
+                        }
                     }
                 });
 
@@ -5060,6 +5327,10 @@ export class Block {
                         if (child.material) {
                             child.material.transparent = true;
                             fadeMaterials.push(child.material);
+                            if (isBlasted) {
+                                if (!child.material.emissive) child.material.emissive = new THREE.Color(0, 0, 0);
+                                indicatorMaterials.push(child.material);
+                            }
                         }
                     });
                 }
@@ -5069,6 +5340,10 @@ export class Block {
                         if (child.material) {
                             child.material.transparent = true;
                             fadeMaterials.push(child.material);
+                            if (isBlasted) {
+                                if (!child.material.emissive) child.material.emissive = new THREE.Color(0, 0, 0);
+                                indicatorMaterials.push(child.material);
+                            }
                         }
                     });
                 }
@@ -5077,19 +5352,48 @@ export class Block {
                     const elapsed = performance.now() - startTime;
                     const progress = Math.min(elapsed / explosionDuration, 1.0);
 
-                    // Ease-out curve for smooth animation
-                    const eased = 1 - Math.pow(1 - progress, 3);
+                    // Cinematic curve: subtle initial thermal expansion (t < 0.15) followed by smooth cubic implosion
+                    let scaleFactor;
+                    if (isBlasted) {
+                        if (progress < 0.15) {
+                            const expandT = progress / 0.15;
+                            scaleFactor = 1.0 + 0.08 * Math.sin(expandT * Math.PI * 0.5);
+                        } else {
+                            const decayT = (progress - 0.15) / 0.85;
+                            const easedDecay = Math.pow(1 - decayT, 2.5);
+                            scaleFactor = 1.08 * easedDecay;
+                        }
 
-                    // Scale down
-                    const scale = 1 - eased;
+                        // Thermal emissive flash on block body in first 40% of destruction
+                        const heatT = Math.max(0, 1.0 - progress / 0.4);
+                        for (let ei = 0; ei < emissiveMaterials.length; ei++) {
+                            emissiveMaterials[ei].emissive.setRGB(0.95 * heatT, 0.50 * heatT, 0.15 * heatT);
+                            emissiveMaterials[ei].emissiveIntensity = 1.2 * heatT;
+                        }
+
+                        // High-speed flashing self-emissive strobe on indicators (arrows, dots, circles)
+                        const indHeat = Math.max(0, 1.0 - progress / 0.7);
+                        const strobePhase = Math.sin(elapsed * 0.05);
+                        const strobeIntensity = (strobePhase > 0 ? 1.6 : 0.3) * indHeat;
+                        for (let ii = 0; ii < indicatorMaterials.length; ii++) {
+                            indicatorMaterials[ii].emissive.setRGB(1.0 * indHeat, 0.85 * indHeat, 0.3 * indHeat);
+                            indicatorMaterials[ii].emissiveIntensity = strobeIntensity;
+                        }
+                    } else {
+                        const eased = 1 - Math.pow(1 - progress, 3);
+                        scaleFactor = 1 - eased;
+                    }
+
+                    // Apply scale
                     this.group.scale.set(
-                        originalScale.x * scale,
-                        originalScale.y * scale,
-                        originalScale.z * scale
+                        originalScale.x * scaleFactor,
+                        originalScale.y * scaleFactor,
+                        originalScale.z * scaleFactor
                     );
 
                     // Fade out
-                    const opacity = originalOpacity * (1 - eased);
+                    const opacityProgress = isBlasted ? Math.pow(1 - progress, 1.8) : (1 - progress);
+                    const opacity = originalOpacity * opacityProgress;
                     for (let mi = 0; mi < fadeMaterials.length; mi++) {
                         fadeMaterials[mi].opacity = opacity;
                     }
@@ -5097,7 +5401,15 @@ export class Block {
                     if (progress < 1.0) {
                         requestAnimationFrame(animateExplosion);
                     } else {
-                        // Animation complete - remove block
+                        // Animation complete - reset emissive and remove block
+                        for (let ei = 0; ei < emissiveMaterials.length; ei++) {
+                            emissiveMaterials[ei].emissive.setRGB(0, 0, 0);
+                            emissiveMaterials[ei].emissiveIntensity = 0.0;
+                        }
+                        for (let ii = 0; ii < indicatorMaterials.length; ii++) {
+                            indicatorMaterials[ii].emissive.setRGB(0, 0, 0);
+                            indicatorMaterials[ii].emissiveIntensity = 0.0;
+                        }
                         this.isRemoved = true;
                         this.isExploding = false;
                         this.isAnimating = false;
@@ -5119,19 +5431,20 @@ export class Block {
                         if (typeof window.markSupportCheckDirty === 'function') {
                             window.markSupportCheckDirty();
                         }
-
                         resolve();
                     }
                 };
 
-                requestAnimationFrame(animateExplosion);
+                if (delay > 0) {
+                    setTimeout(() => {
+                        requestAnimationFrame(animateExplosion);
+                    }, delay);
+                } else {
+                    requestAnimationFrame(animateExplosion);
+                }
             };
 
-            if (delay > 0) {
-                setTimeout(explode, delay);
-            } else {
-                explode();
-            }
+            explode();
         });
     }
 
@@ -5155,15 +5468,12 @@ export class Block {
 
                 const elapsed = performance.now() - startTime;
                 const progress = Math.min(elapsed / duration, 1.0);
-
-                // Violent oscillating shake
-                const shakePhase = progress * Math.PI * shakeCount;
-                const shakeAmount = intensity * (1 - progress);
                 
-                // Add some radial chaos
-                const angle = shakePhase + (Math.random() * 0.2);
-                const shakeX = Math.sin(angle) * shakeAmount;
-                const shakeZ = Math.cos(angle * 1.3) * shakeAmount;
+                const phase = progress * Math.PI * 2 * shakeCount;
+                const shakeAmount = intensity * (1.0 - progress);
+                
+                const shakeX = Math.sin(phase) * shakeAmount;
+                const shakeZ = Math.cos(phase * 1.3) * shakeAmount;
 
                 this.group.position.x = originalPos.x + shakeX;
                 this.group.position.z = originalPos.z + shakeZ;
@@ -5181,11 +5491,76 @@ export class Block {
     }
 
     /**
+     * Start high-visibility self-emissive flashing on all indicators (arrows, dots, circles) during blast sequence
+     * @param {number} duration - Duration of the blast flash in ms
+     */
+    startBlastIndicatorFlash(duration = 750) {
+        if (this.isRemoved && !this.isExploding) return;
+        if (this._isFlashingBlast) return;
+        this._isFlashingBlast = true;
+
+        const indicatorMaterials = [];
+        if (this.arrow) {
+            this.arrow.traverse((child) => {
+                if (child.isMesh && child.material) {
+                    const mats = Array.isArray(child.material) ? child.material : [child.material];
+                    mats.forEach(m => {
+                        if (!m.emissive) m.emissive = new THREE.Color(0, 0, 0);
+                        indicatorMaterials.push(m);
+                    });
+                }
+            });
+        }
+        if (this.directionIndicators) {
+            this.directionIndicators.traverse((child) => {
+                if (child.isMesh && child.material) {
+                    const mats = Array.isArray(child.material) ? child.material : [child.material];
+                    mats.forEach(m => {
+                        if (!m.emissive) m.emissive = new THREE.Color(0, 0, 0);
+                        indicatorMaterials.push(m);
+                    });
+                }
+            });
+        }
+
+        if (indicatorMaterials.length === 0) return;
+
+        const startTime = performance.now();
+        const flashColors = [new THREE.Color(0xffffff), new THREE.Color(0xffaa22), new THREE.Color(0xff3355)];
+        const flashAnim = () => {
+            const elapsed = performance.now() - startTime;
+            if (elapsed > duration || (this.isRemoved && !this.isExploding)) {
+                for (let i = 0; i < indicatorMaterials.length; i++) {
+                    indicatorMaterials[i].emissive.setRGB(0, 0, 0);
+                    indicatorMaterials[i].emissiveIntensity = 0.0;
+                }
+                this._isFlashingBlast = false;
+                return;
+            }
+
+            const flashPhase = Math.sin(elapsed * 0.045);
+            const strobe = flashPhase > 0 ? 1.6 : 0.25;
+            const colIdx = Math.floor(elapsed * 0.012) % flashColors.length;
+            const flashColor = flashColors[colIdx];
+
+            for (let i = 0; i < indicatorMaterials.length; i++) {
+                indicatorMaterials[i].emissive.copy(flashColor);
+                indicatorMaterials[i].emissiveIntensity = strobe;
+            }
+            requestAnimationFrame(flashAnim);
+        };
+        requestAnimationFrame(flashAnim);
+    }
+
+    /**
      * Handle block being crushed by a high-impact fall (Task 1.2)
      * @param {Object} particleSystem - The particle system to use for effects
      */
     onCrushed(particleSystem) {
         if (this.isRemoved || this.isExploding || this.isLocked) return;
+
+        // Flash indicators on high-impact landing
+        this.startBlastIndicatorFlash(350);
 
         // Task 1.2 Revision: Stronger, faster shake
         this.shakeViolently(150, 0.5).then(() => {
@@ -5238,14 +5613,11 @@ export class Block {
         const bombPos = new THREE.Vector3();
         this.group.getWorldPosition(bombPos);
 
-        // Particle effect (White-yellow flash for Task 6.3)
-        if (window.particleSystem) {
-             window.particleSystem.addExplosion(bombPos, new THREE.Color(0xffffaa), 100, 5.0);
-        }
-
+        // Calculate affected blocks and destroyed cells before triggering slow-mo
         const affectedBlocks = this.getAffectedBlocks();
+        // Sort bottom-to-top so lower layers are processed first
+        affectedBlocks.sort((a, b) => a.yOffset - b.yOffset);
 
-        // Collect destroyed cells before removal to determine shockwave boundary
         const destroyedCells = [...this.getOccupiedCells()];
         affectedBlocks.forEach(b => {
             if (typeof b.getOccupiedCells === 'function') {
@@ -5253,18 +5625,36 @@ export class Block {
             }
         });
 
+        // Trigger cinematic slow-motion ONLY during this block removal sequence
+        const slowMoDuration = Math.max(780, affectedBlocks.length * 40 + 650);
+        if (typeof window.triggerDetonationSlowMotion === 'function') {
+            window.triggerDetonationSlowMotion(slowMoDuration);
+        }
+
+        // Particle effect (White-yellow flash + high density sparks for cinematic feel)
+        if (window.particleSystem) {
+             window.particleSystem.addExplosion(bombPos, new THREE.Color(0xffffcc), 120, 6.0);
+             if (typeof window.particleSystem.addFireSparks === 'function') {
+                 window.particleSystem.addFireSparks(bombPos, 20);
+             }
+        }
+
         // Trigger molten thermal shockwave IMMEDIATELY with the detonation flash
         if (typeof window.applyDetonationAftermathShock === 'function') {
             window.applyDetonationAftermathShock(destroyedCells, bombPos);
         }
 
-        // Detonate/Remove affected blocks
-        affectedBlocks.forEach((block, index) => {
-            // Task 9.2: Mark affected blocks as exploding IMMEDIATELY 
-            // This prevents them from being solid blockers during the chain reaction delay.
+        // Trigger self-emissive flashing strobe on ALL blasting blocks immediately
+        this.startBlastIndicatorFlash(slowMoDuration);
+        affectedBlocks.forEach(block => {
             block.isExploding = true;
-            
-            const delay = index * 30; 
+            block.removalStartTime = performance.now();
+            block.startBlastIndicatorFlash(slowMoDuration);
+        });
+
+        // Detonate/Remove affected blocks starting with the lower layers first
+        affectedBlocks.forEach((block, index) => {
+            const delay = index * 30; // Fast 30ms upward ripple from bottom layers upward
             
             setTimeout(() => {
                 if (block.isRemoved || block._explosionAnimationStarted) return;
@@ -5272,8 +5662,7 @@ export class Block {
                 if (block.isBomb && !block.isLocked && !block.isTranslucent && !block.isCharred) {
                     block.detonate(); 
                 } else {
-                    // Use explodeWithParticles for faster, cleaner removal (Task 6.2)
-                    // Task 7.7.3: Pass isBlasted = true to indicate this is a collateral explosion
+                    // Use explodeWithParticles for cinematic slow-motion removal
                     if (window.particleSystem) {
                         block.explodeWithParticles(window.particleSystem, 0, true);
                     } else if (typeof window.removeBlockWithAnimation === 'function') {
@@ -5291,8 +5680,8 @@ export class Block {
             window.markSupportCheckDirty();
         }
         
-        // After explosion completes and new structure settles under gravity, trigger support check
-        const settleDelay = Math.max(400, affectedBlocks.length * 30 + 300);
+        // After explosion completes and bullet-time returns to 1.0, settle tower with crisp gravity
+        const settleDelay = slowMoDuration + 100;
         setTimeout(() => {
             if (typeof window.markSupportCheckDirty === 'function') {
                 window.markSupportCheckDirty();
@@ -5306,19 +5695,21 @@ export class Block {
      */
     getOccupiedCells() {
         const cells = [];
+        const bx = Math.round(this.gridX);
+        const bz = Math.round(this.gridZ);
         const layerY = Math.round(this.yOffset / (this.cubeSize || 1));
         const isXAligned = Math.abs(this.direction.x) > 0;
         
         for (let i = 0; i < this.length; i++) {
             if (this.isVertical) {
                 // Vertical blocks span multiple layers at the same (gridX, gridZ)
-                cells.push({ x: this.gridX, y: layerY + i, z: this.gridZ });
+                cells.push({ x: bx, y: layerY + i, z: bz });
             } else {
                 // Horizontal blocks span multiple grid cells in one layer
                 cells.push({
-                    x: this.gridX + (isXAligned ? i : 0),
+                    x: bx + (isXAligned ? i : 0),
                     y: layerY,
-                    z: this.gridZ + (isXAligned ? 0 : i)
+                    z: bz + (isXAligned ? 0 : i)
                 });
             }
         }
@@ -5386,20 +5777,25 @@ export class Block {
         const brightnessFactor = 0.5;
 
         for (const cube of this.cubes) {
-            if (cube.material) {
-                if (!cube.material.userData.originalColor) {
-                    cube.material.userData.originalColor = cube.material.color.clone();
-                }
-                const originalColorObj = cube.material.userData.originalColor.clone();
+            if (cube && cube.material) {
+                if (!cube.material.userData) cube.material.userData = {};
+                const originalColorObj = asThreeColor(
+                    cube.material.userData.baseBlockColor || cube.material.userData.originalColor || cube.material.color || this.originalColor,
+                    0xffffff
+                );
                 const isWhite = originalColorObj.r > 0.95 && originalColorObj.g > 0.95 && originalColorObj.b > 0.95;
                 const tintMix = isWhite ? 0.50 : 0.35;
                 const tintedColor = originalColorObj.clone().lerp(tintColorObj, tintMix);
 
+                cube.material.map = null;
+                cube.material.bumpMap = null;
+                cube.material.roughnessMap = null;
+                cube.material.alphaMap = null;
                 cube.material.transparent = true;
                 cube.material.opacity = staticOpacity;
                 cube.material.color.copy(tintedColor).multiplyScalar(brightnessFactor);
                 cube.material.emissive.copy(tintColorObj);
-                cube.material.emissiveIntensity = 0.2;
+                cube.material.emissiveIntensity = 0.20;
                 cube.material.roughness = 0.1;
                 cube.material.metalness = 0.0;
                 cube.material.needsUpdate = true;
@@ -5416,22 +5812,22 @@ export class Block {
                 if (!child.material) return;
 
                 if (frosted) {
-                    // Frosting implied colors: icy polar blue/white with glowing crystal cyan core
-                    child.material.color.setHex(0xe0f2fe); // Soft glacier frost white-blue
-                    child.material.emissive.setHex(0x38bdf8); // Cyan ice glow
-                    child.material.emissiveIntensity = 0.35;
+                    // Frosting implied colors: configurable etched frost with crystal ice glow
+                    child.material.color.set(FROSTY_CONFIG.indicatorColor);
+                    child.material.emissive.set(FROSTY_CONFIG.indicatorEmissive);
+                    child.material.emissiveIntensity = FROSTY_CONFIG.indicatorEmissiveIntensity;
                     child.material.transparent = true;
-                    child.material.opacity = 0.8;
-                    child.material.roughness = 0.08;
-                    child.material.metalness = 0.05;
+                    child.material.opacity = FROSTY_CONFIG.indicatorOpacity;
+                    child.material.roughness = FROSTY_CONFIG.indicatorRoughness;
+                    child.material.metalness = FROSTY_CONFIG.indicatorMetalness;
                 } else if (this.isBomb) {
                     const maxColors = [0xff2252, 0x00e5ff, 0xffa000];
                     const bombColorHex = maxColors[this.length - 1] || maxColors[0];
                     child.material.color.setHex(bombColorHex);
                     child.material.emissive.setHex(this.isCharred ? 0x000000 : bombColorHex);
-                    child.material.emissiveIntensity = this.isCharred ? 0.0 : (this.length === 1 ? 0.70 : 0.55);
-                    child.material.transparent = false;
-                    child.material.opacity = 1.0;
+                    child.material.emissiveIntensity = this.isCharred ? 0.0 : 0.70;
+                    child.material.transparent = this.isCharred ? true : false;
+                    child.material.opacity = this.isCharred ? 0.20 : 1.0;
                     child.material.roughness = 0.1;
                     child.material.metalness = 0.0;
                 } else {
@@ -5439,8 +5835,8 @@ export class Block {
                     child.material.color.setHex(defaultColor);
                     child.material.emissive.setHex(this.isCharred ? 0x141414 : 0x000000);
                     child.material.emissiveIntensity = this.isCharred ? 0.05 : 0.0;
-                    child.material.transparent = false;
-                    child.material.opacity = 1.0;
+                    child.material.transparent = this.isCharred ? true : false;
+                    child.material.opacity = this.isCharred ? 0.20 : 1.0;
                     child.material.roughness = 0.1;
                     child.material.metalness = 0.0;
                 }
@@ -5458,43 +5854,59 @@ export class Block {
     setTranslucent(isTranslucent = true) {
         this._isFrostedClusterState = isTranslucent;
         this.isTranslucent = isTranslucent;
-        if (this.cubes && this.cubes[0] && this.cubes[0].material) {
-            const mat = this.cubes[0].material;
-            if (isTranslucent) {
-                if (!mat.userData.originalColor) {
-                    mat.userData.originalColor = mat.color.clone();
-                }
-                if (mat.userData.originalOpacity === undefined) {
-                    mat.userData.originalOpacity = mat.opacity !== undefined ? mat.opacity : 1.0;
-                }
-                mat.transparent = true;
-                mat.opacity = 0.65;
-                mat.roughness = 0.08;
-                mat.metalness = 0.05;
-                mat.color.setHex(0xa5f3fc);
-                mat.emissive.setHex(0x38bdf8);
-                mat.emissiveIntensity = 0.25;
-                mat.needsUpdate = true;
+        if (this.cubes && this.cubes.length > 0) {
+            for (const cube of this.cubes) {
+                if (!cube || !cube.material) continue;
+                const mat = cube.material;
+                if (!mat.userData) mat.userData = {};
 
+                if (isTranslucent) {
+                    if (!mat.userData.originalColor) {
+                        mat.userData.originalColor = asThreeColor(
+                            mat.userData.baseBlockColor || mat.color || this.originalColor,
+                            0xffffff
+                        );
+                    }
+                    mat.map = null;
+                    mat.bumpMap = null;
+                    mat.roughnessMap = null;
+                    mat.alphaMap = getOrCreateIceAlphaMap();
+                    mat.transparent = true;
+                    mat.opacity = FROSTY_CONFIG.blockOpacity;
+                    mat.roughness = FROSTY_CONFIG.blockRoughness;
+                    mat.metalness = FROSTY_CONFIG.blockMetalness;
+                    mat.color.set(FROSTY_CONFIG.blockColor);
+                    mat.emissive.set(FROSTY_CONFIG.blockEmissive);
+                    mat.emissiveIntensity = FROSTY_CONFIG.blockEmissiveIntensity;
+                    mat.needsUpdate = true;
+                } else if (!this.isLocked) {
+                    // Standard Normal Block appearance restoration
+                    mat.map = null;
+                    mat.bumpMap = null;
+                    mat.roughnessMap = null;
+                    mat.alphaMap = null;
+                    mat.transparent = false;
+                    mat.opacity = 1.0;
+                    mat.roughness = 0.1;
+                    mat.metalness = 0.0;
+                    const baseColor = asThreeColor(
+                        mat.userData.baseBlockColor || mat.userData.originalColor || this.originalColor,
+                        0xffffff
+                    );
+                    mat.color.copy(baseColor);
+                    mat.emissive.setHex(0x000000);
+                    mat.emissiveIntensity = 0.0;
+                    mat.needsUpdate = true;
+                }
+            }
+
+            if (isTranslucent) {
                 this.setIndicatorsFrosted(true);
             } else if (this.isLocked) {
                 this.applyLockedStyle();
                 this.setIndicatorsFrosted(false);
                 this.updateCoolingIndicatorState();
             } else {
-                mat.transparent = false;
-                mat.opacity = mat.userData.originalOpacity || 1.0;
-                mat.roughness = 0.1;
-                mat.metalness = 0.0;
-                if (mat.userData.originalColor) {
-                    mat.color.copy(mat.userData.originalColor);
-                } else {
-                    mat.color.setHex(this.originalColor || 0xffffff);
-                }
-                mat.emissive.setHex(0x000000);
-                mat.emissiveIntensity = 0.0;
-                mat.needsUpdate = true;
-
                 this.setIndicatorsFrosted(false);
                 this.updateCoolingIndicatorState();
             }
@@ -5808,13 +6220,14 @@ export function updateWeldedTranslucentClusters(allBlocks) {
         const cluster = getTranslucentCluster(block, allBlocks);
         cluster.forEach(b => processed.add(b));
 
-        if (cluster.length >= 3) {
-            // 3 or more blocks: welded cluster! Apply the frosted crystal ice material
+        const minSize = typeof FROSTY_CONFIG.minClusterSize === 'number' ? FROSTY_CONFIG.minClusterSize : 3;
+        if (cluster.length >= minSize) {
+            // Welded cluster! Apply the frosted crystal ice material
             for (const member of cluster) {
                 member.setTranslucent(true);
             }
         } else {
-            // 1 or 2 blocks: keep their own translucent color (original locked style)
+            // Keep individual translucent cooling style (NOT frosty cluster)
             for (const member of cluster) {
                 member.setTranslucent(false);
             }

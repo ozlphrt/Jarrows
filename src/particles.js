@@ -417,7 +417,8 @@ export function createParticleSystem(maxParticles, scene) {
     /* ---- UPDATE LOOP ---- */
 
     function updateParticles(deltaTime) {
-        var dt = Math.min(deltaTime, 0.05);
+        var timeScale = (typeof window !== 'undefined' && window.detonationTimeScale !== undefined) ? window.detonationTimeScale : 1.0;
+        var dt = Math.min(deltaTime, 0.05) * timeScale;
 
         var baseY = 0, baseX = 3.5, baseZ = 3.5, baseHS = 5.5;
         if (window.gameGrid && window.gameGrid.base) {

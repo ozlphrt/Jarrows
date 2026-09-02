@@ -4,6 +4,28 @@
  */
 
 export const changelog = {
+    "8.27.0": {
+        title: "Synchronized Pulsing Bomb Indicators, Cooling Translucency & Calibrated Camera Framing",
+        date: "2026-09-02",
+        changes: [
+            "Synchronized Pulsing Bomb Indicators: All bomb block indicators (top arrow, forward dot, and backward circle) are now fully self-emissive and pulse in synchronized double-burst hazard strobe cycles on the GPU",
+            "Cooling Blocks 80% Translucency: All arrows, dots, and circles on cooling/charred blocks become 80% translucent (opacity: 0.20) for immediate visual clarity while cooling down, smoothly restoring upon completion",
+            "Dynamic Blast Strobe Effects: Disintegrating blocks flash with high-frequency self-emissive strobe sequences and thermal core dissolution during explosions and high-impact crushes",
+            "Calibrated Camera Framing: Balanced auto-zoom and bounding box calculations provide comfortable tower visibility and breathing room without edge cropping or excessive distance",
+            "Clean Matte Indicator Contrast: Idle non-bomb blocks feature clean, matte length-based colors with zero unprompted emissive glare"
+        ]
+    },
+    "8.26.0": {
+        title: "0 FPS Dirty-Frame Rendering, Battery Status API & Shadow Bypass Toggle",
+        date: "2026-09-02",
+        changes: [
+            "Complete 0 FPS Dirty-Frame Rendering: WebGL render loop completely sleeps (0 FPS) during idle gameplay in non-timed modes until pointer/touch interaction or animation occurs, reducing GPU draw overhead by up to 90%",
+            "Hardware Battery Status API Auto-Switch: Automatically monitors navigator.getBattery() and transitions smoothly into the Battery Saver preset when device charge falls to 20% or below",
+            "Dynamic Shadow Map Bypass Toggle: Added 'SHD' toggle switch in Settings to instantly enable/disable directional shadow maps for optimal framerates on older mobile devices",
+            "Web Audio Context Sleep on Inactivity: Automatically suspends the Web Audio AudioContext after 45 seconds of idle inactivity, releasing audio hardware DAC and threads with zero latency on resume",
+            "Multi-Layer Ice Collision Locking & 3+ Cluster Threshold: Enforced 3+ block requirement for frosted crystal welding while supporting bottom-layer collision locking"
+        ]
+    },
     "8.25.0": {
         title: "Ground-Rooted Support Physics, Full Indicator Defrosting & Organic Blast Shaders",
         date: "2026-09-01",
