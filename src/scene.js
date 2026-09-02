@@ -803,56 +803,84 @@ export function setupStudioEnvironment(scene, renderer) {
     if (!scene || !renderer) return;
 
     try {
-        const width = 512;
-        const height = 256;
+        const width = 1024;
+        const height = 512;
         const canvas = document.createElement('canvas');
         canvas.width = width;
         canvas.height = height;
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
 
-        // 1. Studio backdrop gradient (cool dark navy-slate floor to neutral soft zenith)
+        // 1. Dark, contrast-preserving base (deep midnight-charcoal)
+        // Keeps diffuse illumination low so tower colors NEVER get washed out
         const bgGradient = ctx.createLinearGradient(0, 0, 0, height);
-        bgGradient.addColorStop(0.0, '#3a4a60'); // Ceiling / zenith soft illumination
-        bgGradient.addColorStop(0.42, '#1e293b'); // Horizon neutral slate
-        bgGradient.addColorStop(0.58, '#141d2c'); // Ground transition
-        bgGradient.addColorStop(1.0, '#0a0f18'); // Floor dark bounce
+        bgGradient.addColorStop(0.0, '#151f30'); // Soft zenith
+        bgGradient.addColorStop(0.35, '#0b111c'); // Horizon
+        bgGradient.addColorStop(0.70, '#060910'); // Lower hemisphere
+        bgGradient.addColorStop(1.0, '#030508'); // Dark ground floor
         ctx.fillStyle = bgGradient;
         ctx.fillRect(0, 0, width, height);
 
-        // 2. Primary Key Soft-box Light Bank (overhead angled panel)
-        // Positioned in upper hemisphere to catch top faces and upper bevels
-        const keyGrad = ctx.createRadialGradient(width * 0.35, height * 0.22, 10, width * 0.35, height * 0.22, 100);
-        keyGrad.addColorStop(0.0, 'rgba(255, 255, 255, 0.95)');
-        keyGrad.addColorStop(0.35, 'rgba(230, 244, 255, 0.70)');
-        keyGrad.addColorStop(0.70, 'rgba(180, 215, 255, 0.30)');
-        keyGrad.addColorStop(1.0, 'rgba(180, 215, 255, 0.0)');
-        ctx.fillStyle = keyGrad;
+        // 2. Continuous 360° Overhead Halo Light Strip
+        // Guarantees that at ANY camera angle, the top faces and upper bevels
+        // always catch a clean, elegant specular reflection ribbon
+        const overheadGrad = ctx.createLinearGradient(0, height * 0.08, 0, height * 0.26);
+        overheadGrad.addColorStop(0.0, 'rgba(255, 255, 255, 0.0)');
+        overheadGrad.addColorStop(0.35, 'rgba(245, 252, 255, 0.55)');
+        overheadGrad.addColorStop(0.60, 'rgba(225, 242, 255, 0.65)');
+        overheadGrad.addColorStop(0.85, 'rgba(180, 220, 255, 0.25)');
+        overheadGrad.addColorStop(1.0, 'rgba(180, 220, 255, 0.0)');
+        ctx.fillStyle = overheadGrad;
+        ctx.fillRect(0, height * 0.08, width, height * 0.18);
+
+        // 3. Four Primary Soft-box Light Banks (45°, 135°, 225°, 315°)
+        // Large, bright vertical studio diffusers giving broad, gorgeous reflections
+        const primaryPanels = [0.125, 0.375, 0.625, 0.875];
+        primaryPanels.forEach((normX, i) => {
+            const px = normX * width;
+            const py = height * 0.34;
+            const grad = ctx.createRadialGradient(px, py, 12, px, py, 120);
+            const isWarm = (i % 2 === 0);
+            const coreColor = isWarm ? 'rgba(255, 253, 245, 0.98)' : 'rgba(240, 250, 255, 0.95)';
+            const midColor = isWarm ? 'rgba(255, 242, 220, 0.55)' : 'rgba(205, 235, 255, 0.50)';
+            grad.addColorStop(0.0, coreColor);
+            grad.addColorStop(0.35, midColor);
+            grad.addColorStop(0.70, 'rgba(170, 210, 245, 0.18)');
+            grad.addColorStop(1.0, 'rgba(170, 210, 245, 0.0)');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.ellipse(px, py, 85, 125, 0, 0, Math.PI * 2);
+            ctx.fill();
+        });
+
+        // 4. Four Interleaved Secondary Accent Strips (0°, 90°, 180°, 270°)
+        // Eliminates dead zones so specular highlights roll continuously across all rotation angles
+        const secondaryPanels = [0.0, 0.25, 0.50, 0.75, 1.0];
+        secondaryPanels.forEach((normX) => {
+            const px = normX * width;
+            const py = height * 0.30;
+            const grad = ctx.createRadialGradient(px, py, 6, px, py, 75);
+            grad.addColorStop(0.0, 'rgba(255, 255, 255, 0.80)');
+            grad.addColorStop(0.40, 'rgba(215, 238, 255, 0.35)');
+            grad.addColorStop(0.80, 'rgba(160, 205, 245, 0.10)');
+            grad.addColorStop(1.0, 'rgba(160, 205, 245, 0.0)');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.ellipse(px, py, 50, 75, 0.15, 0, Math.PI * 2);
+            ctx.fill();
+        });
+
+        // 5. Direct Zenith Soft Light Dome (overhead view reflection)
+        const zenithGrad = ctx.createRadialGradient(width * 0.5, 0, 5, width * 0.5, 0, 90);
+        zenithGrad.addColorStop(0.0, 'rgba(255, 255, 255, 0.90)');
+        zenithGrad.addColorStop(0.5, 'rgba(220, 240, 255, 0.35)');
+        zenithGrad.addColorStop(1.0, 'rgba(220, 240, 255, 0.0)');
+        ctx.fillStyle = zenithGrad;
         ctx.beginPath();
-        ctx.ellipse(width * 0.35, height * 0.22, 120, 45, -0.15, 0, Math.PI * 2);
+        ctx.ellipse(width * 0.5, 0, 160, 60, 0, 0, Math.PI * 2);
         ctx.fill();
 
-        // 3. Secondary Lateral Fill Strip (subtle soft light bar for side faces)
-        const fillGrad = ctx.createRadialGradient(width * 0.78, height * 0.30, 10, width * 0.78, height * 0.30, 80);
-        fillGrad.addColorStop(0.0, 'rgba(220, 238, 255, 0.75)');
-        fillGrad.addColorStop(0.4, 'rgba(160, 205, 250, 0.40)');
-        fillGrad.addColorStop(1.0, 'rgba(160, 205, 250, 0.0)');
-        ctx.fillStyle = fillGrad;
-        ctx.beginPath();
-        ctx.ellipse(width * 0.78, height * 0.30, 90, 35, 0.2, 0, Math.PI * 2);
-        ctx.fill();
-
-        // 4. Subtle Rim Highlight Accent (grazing angle glint)
-        const rimGrad = ctx.createRadialGradient(width * 0.08, height * 0.28, 5, width * 0.08, height * 0.28, 60);
-        rimGrad.addColorStop(0.0, 'rgba(255, 255, 255, 0.65)');
-        rimGrad.addColorStop(0.5, 'rgba(200, 225, 255, 0.25)');
-        rimGrad.addColorStop(1.0, 'rgba(200, 225, 255, 0.0)');
-        ctx.fillStyle = rimGrad;
-        ctx.beginPath();
-        ctx.ellipse(width * 0.08, height * 0.28, 60, 25, 0.0, 0, Math.PI * 2);
-        ctx.fill();
-
-        // 5. Convert to Three.js Equirectangular Texture and PMREM
+        // 6. Convert to Three.js Equirectangular Texture and PMREM
         const texture = new THREE.CanvasTexture(canvas);
         texture.mapping = THREE.EquirectangularReflectionMapping;
         texture.colorSpace = THREE.SRGBColorSpace;
@@ -863,7 +891,7 @@ export function setupStudioEnvironment(scene, renderer) {
 
         scene.environment = envMap;
         if (typeof scene.environmentIntensity !== 'undefined') {
-            scene.environmentIntensity = 0.90;
+            scene.environmentIntensity = 1.05;
         }
 
         // Cleanup temporary resources
