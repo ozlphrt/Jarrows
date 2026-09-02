@@ -802,8 +802,8 @@ export function setupGlowQuadMaterial(material, options = {}) {
  */
 // Cache for pre-filtered artistic environment maps
 const reflectionEnvMapCache = new Map();
-let currentReflectionPreset = 'hero';
-let isCameraRelative = true;
+let currentReflectionPreset = 'gallery';
+let isCameraRelative = false;
 
 /**
  * Direction 1: Hero Studio (Camera-Relative)
@@ -1025,7 +1025,7 @@ export function updateReflectionEnvironment(camera, scene) {
  * @param {THREE.Scene} scene
  * @param {THREE.WebGLRenderer} renderer
  */
-export function setupStudioEnvironment(scene, renderer, initialPreset = 'hero') {
+export function setupStudioEnvironment(scene, renderer, initialPreset = 'gallery') {
     if (!scene || !renderer) return;
     try {
         setReflectionPreset(scene, renderer, initialPreset);

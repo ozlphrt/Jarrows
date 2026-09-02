@@ -2529,7 +2529,7 @@
             }
         }
     </style>
-  <script type="module" crossorigin src="/Jarrows/assets/index-DDHmCwLB.js"></script>
+  <script type="module" crossorigin src="/Jarrows/assets/index-CZv22Wzl.js"></script>
   <link rel="modulepreload" crossorigin href="/Jarrows/assets/preload-helper-Si1OKCYg.js">
 <link rel="manifest" href="/Jarrows/manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="/Jarrows/registerSW.js"></script></head>
 
@@ -3024,6 +3024,16 @@
                 </div>
                 <div id="light-controls-content" style="display: none;">
 
+                    <!-- Studio Reflection Preset -->
+                    <div style="margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.12);">
+                        <label style="font-size: 11px; font-weight: bold; opacity: 0.9; display: block; margin-bottom: 6px;">Studio Reflection Preset:</label>
+                        <div style="display: flex; gap: 6px;">
+                            <button id="debug-ref-btn-gallery" class="game-button" style="flex: 1; padding: 6px 4px; font-size: 10px; font-weight: 700; background: linear-gradient(135deg, #00f0ff, #0077ff); color: #fff;" onclick="selectDebugReflectionPreset('gallery')">🏛️ Art Gallery</button>
+                            <button id="debug-ref-btn-hero" class="game-button" style="flex: 1; padding: 6px 4px; font-size: 10px; font-weight: 600; background: rgba(255,255,255,0.08); color: #cbd5e1;" onclick="selectDebugReflectionPreset('hero')">✨ Hero Studio</button>
+                            <button id="debug-ref-btn-blades" class="game-button" style="flex: 1; padding: 6px 4px; font-size: 10px; font-weight: 600; background: rgba(255,255,255,0.08); color: #cbd5e1;" onclick="selectDebugReflectionPreset('blades')">⚡ Twin Blades</button>
+                        </div>
+                    </div>
+
                     <!-- Ambient Light -->
                     <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
                         <label style="font-size: 11px; opacity: 0.85; min-width: 100px; flex-shrink: 0;">Ambient
@@ -3449,36 +3459,29 @@
         </div>
     </div>
 
-    <!-- Floating Artistic Reflection Studio Switcher -->
-    <div id="reflection-switcher" style="position: fixed; bottom: 84px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; align-items: center; gap: 6px; background: rgba(13, 18, 30, 0.90); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); padding: 5px 8px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.15); box-shadow: 0 10px 30px rgba(0,0,0,0.5); font-family: 'Inter', sans-serif; font-size: 11px; user-select: none;">
-        <span style="color: #94a3b8; font-weight: 600; padding-left: 6px; padding-right: 2px; letter-spacing: 0.5px; text-transform: uppercase; font-size: 9px;">Reflection:</span>
-        <button id="ref-btn-hero" onclick="if(window.setReflectionPreset)window.setReflectionPreset('hero'); updateRefButtons('hero');" style="background: linear-gradient(135deg, #00f0ff, #0077ff); color: #fff; border: none; padding: 5px 11px; border-radius: 999px; font-weight: 700; cursor: pointer; transition: all 0.2s ease; box-shadow: 0 0 12px rgba(0, 240, 255, 0.4);">Hero Studio</button>
-        <button id="ref-btn-gallery" onclick="if(window.setReflectionPreset)window.setReflectionPreset('gallery'); updateRefButtons('gallery');" style="background: rgba(255, 255, 255, 0.08); color: #cbd5e1; border: none; padding: 5px 11px; border-radius: 999px; font-weight: 600; cursor: pointer; transition: all 0.2s ease;">Art Gallery</button>
-        <button id="ref-btn-blades" onclick="if(window.setReflectionPreset)window.setReflectionPreset('blades'); updateRefButtons('blades');" style="background: rgba(255, 255, 255, 0.08); color: #cbd5e1; border: none; padding: 5px 11px; border-radius: 999px; font-weight: 600; cursor: pointer; transition: all 0.2s ease;">Twin Blades</button>
-        <button id="ref-btn-close" onclick="document.getElementById('reflection-switcher').style.display='none'" style="background: transparent; color: #64748b; border: none; padding: 3px 6px; cursor: pointer; font-size: 14px; margin-left: 2px;" title="Hide bar">✕</button>
-    </div>
     <script>
-        function updateRefButtons(active) {
-            ['hero', 'gallery', 'blades'].forEach(function(m) {
-                var btn = document.getElementById('ref-btn-' + m);
+        window.selectDebugReflectionPreset = function(preset) {
+            if (window.setReflectionPreset) {
+                window.setReflectionPreset(preset);
+            }
+            ['gallery', 'hero', 'blades'].forEach(function(m) {
+                var btn = document.getElementById('debug-ref-btn-' + m);
                 if (!btn) return;
-                if (m === active) {
+                if (m === preset) {
                     btn.style.background = 'linear-gradient(135deg, #00f0ff, #0077ff)';
                     btn.style.color = '#ffffff';
                     btn.style.fontWeight = '700';
-                    btn.style.boxShadow = '0 0 12px rgba(0, 240, 255, 0.4)';
                 } else {
                     btn.style.background = 'rgba(255, 255, 255, 0.08)';
                     btn.style.color = '#cbd5e1';
                     btn.style.fontWeight = '600';
-                    btn.style.boxShadow = 'none';
                 }
             });
-        }
+        };
         window.addEventListener('DOMContentLoaded', function() {
             var params = new URLSearchParams(window.location.search);
-            var preset = params.get('reflection') || 'hero';
-            updateRefButtons(preset);
+            var preset = params.get('reflection') || 'gallery';
+            window.selectDebugReflectionPreset(preset);
         });
     </script>
     <div id="game-hint-container"></div>

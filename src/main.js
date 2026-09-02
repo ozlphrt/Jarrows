@@ -857,7 +857,7 @@ renderer.domElement.addEventListener('wheel', (event) => {
 
 // Setup scene elements
 const lights = createLights(scene);
-const initialReflectionPreset = (typeof window !== 'undefined') ? (new URLSearchParams(window.location.search).get('reflection') || 'hero') : 'hero';
+const initialReflectionPreset = (typeof window !== 'undefined') ? (new URLSearchParams(window.location.search).get('reflection') || 'gallery') : 'gallery';
 setupStudioEnvironment(scene, renderer, initialReflectionPreset);
 // Make lights globally accessible for UI and debug
 if (typeof window !== 'undefined') {
