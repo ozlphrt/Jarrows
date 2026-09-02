@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Jarrows - Block Surface Texture & Material Mockups</title>
+    <title>Jarrows - Shiny Plastic & Noise Surface Texture Mockups</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Inter:wght@400;500;600;700;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
@@ -12,16 +12,14 @@
     <style>
         :root {
             --bg-primary: #0a0d14;
-            --bg-card: rgba(18, 24, 38, 0.88);
+            --bg-card: rgba(18, 24, 38, 0.90);
             --bg-card-border: rgba(255, 255, 255, 0.12);
             --accent-cream: #fbf6ed;
             --accent-gold: #ffbe1a;
             --accent-coral: #ff6b6b;
             --accent-teal: #4ecdc4;
-            --accent-cyan: #00f0ff;
             --text-primary: #f8fafc;
             --text-secondary: #94a3b8;
-            --border-highlight: rgba(251, 246, 237, 0.35);
         }
 
         * {
@@ -31,7 +29,7 @@
         }
 
         body {
-            background: radial-gradient(circle at 50% 15%, #182035 0%, #090c13 85%);
+            background: radial-gradient(circle at 50% 15%, #192238 0%, #080b12 85%);
             color: var(--text-primary);
             font-family: 'Inter', -apple-system, sans-serif;
             min-height: 100vh;
@@ -52,7 +50,7 @@
 
         .header h1 {
             font-family: 'Fredoka', sans-serif;
-            font-size: 42px;
+            font-size: 40px;
             font-weight: 700;
             background: linear-gradient(135deg, #ffffff 0%, #fef3c7 40%, #fbbf24 100%);
             -webkit-background-clip: text;
@@ -64,8 +62,8 @@
         .header p {
             font-size: 16px;
             color: var(--text-secondary);
-            max-width: 820px;
-            margin: 0 auto 18px;
+            max-width: 860px;
+            margin: 0 auto 16px;
             line-height: 1.6;
         }
 
@@ -80,10 +78,10 @@
             font-size: 13px;
             font-weight: 600;
             color: #fef3c7;
-            margin-bottom: 8px;
+            margin-bottom: 10px;
         }
 
-        /* Hero 3D Stage */
+        /* Hero 3D Stage Section */
         .hero-stage-section {
             background: var(--bg-card);
             border: 1px solid var(--bg-card-border);
@@ -93,7 +91,7 @@
             box-shadow: 0 24px 48px rgba(0, 0, 0, 0.5);
             margin-bottom: 48px;
             display: grid;
-            grid-template-columns: 1fr 360px;
+            grid-template-columns: 1fr 380px;
             gap: 28px;
             align-items: stretch;
         }
@@ -106,7 +104,7 @@
 
         .viewport-wrapper {
             position: relative;
-            background: radial-gradient(circle at center, #1b2438 0%, #0c101b 100%);
+            background: radial-gradient(circle at center, #1b253b 0%, #0a0e18 100%);
             border-radius: 18px;
             border: 1px solid rgba(255, 255, 255, 0.08);
             min-height: 480px;
@@ -132,7 +130,7 @@
 
         .viewport-title {
             font-family: 'Fredoka', sans-serif;
-            font-size: 20px;
+            font-size: 21px;
             color: #fff;
             text-shadow: 0 2px 4px rgba(0,0,0,0.8);
         }
@@ -151,14 +149,14 @@
             display: flex;
             flex-direction: column;
             justify-content: space-between;
-            gap: 20px;
+            gap: 16px;
         }
 
         .panel-heading {
             font-family: 'Fredoka', sans-serif;
-            font-size: 20px;
+            font-size: 19px;
             color: #fff;
-            margin-bottom: 14px;
+            margin-bottom: 12px;
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -167,16 +165,16 @@
         .preset-pills {
             display: flex;
             flex-direction: column;
-            gap: 10px;
+            gap: 9px;
         }
 
         .preset-pill-btn {
             background: rgba(30, 41, 59, 0.7);
             border: 1px solid rgba(255, 255, 255, 0.1);
             color: #cbd5e1;
-            padding: 12px 16px;
+            padding: 11px 15px;
             border-radius: 14px;
-            font-size: 14px;
+            font-size: 13.5px;
             font-weight: 600;
             display: flex;
             align-items: center;
@@ -210,15 +208,15 @@
         .stage-toggles {
             display: flex;
             flex-wrap: wrap;
-            gap: 10px;
-            margin-top: 8px;
+            gap: 8px;
+            margin-top: 6px;
         }
 
         .toggle-btn {
             background: rgba(255, 255, 255, 0.06);
             border: 1px solid rgba(255, 255, 255, 0.12);
             color: #e2e8f0;
-            padding: 8px 14px;
+            padding: 8px 12px;
             border-radius: 10px;
             font-size: 12px;
             font-weight: 600;
@@ -230,6 +228,31 @@
             background: #f59e0b;
             color: #0f172a;
             border-color: #f59e0b;
+        }
+
+        /* Compare Banner */
+        .compare-strip {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(245, 158, 11, 0.12);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+            padding: 10px 16px;
+            border-radius: 12px;
+            margin-bottom: 12px;
+            font-size: 12px;
+            color: #fef08a;
+        }
+
+        .compare-toggle-btn {
+            background: #f59e0b;
+            color: #0f172a;
+            border: none;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-weight: 700;
+            font-size: 11px;
+            cursor: pointer;
         }
 
         /* Grid of 6 Preset Mockup Cards */
@@ -262,7 +285,7 @@
             backdrop-filter: blur(20px);
             display: flex;
             flex-direction: column;
-            gap: 18px;
+            gap: 16px;
             transition: transform 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
             position: relative;
             overflow: hidden;
@@ -296,7 +319,7 @@
 
         .card-canvas-wrap {
             height: 220px;
-            background: radial-gradient(circle at center, #1b2438 0%, #0c101b 100%);
+            background: radial-gradient(circle at center, #1b253b 0%, #0a0e18 100%);
             border-radius: 14px;
             border: 1px solid rgba(255, 255, 255, 0.08);
             position: relative;
@@ -311,16 +334,16 @@
 
         .card-header h3 {
             font-family: 'Fredoka', sans-serif;
-            font-size: 22px;
+            font-size: 21px;
             color: #fff;
-            margin-bottom: 6px;
+            margin-bottom: 4px;
         }
 
         .card-header .meta-flavor {
             font-size: 13px;
             color: #fbbf24;
             font-weight: 600;
-            margin-bottom: 8px;
+            margin-bottom: 6px;
         }
 
         .card-desc {
@@ -332,7 +355,7 @@
         .card-specs {
             display: flex;
             flex-wrap: wrap;
-            gap: 8px;
+            gap: 7px;
             background: rgba(15, 23, 42, 0.6);
             padding: 12px;
             border-radius: 12px;
@@ -476,16 +499,16 @@
     <div class="container">
         <!-- Top Header -->
         <div class="header">
-            <div class="tagline-badge">✨ Jarrows v8.31.3 Material Design Lab</div>
-            <h1>Creamy White Block Surface Textures</h1>
-            <p>Compare real-time physical surface textures, micro-finishes, and tactile light responses for Jarrows creamy white blocks. Rotate any block in 3D, inspect micro-highlights, and pick the best look.</p>
+            <div class="tagline-badge">✨ Shiny Plastic with Organic Noise Lab</div>
+            <h1>Shiny Plastic Surface Textures (Not Glass)</h1>
+            <p>Exploring authentic molded glossy plastic finishes with randomized surface noise — eliminating the mirror-flat "glass glaze" while keeping blocks beautifully shiny, tactile, and creamy.</p>
         </div>
 
         <!-- Hero 3D Stage Section -->
         <div class="hero-stage-section">
             <div class="viewport-wrapper">
                 <div class="viewport-overlay">
-                    <div class="viewport-title" id="active-preset-title">1. Glazed Studio Ceramic</div>
+                    <div class="viewport-title" id="active-preset-title">1. Molded ABS Gloss (Orange-Peel Noise)</div>
                     <div class="viewport-hint">🖱️ Click & Drag to Orbit • Scroll to Zoom</div>
                 </div>
                 <canvas id="hero-canvas"></canvas>
@@ -494,49 +517,55 @@
             <div class="stage-controls">
                 <div>
                     <div class="panel-heading">
-                        <span>Select Texture Preset</span>
-                        <span style="font-size: 11px; color: #fbbf24;">Live 3D</span>
+                        <span>Select Noise Variation</span>
+                        <span style="font-size: 11px; color: #fbbf24;">Live WebGL</span>
                     </div>
+
+                    <div class="compare-strip">
+                        <span>Glassy vs Shiny Plastic:</span>
+                        <button class="compare-toggle-btn" id="btn-toggle-glass">Switch to Old Glassy Look</button>
+                    </div>
+
                     <div class="preset-pills">
-                        <button class="preset-pill-btn active" data-preset="glazed">
+                        <button class="preset-pill-btn active" data-preset="abs">
                             <div>
-                                <div>Glazed Studio Porcelain</div>
-                                <div class="pill-sub">Liquid clearcoat, high gloss, rich reflections</div>
+                                <div>1. Molded ABS Gloss</div>
+                                <div class="pill-sub">Gentle mold orange-peel noise; breaks up flat glass glare</div>
                             </div>
                             <span>→</span>
                         </button>
-                        <button class="preset-pill-btn" data-preset="satin">
+                        <button class="preset-pill-btn" data-preset="sparkle">
                             <div>
-                                <div>Matte Velvet Satin</div>
-                                <div class="pill-sub">Powdery soft-touch, zero glare, Nordic feel</div>
+                                <div>2. Micro-Sparkle Fleck</div>
+                                <div class="pill-sub">Fine mica speckle noise embedded in glossy cream resin</div>
                             </div>
                             <span>→</span>
                         </button>
-                        <button class="preset-pill-btn" data-preset="sandstone">
+                        <button class="preset-pill-btn" data-preset="noiseSheen">
                             <div>
-                                <div>Micro-Grain Sandstone</div>
-                                <div class="pill-sub">Tactile architectural limestone micro-pores</div>
+                                <div>3. Perlin Roughness Noise</div>
+                                <div class="pill-sub">Random 0.08–0.22 micro-roughness map; organic gleam</div>
                             </div>
                             <span>→</span>
                         </button>
-                        <button class="preset-pill-btn" data-preset="alabaster">
+                        <button class="preset-pill-btn" data-preset="stipple">
                             <div>
-                                <div>Polished Alabaster / Jadeite</div>
-                                <div class="pill-sub">Subsurface depth, luminous bevel edge glow</div>
+                                <div>4. Stippled Game Tile (EDM)</div>
+                                <div class="pill-sub">Micro-mold cavity noise; premium Domino/Hive tile feel</div>
                             </div>
                             <span>→</span>
                         </button>
-                        <button class="preset-pill-btn" data-preset="carrara">
+                        <button class="preset-pill-btn" data-preset="bakelite">
                             <div>
-                                <div>Fine-Veined Marble</div>
-                                <div class="pill-sub">Ultra-delicate gold & grey mineral veining</div>
+                                <div>5. Dense Polished Acrylic</div>
+                                <div class="pill-sub">Smooth shiny plastic with subtle organic depth clouds</div>
                             </div>
                             <span>→</span>
                         </button>
-                        <button class="preset-pill-btn" data-preset="chamfer">
+                        <button class="preset-pill-btn" data-preset="wavy">
                             <div>
-                                <div>Chamfer Precision Milled</div>
-                                <div class="pill-sub">High-contrast bevel highlights, tactile toy feel</div>
+                                <div>6. Micro-Wavy Surface Tension</div>
+                                <div class="pill-sub">High-gloss molded plastic with soft liquid surface noise</div>
                             </div>
                             <span>→</span>
                         </button>
@@ -544,11 +573,11 @@
                 </div>
 
                 <div>
-                    <div class="panel-heading" style="font-size: 15px; margin-bottom: 8px;">Scene Controls</div>
+                    <div class="panel-heading" style="font-size: 15px; margin-bottom: 8px;">Stage Controls</div>
                     <div class="stage-toggles">
                         <button class="toggle-btn active" id="btn-spin">Auto Rotate</button>
                         <button class="toggle-btn" id="btn-explode">Exploded View</button>
-                        <button class="toggle-btn" id="btn-lighting">Switch Lighting</button>
+                        <button class="toggle-btn" id="btn-lighting">Lighting: Warm Studio</button>
                     </div>
                 </div>
             </div>
@@ -556,180 +585,180 @@
 
         <!-- 6 Preset Showcase Cards -->
         <div>
-            <div class="section-title">Surface Texture Gallery</div>
-            <div class="section-subtitle">Side-by-side comparison of 6 tactile surface finishes rendered with real-time WebGL PBR physical materials.</div>
+            <div class="section-title">Shiny Plastic Texture Gallery</div>
+            <div class="section-subtitle">6 distinct physical approaches to shiny plastic with micro-surface noise (no flat mirror glass).</div>
 
             <div class="presets-grid">
                 <!-- Card 1 -->
                 <div class="preset-card featured">
-                    <div class="card-badge">Current Baseline</div>
-                    <div class="card-canvas-wrap"><canvas id="card-canvas-glazed"></canvas></div>
+                    <div class="card-badge">Recommended</div>
+                    <div class="card-canvas-wrap"><canvas id="card-canvas-abs"></canvas></div>
                     <div class="card-header">
-                        <h3>1. Glazed Studio Porcelain</h3>
-                        <div class="meta-flavor">Luxury Bone China / Glazed Ceramic</div>
+                        <h3>1. Molded ABS Gloss</h3>
+                        <div class="meta-flavor">Subtle Orange-Peel Mold Noise</div>
                     </div>
                     <div class="card-desc">
-                        A pristine glass clearcoat layer suspended over rich creamy porcelain. Captures razor-sharp specular window glints on rounded bevels while keeping faces smooth and clean.
+                        Captures the exact specular reflection of high-end injection molded plastic (like fresh LEGO bricks or premium electronics). A gentle procedural normal map breaks up reflections so it looks 100% like real shiny plastic rather than a sheet of glass.
                     </div>
                     <div class="card-specs">
                         <div class="spec-item">Base: <strong>#fbf6ed</strong></div>
-                        <div class="spec-item">Roughness: <strong>0.14</strong></div>
-                        <div class="spec-item">Clearcoat: <strong>1.0</strong></div>
-                        <div class="spec-item">ClearcoatRough: <strong>0.04</strong></div>
-                        <div class="spec-item">Tactile: <strong>Glassy</strong></div>
+                        <div class="spec-item">Roughness: <strong>0.13</strong></div>
+                        <div class="spec-item">Clearcoat: <strong>0.00</strong></div>
+                        <div class="spec-item">NormalMap: <strong>OrangePeel</strong></div>
+                        <div class="spec-item">Feel: <strong>Injection ABS</strong></div>
                     </div>
-                    <button class="card-action-btn" onclick="applyPresetToLab('glazed')">Test in 3D Lab</button>
+                    <button class="card-action-btn" onclick="applyPresetToLab('abs')">Test in 3D Lab</button>
                 </div>
 
                 <!-- Card 2 -->
                 <div class="preset-card">
-                    <div class="card-badge" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border-color: rgba(16, 185, 129, 0.4);">Silky Soft</div>
-                    <div class="card-canvas-wrap"><canvas id="card-canvas-satin"></canvas></div>
+                    <div class="card-badge" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border-color: rgba(16, 185, 129, 0.4);">Subtle Glimmer</div>
+                    <div class="card-canvas-wrap"><canvas id="card-canvas-sparkle"></canvas></div>
                     <div class="card-header">
-                        <h3>2. Matte Velvet Satin</h3>
-                        <div class="meta-flavor">Nordic Chalk-Matte / Soft-Touch Minimalist</div>
+                        <h3>2. Micro-Sparkle Fleck</h3>
+                        <div class="meta-flavor">Embedded Pearlescent Specular Noise</div>
                     </div>
                     <div class="card-desc">
-                        Powdery, non-reflective eggshell finish with velvety diffuse light diffusion. Zero harsh specular glare, offering maximum legibility for colorful arrows from any viewing angle.
+                        Microscopic reflective fleck noise embedded inside creamy plastic resin (like luxury gaming dice or bowling ball acrylic). Glints subtly as the block rotates under light, giving immense physical depth.
                     </div>
                     <div class="card-specs">
-                        <div class="spec-item">Base: <strong>#faf5ea</strong></div>
-                        <div class="spec-item">Roughness: <strong>0.38</strong></div>
-                        <div class="spec-item">Clearcoat: <strong>0.0</strong></div>
-                        <div class="spec-item">Metalness: <strong>0.02</strong></div>
-                        <div class="spec-item">Tactile: <strong>Velvet</strong></div>
+                        <div class="spec-item">Base: <strong>#fbf6ed</strong></div>
+                        <div class="spec-item">Roughness: <strong>0.15</strong></div>
+                        <div class="spec-item">Metalness: <strong>0.06</strong></div>
+                        <div class="spec-item">BumpScale: <strong>0.010</strong></div>
+                        <div class="spec-item">Feel: <strong>Sparkle Resin</strong></div>
                     </div>
-                    <button class="card-action-btn" onclick="applyPresetToLab('satin')">Test in 3D Lab</button>
+                    <button class="card-action-btn" onclick="applyPresetToLab('sparkle')">Test in 3D Lab</button>
                 </div>
 
                 <!-- Card 3 -->
                 <div class="preset-card">
-                    <div class="card-badge" style="background: rgba(56, 189, 248, 0.2); color: #38bdf8; border-color: rgba(56, 189, 248, 0.4);">Architectural</div>
-                    <div class="card-canvas-wrap"><canvas id="card-canvas-sandstone"></canvas></div>
+                    <div class="card-badge" style="background: rgba(56, 189, 248, 0.2); color: #38bdf8; border-color: rgba(56, 189, 248, 0.4);">Organic Gleam</div>
+                    <div class="card-canvas-wrap"><canvas id="card-canvas-noiseSheen"></canvas></div>
                     <div class="card-header">
-                        <h3>3. Micro-Grain Sandstone</h3>
-                        <div class="meta-flavor">Honed Cream Travertine / Fine Mineral Grain</div>
+                        <h3>3. Perlin Roughness Noise</h3>
+                        <div class="meta-flavor">Micro-Varied Specular Map</div>
                     </div>
                     <div class="card-desc">
-                        Infused with an ultra-fine procedural micro-pore normal map. Creates authentic tactile stone micro-shadows under glancing studio light, feeling grounded, natural, and organic.
+                        Instead of a uniform mathematical gloss, surface roughness fluctuates randomly between 0.08 and 0.22 via a procedural noise cloud. Specular highlights shimmer with natural organic variation.
                     </div>
                     <div class="card-specs">
-                        <div class="spec-item">Base: <strong>#f8f2e6</strong></div>
-                        <div class="spec-item">Roughness: <strong>0.44</strong></div>
-                        <div class="spec-item">BumpScale: <strong>0.025</strong></div>
-                        <div class="spec-item">Grain: <strong>Procedural</strong></div>
-                        <div class="spec-item">Tactile: <strong>Mineral</strong></div>
+                        <div class="spec-item">Base: <strong>#faf5ea</strong></div>
+                        <div class="spec-item">RoughnessMap: <strong>Perlin Noise</strong></div>
+                        <div class="spec-item">Roughness: <strong>0.16</strong></div>
+                        <div class="spec-item">Clearcoat: <strong>0.10</strong></div>
+                        <div class="spec-item">Feel: <strong>Variable Sheen</strong></div>
                     </div>
-                    <button class="card-action-btn" onclick="applyPresetToLab('sandstone')">Test in 3D Lab</button>
+                    <button class="card-action-btn" onclick="applyPresetToLab('noiseSheen')">Test in 3D Lab</button>
                 </div>
 
                 <!-- Card 4 -->
                 <div class="preset-card">
-                    <div class="card-badge" style="background: rgba(244, 114, 182, 0.2); color: #f472b6; border-color: rgba(244, 114, 182, 0.4);">Luminous</div>
-                    <div class="card-canvas-wrap"><canvas id="card-canvas-alabaster"></canvas></div>
+                    <div class="card-badge" style="background: rgba(244, 114, 182, 0.2); color: #f472b6; border-color: rgba(244, 114, 182, 0.4);">Tactile Game Tile</div>
+                    <div class="card-canvas-wrap"><canvas id="card-canvas-stipple"></canvas></div>
                     <div class="card-header">
-                        <h3>4. Polished Alabaster</h3>
-                        <div class="meta-flavor">Translucent Mineral / Glowing Jadeite Edge</div>
+                        <h3>4. Stippled Game Tile (EDM)</h3>
+                        <div class="meta-flavor">Fine Mold Cavity Spark Erosion Noise</div>
                     </div>
                     <div class="card-desc">
-                        Simulates depth transmission through translucent mineral stone. Beveled edges catch light from within, radiating a warm, opulent creamy glow without sacrificing solid structure.
+                        Emulates the micro-stippled spark erosion texture (VDI 3400) found on luxury board game pieces (Hive, Rummikub, Dominoes). Gives a firm, tactile grip feeling while still showing crisp highlights along rounded bevels.
                     </div>
                     <div class="card-specs">
-                        <div class="spec-item">Base: <strong>#fbf5e8</strong></div>
-                        <div class="spec-item">Roughness: <strong>0.18</strong></div>
-                        <div class="spec-item">Transmission: <strong>0.22</strong></div>
-                        <div class="spec-item">Clearcoat: <strong>0.8</strong></div>
-                        <div class="spec-item">Tactile: <strong>Gemstone</strong></div>
+                        <div class="spec-item">Base: <strong>#f8f2e6</strong></div>
+                        <div class="spec-item">Roughness: <strong>0.22</strong></div>
+                        <div class="spec-item">BumpScale: <strong>0.015</strong></div>
+                        <div class="spec-item">Noise: <strong>Micro-Stipple</strong></div>
+                        <div class="spec-item">Feel: <strong>Domino / Mahjong</strong></div>
                     </div>
-                    <button class="card-action-btn" onclick="applyPresetToLab('alabaster')">Test in 3D Lab</button>
+                    <button class="card-action-btn" onclick="applyPresetToLab('stipple')">Test in 3D Lab</button>
                 </div>
 
                 <!-- Card 5 -->
                 <div class="preset-card">
-                    <div class="card-badge" style="background: rgba(234, 179, 8, 0.2); color: #facc15; border-color: rgba(234, 179, 8, 0.4);">High Prestige</div>
-                    <div class="card-canvas-wrap"><canvas id="card-canvas-carrara"></canvas></div>
+                    <div class="card-badge" style="background: rgba(234, 179, 8, 0.2); color: #facc15; border-color: rgba(234, 179, 8, 0.4);">Rich Resin</div>
+                    <div class="card-canvas-wrap"><canvas id="card-canvas-bakelite"></canvas></div>
                     <div class="card-header">
-                        <h3>5. Fine-Veined Marble</h3>
-                        <div class="meta-flavor">Warm Calacatta Gold / Whisper Veins</div>
+                        <h3>5. Dense Polished Acrylic</h3>
+                        <div class="meta-flavor">Cloud Noise Depth + High Gloss</div>
                     </div>
                     <div class="card-desc">
-                        Subtle, whisper-thin veins of warm ochre and dove-grey snake through the creamy base. Brings an unmistakable Italian sculpture aesthetic that turns the tower into a modern art piece.
+                        A dense, premium solid acrylic feel. Microscopic cloudy noise beneath the glossy plastic exterior eliminates sterile flat computer graphics and brings an organic, heavy cast-plastic feel.
                     </div>
                     <div class="card-specs">
                         <div class="spec-item">Base: <strong>#faf6ed</strong></div>
-                        <div class="spec-item">Roughness: <strong>0.16</strong></div>
-                        <div class="spec-item">Clearcoat: <strong>0.95</strong></div>
-                        <div class="spec-item">Texture: <strong>Veined Map</strong></div>
-                        <div class="spec-item">Tactile: <strong>Sculpted</strong></div>
+                        <div class="spec-item">Roughness: <strong>0.12</strong></div>
+                        <div class="spec-item">Clearcoat: <strong>0.25</strong></div>
+                        <div class="spec-item">Map: <strong>Cloud Resin Noise</strong></div>
+                        <div class="spec-item">Feel: <strong>Cast Resin</strong></div>
                     </div>
-                    <button class="card-action-btn" onclick="applyPresetToLab('carrara')">Test in 3D Lab</button>
+                    <button class="card-action-btn" onclick="applyPresetToLab('bakelite')">Test in 3D Lab</button>
                 </div>
 
                 <!-- Card 6 -->
                 <div class="preset-card">
-                    <div class="card-badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; border-color: rgba(168, 85, 247, 0.4);">High Precision</div>
-                    <div class="card-canvas-wrap"><canvas id="card-canvas-chamfer"></canvas></div>
+                    <div class="card-badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; border-color: rgba(168, 85, 247, 0.4);">Liquid Mold</div>
+                    <div class="card-canvas-wrap"><canvas id="card-canvas-wavy"></canvas></div>
                     <div class="card-header">
-                        <h3>6. Chamfer Precision Milled</h3>
-                        <div class="meta-flavor">Precision Industrial Milled / Chamfer Edge</div>
+                        <h3>6. Micro-Wavy Surface Tension</h3>
+                        <div class="meta-flavor">Liquid Plastic Surface Tension Noise</div>
                     </div>
                     <div class="card-desc">
-                        High-polish micro-grooves along outer edges emphasize each individual block's boundaries with crisp specular line accents, giving the puzzle an addictive, tactile board-game physical feel.
+                        Simulates the microscopic waviness of cooled molten plastic in high-pressure molds. Highlights bend softly rather than forming rigid straight lines, creating an irresistibly tactile and juicy look.
                     </div>
                     <div class="card-specs">
                         <div class="spec-item">Base: <strong>#fcf7ee</strong></div>
-                        <div class="spec-item">Roughness: <strong>0.12</strong></div>
-                        <div class="spec-item">Clearcoat: <strong>1.0</strong></div>
-                        <div class="spec-item">EdgeAcc: <strong>Groove Spec</strong></div>
-                        <div class="spec-item">Tactile: <strong>CNC Toy</strong></div>
+                        <div class="spec-item">Roughness: <strong>0.14</strong></div>
+                        <div class="spec-item">NormalMap: <strong>Wave Noise</strong></div>
+                        <div class="spec-item">Clearcoat: <strong>0.00</strong></div>
+                        <div class="spec-item">Feel: <strong>Liquid Molded</strong></div>
                     </div>
-                    <button class="card-action-btn" onclick="applyPresetToLab('chamfer')">Test in 3D Lab</button>
+                    <button class="card-action-btn" onclick="applyPresetToLab('wavy')">Test in 3D Lab</button>
                 </div>
             </div>
         </div>
 
         <!-- Interactive Material Tuning Lab -->
         <div class="lab-panel">
-            <div class="section-title">Interactive Material Tuning Lab</div>
-            <div class="section-subtitle">Tweak material parameters in real-time to dial in the exact tactile balance for Jarrows.</div>
+            <div class="section-title">Interactive Plastic & Noise Tuning Lab</div>
+            <div class="section-subtitle">Tweak noise scale, bump intensity, and plastic glossiness in real-time to dial in the perfect touch.</div>
 
             <div class="lab-grid">
                 <div class="slider-group">
                     <div class="slider-header">
-                        <span>Surface Roughness</span>
-                        <span id="val-roughness">0.14</span>
+                        <span>Noise Bump Intensity</span>
+                        <span id="val-bump">0.015</span>
                     </div>
-                    <input type="range" id="input-roughness" min="0.0" max="0.8" step="0.01" value="0.14">
+                    <input type="range" id="input-bump" min="0.00" max="0.06" step="0.002" value="0.015">
                 </div>
 
                 <div class="slider-group">
                     <div class="slider-header">
-                        <span>Clearcoat Lacquer</span>
-                        <span id="val-clearcoat">1.00</span>
+                        <span>Plastic Specular Gloss (Roughness)</span>
+                        <span id="val-roughness">0.13</span>
                     </div>
-                    <input type="range" id="input-clearcoat" min="0.0" max="1.0" step="0.02" value="1.00">
+                    <input type="range" id="input-roughness" min="0.05" max="0.50" step="0.01" value="0.13">
                 </div>
 
                 <div class="slider-group">
                     <div class="slider-header">
-                        <span>Clearcoat Roughness</span>
-                        <span id="val-clearcoat-rough">0.04</span>
+                        <span>Glassiness (Clearcoat)</span>
+                        <span id="val-clearcoat">0.00</span>
                     </div>
-                    <input type="range" id="input-clearcoat-rough" min="0.0" max="0.3" step="0.01" value="0.04">
+                    <input type="range" id="input-clearcoat" min="0.0" max="1.0" step="0.02" value="0.00">
                 </div>
 
                 <div class="slider-group">
                     <div class="slider-header">
-                        <span>Micro-Grain Bump Scale</span>
-                        <span id="val-bump">0.00</span>
+                        <span>Noise Frequency (Texture Scale)</span>
+                        <span id="val-freq">4x (Fine)</span>
                     </div>
-                    <input type="range" id="input-bump" min="0.0" max="0.08" step="0.002" value="0.00">
+                    <input type="range" id="input-freq" min="1" max="8" step="1" value="4">
                 </div>
 
                 <div class="slider-group">
                     <div class="slider-header">
-                        <span>Cream Warmth / Tone</span>
-                        <span id="val-tone">Ivory Cream</span>
+                        <span>Creamy Warmth Tone</span>
+                        <span id="val-tone">Ivory Cream (#fbf6ed)</span>
                     </div>
                     <input type="range" id="input-tone" min="0" max="4" step="1" value="1">
                 </div>
@@ -746,29 +775,82 @@
             <!-- Ready-to-use Code Output -->
             <div class="code-box-wrapper">
                 <button class="copy-btn" id="btn-copy-code">Copy Code</button>
-                <div style="font-size: 11px; color: #94a3b8; margin-bottom: 8px; font-weight: 700;">PROPERTIES FOR Block.js (THREE.MeshPhysicalMaterial):</div>
+                <div style="font-size: 11px; color: #94a3b8; margin-bottom: 8px; font-weight: 700;">PROPERTIES FOR Block.js (THREE.MeshStandardMaterial / MeshPhysicalMaterial):</div>
                 <pre id="code-output">// Generated Material Configuration
 new THREE.MeshPhysicalMaterial({
-    color: 0xfbf6ed, // Luxurious creamy ivory porcelain
-    roughness: 0.14,
-    metalness: 0.05,
-    clearcoat: 1.0,
-    clearcoatRoughness: 0.04
+    color: 0xfbf6ed, // Creamy ivory
+    roughness: 0.13, // Shiny plastic specularity
+    metalness: 0.02,
+    clearcoat: 0.0,  // Zero glass glaze (pure shiny molded plastic)
+    normalMap: getPlasticNoiseNormalMap(),
+    normalScale: new THREE.Vector2(0.015, 0.015)
 });</pre>
             </div>
         </div>
     </div>
 
     <script>
-        // --- 1. Procedural Texture Generators ---
-        function createMicroGrainCanvas() {
+        // --- 1. Procedural Noise Generators (Molded Plastic, Orange Peel, Sparkle, Stipple) ---
+
+        // Generator A: Injection Mold Orange-Peel Normal Map
+        function createOrangePeelNormalCanvas() {
+            const size = 256;
             const canvas = document.createElement('canvas');
-            canvas.width = 256;
-            canvas.height = 256;
+            canvas.width = size;
+            canvas.height = size;
             const ctx = canvas.getContext('2d');
-            const imgData = ctx.createImageData(256, 256);
+            
+            // Build smooth heightfield
+            const heights = new Float32Array(size * size);
+            for (let y = 0; y < size; y++) {
+                for (let x = 0; x < size; x++) {
+                    const nx = x / 18.0;
+                    const ny = y / 18.0;
+                    let h = Math.sin(nx) * Math.cos(ny) * 0.5 + 0.5;
+                    h += (Math.sin(nx * 2.3 + 1.2) * Math.cos(ny * 2.1 + 2.4)) * 0.3;
+                    h += (Math.sin(nx * 4.7) * Math.sin(ny * 4.3)) * 0.15;
+                    heights[y * size + x] = h;
+                }
+            }
+            
+            // Convert to normal map (RGB)
+            const imgData = ctx.createImageData(size, size);
+            for (let y = 0; y < size; y++) {
+                for (let x = 0; x < size; x++) {
+                    const idx = (y * size + x) * 4;
+                    const left = heights[y * size + ((x - 1 + size) % size)];
+                    const right = heights[y * size + ((x + 1) % size)];
+                    const up = heights[((y - 1 + size) % size) * size + x];
+                    const down = heights[((y + 1) % size) * size + x];
+                    
+                    const dx = (right - left) * 2.5;
+                    const dy = (down - up) * 2.5;
+                    const dz = 1.0;
+                    const len = Math.hypot(dx, dy, dz);
+                    
+                    imgData.data[idx] = Math.floor(((dx / len) * 0.5 + 0.5) * 255);
+                    imgData.data[idx + 1] = Math.floor(((dy / len) * 0.5 + 0.5) * 255);
+                    imgData.data[idx + 2] = Math.floor(((dz / len) * 0.5 + 0.5) * 255);
+                    imgData.data[idx + 3] = 255;
+                }
+            }
+            ctx.putImageData(imgData, 0, 0);
+            return canvas;
+        }
+
+        // Generator B: Fine Sparkle / Fleck Noise Map
+        function createSparkleNoiseCanvas() {
+            const size = 256;
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            const imgData = ctx.createImageData(size, size);
+            
             for (let i = 0; i < imgData.data.length; i += 4) {
-                const val = 128 + (Math.random() - 0.5) * 45;
+                // High frequency micro-glints
+                const isFleck = Math.random() > 0.88;
+                const val = isFleck ? Math.floor(180 + Math.random() * 75) : Math.floor(128 + (Math.random() - 0.5) * 25);
                 imgData.data[i] = val;
                 imgData.data[i + 1] = val;
                 imgData.data[i + 2] = val;
@@ -778,144 +860,250 @@ new THREE.MeshPhysicalMaterial({
             return canvas;
         }
 
-        function createMarbleCanvas() {
+        // Generator C: Perlin Micro-Roughness Map (Roughness values fluctuating 0.08 - 0.22)
+        function createPerlinRoughnessCanvas() {
+            const size = 256;
             const canvas = document.createElement('canvas');
-            canvas.width = 512;
-            canvas.height = 512;
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            const imgData = ctx.createImageData(size, size);
+            
+            for (let y = 0; y < size; y++) {
+                for (let x = 0; x < size; x++) {
+                    const idx = (y * size + x) * 4;
+                    const nx = x / 28.0;
+                    const ny = y / 28.0;
+                    let v = Math.sin(nx) * Math.cos(ny) * 0.5 + 0.5;
+                    v += (Math.sin(nx * 3.1 + 0.8) * Math.cos(ny * 2.7 + 1.5)) * 0.35;
+                    v += (Math.random() - 0.5) * 0.15;
+                    // Map to 0.08 - 0.24 in 0-255 scale (approx 20 - 60)
+                    const gray = Math.floor(25 + v * 35);
+                    imgData.data[idx] = gray;
+                    imgData.data[idx + 1] = gray;
+                    imgData.data[idx + 2] = gray;
+                    imgData.data[idx + 3] = 255;
+                }
+            }
+            ctx.putImageData(imgData, 0, 0);
+            return canvas;
+        }
+
+        // Generator D: Stippled Game Tile Noise (EDM spark erosion)
+        function createStippleNoiseCanvas() {
+            const size = 256;
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            const imgData = ctx.createImageData(size, size);
+            
+            for (let i = 0; i < imgData.data.length; i += 4) {
+                // Fine salt-and-pepper mold texture
+                const n = 128 + Math.floor((Math.random() - 0.5) * 55);
+                imgData.data[i] = n;
+                imgData.data[i + 1] = n;
+                imgData.data[i + 2] = n;
+                imgData.data[i + 3] = 255;
+            }
+            ctx.putImageData(imgData, 0, 0);
+            return canvas;
+        }
+
+        // Generator E: Cast Acrylic Resin Cloud Map
+        function createResinCloudCanvas() {
+            const size = 512;
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
             const ctx = canvas.getContext('2d');
             
             // Creamy base
             ctx.fillStyle = '#fbf6ed';
-            ctx.fillRect(0, 0, 512, 512);
+            ctx.fillRect(0, 0, size, size);
 
-            // Subtle warm mineral veins
-            ctx.lineWidth = 3;
-            ctx.strokeStyle = 'rgba(215, 195, 170, 0.25)';
-            ctx.filter = 'blur(4px)';
-
-            for (let v = 0; v < 4; v++) {
-                ctx.beginPath();
-                let x = Math.random() * 100;
-                let y = 0;
-                ctx.moveTo(x, y);
-                while (y < 512) {
-                    x += (Math.random() - 0.48) * 40;
-                    y += 30 + Math.random() * 40;
-                    ctx.lineTo(x, y);
-                }
-                ctx.stroke();
+            // Soft organic cloud swirls
+            for (let i = 0; i < 6; i++) {
+                const grad = ctx.createRadialGradient(
+                    Math.random() * size, Math.random() * size, 20,
+                    Math.random() * size, Math.random() * size, 180
+                );
+                grad.addColorStop(0.0, 'rgba(255, 252, 245, 0.45)');
+                grad.addColorStop(0.5, 'rgba(242, 235, 222, 0.25)');
+                grad.addColorStop(1.0, 'rgba(251, 246, 237, 0.0)');
+                ctx.fillStyle = grad;
+                ctx.fillRect(0, 0, size, size);
             }
-
-            // Delicate hairline veins
-            ctx.lineWidth = 1;
-            ctx.strokeStyle = 'rgba(190, 170, 150, 0.35)';
-            ctx.filter = 'blur(1px)';
-            ctx.beginPath();
-            ctx.moveTo(120, 0);
-            ctx.bezierCurveTo(240, 180, 200, 320, 360, 512);
-            ctx.stroke();
-
             return canvas;
         }
 
-        // Three.js Textures
-        const grainCanvas = createMicroGrainCanvas();
-        const grainTexture = new THREE.CanvasTexture(grainCanvas);
-        grainTexture.wrapS = THREE.RepeatWrapping;
-        grainTexture.wrapT = THREE.RepeatWrapping;
-        grainTexture.repeat.set(4, 4);
+        // Generator F: Liquid Surface Tension Wavy Normal Map
+        function createWavyNormalCanvas() {
+            const size = 256;
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            
+            const heights = new Float32Array(size * size);
+            for (let y = 0; y < size; y++) {
+                for (let x = 0; x < size; x++) {
+                    const nx = x / 36.0;
+                    const ny = y / 36.0;
+                    let h = Math.sin(nx * 1.5 + Math.cos(ny * 1.2)) * 0.5 + 0.5;
+                    h += Math.sin(ny * 2.0 + Math.cos(nx * 1.8)) * 0.3;
+                    heights[y * size + x] = h;
+                }
+            }
+            
+            const imgData = ctx.createImageData(size, size);
+            for (let y = 0; y < size; y++) {
+                for (let x = 0; x < size; x++) {
+                    const idx = (y * size + x) * 4;
+                    const left = heights[y * size + ((x - 1 + size) % size)];
+                    const right = heights[y * size + ((x + 1) % size)];
+                    const up = heights[((y - 1 + size) % size) * size + x];
+                    const down = heights[((y + 1) % size) * size + x];
+                    
+                    const dx = (right - left) * 1.8;
+                    const dy = (down - up) * 1.8;
+                    const dz = 1.0;
+                    const len = Math.hypot(dx, dy, dz);
+                    
+                    imgData.data[idx] = Math.floor(((dx / len) * 0.5 + 0.5) * 255);
+                    imgData.data[idx + 1] = Math.floor(((dy / len) * 0.5 + 0.5) * 255);
+                    imgData.data[idx + 2] = Math.floor(((dz / len) * 0.5 + 0.5) * 255);
+                    imgData.data[idx + 3] = 255;
+                }
+            }
+            ctx.putImageData(imgData, 0, 0);
+            return canvas;
+        }
 
-        const marbleCanvas = createMarbleCanvas();
-        const marbleTexture = new THREE.CanvasTexture(marbleCanvas);
-        marbleTexture.wrapS = THREE.RepeatWrapping;
-        marbleTexture.wrapT = THREE.RepeatWrapping;
+        // Textures
+        const orangePeelTexture = new THREE.CanvasTexture(createOrangePeelNormalCanvas());
+        orangePeelTexture.wrapS = THREE.RepeatWrapping;
+        orangePeelTexture.wrapT = THREE.RepeatWrapping;
+        orangePeelTexture.repeat.set(4, 4);
+
+        const sparkleTexture = new THREE.CanvasTexture(createSparkleNoiseCanvas());
+        sparkleTexture.wrapS = THREE.RepeatWrapping;
+        sparkleTexture.wrapT = THREE.RepeatWrapping;
+        sparkleTexture.repeat.set(5, 5);
+
+        const roughnessNoiseTexture = new THREE.CanvasTexture(createPerlinRoughnessCanvas());
+        roughnessNoiseTexture.wrapS = THREE.RepeatWrapping;
+        roughnessNoiseTexture.wrapT = THREE.RepeatWrapping;
+        roughnessNoiseTexture.repeat.set(4, 4);
+
+        const stippleTexture = new THREE.CanvasTexture(createStippleNoiseCanvas());
+        stippleTexture.wrapS = THREE.RepeatWrapping;
+        stippleTexture.wrapT = THREE.RepeatWrapping;
+        stippleTexture.repeat.set(6, 6);
+
+        const resinCloudTexture = new THREE.CanvasTexture(createResinCloudCanvas());
+        resinCloudTexture.wrapS = THREE.RepeatWrapping;
+        resinCloudTexture.wrapT = THREE.RepeatWrapping;
+
+        const wavyNormalTexture = new THREE.CanvasTexture(createWavyNormalCanvas());
+        wavyNormalTexture.wrapS = THREE.RepeatWrapping;
+        wavyNormalTexture.wrapT = THREE.RepeatWrapping;
+        wavyNormalTexture.repeat.set(3, 3);
 
         // Color Tone presets
         const TONE_PRESETS = [
-            { name: 'Warm Alabaster', hex: 0xf7f2e7 },
-            { name: 'Ivory Cream', hex: 0xfbf6ed },
-            { name: 'Luminous Milk', hex: 0xfffdf8 },
-            { name: 'Warm Bone', hex: 0xf5efe4 },
-            { name: 'Nordic Greige', hex: 0xeee8dd }
+            { name: 'Warm Alabaster (#f7f2e7)', hex: 0xf7f2e7 },
+            { name: 'Ivory Cream (#fbf6ed)', hex: 0xfbf6ed },
+            { name: 'Luminous Milk (#fffdf8)', hex: 0xfffdf8 },
+            { name: 'Warm Bone (#f5efe4)', hex: 0xf5efe4 },
+            { name: 'Nordic Greige (#eee8dd)', hex: 0xeee8dd }
         ];
 
         // --- 2. Preset Definitions ---
         const PRESET_CONFIGS = {
-            glazed: {
-                title: '1. Glazed Studio Porcelain',
+            abs: {
+                title: '1. Molded ABS Gloss (Orange-Peel Noise)',
                 color: 0xfbf6ed,
-                roughness: 0.14,
-                metalness: 0.05,
-                clearcoat: 1.0,
-                clearcoatRoughness: 0.04,
-                bumpMap: null,
-                bumpScale: 0.0,
-                map: null,
-                transmission: 0.0
-            },
-            satin: {
-                title: '2. Matte Velvet Satin',
-                color: 0xfaf5ea,
-                roughness: 0.38,
+                roughness: 0.13,
                 metalness: 0.02,
                 clearcoat: 0.0,
                 clearcoatRoughness: 0.0,
+                normalMap: orangePeelTexture,
+                normalScale: 0.016,
                 bumpMap: null,
                 bumpScale: 0.0,
-                map: null,
-                transmission: 0.0
+                roughnessMap: null,
+                map: null
             },
-            sandstone: {
-                title: '3. Micro-Grain Sandstone',
-                color: 0xf8f2e6,
-                roughness: 0.44,
-                metalness: 0.02,
-                clearcoat: 0.08,
-                clearcoatRoughness: 0.2,
-                bumpMap: grainTexture,
-                bumpScale: 0.028,
-                map: null,
-                transmission: 0.0
-            },
-            alabaster: {
-                title: '4. Polished Alabaster Mineral',
-                color: 0xfbf5e8,
-                roughness: 0.18,
-                metalness: 0.04,
-                clearcoat: 0.85,
-                clearcoatRoughness: 0.05,
-                bumpMap: null,
-                bumpScale: 0.0,
-                map: null,
-                transmission: 0.2
-            },
-            carrara: {
-                title: '5. Fine-Veined Marble',
-                color: 0xfaf6ed,
-                roughness: 0.16,
-                metalness: 0.03,
-                clearcoat: 0.95,
-                clearcoatRoughness: 0.04,
-                bumpMap: null,
-                bumpScale: 0.0,
-                map: marbleTexture,
-                transmission: 0.0
-            },
-            chamfer: {
-                title: '6. Chamfer Precision Milled',
-                color: 0xfcf7ee,
-                roughness: 0.12,
+            sparkle: {
+                title: '2. Micro-Sparkle Fleck Noise',
+                color: 0xfbf6ed,
+                roughness: 0.15,
                 metalness: 0.06,
-                clearcoat: 1.0,
-                clearcoatRoughness: 0.03,
+                clearcoat: 0.0,
+                clearcoatRoughness: 0.0,
+                normalMap: null,
+                bumpMap: sparkleTexture,
+                bumpScale: 0.010,
+                roughnessMap: null,
+                map: null
+            },
+            noiseSheen: {
+                title: '3. Perlin Roughness Noise Sheen',
+                color: 0xfaf5ea,
+                roughness: 0.16,
+                metalness: 0.02,
+                clearcoat: 0.10,
+                clearcoatRoughness: 0.15,
+                normalMap: null,
                 bumpMap: null,
                 bumpScale: 0.0,
-                map: null,
-                transmission: 0.0
+                roughnessMap: roughnessNoiseTexture,
+                map: null
+            },
+            stipple: {
+                title: '4. Stippled Game Tile (EDM Noise)',
+                color: 0xf8f2e6,
+                roughness: 0.22,
+                metalness: 0.02,
+                clearcoat: 0.0,
+                clearcoatRoughness: 0.0,
+                normalMap: null,
+                bumpMap: stippleTexture,
+                bumpScale: 0.015,
+                roughnessMap: null,
+                map: null
+            },
+            bakelite: {
+                title: '5. Dense Polished Acrylic (Cloud Depth)',
+                color: 0xfaf6ed,
+                roughness: 0.12,
+                metalness: 0.02,
+                clearcoat: 0.25,
+                clearcoatRoughness: 0.10,
+                normalMap: null,
+                bumpMap: null,
+                bumpScale: 0.0,
+                roughnessMap: null,
+                map: resinCloudTexture
+            },
+            wavy: {
+                title: '6. Micro-Wavy Surface Tension',
+                color: 0xfcf7ee,
+                roughness: 0.14,
+                metalness: 0.02,
+                clearcoat: 0.0,
+                clearcoatRoughness: 0.0,
+                normalMap: wavyNormalTexture,
+                normalScale: 0.018,
+                bumpMap: null,
+                bumpScale: 0.0,
+                roughnessMap: null,
+                map: null
             }
         };
 
-        // --- 3. Block Geometry Builder (Rounded Box with Indicator) ---
+        // --- 3. Block Mesh Construction ---
         function createBlockMesh(length, isVertical, material, indicatorColor = 0xff6b6b) {
             const group = new THREE.Group();
             const cubeSize = 1.0;
@@ -924,14 +1112,12 @@ new THREE.MeshPhysicalMaterial({
             const h = isVertical ? length * cubeSize : cubeSize;
             const d = cubeSize;
 
-            // Rounded block body
             const geom = new THREE.BoxGeometry(w - radius * 2, h - radius * 2, d - radius * 2, 4, 4, 4);
             const bodyMesh = new THREE.Mesh(geom, material);
             bodyMesh.castShadow = true;
             bodyMesh.receiveShadow = true;
             group.add(bodyMesh);
 
-            // Add Arrow / Indicator Ring on front face (+Z)
             const ringGeom = new THREE.RingGeometry(0.18, 0.28, 32);
             const indMat = new THREE.MeshStandardMaterial({
                 color: indicatorColor,
@@ -974,7 +1160,7 @@ new THREE.MeshPhysicalMaterial({
         heroControls.minDistance = 2.5;
         heroControls.maxDistance = 12.0;
 
-        // Warm Studio Lighting
+        // Lighting
         const heroAmbient = new THREE.AmbientLight(0xfff8ee, 0.35);
         heroScene.add(heroAmbient);
 
@@ -994,7 +1180,7 @@ new THREE.MeshPhysicalMaterial({
         heroRimLight.position.set(-4, -2, 5);
         heroScene.add(heroRimLight);
 
-        // Ground pedestal plate with grid
+        // Ground Pedestal
         const plateGeom = new THREE.BoxGeometry(4.2, 0.12, 4.2);
         const plateMat = new THREE.MeshStandardMaterial({
             color: 0x1e293b,
@@ -1006,24 +1192,26 @@ new THREE.MeshPhysicalMaterial({
         plate.receiveShadow = true;
         heroScene.add(plate);
 
-        // Hero Material
+        // Hero Material: Initialized with Molded ABS Orange-Peel Normal Map
         const heroBlockMaterial = new THREE.MeshPhysicalMaterial({
             color: 0xfbf6ed,
-            roughness: 0.14,
-            metalness: 0.05,
-            clearcoat: 1.0,
-            clearcoatRoughness: 0.04
+            roughness: 0.13,
+            metalness: 0.02,
+            clearcoat: 0.0,
+            clearcoatRoughness: 0.0,
+            normalMap: orangePeelTexture
         });
+        heroBlockMaterial.normalScale = new THREE.Vector2(0.016, 0.016);
 
-        // Assemble 3-block mini puzzle cluster
+        // 3-Block Mini Puzzle Cluster
         const blockGroup = new THREE.Group();
-        const b1 = createBlockMesh(2, false, heroBlockMaterial, 0x4ecdc4); // Teal horizontal 2-cube
+        const b1 = createBlockMesh(2, false, heroBlockMaterial, 0x4ecdc4);
         b1.position.set(0, 0, 0.5);
 
-        const b2 = createBlockMesh(3, true, heroBlockMaterial, 0xffc125); // Gold vertical 3-cube
+        const b2 = createBlockMesh(3, true, heroBlockMaterial, 0xffc125);
         b2.position.set(-1.1, 0.5, -0.5);
 
-        const b3 = createBlockMesh(1, false, heroBlockMaterial, 0xff6b6b); // Red single cube
+        const b3 = createBlockMesh(1, false, heroBlockMaterial, 0xff6b6b);
         b3.position.set(1.0, -0.2, -0.3);
 
         blockGroup.add(b1, b2, b3);
@@ -1043,7 +1231,6 @@ new THREE.MeshPhysicalMaterial({
         }
         animateHero();
 
-        // Handle Resize
         window.addEventListener('resize', () => {
             if (heroCanvas.clientWidth > 0 && heroCanvas.clientHeight > 0) {
                 heroCamera.aspect = heroCanvas.clientWidth / heroCanvas.clientHeight;
@@ -1054,12 +1241,12 @@ new THREE.MeshPhysicalMaterial({
 
         // --- 5. Thumbnail Cards WebGL Renderers ---
         const cardConfigs = [
-            { id: 'card-canvas-glazed', preset: 'glazed' },
-            { id: 'card-canvas-satin', preset: 'satin' },
-            { id: 'card-canvas-sandstone', preset: 'sandstone' },
-            { id: 'card-canvas-alabaster', preset: 'alabaster' },
-            { id: 'card-canvas-carrara', preset: 'carrara' },
-            { id: 'card-canvas-chamfer', preset: 'chamfer' }
+            { id: 'card-canvas-abs', preset: 'abs' },
+            { id: 'card-canvas-sparkle', preset: 'sparkle' },
+            { id: 'card-canvas-noiseSheen', preset: 'noiseSheen' },
+            { id: 'card-canvas-stipple', preset: 'stipple' },
+            { id: 'card-canvas-bakelite', preset: 'bakelite' },
+            { id: 'card-canvas-wavy', preset: 'wavy' }
         ];
 
         const cardInstances = [];
@@ -1081,7 +1268,6 @@ new THREE.MeshPhysicalMaterial({
             controls.dampingFactor = 0.05;
             controls.enableZoom = false;
 
-            // Lights
             const amb = new THREE.AmbientLight(0xfff8ee, 0.4);
             const key = new THREE.DirectionalLight(0xfffdf5, 0.85);
             key.position.set(4, 6, 3);
@@ -1089,7 +1275,6 @@ new THREE.MeshPhysicalMaterial({
             fill.position.set(-3, 2, -3);
             scene.add(amb, key, fill);
 
-            // Material from config
             const cfg = PRESET_CONFIGS[item.preset];
             const mat = new THREE.MeshPhysicalMaterial({
                 color: cfg.color,
@@ -1097,12 +1282,16 @@ new THREE.MeshPhysicalMaterial({
                 metalness: cfg.metalness,
                 clearcoat: cfg.clearcoat,
                 clearcoatRoughness: cfg.clearcoatRoughness,
+                normalMap: cfg.normalMap,
                 bumpMap: cfg.bumpMap,
                 bumpScale: cfg.bumpScale,
+                roughnessMap: cfg.roughnessMap,
                 map: cfg.map
             });
+            if (cfg.normalScale) {
+                mat.normalScale = new THREE.Vector2(cfg.normalScale, cfg.normalScale);
+            }
 
-            // Single 2-cube preview block
             const mesh = createBlockMesh(2, false, mat, 0x4ecdc4);
             scene.add(mesh);
 
@@ -1120,41 +1309,48 @@ new THREE.MeshPhysicalMaterial({
         animateCards();
 
         // --- 6. Live Preset Selection & Tuning Controls ---
+        let currentPresetKey = 'abs';
+        let isGlassyLook = false;
+
         function applyPreset(presetKey) {
+            currentPresetKey = presetKey;
+            isGlassyLook = false;
+            document.getElementById('btn-toggle-glass').textContent = 'Switch to Old Glassy Look';
+
             const cfg = PRESET_CONFIGS[presetKey];
             if (!cfg) return;
 
-            // Update Active Title
             document.getElementById('active-preset-title').textContent = cfg.title;
 
-            // Update Active Pill
             document.querySelectorAll('.preset-pill-btn').forEach(btn => {
                 btn.classList.toggle('active', btn.dataset.preset === presetKey);
             });
 
-            // Apply to Hero Material
             heroBlockMaterial.color.setHex(cfg.color);
             heroBlockMaterial.roughness = cfg.roughness;
             heroBlockMaterial.metalness = cfg.metalness;
             heroBlockMaterial.clearcoat = cfg.clearcoat;
             heroBlockMaterial.clearcoatRoughness = cfg.clearcoatRoughness;
+            heroBlockMaterial.normalMap = cfg.normalMap;
             heroBlockMaterial.bumpMap = cfg.bumpMap;
             heroBlockMaterial.bumpScale = cfg.bumpScale;
+            heroBlockMaterial.roughnessMap = cfg.roughnessMap;
             heroBlockMaterial.map = cfg.map;
+            if (cfg.normalScale) {
+                heroBlockMaterial.normalScale = new THREE.Vector2(cfg.normalScale, cfg.normalScale);
+            }
             heroBlockMaterial.needsUpdate = true;
 
-            // Sync Lab Sliders
+            // Update UI sliders
             document.getElementById('input-roughness').value = cfg.roughness;
             document.getElementById('val-roughness').textContent = cfg.roughness.toFixed(2);
 
             document.getElementById('input-clearcoat').value = cfg.clearcoat;
             document.getElementById('val-clearcoat').textContent = cfg.clearcoat.toFixed(2);
 
-            document.getElementById('input-clearcoat-rough').value = cfg.clearcoatRoughness;
-            document.getElementById('val-clearcoat-rough').textContent = cfg.clearcoatRoughness.toFixed(2);
-
-            document.getElementById('input-bump').value = cfg.bumpScale;
-            document.getElementById('val-bump').textContent = cfg.bumpScale.toFixed(3);
+            const bumpVal = cfg.normalScale || cfg.bumpScale || 0.0;
+            document.getElementById('input-bump').value = bumpVal;
+            document.getElementById('val-bump').textContent = bumpVal.toFixed(3);
 
             updateCodeOutput();
         }
@@ -1164,11 +1360,34 @@ new THREE.MeshPhysicalMaterial({
             window.scrollTo({ top: 0, behavior: 'smooth' });
         };
 
-        // Pill button clicks
         document.querySelectorAll('.preset-pill-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 applyPreset(btn.dataset.preset);
             });
+        });
+
+        // Compare Button: Toggle Old Glassy Look vs Shiny Plastic with Noise
+        const btnToggleGlass = document.getElementById('btn-toggle-glass');
+        btnToggleGlass.addEventListener('click', () => {
+            isGlassyLook = !isGlassyLook;
+            if (isGlassyLook) {
+                btnToggleGlass.textContent = 'Revert to Shiny Plastic';
+                document.getElementById('active-preset-title').textContent = 'OLD: Mirror Glass Glaze (No Noise, Clearcoat 1.0)';
+                heroBlockMaterial.clearcoat = 1.0;
+                heroBlockMaterial.clearcoatRoughness = 0.04;
+                heroBlockMaterial.roughness = 0.14;
+                heroBlockMaterial.normalMap = null;
+                heroBlockMaterial.bumpMap = null;
+                heroBlockMaterial.roughnessMap = null;
+                heroBlockMaterial.map = null;
+                heroBlockMaterial.needsUpdate = true;
+                document.getElementById('input-clearcoat').value = 1.0;
+                document.getElementById('val-clearcoat').textContent = '1.00 (Glass)';
+            } else {
+                btnToggleGlass.textContent = 'Switch to Old Glassy Look';
+                applyPreset(currentPresetKey);
+            }
+            updateCodeOutput();
         });
 
         // Stage Toggles
@@ -1198,19 +1417,16 @@ new THREE.MeshPhysicalMaterial({
         btnLighting.addEventListener('click', () => {
             lightingMode = (lightingMode + 1) % 3;
             if (lightingMode === 0) {
-                // Warm Studio
                 heroKeyLight.color.setHex(0xfffdf5);
                 heroKeyLight.intensity = 0.85;
                 heroAmbient.color.setHex(0xfff8ee);
                 btnLighting.textContent = 'Lighting: Warm Studio';
             } else if (lightingMode === 1) {
-                // High-Contrast Gallery
                 heroKeyLight.color.setHex(0xffffff);
                 heroKeyLight.intensity = 1.25;
                 heroAmbient.color.setHex(0xfaf5ec);
                 btnLighting.textContent = 'Lighting: Crisp Gallery';
             } else {
-                // Golden Hour Luxury
                 heroKeyLight.color.setHex(0xffe6b0);
                 heroKeyLight.intensity = 1.1;
                 heroAmbient.color.setHex(0xffeed0);
@@ -1235,22 +1451,35 @@ new THREE.MeshPhysicalMaterial({
             updateCodeOutput();
         });
 
-        const inputClearcoatRough = document.getElementById('input-clearcoat-rough');
-        inputClearcoatRough.addEventListener('input', (e) => {
-            const val = parseFloat(e.target.value);
-            heroBlockMaterial.clearcoatRoughness = val;
-            document.getElementById('val-clearcoat-rough').textContent = val.toFixed(2);
-            updateCodeOutput();
-        });
-
         const inputBump = document.getElementById('input-bump');
         inputBump.addEventListener('input', (e) => {
             const val = parseFloat(e.target.value);
-            heroBlockMaterial.bumpScale = val;
-            heroBlockMaterial.bumpMap = val > 0.001 ? grainTexture : null;
-            heroBlockMaterial.needsUpdate = true;
+            if (heroBlockMaterial.normalMap) {
+                heroBlockMaterial.normalScale = new THREE.Vector2(val, val);
+            } else if (heroBlockMaterial.bumpMap) {
+                heroBlockMaterial.bumpScale = val;
+            } else {
+                // Attach orange peel normal map if none currently attached
+                heroBlockMaterial.normalMap = orangePeelTexture;
+                heroBlockMaterial.normalScale = new THREE.Vector2(val, val);
+                heroBlockMaterial.needsUpdate = true;
+            }
             document.getElementById('val-bump').textContent = val.toFixed(3);
             updateCodeOutput();
+        });
+
+        const inputFreq = document.getElementById('input-freq');
+        inputFreq.addEventListener('input', (e) => {
+            const val = parseInt(e.target.value);
+            if (heroBlockMaterial.normalMap) {
+                heroBlockMaterial.normalMap.repeat.set(val, val);
+                heroBlockMaterial.normalMap.needsUpdate = true;
+            }
+            if (heroBlockMaterial.bumpMap) {
+                heroBlockMaterial.bumpMap.repeat.set(val, val);
+                heroBlockMaterial.bumpMap.needsUpdate = true;
+            }
+            document.getElementById('val-freq').textContent = `${val}x (${val <= 2 ? 'Broad' : val <= 5 ? 'Fine' : 'Ultra-Fine'})`;
         });
 
         const inputTone = document.getElementById('input-tone');
@@ -1274,18 +1503,24 @@ new THREE.MeshPhysicalMaterial({
             const r = heroBlockMaterial.roughness.toFixed(2);
             const m = heroBlockMaterial.metalness.toFixed(2);
             const c = heroBlockMaterial.clearcoat.toFixed(2);
-            const cr = heroBlockMaterial.clearcoatRoughness.toFixed(2);
-            const bs = heroBlockMaterial.bumpScale ? heroBlockMaterial.bumpScale.toFixed(3) : '0.0';
+            
+            let noiseSnippet = '';
+            if (heroBlockMaterial.normalMap) {
+                const ns = heroBlockMaterial.normalScale ? heroBlockMaterial.normalScale.x.toFixed(3) : '0.015';
+                noiseSnippet = `\n    normalMap: getPlasticNoiseNormalMap(),\n    normalScale: new THREE.Vector2(${ns}, ${ns}),`;
+            } else if (heroBlockMaterial.bumpMap) {
+                const bs = heroBlockMaterial.bumpScale ? heroBlockMaterial.bumpScale.toFixed(3) : '0.010';
+                noiseSnippet = `\n    bumpMap: getPlasticNoiseBumpMap(),\n    bumpScale: ${bs},`;
+            } else if (heroBlockMaterial.roughnessMap) {
+                noiseSnippet = `\n    roughnessMap: getPerlinNoiseRoughnessMap(),`;
+            }
 
-            let bumpLine = heroBlockMaterial.bumpMap ? `\n    bumpMap: getMicroGrainBumpMap(),\n    bumpScale: ${bs},` : '';
-
-            const code = `// Jarrows Production Block Material Configuration
+            const code = `// Jarrows Production Block Material (Shiny Plastic with Noise)
 new THREE.MeshPhysicalMaterial({
     color: ${hexStr}, // Creamy porcelain white
-    roughness: ${r},
+    roughness: ${r}, // Shiny plastic specular gloss
     metalness: ${m},
-    clearcoat: ${c},
-    clearcoatRoughness: ${cr},${bumpLine}
+    clearcoat: ${c}, // ${c === '0.00' ? 'Zero glass glaze (pure molded plastic)' : 'Subtle lacquer sheen'}${noiseSnippet}
     opacity: 1.0,
     transparent: false
 });`;
