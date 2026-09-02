@@ -854,56 +854,85 @@ function renderHeroStudioCanvas(ctx, width, height) {
 
 /**
  * Direction 2: Modern Art Gallery (Architectural Fixed)
- * Architectural loft window on side wall + triple ceiling skylight slits.
+ * Fully 4-way symmetrical gallery with 8-pane loft windows at all 4 diagonal corners (±45°, ±135°)
+ * and continuous 360° cathedral ceiling skylights. Guarantees 100% equal reflectivity on ALL faces!
  */
 function renderGalleryCanvas(ctx, width, height) {
-    // 1. Pitch black gallery void
+    // 1. Pitch black gallery void (preserves deep color saturation on block bodies)
     ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, width, height);
 
-    // 2. Triple Cathedral Ceiling Skylights (grazing overhead top bevels)
-    ctx.save();
-    ctx.translate(width * 0.50, height * 0.12);
-    ctx.rotate(-0.12);
-    const beamW = 380;
-    const beamH = 14;
-    const spacing = 22;
+    // 2. 360° Architectural Cathedral Ceiling Skylights (overhead glints on all top bevels)
+    const beamY1 = height * 0.07;
+    const beamY2 = height * 0.12;
+    const beamY3 = height * 0.17;
     ctx.fillStyle = 'rgba(255, 255, 255, 0.90)';
-    ctx.fillRect(-beamW / 2, -spacing - beamH, beamW, beamH);
-    ctx.fillRect(-beamW / 2, -beamH / 2, beamW, beamH);
-    ctx.fillRect(-beamW / 2, spacing, beamW, beamH);
-    ctx.restore();
+    ctx.fillRect(0, beamY1, width, 12);
+    ctx.fillRect(0, beamY2, width, 12);
+    ctx.fillRect(0, beamY3, width, 8);
 
-    // 3. Flank Loft Window (+80° side wall azimuth: width * 0.72)
-    const winX = width * 0.72;
+    // Ceiling architectural ribs every 64px across the full 360° ceiling
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+    for (let x = 0; x < width; x += 64) {
+        ctx.fillRect(x - 2, beamY1 - 4, 4, (beamY3 + 12) - (beamY1 - 4));
+    }
+
+    // 3. Four Identical Architectural Loft Windows at the 4 Corner Azimuths (±45°, ±135°)
+    // Positioned so EVERY vertical face (+Z, +X, -Z, -X) has an identical pair of flanking loft windows!
+    const windowPositions = [
+        width * 0.125, // -135° (Back-Left quadrant)
+        width * 0.375, // -45°  (Front-Left quadrant)
+        width * 0.625, // +45°  (Front-Right quadrant)
+        width * 0.875  // +135° (Back-Right quadrant)
+    ];
+
     const winY = height * 0.34;
-    const totalW = 110;
-    const totalH = 150;
+    const totalW = 100;
+    const totalH = 140;
     const cols = 2;
     const rows = 4;
-    const mullion = 10;
+    const mullion = 8;
     const paneW = (totalW - (cols + 1) * mullion) / cols;
     const paneH = (totalH - (rows + 1) * mullion) / rows;
 
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-    const startX = winX - totalW / 2 + mullion;
-    const startY = winY - totalH / 2 + mullion;
-    for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-            ctx.fillRect(
-                startX + c * (paneW + mullion),
-                startY + r * (paneH + mullion),
-                paneW,
-                paneH
-            );
+    for (let i = 0; i < windowPositions.length; i++) {
+        const winX = windowPositions[i];
+        const startX = winX - totalW / 2 + mullion;
+        const startY = winY - totalH / 2 + mullion;
+
+        // Subtle cool edge glow around window frame
+        const wGrad = ctx.createRadialGradient(winX, winY, 15, winX, winY, totalW * 0.8);
+        wGrad.addColorStop(0.0, 'rgba(220, 240, 255, 0.35)');
+        wGrad.addColorStop(1.0, 'rgba(200, 230, 255, 0.0)');
+        ctx.fillStyle = wGrad;
+        ctx.beginPath();
+        ctx.ellipse(winX, winY, totalW * 0.75, totalH * 0.75, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 8-pane window grid with crisp dark mullions
+        ctx.fillStyle = '#ffffff';
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                ctx.fillRect(
+                    startX + c * (paneW + mullion),
+                    startY + r * (paneH + mullion),
+                    paneW,
+                    paneH
+                );
+            }
         }
     }
 
-    // 4. Opposite Flank Rim Scribe (width * 0.28)
+    // 4. Four Cardinal Light Scribes at 0°, 90°, 180°, 270° (0.0, 0.25, 0.50, 0.75)
+    // Slender vertical architectural gallery lights between the windows
     ctx.fillStyle = 'rgba(215, 235, 255, 0.75)';
-    ctx.fillRect(width * 0.28 - 5, height * 0.26, 10, 110);
+    const cardinalPositions = [0, width * 0.25, width * 0.50, width * 0.75];
+    for (let i = 0; i < cardinalPositions.length; i++) {
+        const cX = cardinalPositions[i];
+        ctx.fillRect(cX - 3, height * 0.26, 6, 110);
+    }
 
-    // 5. Floor horizon line
+    // 5. Floor horizon line (360° continuous gallery floor perimeter)
     ctx.fillStyle = 'rgba(200, 225, 255, 0.40)';
     ctx.fillRect(0, height * 0.50, width, 4);
 }
@@ -918,26 +947,27 @@ function renderTwinBladesCanvas(ctx, width, height) {
     ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, width, height);
 
-    // 2. Primary Twin Neon Laser Blades on Right Flank (+65° azimuth: width * 0.68)
-    const b1X = width * 0.67;
-    const b2X = width * 0.71;
+    // 2. Twin Neon Laser Blades in all 4 diagonal quadrants (±45°, ±135°)
+    const bladeCenters = [
+        width * 0.125,
+        width * 0.375,
+        width * 0.625,
+        width * 0.875
+    ];
+
     const bY = height * 0.32;
-    const bW = 16;
+    const bW = 14;
     const bH = 220;
+    const sep = 18;
 
-    // Twin crisp white laser ribbons
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(b1X - bW / 2, bY - bH / 2, bW, bH);
-    ctx.fillRect(b2X - bW / 2, bY - bH / 2, bW, bH);
+    for (let i = 0; i < bladeCenters.length; i++) {
+        const cX = bladeCenters[i];
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(cX - sep / 2 - bW / 2, bY - bH / 2, bW, bH);
+        ctx.fillRect(cX + sep / 2 - bW / 2, bY - bH / 2, bW, bH);
+    }
 
-    // 3. Secondary Twin Laser Blades on Left Flank (-65° azimuth: width * 0.29)
-    const s1X = width * 0.29;
-    const s2X = width * 0.33;
-    ctx.fillStyle = 'rgba(225, 240, 255, 0.85)';
-    ctx.fillRect(s1X - bW / 2, bY - bH * 0.40, 14, bH * 0.80);
-    ctx.fillRect(s2X - bW / 2, bY - bH * 0.40, 14, bH * 0.80);
-
-    // 4. Overhead Sleek Zenith Line
+    // 3. Overhead Sleek Zenith Line
     ctx.fillStyle = 'rgba(255, 255, 255, 0.70)';
     ctx.fillRect(0, height * 0.08, width, 6);
 }
@@ -984,7 +1014,7 @@ function createArtisticEnvMap(renderer, presetName) {
 export function setReflectionPreset(scene, renderer, presetName) {
     if (!scene || !renderer) return;
     const validPresets = ['hero', 'gallery', 'blades'];
-    const selected = validPresets.includes(presetName) ? presetName : 'hero';
+    const selected = validPresets.includes(presetName) ? presetName : 'gallery';
     currentReflectionPreset = selected;
     isCameraRelative = (selected === 'hero');
 

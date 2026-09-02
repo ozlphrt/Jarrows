@@ -667,80 +667,107 @@
         }
 
         function drawGalleryCanvas(ctx, w, h) {
+            // 1. Pitch black gallery void
             ctx.fillStyle = '#000000';
             ctx.fillRect(0, 0, w, h);
 
-            // Triple Cathedral Ceiling Skylights (grazing overhead top bevels)
-            ctx.save();
-            ctx.translate(w * 0.50, h * 0.12);
-            ctx.rotate(-0.12);
-            const beamW = 380;
-            const beamH = 14;
-            const spacing = 22;
+            // 2. 360° Architectural Cathedral Ceiling Skylights
+            const beamY1 = h * 0.07;
+            const beamY2 = h * 0.12;
+            const beamY3 = h * 0.17;
             ctx.fillStyle = 'rgba(255, 255, 255, 0.90)';
-            ctx.fillRect(-beamW / 2, -spacing - beamH, beamW, beamH);
-            ctx.fillRect(-beamW / 2, -beamH / 2, beamW, beamH);
-            ctx.fillRect(-beamW / 2, spacing, beamW, beamH);
-            ctx.restore();
+            ctx.fillRect(0, beamY1, w, 12);
+            ctx.fillRect(0, beamY2, w, 12);
+            ctx.fillRect(0, beamY3, w, 8);
 
-            // Flank Loft Window (+80° side wall azimuth: width * 0.72)
-            const winX = w * 0.72;
+            // Ceiling architectural ribs every 64px across full 360° ceiling
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+            for (let x = 0; x < w; x += 64) {
+                ctx.fillRect(x - 2, beamY1 - 4, 4, (beamY3 + 12) - (beamY1 - 4));
+            }
+
+            // 3. Four Identical Architectural Loft Windows at the 4 Corner Azimuths (±45°, ±135°)
+            const windowPositions = [
+                w * 0.125, // -135° (Back-Left quadrant)
+                w * 0.375, // -45°  (Front-Left quadrant)
+                w * 0.625, // +45°  (Front-Right quadrant)
+                w * 0.875  // +135° (Back-Right quadrant)
+            ];
+
             const winY = h * 0.34;
-            const totalW = 110;
-            const totalH = 150;
+            const totalW = 100;
+            const totalH = 140;
             const cols = 2;
             const rows = 4;
-            const mullion = 10;
+            const mullion = 8;
             const paneW = (totalW - (cols + 1) * mullion) / cols;
             const paneH = (totalH - (rows + 1) * mullion) / rows;
 
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-            const startX = winX - totalW / 2 + mullion;
-            const startY = winY - totalH / 2 + mullion;
-            for (let r = 0; r < rows; r++) {
-                for (let c = 0; c < cols; c++) {
-                    ctx.fillRect(
-                        startX + c * (paneW + mullion),
-                        startY + r * (paneH + mullion),
-                        paneW,
-                        paneH
-                    );
+            for (let i = 0; i < windowPositions.length; i++) {
+                const winX = windowPositions[i];
+                const startX = winX - totalW / 2 + mullion;
+                const startY = winY - totalH / 2 + mullion;
+
+                const wGrad = ctx.createRadialGradient(winX, winY, 15, winX, winY, totalW * 0.8);
+                wGrad.addColorStop(0.0, 'rgba(220, 240, 255, 0.35)');
+                wGrad.addColorStop(1.0, 'rgba(200, 230, 255, 0.0)');
+                ctx.fillStyle = wGrad;
+                ctx.beginPath();
+                ctx.ellipse(winX, winY, totalW * 0.75, totalH * 0.75, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = '#ffffff';
+                for (let r = 0; r < rows; r++) {
+                    for (let c = 0; c < cols; c++) {
+                        ctx.fillRect(
+                            startX + c * (paneW + mullion),
+                            startY + r * (paneH + mullion),
+                            paneW,
+                            paneH
+                        );
+                    }
                 }
             }
 
-            // Opposite Flank Rim Scribe (width * 0.28)
+            // 4. Four Cardinal Light Scribes at 0°, 90°, 180°, 270°
             ctx.fillStyle = 'rgba(215, 235, 255, 0.75)';
-            ctx.fillRect(w * 0.28 - 5, h * 0.26, 10, 110);
+            const cardinalPositions = [0, w * 0.25, w * 0.50, w * 0.75];
+            for (let i = 0; i < cardinalPositions.length; i++) {
+                const cX = cardinalPositions[i];
+                ctx.fillRect(cX - 3, h * 0.26, 6, 110);
+            }
 
-            // Floor horizon line
+            // 5. Floor horizon line
             ctx.fillStyle = 'rgba(200, 225, 255, 0.40)';
             ctx.fillRect(0, h * 0.50, w, 4);
         }
 
         function drawBladesCanvas(ctx, w, h) {
+            // 1. Pure obsidian black void
             ctx.fillStyle = '#000000';
             ctx.fillRect(0, 0, w, h);
 
-            // Primary Twin Neon Laser Blades on Right Flank (+65° azimuth: width * 0.68)
-            const b1X = w * 0.67;
-            const b2X = w * 0.71;
+            // 2. Twin Neon Laser Blades in all 4 diagonal quadrants (±45°, ±135°)
+            const bladeCenters = [
+                w * 0.125,
+                w * 0.375,
+                w * 0.625,
+                w * 0.875
+            ];
+
             const bY = h * 0.32;
-            const bW = 16;
+            const bW = 14;
             const bH = 220;
+            const sep = 18;
 
-            // Twin crisp white laser ribbons
-            ctx.fillStyle = '#ffffff';
-            ctx.fillRect(b1X - bW / 2, bY - bH / 2, bW, bH);
-            ctx.fillRect(b2X - bW / 2, bY - bH / 2, bW, bH);
+            for (let i = 0; i < bladeCenters.length; i++) {
+                const cX = bladeCenters[i];
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(cX - sep / 2 - bW / 2, bY - bH / 2, bW, bH);
+                ctx.fillRect(cX + sep / 2 - bW / 2, bY - bH / 2, bW, bH);
+            }
 
-            // Secondary Twin Laser Blades on Left Flank (-65° azimuth: width * 0.29)
-            const s1X = w * 0.29;
-            const s2X = w * 0.33;
-            ctx.fillStyle = 'rgba(225, 240, 255, 0.85)';
-            ctx.fillRect(s1X - bW / 2, bY - bH * 0.40, 14, bH * 0.80);
-            ctx.fillRect(s2X - bW / 2, bY - bH * 0.40, 14, bH * 0.80);
-
-            // Overhead Sleek Zenith Line
+            // 3. Overhead Sleek Zenith Line
             ctx.fillStyle = 'rgba(255, 255, 255, 0.70)';
             ctx.fillRect(0, h * 0.08, w, 6);
         }
