@@ -1507,8 +1507,8 @@ export class Block {
         if (this.originalMaterial) {
             this.originalMaterial.color.setHex(materialColor);
             // Keep shiny plastic properties for all blocks
-            this.originalMaterial.roughness = 0.1; // Shiny plastic
-            this.originalMaterial.metalness = 0.0; // Plastic, not metal
+            this.originalMaterial.roughness = 0.36; // Restore original matte satin roughness
+            this.originalMaterial.metalness = 0.02;
         }
 
         // Update arrow color - ALWAYS use length-based color (for visibility), ignore passed arrowColor
@@ -5828,7 +5828,7 @@ export class Block {
                     child.material.emissiveIntensity = this.isCharred ? 0.0 : 0.70;
                     child.material.transparent = this.isCharred ? true : false;
                     child.material.opacity = this.isCharred ? 0.20 : 1.0;
-                    child.material.roughness = 0.1;
+                    child.material.roughness = 0.36; // Restore original roughness
                     child.material.metalness = 0.0;
                 } else {
                     // Restore original indicator colors (red, teal, yellow) based on block length/palette
@@ -5837,7 +5837,7 @@ export class Block {
                     child.material.emissiveIntensity = this.isCharred ? 0.05 : 0.0;
                     child.material.transparent = this.isCharred ? true : false;
                     child.material.opacity = this.isCharred ? 0.20 : 1.0;
-                    child.material.roughness = 0.1;
+                    child.material.roughness = 0.36; // Restore original roughness on un-frost
                     child.material.metalness = 0.0;
                 }
                 child.material.needsUpdate = true;
@@ -5887,8 +5887,8 @@ export class Block {
                     mat.alphaMap = null;
                     mat.transparent = false;
                     mat.opacity = 1.0;
-                    mat.roughness = 0.1;
-                    mat.metalness = 0.0;
+                    mat.roughness = 0.36; // Restore original matte satin roughness (not 0.1 which made blocks appear whiter)
+                    mat.metalness = 0.02;
                     const baseColor = asThreeColor(
                         mat.userData.baseBlockColor || mat.userData.originalColor || this.originalColor,
                         0xffffff
