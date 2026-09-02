@@ -599,9 +599,14 @@ export class Block {
         // Apply continuous GPU 3D thermal blast shader hook
         setupThermalMaterial(blockMaterial);
 
-        // Apply bomb styling: Indicators glow (Task 2.3, 3.2, 3.4)
+        // Apply bomb styling: Distinctive dark graphite ordnance body + glowing indicators
         if (this.isBomb) {
-            // Striped texture removed by user request (Task 5.1)
+            const bombBodyColor = new THREE.Color(0x23262e);
+            blockMaterial.color.copy(bombBodyColor);
+            blockMaterial.roughness = 0.40;
+            blockMaterial.metalness = 0.08;
+            blockMaterial.userData.baseBlockColor = bombBodyColor.clone();
+            blockMaterial.userData.originalColor = bombBodyColor.clone();
             
             // Indicator materials will be stored for oscillation in update()
             this.bombIndicatorMaterials = []; 
@@ -733,6 +738,66 @@ export class Block {
             material.emissive = blueGlow;
             material.emissiveIntensity = 0.4; // Strong glow
         }
+    }
+
+    /**
+     * Dynamically update bomb status, block body styling, and indicator meshes.
+     */
+    setBombState(enabled) {
+        const nextState = !!enabled;
+        if (this.isBomb === nextState) return;
+
+        this.isBomb = nextState;
+
+        // Update block body material: dark graphite for bombs, white porcelain for normal
+        if (this.cubes && this.cubes.length > 0) {
+            for (const cube of this.cubes) {
+                if (!cube || !cube.material) continue;
+                const mat = cube.material;
+                if (this.isBomb) {
+                    const bombBodyColor = new THREE.Color(0x23262e);
+                    mat.color.copy(bombBodyColor);
+                    mat.roughness = 0.40;
+                    mat.metalness = 0.08;
+                    if (mat.userData) {
+                        mat.userData.baseBlockColor = bombBodyColor.clone();
+                        mat.userData.originalColor = bombBodyColor.clone();
+                    }
+                } else {
+                    const normalBodyColor = new THREE.Color(0xffffff);
+                    mat.color.copy(normalBodyColor);
+                    mat.roughness = 0.36;
+                    mat.metalness = 0.02;
+                    if (mat.userData) {
+                        mat.userData.baseBlockColor = normalBodyColor.clone();
+                        mat.userData.originalColor = normalBodyColor.clone();
+                    }
+                }
+                mat.needsUpdate = true;
+            }
+        }
+
+        // Recreate arrow and direction indicators with correct bomb/normal styling
+        if (this.arrow) {
+            this.group.remove(this.arrow);
+            this.disposeObject3DResources(this.arrow);
+            this.arrow = null;
+        }
+
+        if (this.directionIndicators) {
+            this.group.remove(this.directionIndicators);
+            this.disposeObject3DResources(this.directionIndicators);
+            this.directionIndicators = null;
+        }
+
+        this.bombIndicatorMaterials = this.isBomb ? [] : null;
+        this.bombGlowSprites = this.isBomb ? [] : null;
+
+        const colors = [0xff6b6b, 0x4ecdc4, 0xffc125];
+        const arrowColor = colors[this.length - 1] || colors[0];
+        this.createArrow(this.arrowStyle, arrowColor);
+        this.createDirectionIndicators(arrowColor, this.arrowStyle);
+        this.updateArrowRotation();
     }
 
     createPhysicsBody() {
@@ -2779,13 +2844,16 @@ export class Block {
             const targetTransparent = this.isCharred ? true : false;
 
             // Apply color & emissive to arrow meshes
-            const arrowEmissiveHex = (this.isBomb && !this.isCharred) ? targetEmissiveHex : 0x000000;
-            const arrowEmissiveIntensity = (this.isBomb && !this.isCharred) ? targetEmissiveIntensity : (this.isCharred ? 0.05 : 0.0);
+            const arrowEmissiveHex = (this.isBomb && !this.isCharred) ? targetEmissiveHex : (this.isBomb ? targetEmissiveHex : 0x000000);
+            const arrowEmissiveIntensity = (this.isBomb && !this.isCharred) ? targetEmissiveIntensity : (this.isBomb ? 0.35 : (this.isCharred ? 0.05 : 0.0));
 
             if (this.arrow) {
                 this.arrow.traverse((child) => {
                     if (child.isOrganicGlow || (child.parent && child.parent.isOrganicGlow)) {
-                        child.visible = !this.isCharred && !this.isTranslucent && !!this.isBomb;
+                        child.visible = !this.isTranslucent && !!this.isBomb;
+                        if (child.material) {
+                            child.material.opacity = this.isCharred ? 0.25 : (child.material.userData?.originalOpacity || 0.85);
+                        }
                     }
                     if (child.isMesh && child.material && !child.isOrganicGlow && !(child.parent && child.parent.isOrganicGlow)) {
                         const mats = Array.isArray(child.material) ? child.material : [child.material];
@@ -2808,13 +2876,16 @@ export class Block {
             }
 
             // Apply color & emissive to direction indicators (dots & circles)
-            const indicatorEmissiveHex = (this.isBomb && !this.isCharred) ? targetEmissiveHex : 0x000000;
-            const indicatorEmissiveIntensity = (this.isBomb && !this.isCharred) ? targetEmissiveIntensity : (this.isCharred ? 0.05 : 0.0);
+            const indicatorEmissiveHex = (this.isBomb && !this.isCharred) ? targetEmissiveHex : (this.isBomb ? targetEmissiveHex : 0x000000);
+            const indicatorEmissiveIntensity = (this.isBomb && !this.isCharred) ? targetEmissiveIntensity : (this.isBomb ? 0.35 : (this.isCharred ? 0.05 : 0.0));
 
             if (this.directionIndicators) {
                 this.directionIndicators.traverse((child) => {
                     if (child.isOrganicGlow || (child.parent && child.parent.isOrganicGlow)) {
-                        child.visible = !this.isCharred && !this.isTranslucent && !!this.isBomb;
+                        child.visible = !this.isTranslucent && !!this.isBomb;
+                        if (child.material) {
+                            child.material.opacity = this.isCharred ? 0.25 : (child.material.userData?.originalOpacity || 0.85);
+                        }
                     }
                     if (child.isMesh && child.material && !child.isOrganicGlow && !(child.parent && child.parent.isOrganicGlow)) {
                         const mats = Array.isArray(child.material) ? child.material : [child.material];
@@ -2836,10 +2907,15 @@ export class Block {
                 });
             }
 
-            // Hide bomb glow halos during cooldown
+            // Preserve bomb glow halos (softly dimmed if cooling, full if restored)
             if (this.bombGlowSprites) {
                 this.bombGlowSprites.forEach(h => {
-                    if (h) h.visible = !this.isCharred && !this.isTranslucent && !!this.isBomb;
+                    if (h) {
+                        h.visible = !this.isTranslucent && !!this.isBomb;
+                        if (h.material) {
+                            h.material.opacity = this.isCharred ? 0.25 : 0.85;
+                        }
+                    }
                 });
             }
 
@@ -5806,12 +5882,14 @@ export class Block {
             window.applyDetonationAftermathShock(destroyedCells, bombPos);
         }
 
-        // Trigger self-emissive flashing strobe on ALL blasting blocks immediately
+        // Trigger self-emissive flashing strobe on exploding bomb blocks
         this.startBlastIndicatorFlash(slowMoDuration);
         affectedBlocks.forEach(block => {
             block.isExploding = true;
             block.removalStartTime = performance.now();
-            block.startBlastIndicatorFlash(slowMoDuration);
+            if (block.isBomb) {
+                block.startBlastIndicatorFlash(slowMoDuration);
+            }
         });
 
         // Detonate/Remove affected blocks starting with the lower layers first
@@ -5988,8 +6066,8 @@ export class Block {
                     const maxColors = [0xff1744, 0x00e5ff, 0xff9100];
                     const bombColorHex = maxColors[this.length - 1] || maxColors[0];
                     child.material.color.setHex(bombColorHex);
-                    child.material.emissive.setHex(this.isCharred ? 0x000000 : bombColorHex);
-                    child.material.emissiveIntensity = this.isCharred ? 0.0 : 1.0;
+                    child.material.emissive.setHex(bombColorHex);
+                    child.material.emissiveIntensity = this.isCharred ? 0.35 : 1.0;
                     child.material.transparent = this.isCharred ? true : false;
                     child.material.opacity = this.isCharred ? 0.20 : 1.0;
                     child.material.roughness = 0.36; // Restore original roughness
@@ -6010,7 +6088,10 @@ export class Block {
 
         if (this.bombGlowSprites) {
             this.bombGlowSprites.forEach(h => {
-                if (h) h.visible = !frosted && !!this.isBomb && !this.isCharred;
+                if (h) {
+                    h.visible = !frosted && !!this.isBomb;
+                    if (h.material) h.material.opacity = this.isCharred ? 0.25 : 0.85;
+                }
             });
         }
     }

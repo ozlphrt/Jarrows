@@ -2597,13 +2597,10 @@ function calculateBlockBombScore(block, currentGridSize) {
     // 1. High bonus for proximity to near-corners (creates the crater view)
     const cornerScore = 10.0 / (1.0 + minCornerDist);
 
-    // 2. Strong preference for lower layers of the tower (center.y or yOffset near 0)
-    const layerScore = -3.0 * (center.y || block.yOffset || 0);
+    // 2. Gentle layer preference so bombs are visible and distributed across the tower
+    const layerScore = -0.4 * (center.y || block.yOffset || 0);
 
-    // 3. Heavy penalty for touching outer perimeter edge (must NOT be at the outer edge)
-    const edgePenalty = touchesEdge ? -20.0 : 0.0;
-
-    return cornerScore + layerScore + edgePenalty;
+    return cornerScore + layerScore;
 }
 
 function applyBlastCellPercentToCurrentTower(targetPercent) {
