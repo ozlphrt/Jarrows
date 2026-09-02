@@ -461,7 +461,7 @@ export class Block {
         this.isAnimating = false;
         this.isFalling = false;
         this.isExploding = false;
-        this.isBomb = isBomb;
+        this._isBomb = !!isBomb;
         this.isSpinGem = false; // Task 9.1: Disable spin gems
         this.isTranslucent = isTranslucent;
         this.needsTransitionToFalling = false;
@@ -682,6 +682,18 @@ export class Block {
         const blockHeight = this.isVertical ? this.length * this.cubeSize : this.cubeSize;
         const offsetMatrix = new THREE.Matrix4().makeTranslation(0, blockHeight / 2, 0);
         this.matrix.multiply(offsetMatrix);
+    }
+
+    get isBomb() {
+        return this._isBomb || false;
+    }
+
+    set isBomb(val) {
+        const prev = this._isBomb;
+        this._isBomb = !!val;
+        if (this._isBomb && !prev && typeof window !== 'undefined' && !window.isGeneratingLevel) {
+            console.error(`🚨 [BOMB_MUTATION] Block at (${this.gridX}, ${this.gridZ}, y=${this.yOffset}) was dynamically changed to a bomb!`, new Error().stack);
+        }
     }
 
     // Per-frame animations (now offloaded to GPU shaders via setupPulsingMaterial & setupGlowQuadMaterial)
@@ -5781,6 +5793,15 @@ export class Block {
             window.updateProgressDial();
         }
         this.isRemoved = true;
+
+        const wasInInitialSet = (typeof window !== 'undefined' && window.__initialBombs && window.__initialBombs.has(this));
+        const remainingCount = (typeof window !== 'undefined' && Array.isArray(window.blocks)) 
+            ? window.blocks.filter(b => b.isBomb && !b.isRemoved && b !== this).length 
+            : 0;
+
+        console.log(`💥 [BOMB DETONATION] Bomb detonated at (${this.gridX}, ${this.gridZ}, y=${this.yOffset.toFixed(2)}):
+  • Spawned as bomb at level start: ${wasInInitialSet ? 'YES ✅' : 'NO ❌ (Converted mid-game!)'}
+  • Active bombs remaining in level: ${remainingCount}`);
 
         // Task 1.3 & 7.7.3 & 7.7.6: Recharge spin and show success feedback (Detonation = Success)
         if (this.isSpinGem) {

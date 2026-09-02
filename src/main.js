@@ -5063,11 +5063,89 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
         console.warn(`✓ BLOCK COUNT: ${blocks.length}/${targetBlockCount}`);
     }
 
+    // Initialize bomb tracking and log initial bomb audit
+    initBombTelemetry();
+
     // Trigger hints for Level 1 (Tutorial)
     if (currentLevel === 1) {
         showGameHint("First time? Try swiping to rotate the camera!", "hint-level-1");
     }
 }
+
+/**
+ * Initialize live bomb block audit and telemetry for the current level
+ */
+export function initBombTelemetry() {
+    window.__initialBombs = new Set();
+    window.__unexpectedBombMutations = [];
+
+    const bombBlocks = (blocks || []).filter(b => b && b.isBomb);
+    bombBlocks.forEach(b => {
+        b._initialBombId = `bomb_${b.gridX}_${b.gridZ}_y${Math.round(b.yOffset * 10)}`;
+        window.__initialBombs.add(b);
+    });
+
+    console.group(`💣 [BOMB AUDIT] Level ${currentLevel} initialized with ${bombBlocks.length} bomb blocks (out of ${blocks.length} total blocks)`);
+    if (bombBlocks.length > 0) {
+        console.table(bombBlocks.map(b => ({
+            pos: `(${b.gridX}, ${b.gridZ})`,
+            y: Number(b.yOffset.toFixed(2)),
+            len: b.length,
+            vert: b.isVertical,
+            dir: `(${b.direction?.x || 0}, ${b.direction?.z || 0})`
+        })));
+    } else {
+        console.log('No bomb blocks on this level.');
+    }
+    console.log('💡 Run checkBombs() in console at ANY time to verify active bomb counts & detect if any block mutated into a bomb.');
+    console.groupEnd();
+}
+window.initBombTelemetry = initBombTelemetry;
+
+/**
+ * Live user-facing diagnostic tool: Run checkBombs() in the DevTools console at any time!
+ */
+window.checkBombs = function() {
+    const currentBlocks = window.blocks || [];
+    const currentBombs = currentBlocks.filter(b => b && b.isBomb && !b.isRemoved);
+    const initialBombs = Array.from(window.__initialBombs || []);
+    const initialRemaining = initialBombs.filter(b => !b.isRemoved && !b.isExploding);
+    const unexpectedNewBombs = currentBombs.filter(b => !window.__initialBombs || !window.__initialBombs.has(b));
+
+    console.group('🔍 [BOMB AUDIT REPORT]');
+    console.log(`Initial Bombs at Level Start:   ${initialBombs.length}`);
+    console.log(`Current Active Bombs Remaining: ${currentBombs.length}`);
+    console.log(`Initial Bombs Still Alive:       ${initialRemaining.length}`);
+    console.log(`Detonated/Removed Bombs:         ${initialBombs.length - initialRemaining.length}`);
+
+    if (unexpectedNewBombs.length > 0) {
+        console.error(`🚨 ALERT: Found ${unexpectedNewBombs.length} UNEXPECTED BOMB(S) that were NOT created during level generation:`, unexpectedNewBombs);
+        console.table(unexpectedNewBombs.map(b => ({
+            pos: `(${b.gridX}, ${b.gridZ})`,
+            y: Number(b.yOffset.toFixed(2)),
+            len: b.length,
+            vert: b.isVertical,
+            isCharred: b.isCharred,
+            isLocked: b.isLocked
+        })));
+    } else {
+        console.log('✅ ZERO unexpected bombs: All current bombs are original bombs created at level start. No normal blocks have been converted into bombs.');
+    }
+
+    if (window.__unexpectedBombMutations && window.__unexpectedBombMutations.length > 0) {
+        console.error('🚨 [MUTATION LOG]: Detected direct mid-game assignments to .isBomb:', window.__unexpectedBombMutations);
+    } else {
+        console.log('✅ ZERO direct .isBomb mutations recorded mid-game.');
+    }
+    console.groupEnd();
+
+    return {
+        initialTotal: initialBombs.length,
+        currentRemaining: currentBombs.length,
+        unexpectedNewBombsCount: unexpectedNewBombs.length,
+        unexpectedNewBombs
+    };
+};
 
 // Move history for undo functionality
 let moveHistory = [];
@@ -9228,6 +9306,9 @@ export function applyDetonationAftermathShock(destroyedCells, bombCenter) {
             blast.survivingBlocks.push(b);
         }
     }
+
+    console.log(`🔥 [EXPLOSION AFTERMATH] Blast shockwave affected ${blast.survivingBlocks.length} surviving blocks (soot/cooling applied):`, 
+        blast.survivingBlocks.map(b => `(${b.gridX},${b.gridZ},y=${b.yOffset.toFixed(1)},isBomb=${b.isBomb})`));
 
     // Play rich fire ignition sound
     if (typeof playSound === 'function') {
