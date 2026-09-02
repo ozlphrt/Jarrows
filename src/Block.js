@@ -2680,33 +2680,6 @@ export class Block {
         });
     }
 
-    setBombState(enabled) {
-        const nextState = !!enabled;
-        if (this.isBomb === nextState) return;
-
-        this.isBomb = nextState;
-        this.bombIndicatorMaterials = nextState ? [] : null;
-        this.bombGlowSprites = nextState ? [] : null;
-
-        if (this.arrow) {
-            this.group.remove(this.arrow);
-            this.disposeObject3DResources(this.arrow);
-            this.arrow = null;
-        }
-
-        if (this.directionIndicators) {
-            this.group.remove(this.directionIndicators);
-            this.disposeObject3DResources(this.directionIndicators);
-            this.directionIndicators = null;
-        }
-
-        const colors = [0xff6b6b, 0x4ecdc4, 0xffc125];
-        const arrowColor = colors[this.length - 1] || colors[0];
-        this.createArrow(this.arrowStyle, arrowColor);
-        this.createDirectionIndicators(arrowColor, this.arrowStyle);
-        this.updateArrowRotation();
-    }
-
     /**
      * Feedback when user taps or pushes a smoldering charred block.
      */

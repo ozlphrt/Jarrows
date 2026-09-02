@@ -61,6 +61,7 @@ let updateCheckInterval = null;
 
 // --- CRITICAL GAME STATE AND CONFIGURATION (Moved to top to prevent TDZ errors) ---
 let isGeneratingLevel = false;
+if (typeof window !== 'undefined') window.isGeneratingLevel = false;
 let towerPositionOffset = new THREE.Vector3(0, 0, 0);
 
 // Task 1.2: Camera shake variables
@@ -4288,6 +4289,7 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
     }
 
     isGeneratingLevel = true;
+    if (typeof window !== 'undefined') window.isGeneratingLevel = true;
     levelCompleteShown = false; // Reset level complete flag for new level
 
     // Task 1.3 & 7.8.0: Reset spins to 0 ONLY when starting Level 11 (first arrival)
@@ -4404,6 +4406,7 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
         }
 
         isGeneratingLevel = false;
+        if (typeof window !== 'undefined') window.isGeneratingLevel = false;
         return;
     }
 
@@ -4857,6 +4860,7 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
         console.error('  Regenerating puzzle...');
         // Regenerate if validation fails - preserve isRestart flag
         isGeneratingLevel = false;
+        if (typeof window !== 'undefined') window.isGeneratingLevel = false;
         await generateSolvablePuzzle(level, isRestart);
         return;
     }
@@ -5016,6 +5020,7 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
         const oldCurrentRadius = currentRadius;
         // #endregion
         isGeneratingLevel = false;
+        if (typeof window !== 'undefined') window.isGeneratingLevel = false;
         // #region agent log
         debugTelemetry({ location: 'main.js:generateSolvablePuzzle:isGeneratingLevelFalse', message: 'isGeneratingLevel set to false', data: { oldIsGeneratingLevel: oldIsGeneratingLevel, newIsGeneratingLevel: isGeneratingLevel, oldTargetRadius: oldTargetRadius.toFixed(2), oldCurrentRadius: oldCurrentRadius.toFixed(2), currentTargetRadius: targetRadius.toFixed(2), currentCurrentRadius: currentRadius.toFixed(2), blocksCount: blocks.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' });
         // #endregion
