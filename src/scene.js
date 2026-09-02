@@ -642,9 +642,8 @@ export function setupPulsingMaterial(material, options = {}) {
                     float flash2 = smoothstep(0.15, 0.18, cycle) * (1.0 - smoothstep(0.21, 0.28, cycle));
                     float strobe = max(flash1, flash2);
                     
-                    // Resting baseline glow + intense flashing spike
-                    float baseGlow = 0.25;
-                    float pulseFactor = baseGlow + strobe * 3.2;
+                    // Resting baseline glow + strobe flash - preserves rich indicator color without washing out to white
+                    float pulseFactor = 0.35 + strobe * 0.65;
                     totalEmissiveRadiance *= pulseFactor;
 
                     // Extinguish emissive glow when ashed/locked by ANY active blast
@@ -755,8 +754,8 @@ export function setupGlowQuadMaterial(material, options = {}) {
             float flash1 = smoothstep(0.0, 0.03, cycle) * (1.0 - smoothstep(0.06, 0.12, cycle));
             float flash2 = smoothstep(0.15, 0.18, cycle) * (1.0 - smoothstep(0.21, 0.28, cycle));
             float strobe = max(flash1, flash2);
-            diffuseColor.a *= (0.2 + strobe * 0.95);
-            diffuseColor.rgb *= (1.0 + strobe * 2.5);
+            // Modulate alpha only so the glow pulses without washing out or turning white
+            diffuseColor.a *= (0.30 + strobe * 0.70);
 
             // Extinguish halo aura completely when covered in ash by ANY active blast
             float maxAshFactor = 0.0;

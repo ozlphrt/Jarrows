@@ -830,8 +830,8 @@ export class Block {
         const domeMat = new THREE.MeshBasicMaterial({
             color: colorHex,
             transparent: true,
-            opacity: 0.35,
-            blending: THREE.AdditiveBlending,
+            opacity: 0.85,
+            blending: THREE.NormalBlending,
             side: THREE.DoubleSide,
             depthWrite: false
         });
@@ -847,8 +847,8 @@ export class Block {
             map: texture,
             color: colorHex,
             transparent: true,
-            opacity: 0.30,
-            blending: THREE.AdditiveBlending,
+            opacity: 0.70,
+            blending: THREE.NormalBlending,
             side: THREE.DoubleSide,
             depthWrite: false
         });
@@ -873,8 +873,8 @@ export class Block {
         const torusMat = new THREE.MeshBasicMaterial({
             color: colorHex,
             transparent: true,
-            opacity: 0.35,
-            blending: THREE.AdditiveBlending,
+            opacity: 0.85,
+            blending: THREE.NormalBlending,
             side: THREE.DoubleSide,
             depthWrite: false
         });
@@ -889,8 +889,8 @@ export class Block {
             map: texture,
             color: colorHex,
             transparent: true,
-            opacity: 0.30,
-            blending: THREE.AdditiveBlending,
+            opacity: 0.70,
+            blending: THREE.NormalBlending,
             side: THREE.DoubleSide,
             depthWrite: false
         });
@@ -915,8 +915,8 @@ export class Block {
             const shellMat = new THREE.MeshBasicMaterial({
                 color: colorHex,
                 transparent: true,
-                opacity: 0.35,
-                blending: THREE.AdditiveBlending,
+                opacity: 0.85,
+                blending: THREE.NormalBlending,
                 side: THREE.DoubleSide,
                 depthWrite: false
             });
@@ -933,8 +933,8 @@ export class Block {
             map: texture,
             color: colorHex,
             transparent: true,
-            opacity: 0.30,
-            blending: THREE.AdditiveBlending,
+            opacity: 0.70,
+            blending: THREE.NormalBlending,
             side: THREE.DoubleSide,
             depthWrite: false
         });
@@ -5702,7 +5702,13 @@ export class Block {
         if (indicatorMaterials.length === 0) return;
 
         const startTime = performance.now();
-        const flashColors = [new THREE.Color(0xffffff), new THREE.Color(0xffaa22), new THREE.Color(0xff3355)];
+        const baseBombColors = [0xff1744, 0x00e5ff, 0xff9100];
+        const normalColors = [0xff6b6b, 0x4ecdc4, 0xffc125];
+        const flashColorHex = this.isBomb
+            ? (baseBombColors[this.length - 1] || baseBombColors[0])
+            : (normalColors[this.length - 1] || normalColors[0]);
+        const flashColor = new THREE.Color(flashColorHex);
+
         const flashAnim = () => {
             const elapsed = performance.now() - startTime;
             if (elapsed > duration || (this.isRemoved && !this.isExploding)) {
@@ -5715,9 +5721,7 @@ export class Block {
             }
 
             const flashPhase = Math.sin(elapsed * 0.045);
-            const strobe = flashPhase > 0 ? 1.6 : 0.25;
-            const colIdx = Math.floor(elapsed * 0.012) % flashColors.length;
-            const flashColor = flashColors[colIdx];
+            const strobe = flashPhase > 0 ? 1.0 : 0.25;
 
             for (let i = 0; i < indicatorMaterials.length; i++) {
                 indicatorMaterials[i].emissive.copy(flashColor);
