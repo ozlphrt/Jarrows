@@ -1486,56 +1486,24 @@ function updateCameraPosition() {
     // #endregion
 }
 
-// Update lights to follow camera angle
+// Update studio lights around tower center (4-tier exposure: Side 1 brightest -> Side 2 less bright -> Side 3 balanced -> Side 4 gentle shade)
 function updateLightsForCamera(lights, azimuth, elevation, center) {
     if (!lights) return;
 
-    // Calculate camera direction vector (normalized)
-    const cameraDirX = Math.sin(elevation) * Math.cos(azimuth);
-    const cameraDirY = Math.cos(elevation);
-    const cameraDirZ = Math.sin(elevation) * Math.sin(azimuth);
+    // Anchor the studio light rig relative to tower center:
+    // 1. Key Light: +X (30.0), +Y (42.0), +Z (16.0) -> Side 1 (+X) Brightest (~1.09), Side 2 (+Z) Less bright (~0.87)
+    const keyOffset = new THREE.Vector3(30.0, 42.0, 16.0);
+    targetKeyLightPosition = center.clone().add(keyOffset);
 
-    const cameraDirection = new THREE.Vector3(cameraDirX, cameraDirY, cameraDirZ).normalize();
+    // 2. Fill Light: -X (-10.0), +Y (32.0), -Z (-26.0) -> Side 3 (-Z) Balanced (~0.73)
+    const fillOffset = new THREE.Vector3(-10.0, 32.0, -26.0);
+    targetFillLightPosition = center.clone().add(fillOffset);
 
-    // Minimum angle above base plate: 30 degrees
-    // tan(30°) ≈ 0.577, so y >= 0.577 * sqrt(x² + z²)
-    const minAngleRad = Math.PI / 6; // 30 degrees
-    const minTanAngle = Math.tan(minAngleRad); // ≈ 0.577
-
-    // Key light: positioned more towards camera to increase shadows and reflections visible from camera
-    // Position light closer to camera direction but slightly offset to create visible shadows
-    const keyLightDistance = 30;
-    // Offset the light slightly to the side and above camera to create dramatic shadows
-    const keyLightOffset = new THREE.Vector3(
-        cameraDirection.x * 0.3 + Math.sin(azimuth + Math.PI / 4) * 0.2,
-        cameraDirection.y * 0.5 + 0.3, // More elevation for better shadows
-        cameraDirection.z * 0.3 + Math.cos(azimuth + Math.PI / 4) * 0.2
-    );
-    let keyLightPos = cameraDirection.clone().multiplyScalar(keyLightDistance).add(keyLightOffset);
-
-    // Ensure minimum 30° angle above base plate
-    const keyHorizontalDist = Math.sqrt(keyLightPos.x * keyLightPos.x + keyLightPos.z * keyLightPos.z);
-    const minKeyY = keyHorizontalDist * minTanAngle;
-    if (keyLightPos.y < minKeyY) {
-        keyLightPos.y = minKeyY;
+    // 3. Rim Light: -X (-26.0), +Y (26.0), +Z (8.0) -> Side 4 (-X) Gentle shade (~0.65), clear on mobile
+    if (lights.rimLight) {
+        const rimPos = center.clone().add(new THREE.Vector3(-26.0, 26.0, 8.0));
+        lights.rimLight.position.copy(rimPos);
     }
-
-    // Store target position for smooth interpolation (prevents jitter in battery mode)
-    targetKeyLightPosition = center.clone().add(keyLightPos);
-
-    // Fill light: minimal fill light for dramatic shadows (positioned opposite to key light)
-    const fillLightDistance = 25;
-    let fillLightPos = cameraDirection.clone().multiplyScalar(-fillLightDistance);
-    fillLightPos.y += 6; // Keep it elevated but lower for more shadow contrast
-
-    // Ensure minimum 30° angle above base plate
-    const fillHorizontalDist = Math.sqrt(fillLightPos.x * fillLightPos.x + fillLightPos.z * fillLightPos.z);
-    const minFillY = fillHorizontalDist * minTanAngle;
-    if (fillLightPos.y < minFillY) {
-        fillLightPos.y = minFillY;
-    }
-
-    targetFillLightPosition = center.clone().add(fillLightPos);
 }
 
 // Initialize Rapier physics

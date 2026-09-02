@@ -4,6 +4,15 @@
  */
 
 export const changelog = {
+    "8.27.1": {
+        title: "4-Tier Studio Lighting Exposure & iPhone Shading Readability",
+        date: "2026-09-02",
+        changes: [
+            "4-Tier Studio Lighting Exposure: Calibrated the studio light rig so all four vertical faces of the tower have distinct, gradual exposures (Side 1 brightest -> Side 2 less bright -> Side 3 balanced -> Side 4 gentle shade)",
+            "Mobile/iPhone Shading Readability: Increased ambient studio baseline and fill light, completely eliminating overly dark/murky shadow faces on OLED screens while maintaining rich 3D shading depth",
+            "Anchored Studio Rig: Anchored key, fill, and rim lights around the tower center for stable, consistent 3D appearance without artificial light spinning during orbit"
+        ]
+    },
     "8.27.0": {
         title: "Synchronized Pulsing Bomb Indicators, Cooling Translucency & Calibrated Camera Framing",
         date: "2026-09-02",

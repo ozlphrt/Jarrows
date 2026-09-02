@@ -67,19 +67,24 @@ export function createLights(scene) {
     })();
 
     // =========================================================================
-    // CINEMATIC ASYMMETRICAL 3D STUDIO LIGHTING (v7.0)
-    // Asymmetrical Key/Fill ratio (3.5 : 1) for rich chiaroscuro depth,
-    // distinct sunny vs shaded faces, and crisp volumetric cast shadows.
+    // 4-TIER VARYING EXPOSURE 3D STUDIO LIGHTING
+    // Calibrated so all 4 tower sides have distinct, gradual exposures:
+    // Side 1 (+X) -> Brightest (~1.09)
+    // Side 2 (+Z) -> Less bright (~0.87)
+    // Side 3 (-Z) -> Balanced (~0.73)
+    // Side 4 (-X) -> Gentle shade (~0.65, bright & legible on iPhone screens)
     // =========================================================================
     
-    // 1. Ambient Floor Light: Very soft cool ambient (0.20 intensity) preserving deep shadows
-    const ambientLight = new THREE.AmbientLight(0xd0dcfa, 0.20);
+    // 1. Ambient Light: Balanced studio ambient (0.46 intensity)
+    // Guarantees shaded sides remain clearly visible and legible on iPhone OLED screens
+    const ambientLight = new THREE.AmbientLight(0xdce8ff, 0.46);
     scene.add(ambientLight);
     
-    // 2. Key Light: Dominant warm sunlight & primary shadow caster (1.25 intensity)
-    // Asymmetrical angle (28.0, 36.0, 10.0) produces clear distinction between lit face & shadow face
-    const keyLight = new THREE.DirectionalLight(0xfffaf0, 1.25);
-    keyLight.position.set(28.0, 36.0, 10.0);
+    // 2. Key Light: Primary warm directional sun & shadow caster (1.15 intensity)
+    // Positioned at (+30.0, 42.0, +16.0)
+    // Side 1 (+X) receives full direct light; Side 2 (+Z) receives moderate direct light
+    const keyLight = new THREE.DirectionalLight(0xfffcf2, 1.15);
+    keyLight.position.set(30.0, 42.0, 16.0);
     keyLight.castShadow = true;
     
     // Shadow camera bounds tailored for the whole tower
@@ -100,16 +105,16 @@ export function createLights(scene) {
     keyLight.shadow.normalBias = 0.025;
     scene.add(keyLight);
     
-    // 3. Fill Light: Soft cool blue sky fill (-25.0, 20.0, -18.0)
-    // Keeps shadow side cleanly legible (0.35 intensity) without washing out the shadows
-    const fillLight = new THREE.DirectionalLight(0xb8ceff, 0.35);
-    fillLight.position.set(-25.0, 20.0, -18.0);
+    // 3. Fill Light: Soft cool blue sky fill (-10.0, 32.0, -26.0)
+    // Side 3 (-Z) receives balanced soft illumination (0.45 intensity)
+    const fillLight = new THREE.DirectionalLight(0xc8dcff, 0.45);
+    fillLight.position.set(-10.0, 32.0, -26.0);
     scene.add(fillLight);
 
-    // 4. Rim / Accent Light: Delicate glancing edge sheen (-15.0, 30.0, 25.0)
-    // Catches block bevels on the shadowed side for 3D separation (0.25 intensity)
-    const rimLight = new THREE.DirectionalLight(0xd8e8ff, 0.25);
-    rimLight.position.set(-15.0, 30.0, 25.0);
+    // 4. Rim / Accent Light: Gentle shade fill & edge sheen (-26.0, 26.0, 8.0)
+    // Side 4 (-X) receives gentle shade illumination (0.28 intensity), perfectly readable on mobile
+    const rimLight = new THREE.DirectionalLight(0xd8e8ff, 0.28);
+    rimLight.position.set(-26.0, 26.0, 8.0);
     scene.add(rimLight);
     
     return { 
@@ -145,10 +150,10 @@ export function setShadowsEnabled(scene, lights, renderer, enabled = true) {
 export const LIGHT_PRESETS = {
     'default': {
         name: 'Default Cinematic Studio',
-        ambient: { color: 0xd0dcfa, intensity: 0.20 },
-        key: { color: 0xfffaf0, intensity: 1.25, pos: [28.0, 36.0, 10.0] },
-        fill: { color: 0xb8ceff, intensity: 0.35, pos: [-25.0, 20.0, -18.0] },
-        rim: { color: 0xd8e8ff, intensity: 0.25, pos: [-15.0, 30.0, 25.0] },
+        ambient: { color: 0xdce8ff, intensity: 0.46 },
+        key: { color: 0xfffcf2, intensity: 1.15, pos: [30.0, 42.0, 16.0] },
+        fill: { color: 0xc8dcff, intensity: 0.45, pos: [-10.0, 32.0, -26.0] },
+        rim: { color: 0xd8e8ff, intensity: 0.28, pos: [-26.0, 26.0, 8.0] },
         shadowRadius: 3.0
     },
     'desert-dawn': {
