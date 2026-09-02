@@ -54,7 +54,7 @@ export function setupFog(scene, near = null, far = null, color = 0x000000) {
 }
 
 export function createLights(scene) {
-    // Platform/perf heuristics (iOS shadow tier)
+    // Platform/perf heuristics
     const isIOS = (() => {
         try {
             return (
@@ -66,23 +66,34 @@ export function createLights(scene) {
         }
     })();
 
-    // =========================================================================
+    const isMobileLike = (() => {
+        try {
+            return (
+                /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+                (typeof window !== 'undefined' && (window.innerWidth <= 768 || (navigator.maxTouchPoints && navigator.maxTouchPoints > 1)))
+            );
+        } catch {
+            return false;
+        }
+    })();
+
     // =========================================================================
     // 4-TIER VARYING EXPOSURE 3D STUDIO LIGHTING
     // Calibrated so all 4 tower sides have distinct, gradual exposures:
-    // Side 1 (+X) -> Brightest (~1.14)
-    // Side 2 (+Z) -> Less bright (~0.84)
-    // Side 3 (-Z) -> Balanced (~0.68)
-    // Side 4 (-X) -> Gentle shade (~0.51, distinct from Side 3 & legible on iPhone)
+    // Side 1 (+X) -> Brightest
+    // Side 2 (+Z) -> Less bright
+    // Side 3 (-Z) -> Balanced
+    // Side 4 (-X) -> Elevated shade tier (clearly legible on mobile OLEDs)
     // =========================================================================
     
-    // 1. Ambient Light: Studio ambient baseline (0.40 intensity)
-    // Guarantees shaded sides remain clearly visible and legible on iPhone OLED screens
-    const ambientLight = new THREE.AmbientLight(0xdce8ff, 0.40);
+    // 1. Ambient Light: Studio ambient baseline
+    // Lifted on mobile to ensure dark faces and shadow crevices remain clearly legible
+    const ambientIntensity = isMobileLike ? 0.62 : 0.48;
+    const ambientLight = new THREE.AmbientLight(0xdce8ff, ambientIntensity);
     scene.add(ambientLight);
     
     // 2. Key Light: Primary warm directional sun & shadow caster (1.15 intensity)
-    // Positioned at (+32.0, 38.0, +20.0) -> Side 1 (+X) Brightest (~1.14), Side 2 (+Z) Less bright (~0.84)
+    // Positioned at (+32.0, 38.0, +20.0) -> Side 1 (+X) Brightest, Side 2 (+Z) Less bright
     const keyLight = new THREE.DirectionalLight(0xfffcf2, 1.15);
     keyLight.position.set(32.0, 38.0, 20.0);
     keyLight.castShadow = true;
@@ -106,14 +117,16 @@ export function createLights(scene) {
     scene.add(keyLight);
     
     // 3. Fill Light: Soft cool blue sky fill (+4.0, 30.0, -32.0)
-    // Targets Side 3 (-Z) for balanced illumination (~0.68) without spilling onto Side 4
-    const fillLight = new THREE.DirectionalLight(0xc4dcff, 0.40);
+    // Targets Side 3 (-Z) for balanced illumination
+    const fillIntensity = isMobileLike ? 0.60 : 0.48;
+    const fillLight = new THREE.DirectionalLight(0xc4dcff, fillIntensity);
     fillLight.position.set(4.0, 30.0, -32.0);
     scene.add(fillLight);
 
     // 4. Rim / Accent Light: Gentle shade accent (-28.0, 24.0, 2.0)
-    // Targets Side 4 (-X) for a gentle, distinct shade tier (~0.51)
-    const rimLight = new THREE.DirectionalLight(0xd0e0ff, 0.14);
+    // Targets Side 4 (-X) - boosted so dark side is clearly legible and crisp on mobile
+    const rimIntensity = isMobileLike ? 0.46 : 0.32;
+    const rimLight = new THREE.DirectionalLight(0xd0e0ff, rimIntensity);
     rimLight.position.set(-28.0, 24.0, 2.0);
     scene.add(rimLight);
     
@@ -150,10 +163,10 @@ export function setShadowsEnabled(scene, lights, renderer, enabled = true) {
 export const LIGHT_PRESETS = {
     'default': {
         name: 'Default Cinematic Studio',
-        ambient: { color: 0xdce8ff, intensity: 0.40 },
+        ambient: { color: 0xdce8ff, intensity: 0.56 },
         key: { color: 0xfffcf2, intensity: 1.15, pos: [32.0, 38.0, 20.0] },
-        fill: { color: 0xc4dcff, intensity: 0.40, pos: [4.0, 30.0, -32.0] },
-        rim: { color: 0xd0e0ff, intensity: 0.14, pos: [-28.0, 24.0, 2.0] },
+        fill: { color: 0xc4dcff, intensity: 0.55, pos: [4.0, 30.0, -32.0] },
+        rim: { color: 0xd0e0ff, intensity: 0.40, pos: [-28.0, 24.0, 2.0] },
         shadowRadius: 3.0
     },
     'desert-dawn': {

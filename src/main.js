@@ -651,7 +651,7 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, qualityCaps.dprCap
 
 // Cinematic Photographic Tone Mapping (prevents harsh blowouts, enriches contrast and shadow depth)
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.04;
+renderer.toneMappingExposure = isMobileLike ? 1.10 : 1.05;
 
 renderer.shadowMap.enabled = true;
 // On iOS, prefer cheaper PCF shadows over PCFSoft (significant battery win)
@@ -1220,24 +1220,24 @@ function centerTowerVertically() {
 }
 
 // Camera system constants
-const MIN_RADIUS_DESKTOP = 8.0; // Balanced framing on desktop
-const MIN_RADIUS_MOBILE = 6.4; // Balanced framing on mobile
+const MIN_RADIUS_DESKTOP = 7.2; // Balanced framing on desktop (tiny bit closer)
+const MIN_RADIUS_MOBILE = 5.8; // Balanced framing on mobile (tiny bit closer)
 const MAX_RADIUS = 50;
 const MIN_ELEVATION = -Math.PI * 0.65; // Allow rotating below the horizon (approx. -117°)
 const MAX_ELEVATION = Math.PI * 0.65; // Allow rotating below the horizon (approx. 117°)
-const ZOOM_PADDING = 1.6; // Balanced padding for comfortable framing
-const ZOOM_PADDING_MOBILE = 1.1; // Balanced padding for mobile framing
+const ZOOM_PADDING = 1.2; // Closer framing padding
+const ZOOM_PADDING_MOBILE = 0.85; // Closer mobile framing padding
 const AUTO_ZOOM_MIN_BOUNDING_SIZE = 3.5; // Minimum bounding box size
-const SPAWN_ZOOM_PADDING = 1.2; // Extra padding during spawn
-const SPAWN_ZOOM_MULTIPLIER = 1.08; // Additional multiplier for spawn zoom
+const SPAWN_ZOOM_PADDING = 1.0; // Extra padding during spawn
+const SPAWN_ZOOM_MULTIPLIER = 1.04; // Additional multiplier for spawn zoom
 // Auto-zoom multiplier: platform-aware
-const AUTO_ZOOM_MULTIPLIER_DESKTOP = 1.18; // Desktop: balanced framing (~18% pulled out)
-const AUTO_ZOOM_MULTIPLIER_MOBILE = 1.18; // Mobile: balanced fit (~18% pulled out)
+const AUTO_ZOOM_MULTIPLIER_DESKTOP = 1.09; // Desktop: tiny bit closer (~9% pulled out instead of ~18%)
+const AUTO_ZOOM_MULTIPLIER_MOBILE = 1.09; // Mobile: tiny bit closer (~9% pulled out instead of ~18%)
 // Desktop-specific padding multiplier to ensure all blocks stay visible
-const DESKTOP_ZOOM_PADDING_MULTIPLIER = 1.08;
+const DESKTOP_ZOOM_PADDING_MULTIPLIER = 1.05;
 const DESKTOP_FULL_TOWER_VISIBILITY_LEVEL = 100;
-const DESKTOP_HIGH_LEVEL_VERTICAL_FIT_MULTIPLIER = 1.08;
-const DESKTOP_HIGH_LEVEL_MIN_RADIUS = 9.2;
+const DESKTOP_HIGH_LEVEL_VERTICAL_FIT_MULTIPLIER = 1.05;
+const DESKTOP_HIGH_LEVEL_MIN_RADIUS = 8.5;
 // During generation, computing a world-space bounding box by expanding each block object
 // (updateMatrixWorld + expandByObject) is expensive. Throttle it to avoid long rAF frames.
 const SPAWN_ZOOM_UPDATE_INTERVAL_MS = 120;
@@ -1287,7 +1287,7 @@ function calculateInitialCameraPosition() {
     const estimatedTowerHeight = 5;
     const verticalDistance = (estimatedTowerHeight + initialPadding) / (2 * Math.tan(fov / 2));
 
-    const requiredDistance = Math.max(horizontalDistance * 0.90, verticalDistance) * 1.08;
+    const requiredDistance = Math.max(horizontalDistance * 0.90, verticalDistance) * 1.00;
 
     // Set initial values
     const minRadius = isMobileLike ? MIN_RADIUS_MOBILE : MIN_RADIUS_DESKTOP;
