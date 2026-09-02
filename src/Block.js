@@ -1630,49 +1630,6 @@ export class Block {
         indicatorsGroup.add(dotMesh);
         indicatorsGroup.add(circleMesh);
 
-        // Bomb blocks: Ensure indicators are visible on ALL remaining lateral faces so bomb blocks are never blank from any angle!
-        if (this.isBomb && !this.isCharred && !this.isTranslucent) {
-            const addSideHazard = (px, py, pz, rx, ry, rz) => {
-                const sideMesh = new THREE.Mesh(dotGeometry, dotMaterial);
-                sideMesh.castShadow = false;
-                sideMesh.receiveShadow = true;
-                sideMesh.position.set(px, py, pz);
-                sideMesh.rotation.set(rx, ry, rz);
-                const sideHalo = this.create3DDotGlow(bombColorHex);
-                sideMesh.add(sideHalo);
-                if (this.bombGlowSprites) this.bombGlowSprites.push(sideHalo);
-                indicatorsGroup.add(sideMesh);
-            };
-
-            if (this.isVertical) {
-                // Vertical block: lateral faces opposite to movement direction
-                for (let seg = 0; seg < this.length; seg++) {
-                    const segY = (seg + 0.5) * this.cubeSize;
-                    if (this.direction.x !== 0) {
-                        addSideHazard(0, segY, blockDepth / 2 + surfaceOffset, 0, Math.PI, 0);
-                        addSideHazard(0, segY, -blockDepth / 2 - surfaceOffset, 0, 0, 0);
-                    } else {
-                        addSideHazard(blockWidth / 2 + surfaceOffset, segY, 0, 0, -Math.PI / 2, 0);
-                        addSideHazard(-blockWidth / 2 - surfaceOffset, segY, 0, 0, Math.PI / 2, 0);
-                    }
-                }
-            } else if (isXAligned) {
-                // Horizontal X-aligned block: long sides are North (-Z) and South (+Z)
-                for (let seg = 0; seg < this.length; seg++) {
-                    const segX = (seg - (this.length - 1) / 2) * this.cubeSize;
-                    addSideHazard(segX, blockHeight / 2, blockDepth / 2 + surfaceOffset, 0, Math.PI, 0);
-                    addSideHazard(segX, blockHeight / 2, -blockDepth / 2 - surfaceOffset, 0, 0, 0);
-                }
-            } else {
-                // Horizontal Z-aligned block: long sides are East (+X) and West (-X)
-                for (let seg = 0; seg < this.length; seg++) {
-                    const segZ = (seg - (this.length - 1) / 2) * this.cubeSize;
-                    addSideHazard(blockWidth / 2 + surfaceOffset, blockHeight / 2, segZ, 0, -Math.PI / 2, 0);
-                    addSideHazard(-blockWidth / 2 - surfaceOffset, blockHeight / 2, segZ, 0, Math.PI / 2, 0);
-                }
-            }
-        }
-
         this.group.add(indicatorsGroup);
         this.directionIndicators = indicatorsGroup;
 
