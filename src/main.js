@@ -2612,7 +2612,26 @@ function applyBlastCellPercentToCurrentTower(targetPercent) {
     if (totalCells <= 0) return null;
 
     const clampedPercent = Math.max(0, Math.min(MAX_BLAST_CELL_PERCENT, targetPercent));
-    const targetBombCells = Math.round((clampedPercent / 100) * totalCells);
+    if (clampedPercent <= 0) {
+        // Zero bombs requested
+        for (const block of eligibleBlocks) {
+            if (typeof block.setBombState === 'function') {
+                block.setBombState(false);
+            } else {
+                block.isBomb = false;
+            }
+        }
+        return { totalCells, bombCells: 0, actualPercent: 0 };
+    }
+
+    // Option 2: Layer-Based Scaling (1 bomb every 2-3 layers, capped at 5-6 bombs max)
+    const maxLayer = eligibleBlocks.reduce((max, b) => Math.max(max, typeof b.yOffset === 'number' ? b.yOffset : 0), 0);
+    const layerCount = Math.max(1, Math.floor(maxLayer) + 1);
+    // 1-2 layers -> 1 bomb; 3-4 layers -> 2; 5-6 layers -> 3; 7-8 layers -> 4; 9-10 layers -> 5; 11+ layers -> 6 max
+    const maxBombsAllowed = Math.max(1, Math.min(6, Math.ceil(layerCount / 2.2)));
+
+    // Average block length is ~2 cells; cap target cells based on maxBombsAllowed
+    const targetBombCells = Math.min(maxBombsAllowed * 2, Math.round((clampedPercent / 100) * totalCells));
 
     // Score all eligible blocks by near-corner proximity, lower layers, and edge exclusion
     const currentGridSize = typeof gridSize === 'number' ? gridSize : 9;
@@ -2629,7 +2648,7 @@ function applyBlastCellPercentToCurrentTower(targetPercent) {
     // Pass 1: Strict spatial spacing (minimum 2.0 grid units in 3D between any two bombs)
     const MIN_SPACING_SQ_STRICT = 4.0;
     for (const cand of scoredCandidates) {
-        if (accumulatedBombCells >= targetBombCells) break;
+        if (selectedBombs.length >= maxBombsAllowed || accumulatedBombCells >= targetBombCells) break;
 
         const isTooClose = selectedBombs.some(b => {
             const dx = cand.center.x - b.center.x;
@@ -2646,9 +2665,9 @@ function applyBlastCellPercentToCurrentTower(targetPercent) {
 
     // Pass 2: Relaxed spatial spacing (minimum 1.5 grid units) if quota not met
     const MIN_SPACING_SQ_RELAXED = 2.25;
-    if (accumulatedBombCells < targetBombCells) {
+    if (selectedBombs.length < maxBombsAllowed && accumulatedBombCells < targetBombCells) {
         for (const cand of scoredCandidates) {
-            if (accumulatedBombCells >= targetBombCells) break;
+            if (selectedBombs.length >= maxBombsAllowed || accumulatedBombCells >= targetBombCells) break;
             if (selectedBombs.includes(cand)) continue;
 
             const isTooClose = selectedBombs.some(b => {
