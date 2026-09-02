@@ -331,6 +331,9 @@ window.rechargeSpin = function () {
     if (remainingSpins < 5) {
         remainingSpins++;
         updateSpinCounterDisplay(true); // Trigger celebratory pop-in animation
+        if (typeof triggerFlyingSpinCounter === 'function') {
+            triggerFlyingSpinCounter('+1', 'FREE SPIN!');
+        }
         console.log(`[Spin] 💎 COLLECTED! +10s Time + 1 Free Spin. Total Free Spins: ${remainingSpins}`);
     } else {
         console.log('[Spin] 💎 COLLECTED! +10s Time (Free Spins already at max 5)');
@@ -4740,8 +4743,49 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
                             const newX = upperBlock.gridX + backwardDir.x * steps;
                             const newZ = upperBlock.gridZ + backwardDir.z * steps;
 
-                            // Check bounds
+                            // Check bounds for starting position
                             if (newX >= 0 && newX < gridSize && newZ >= 0 && newZ < gridSize) {
+                                // Check bounds for ALL cells of upper block at new position
+                                const upperCells = getBlockCells(upperBlock);
+                                let allCellsInBounds = true;
+                                for (const upperCell of upperCells) {
+                                    const actualX = newX + (upperCell.x - upperBlock.gridX);
+                                    const actualZ = newZ + (upperCell.z - upperBlock.gridZ);
+                                    if (actualX < 0 || actualX >= gridSize || actualZ < 0 || actualZ >= gridSize) {
+                                        allCellsInBounds = false;
+                                        break;
+                                    }
+                                }
+                                if (!allCellsInBounds) continue;
+
+                                const upperCubeSize = upperBlock.cubeSize || 1;
+                                const upperHeight = upperBlock.isVertical ? upperBlock.length * upperCubeSize : upperCubeSize;
+                                const upperYBottom = snapLayerY(upperBlock.yOffset || 0);
+                                const upperYTop = upperYBottom + upperHeight;
+
+                                // Ensure block at new position maintains support from lower blocks
+                                if (upperYBottom > 0) {
+                                    let hasSupportAtNewPos = false;
+                                    for (const lowerBlock of lowerBlocks) {
+                                        if (lowerBlock.isFalling || lowerBlock.isRemoved) continue;
+                                        const lowerH = lowerBlock.isVertical ? lowerBlock.length * (lowerBlock.cubeSize || 1) : (lowerBlock.cubeSize || 1);
+                                        const lowerTop = snapLayerY(lowerBlock.yOffset || 0) + lowerH;
+                                        if (Math.abs(lowerTop - upperYBottom) < 0.15) {
+                                            const lowerCells = getBlockCells(lowerBlock);
+                                            for (const upperCell of upperCells) {
+                                                const actualX = newX + (upperCell.x - upperBlock.gridX);
+                                                const actualZ = newZ + (upperCell.z - upperBlock.gridZ);
+                                                if (lowerCells.some(lc => lc.x === actualX && lc.z === actualZ)) {
+                                                    hasSupportAtNewPos = true;
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                        if (hasSupportAtNewPos) break;
+                                    }
+                                    if (!hasSupportAtNewPos) continue;
+                                }
+
                                 // Check if this position would block a lower exit
                                 let wouldBlock = false;
                                 for (const lowerBlock of lowerBlocks) {
@@ -4760,7 +4804,6 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
                                             checkZ += lowerDir.z;
 
                                             // Check if upper block at new position would be in path
-                                            const upperCells = getBlockCells(upperBlock);
                                             for (const upperCell of upperCells) {
                                                 const actualX = newX + (upperCell.x - upperBlock.gridX);
                                                 const actualZ = newZ + (upperCell.z - upperBlock.gridZ);
@@ -4783,22 +4826,16 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
                                 if (wouldBlock) {
                                     // Check if new position doesn't overlap with other blocks
                                     let canMove = true;
-                                    const upperCells = getBlockCells(upperBlock);
-                                    
-                                    const upperCubeSize = upperBlock.cubeSize || 1;
-                                    const upperHeight = upperBlock.isVertical ? upperBlock.length * upperCubeSize : upperCubeSize;
-                                    const upperYBottom = upperBlock.yOffset || 0;
-                                    const upperYTop = upperYBottom + upperHeight;
 
                                     for (const otherBlock of allBlocks) {
                                         if (otherBlock === upperBlock) continue;
                                         
                                         const otherCubeSize = otherBlock.cubeSize || 1;
                                         const otherHeight = otherBlock.isVertical ? otherBlock.length * otherCubeSize : otherCubeSize;
-                                        const otherYBottom = otherBlock.yOffset || 0;
+                                        const otherYBottom = snapLayerY(otherBlock.yOffset || 0);
                                         const otherYTop = otherYBottom + otherHeight;
                                         
-                                        const Y_OVERLAP_EPS = 0.001;
+                                        const Y_OVERLAP_EPS = 0.05;
                                         if ((upperYTop - otherYBottom > Y_OVERLAP_EPS) && (otherYTop - upperYBottom > Y_OVERLAP_EPS)) {
                                             const otherCells = getBlockCells(otherBlock);
                                             for (const upperCell of upperCells) {
@@ -4872,7 +4909,13 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
     // CRITICAL: Support checking is already disabled by isGeneratingLevel flag
     // The flag will be set to false after a delay to ensure all blocks are initialized
 
-    // Validate structure after placement to catch any overlaps
+    // Auto-fix/heal any overlaps immediately after placement
+    const preFix = checkAndFixAllOverlaps(blocks, gridSize);
+    if (preFix && preFix.fixed && ((preFix.movedBlocks && preFix.movedBlocks.length > 0) || (preFix.prunedBlocks && preFix.prunedBlocks.length > 0))) {
+        console.log(`✓ Post-generation overlap auto-heal applied: ${preFix.message}`);
+    }
+
+    // Validate structure after placement to catch any remaining overlaps
     const structureCheck = validateStructure(blocks, gridSize);
     if (!structureCheck.valid) {
         console.error(`✗ Structure validation failed: ${structureCheck.reason}`);
@@ -4885,7 +4928,8 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
     }
 
     // Inferno mode: Validate difficulty threshold (difficulty-based generation)
-    if (isInfernoMode() && difficultyConfig) {
+    // Multi-layer towers already possess high organic difficulty and cannot be regenerated via single-layer createSolvableBlocks
+    if (isInfernoMode() && difficultyConfig && !needsMultipleLayers) {
         let attempts = 0;
         const maxAttempts = 5;
         let difficulty = calculateDifficulty(blocks, gridSize);
@@ -7638,6 +7682,12 @@ function clearTemporarySpinState() {
     }
     temporarySpinActive = false;
     temporarySpinEndTime = 0;
+    lastTemporarySpinCountdownSecond = null;
+    const container = document.getElementById('flying-spin-container');
+    if (container) {
+        const countdownItems = container.querySelectorAll('.flying-spin-countdown-item');
+        countdownItems.forEach(i => i.remove());
+    }
     temporarySpinOriginalDirections.clear();
     updateSpinCounterDisplay();
 }
@@ -7656,6 +7706,12 @@ function revertTemporarySpin() {
     }
     temporarySpinActive = false;
     temporarySpinEndTime = 0;
+    lastTemporarySpinCountdownSecond = null;
+    const container = document.getElementById('flying-spin-container');
+    if (container) {
+        const countdownItems = container.querySelectorAll('.flying-spin-countdown-item');
+        countdownItems.forEach(i => i.remove());
+    }
 
     const TOTAL_CASCADE_MS = 2000;
     const BLOCK_SPIN_MS = 320;
@@ -7705,28 +7761,132 @@ function revertTemporarySpin() {
     updateSpinCounterDisplay();
 }
 
+/**
+ * Triggers large 3D kinetic spin counter numbers flying towards the user/camera.
+ * @param {number|string} count - The spin count or number (e.g. "+1", "3", "∞")
+ * @param {string} label - The descriptive subtext (e.g. "FREE SPIN!", "SPINS AVAILABLE")
+ */
+function triggerFlyingSpinCounter(count, label = 'FREE SPINS AVAILABLE') {
+    const container = document.getElementById('flying-spin-container');
+    if (!container) return;
+
+    // Clean up any existing item
+    container.innerHTML = '';
+
+    const item = document.createElement('div');
+    item.className = 'flying-spin-item';
+
+    const countStr = (count === Number.POSITIVE_INFINITY) ? '∞' : String(count);
+
+    item.innerHTML = `
+        <div class="flying-spin-icon-wrap">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4">
+                <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" stroke-linecap="round" stroke-linejoin="round"></path>
+                <path d="M3 21v-5h5" stroke-linecap="round" stroke-linejoin="round"></path>
+                <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" stroke-linecap="round" stroke-linejoin="round"></path>
+                <path d="M21 3v5h-5" stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
+        </div>
+        <div class="flying-spin-number">${countStr}</div>
+        <div class="flying-spin-subtext">${label}</div>
+    `;
+
+    container.appendChild(item);
+
+    if (typeof playSound === 'function') {
+        playSound('powerUp', 0.55).catch(() => {});
+    }
+
+    item.addEventListener('animationend', () => {
+        if (item.parentNode) {
+            item.remove();
+        }
+    });
+}
+window.triggerFlyingSpinCounter = triggerFlyingSpinCounter;
+
+let lastTemporarySpinCountdownSecond = null;
+
+/**
+ * Triggers large 3D kinetic countdown numerals flying towards the user every second of temporary spin.
+ * @param {number} sec - Seconds remaining
+ * @param {number} ratio - Fraction of total spin duration remaining (0.0 - 1.0)
+ */
+function triggerFlyingSpinCountdown(sec, ratio) {
+    const container = document.getElementById('flying-spin-container');
+    if (!container) return;
+
+    // Clean up previous countdown ticks to keep display fresh and uncluttered
+    const prevTicks = container.querySelectorAll('.flying-spin-countdown-item');
+    prevTicks.forEach(t => t.remove());
+
+    const item = document.createElement('div');
+    item.className = 'flying-spin-countdown-item';
+
+    let phase = 'phase-high';
+    let label = 'SPIN ACTIVE';
+
+    if (sec <= 2 || ratio <= 0.20) {
+        phase = 'phase-low';
+        label = 'REVERTING SOON';
+    } else if (sec <= 5 || ratio <= 0.45) {
+        phase = 'phase-med';
+        label = 'HURRY';
+    }
+
+    item.classList.add(phase);
+
+    item.innerHTML = `
+        <div class="flying-spin-countdown-num">${sec}</div>
+        <div class="flying-spin-countdown-label">${label}</div>
+    `;
+
+    container.appendChild(item);
+
+    // Audio cue per second tick
+    if (typeof playSound === 'function') {
+        if (sec <= 2) {
+            playSound('timeRemoved', 0.45).catch(() => {});
+        } else {
+            playSound('syntheticBlockSnap', 0.22).catch(() => {});
+        }
+    }
+
+    item.addEventListener('animationend', () => {
+        if (item.parentNode) {
+            item.remove();
+        }
+    });
+}
+window.triggerFlyingSpinCountdown = triggerFlyingSpinCountdown;
+
 // Update spin counter display
 function updateSpinCounterDisplay(triggerAwardEffect = false) {
     const spinCounter = document.getElementById('spin-counter');
     const diceButton = document.getElementById('dice-button');
 
-    if (spinCounter) {
-        if (temporarySpinActive) {
-            const remainingMs = Math.max(0, temporarySpinEndTime - performance.now());
-            const remainingSec = Math.ceil(remainingMs / 1000);
-            const totalMs = currentTemporarySpinTotalDurationMs || 15000;
-            const ratio = remainingMs / totalMs;
+    if (temporarySpinActive) {
+        const remainingMs = Math.max(0, temporarySpinEndTime - performance.now());
+        const remainingSec = Math.ceil(remainingMs / 1000);
+        const totalMs = currentTemporarySpinTotalDurationMs || 15000;
+        const ratio = remainingMs / totalMs;
 
+        // Trigger flying countdown numeral towards user on each second tick
+        if (remainingSec > 0 && remainingSec !== lastTemporarySpinCountdownSecond) {
+            lastTemporarySpinCountdownSecond = remainingSec;
+            triggerFlyingSpinCountdown(remainingSec, ratio);
+        }
+
+        if (spinCounter) {
             spinCounter.style.display = 'flex';
             spinCounter.textContent = String(remainingSec);
             spinCounter.classList.add('spin-countdown-active');
-            spinCounter.classList.remove('has-spins', 'spin-awarded-burst');
+            spinCounter.classList.remove('has-spins', 'spin-awarded-burst', 'countdown-phase-high', 'countdown-phase-med', 'countdown-phase-low');
 
             // Dynamic color coding:
             // High (> 45% & > 5s): Green/Teal
             // Medium (20% - 45% & > 2s): Amber/Gold
             // Low (<= 20% or <= 2s): Crimson/Red (urgent panic pulse)
-            spinCounter.classList.remove('countdown-phase-high', 'countdown-phase-med', 'countdown-phase-low');
             if (ratio > 0.45 && remainingSec > 5) {
                 spinCounter.classList.add('countdown-phase-high');
             } else if (ratio > 0.20 && remainingSec > 2) {
@@ -7736,41 +7896,33 @@ function updateSpinCounterDisplay(triggerAwardEffect = false) {
             }
 
             spinCounter.title = `Temporary spin active: ${remainingSec}s remaining (move time rewards paused)`;
-            if (diceButton) {
-                diceButton.classList.remove('has-spins');
-            }
-        } else {
+        }
+
+        if (diceButton) {
+            diceButton.classList.remove('has-spins');
+        }
+    } else {
+        const hasSpins = (remainingSpins > 0) || (remainingSpins === Number.POSITIVE_INFINITY);
+        const spinsText = (remainingSpins === Number.POSITIVE_INFINITY) ? '∞' : remainingSpins.toString();
+
+        if (spinCounter) {
             spinCounter.classList.remove('spin-countdown-active', 'countdown-phase-high', 'countdown-phase-med', 'countdown-phase-low');
-            
-            const hasSpins = (remainingSpins > 0) || (remainingSpins === Number.POSITIVE_INFINITY);
 
             if (hasSpins) {
                 spinCounter.style.display = 'flex';
-                spinCounter.textContent = (remainingSpins === Number.POSITIVE_INFINITY) ? '∞' : remainingSpins.toString();
+                spinCounter.textContent = spinsText;
                 spinCounter.classList.add('has-spins');
                 spinCounter.title = `${remainingSpins} Free Spins available`;
-                if (diceButton) {
-                    diceButton.classList.add('has-spins');
-                }
                 if (triggerAwardEffect) {
                     spinCounter.classList.remove('spin-awarded-burst');
                     void spinCounter.offsetWidth; // trigger reflow
                     spinCounter.classList.add('spin-awarded-burst');
-                }
-            } else if (isTimeBasedMode()) {
-                spinCounter.textContent = ''; 
-                spinCounter.style.display = 'none'; // Hide badge when 0 spins
-                spinCounter.classList.remove('has-spins');
-                if (diceButton) {
-                    diceButton.classList.remove('has-spins');
+                    triggerFlyingSpinCounter(spinsText, remainingSpins === 1 ? 'FREE SPIN AVAILABLE' : 'FREE SPINS AVAILABLE');
                 }
             } else {
-                spinCounter.style.display = 'flex';
-                spinCounter.textContent = '0';
+                spinCounter.style.display = 'none';
+                spinCounter.textContent = '';
                 spinCounter.classList.remove('has-spins');
-                if (diceButton) {
-                    diceButton.classList.remove('has-spins');
-                }
             }
             
             if (remainingSpins === Number.POSITIVE_INFINITY) {
@@ -7779,26 +7931,27 @@ function updateSpinCounterDisplay(triggerAwardEffect = false) {
                 spinCounter.removeAttribute('data-infinity');
             }
         }
+
+        if (diceButton) {
+            if (hasSpins) {
+                diceButton.classList.add('has-spins');
+            } else {
+                diceButton.classList.remove('has-spins');
+            }
+        }
     }
 
     if (diceButton) {
-        const wasDisabled = diceButton.disabled;
-        
         // Disable if: 
         // 1. No free spins AND (Not time mode OR not enough time)
         const hasNoFreeSpins = remainingSpins === 0;
         const cannotAffordTime = isTimeBasedMode() && timeLeftSec < 1.0; // In % mode, costs at least something
         const isNotTimeMode = !isTimeBasedMode();
         
-        if (hasNoFreeSpins && (cannotAffordTime || isNotTimeMode)) {
-            diceButton.disabled = true;
-            diceButton.style.opacity = '0.5';
-            diceButton.style.cursor = 'not-allowed';
-        } else {
-            diceButton.disabled = false;
-            diceButton.style.opacity = '1';
-            diceButton.style.cursor = 'pointer';
-        }
+        const isDisabled = hasNoFreeSpins && (cannotAffordTime || isNotTimeMode);
+        diceButton.disabled = isDisabled;
+        diceButton.style.opacity = isDisabled ? '0.5' : '1';
+        diceButton.style.cursor = isDisabled ? 'not-allowed' : 'pointer';
     }
 }
 
@@ -8129,7 +8282,6 @@ function setupDiceButton() {
                     diceButton.classList.remove('spin-nudge');
                     spinNudgeActive = false;
                 }
-                showGameHint("Mixing it up? Bold move!", "spin-used");
                 // #region agent log
                 debugTelemetry({ location: 'main.js:setupDiceButton:clickHandler', message: 'Dice button click event fired', data: { disabled: diceButton.disabled, timeChallengeActive: timeChallengeActive }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H1' });
                 // #endregion
@@ -8836,11 +8988,17 @@ function onMouseClick(event) {
         }
     }
 
-    // Validate structure before move
-    const structureCheck = validateStructure(blocks, gridSize);
+    // Validate structure before move, auto-repairing any overlaps if detected
+    let structureCheck = validateStructure(blocks, gridSize);
     if (!structureCheck.valid) {
-        console.warn('Puzzle structure invalid before move, skipping:', structureCheck.reason);
-        return;
+        console.warn('Puzzle structure invalid before move, attempting auto-repair:', structureCheck.reason);
+        const fixResult = checkAndFixAllOverlaps(blocks, gridSize);
+        structureCheck = validateStructure(blocks, gridSize);
+        if (!structureCheck.valid) {
+            console.warn('Puzzle structure still invalid after repair, skipping:', structureCheck.reason);
+            return;
+        }
+        console.log('✓ Puzzle structure successfully auto-repaired before move:', fixResult.message);
     }
 
     // Store if this block will fall (to update solution tracking)
@@ -10214,14 +10372,17 @@ function onTouchEnd(event) {
         return;
     }
 
-    // Validate structure before move
-    const structureCheck = validateStructure(blocks, gridSize);
+    // Validate structure before move, auto-repairing any overlaps if detected
+    let structureCheck = validateStructure(blocks, gridSize);
     if (!structureCheck.valid) {
-        console.warn('Puzzle structure invalid before move, skipping:', structureCheck.reason);
-        console.warn('This may indicate a bug in the movement logic or puzzle generation.');
-        // Don't block the move - allow it to proceed and let the move logic handle collisions
-        // The validation might be too strict or detecting a transient state
-        // return;
+        console.warn('Puzzle structure invalid before touch move, attempting auto-repair:', structureCheck.reason);
+        const fixResult = checkAndFixAllOverlaps(blocks, gridSize);
+        structureCheck = validateStructure(blocks, gridSize);
+        if (!structureCheck.valid) {
+            console.warn('Puzzle structure still invalid after repair:', structureCheck.reason);
+        } else {
+            console.log('✓ Puzzle structure successfully auto-repaired before touch move:', fixResult.message);
+        }
     }
 
     // Check if this block is part of a translucent welded cluster
@@ -10617,6 +10778,15 @@ function animate() {
                 diceBtn.classList.add('spin-nudge');
                 spinNudgeActive = true;
                 console.log('[Hint] 💡 Nudging spin button due to inactivity');
+            }
+        }
+        // When player is hunting for blocks and has spins ready, fly the counter towards user
+        if (currentTime - lastInteractionTime > 5000 && remainingSpins > 0) {
+            if (!window._lastFlyingSpinCalloutTime || currentTime - window._lastFlyingSpinCalloutTime > 14000) {
+                window._lastFlyingSpinCalloutTime = currentTime;
+                if (typeof triggerFlyingSpinCounter === 'function') {
+                    triggerFlyingSpinCounter(remainingSpins, remainingSpins === 1 ? 'FREE SPIN READY' : 'FREE SPINS READY');
+                }
             }
         }
     }

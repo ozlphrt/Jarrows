@@ -1083,20 +1083,20 @@ export class Block {
                 });
 
             } else if (style === 2) {
+                // Swept Delta Wing - High-visibility directional arrow for long-distance legibility
                 arrowShape = new THREE.Shape();
-                arrowShape.moveTo(0, 0.35);
-                arrowShape.lineTo(-0.2, 0);
-                arrowShape.lineTo(-0.06, 0);
-                arrowShape.lineTo(-0.06, -0.25);
-                arrowShape.lineTo(0.06, -0.25);
-                arrowShape.lineTo(0.06, 0);
-                arrowShape.lineTo(0.2, 0);
-                arrowShape.lineTo(0, 0.35);
+                arrowShape.moveTo(0, 0.38);         // Forward apex / tip
+                arrowShape.lineTo(0.32, -0.16);     // Right swept wingtip
+                arrowShape.lineTo(0.18, -0.20);     // Right trailing edge inset
+                arrowShape.lineTo(0, -0.02);        // Rear center concave notch
+                arrowShape.lineTo(-0.18, -0.20);    // Left trailing edge inset
+                arrowShape.lineTo(-0.32, -0.16);    // Left swept wingtip
+                arrowShape.lineTo(0, 0.38);         // Return to forward apex
 
                 extrudeSettings = {
-                    depth: 0.05,
+                    depth: 0.06,
                     bevelEnabled: true,
-                    bevelThickness: 0.02,
+                    bevelThickness: 0.025,
                     bevelSize: 0.02,
                     bevelSegments: 3
                 };
@@ -1289,8 +1289,8 @@ export class Block {
             // Tail: -0.105, Head: 0.35, Center: (-0.105 + 0.35) / 2 = 0.1225
             arrowCenterOffset = 0.1225;
         } else if (style === 2) {
-            // Tail: -0.25, Head: 0.35, Center: (-0.25 + 0.35) / 2 = 0.05
-            arrowCenterOffset = 0.05;
+            // Swept Delta Wing: Min Y -0.20, Max Y 0.38 => Center: (-0.20 + 0.38) / 2 = 0.09
+            arrowCenterOffset = 0.09;
         } else if (style === 3) {
             // Tail: -0.2, Head: 0.35, Center: (-0.2 + 0.35) / 2 = 0.075
             arrowCenterOffset = 0.075;

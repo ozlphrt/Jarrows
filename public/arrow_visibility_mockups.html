@@ -1,0 +1,1297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arrow Visibility & Distance Legibility Mockups</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Inter:wght@400;500;600;700;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0d14;
+            --bg-card: rgba(18, 24, 38, 0.85);
+            --bg-card-border: rgba(255, 255, 255, 0.12);
+            --accent-cyan: #00f0ff;
+            --accent-gold: #ffbe1a;
+            --accent-emerald: #10b981;
+            --accent-crimson: #ff3366;
+            --block-blue: #2563eb;
+            --block-purple: #9333ea;
+            --block-orange: #ea580c;
+            --block-dark: #1e293b;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: radial-gradient(circle at 50% 20%, #151d30 0%, #080b12 80%);
+            color: #f1f5f9;
+            font-family: 'Inter', -apple-system, sans-serif;
+            min-height: 100vh;
+            padding: 40px 24px 80px;
+            overflow-x: hidden;
+        }
+
+        .header {
+            max-width: 1280px;
+            margin: 0 auto 32px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-family: 'Fredoka', sans-serif;
+            font-size: 38px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #ffffff 0%, #a5f3fc 50%, #00f0ff 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 12px;
+            letter-spacing: -0.5px;
+        }
+
+        .header p {
+            font-size: 16px;
+            color: #94a3b8;
+            max-width: 780px;
+            margin: 0 auto 20px;
+            line-height: 1.6;
+        }
+
+        /* Control Panel */
+        .controls-panel {
+            max-width: 1280px;
+            margin: 0 auto 36px;
+            background: var(--bg-card);
+            border: 1px solid var(--bg-card-border);
+            border-radius: 20px;
+            padding: 20px 28px;
+            backdrop-filter: blur(20px);
+            box-shadow: 0 16px 36px rgba(0, 0, 0, 0.4);
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 20px;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .control-label {
+            font-size: 13px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #cbd5e1;
+        }
+
+        .slider-wrap {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            width: 180px;
+            height: 6px;
+            border-radius: 3px;
+            background: #334155;
+            outline: none;
+            cursor: pointer;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--accent-cyan);
+            box-shadow: 0 0 10px var(--accent-cyan);
+            cursor: pointer;
+            transition: transform 0.15s ease;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+
+        .slider-val {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--accent-cyan);
+            min-width: 46px;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 8px;
+            background: rgba(15, 23, 42, 0.6);
+            padding: 4px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .btn-ctrl {
+            background: transparent;
+            border: none;
+            color: #94a3b8;
+            padding: 8px 14px;
+            font-size: 12px;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn-ctrl:hover {
+            color: #fff;
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .btn-ctrl.active {
+            color: #0f172a;
+            background: var(--accent-cyan);
+            font-weight: 700;
+            box-shadow: 0 0 12px rgba(0, 240, 255, 0.4);
+        }
+
+        /* Mockup Grid */
+        .mockups-grid {
+            max-width: 1280px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+            gap: 28px;
+        }
+
+        .mockup-card {
+            background: var(--bg-card);
+            border: 1px solid var(--bg-card-border);
+            border-radius: 24px;
+            padding: 24px;
+            backdrop-filter: blur(16px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35);
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+            transition: transform 0.25s ease, border-color 0.25s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .mockup-card:hover {
+            border-color: rgba(0, 240, 255, 0.4);
+            transform: translateY(-3px);
+        }
+
+        .mockup-card.recommended {
+            border-color: rgba(255, 190, 26, 0.6);
+            box-shadow: 0 0 30px rgba(255, 190, 26, 0.15), 0 20px 40px rgba(0, 0, 0, 0.35);
+        }
+
+        .badge-recommended {
+            position: absolute;
+            top: 16px;
+            right: 18px;
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            color: #0f172a;
+            font-size: 10px;
+            font-weight: 900;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            padding: 4px 10px;
+            border-radius: 20px;
+            box-shadow: 0 0 12px rgba(245, 158, 11, 0.5);
+        }
+
+        .badge-baseline {
+            position: absolute;
+            top: 16px;
+            right: 18px;
+            background: rgba(148, 163, 184, 0.2);
+            color: #94a3b8;
+            font-size: 10px;
+            font-weight: 800;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            padding: 4px 10px;
+            border-radius: 20px;
+            border: 1px solid rgba(148, 163, 184, 0.3);
+        }
+
+        .card-header {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .card-title {
+            font-family: 'Fredoka', sans-serif;
+            font-size: 22px;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        .card-subtitle {
+            font-size: 12px;
+            color: #94a3b8;
+            line-height: 1.4;
+        }
+
+        /* Interactive Showcase Stage */
+        .stage-box {
+            background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            padding: 24px;
+            min-height: 200px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* 3D Isometric View Simulation */
+        .stage-box.mode-3d .block-unit {
+            transform: rotateX(55deg) rotateZ(-45deg);
+            transform-style: preserve-3d;
+            box-shadow: 
+                -1px 1px 0 #1e293b,
+                -2px 2px 0 #1e293b,
+                -3px 3px 0 #1e293b,
+                -4px 4px 0 #1e293b,
+                -5px 5px 0 #1e293b,
+                -6px 6px 0 #1e293b,
+                -7px 7px 0 #1e293b,
+                -8px 8px 0 #1e293b,
+                -10px 10px 18px rgba(0, 0, 0, 0.8);
+        }
+
+        /* The Block Element */
+        .block-unit {
+            width: 72px;
+            height: 72px;
+            background: linear-gradient(135deg, #334155 0%, #1e293b 100%);
+            border-radius: 14px;
+            border: 2px solid rgba(255, 255, 255, 0.15);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.4), inset 0 1px 1px rgba(255, 255, 255, 0.2);
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), width 0.2s ease, height 0.2s ease;
+            cursor: pointer;
+            user-select: none;
+            flex-shrink: 0;
+        }
+
+        .block-unit:hover {
+            border-color: rgba(255, 255, 255, 0.4);
+        }
+
+        /* SVG Arrow Canvas */
+        .arrow-svg {
+            width: 46px;
+            height: 46px;
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+        }
+
+        /* Distance Multi-Scale Comparison Row */
+        .distance-preview-row {
+            background: rgba(15, 23, 42, 0.4);
+            border-radius: 12px;
+            padding: 12px 16px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .preview-col {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .preview-col-label {
+            font-size: 10px;
+            font-weight: 700;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .scale-box {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 52px;
+            width: 52px;
+        }
+
+        /* Metrics & Pros/Cons */
+        .card-specs {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            font-size: 13px;
+        }
+
+        .metric-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 8px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .metric-name {
+            color: #94a3b8;
+        }
+
+        .metric-stars {
+            color: #fbbf24;
+            letter-spacing: 2px;
+            font-size: 11px;
+        }
+
+        .pros-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            font-size: 12px;
+            color: #cbd5e1;
+        }
+
+        .pros-list li {
+            position: relative;
+            padding-left: 16px;
+            line-height: 1.4;
+        }
+
+        .pros-list li::before {
+            content: '✓';
+            position: absolute;
+            left: 0;
+            color: var(--accent-emerald);
+            font-weight: 900;
+        }
+
+        .cons-list li::before {
+            content: '✗';
+            position: absolute;
+            left: 0;
+            color: var(--accent-crimson);
+            font-weight: 900;
+        }
+
+        /* Interactive Tower Section */
+        .tower-section {
+            max-width: 1280px;
+            margin: 60px auto 0;
+            background: var(--bg-card);
+            border: 1px solid var(--bg-card-border);
+            border-radius: 28px;
+            padding: 36px;
+            box-shadow: 0 24px 48px rgba(0, 0, 0, 0.45);
+        }
+
+        .tower-header {
+            margin-bottom: 24px;
+            text-align: center;
+        }
+
+        .tower-header h2 {
+            font-family: 'Fredoka', sans-serif;
+            font-size: 28px;
+            color: #fff;
+            margin-bottom: 8px;
+        }
+
+        .tower-header p {
+            font-size: 14px;
+            color: #94a3b8;
+        }
+
+        .tower-stage {
+            background: radial-gradient(circle at center, #1b253b 0%, #090e17 90%);
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            min-height: 420px;
+            padding: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            perspective: 1200px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .simulated-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            transform: rotateX(50deg) rotateZ(-35deg);
+            transform-style: preserve-3d;
+            transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+
+        .sim-block {
+            width: 68px;
+            height: 68px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 
+                -1px 1px 0 rgba(0,0,0,0.6),
+                -2px 2px 0 rgba(0,0,0,0.6),
+                -3px 3px 0 rgba(0,0,0,0.6),
+                -4px 4px 0 rgba(0,0,0,0.6),
+                -5px 5px 0 rgba(0,0,0,0.6),
+                -8px 8px 16px rgba(0,0,0,0.9);
+            position: relative;
+            cursor: pointer;
+            transition: transform 0.2s ease;
+        }
+
+        .sim-block:hover {
+            transform: translateZ(10px);
+        }
+
+        .sim-block.theme-blue {
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+            border: 1.5px solid #60a5fa;
+        }
+
+        .sim-block.theme-purple {
+            background: linear-gradient(135deg, #a855f7 0%, #7e22ce 100%);
+            border: 1.5px solid #c084fc;
+        }
+
+        .sim-block.theme-orange {
+            background: linear-gradient(135deg, #f97316 0%, #c2410c 100%);
+            border: 1.5px solid #fb923c;
+        }
+
+        .sim-block.theme-teal {
+            background: linear-gradient(135deg, #14b8a6 0%, #0f766e 100%);
+            border: 1.5px solid #2dd4bf;
+        }
+
+        /* Color Pill Filter Bar */
+        .color-selector-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .color-pill {
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            border: 1.5px solid transparent;
+            background: rgba(255, 255, 255, 0.08);
+            color: #cbd5e1;
+            transition: all 0.2s ease;
+        }
+
+        .color-pill.active {
+            border-color: #fff;
+            color: #fff;
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+        }
+
+        .vote-banner {
+            margin-top: 40px;
+            text-align: center;
+            padding: 24px;
+            background: rgba(0, 240, 255, 0.05);
+            border: 1px dashed rgba(0, 240, 255, 0.3);
+            border-radius: 16px;
+        }
+
+        .vote-banner h3 {
+            font-family: 'Fredoka', sans-serif;
+            font-size: 20px;
+            color: var(--accent-cyan);
+            margin-bottom: 6px;
+        }
+
+        .vote-banner p {
+            font-size: 14px;
+            color: #94a3b8;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>Arrow Distance Legibility Mockups</h1>
+        <p>
+            When zoomed out or scanning from a distance, traditional arrowheads blur with their shafts into ambiguous symmetrical shapes.
+            Below are <strong>6 distinct high-visibility arrow designs</strong> specifically optimized for instant directional recognition across distances and extreme angles.
+        </p>
+    </div>
+
+    <!-- Master Interactive Controls -->
+    <div class="controls-panel">
+        <!-- Distance Slider -->
+        <div class="control-group">
+            <span class="control-label">Distance Zoom</span>
+            <div class="slider-wrap">
+                <input type="range" id="zoom-slider" min="15" max="120" value="70">
+                <span class="slider-val" id="zoom-val">70%</span>
+            </div>
+        </div>
+
+        <!-- Distance Presets -->
+        <div class="control-group">
+            <span class="control-label">Presets</span>
+            <div class="btn-group">
+                <button class="btn-ctrl" onclick="setZoom(100)">Close (100%)</button>
+                <button class="btn-ctrl active" id="preset-mid" onclick="setZoom(70)">Normal (70%)</button>
+                <button class="btn-ctrl" onclick="setZoom(35)">Far (35%)</button>
+                <button class="btn-ctrl" onclick="setZoom(20)">Extreme (20%)</button>
+            </div>
+        </div>
+
+        <!-- 3D Perspective Toggle -->
+        <div class="control-group">
+            <span class="control-label">Perspective</span>
+            <div class="btn-group">
+                <button class="btn-ctrl active" id="btn-mode-flat" onclick="setViewMode('flat')">Flat Top</button>
+                <button class="btn-ctrl" id="btn-mode-3d" onclick="setViewMode('3d')">3D Iso</button>
+            </div>
+        </div>
+
+        <!-- Rotation Controls -->
+        <div class="control-group">
+            <span class="control-label">Rotate</span>
+            <div class="btn-group">
+                <button class="btn-ctrl" onclick="rotateAll(0)">0° ↑</button>
+                <button class="btn-ctrl" onclick="rotateAll(90)">90° →</button>
+                <button class="btn-ctrl" onclick="rotateAll(180)">180° ↓</button>
+                <button class="btn-ctrl" onclick="rotateAll(270)">270° ←</button>
+                <button class="btn-ctrl" onclick="randomizeRotations()">Random 🔀</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Candidate Cards Grid -->
+    <div class="mockups-grid">
+
+        <!-- 0. Current Baseline -->
+        <div class="mockup-card">
+            <span class="badge-baseline">Current In-Game</span>
+            <div class="card-header">
+                <h3 class="card-title">0. Current Baseline Arrow</h3>
+                <p class="card-subtitle">Traditional triangle head with straight rectangular stem</p>
+            </div>
+
+            <div class="stage-box">
+                <div class="block-unit" title="Click to rotate individual block" onclick="rotateBlock(this)">
+                    <svg class="arrow-svg" viewBox="0 0 100 100">
+                        <!-- Current baseline: style 2 extruded shape equivalent -->
+                        <path d="M 50 15 L 80 50 L 60 50 L 60 85 L 40 85 L 40 50 L 20 50 Z" 
+                              fill="#ffffff" stroke="#94a3b8" stroke-width="2" />
+                    </svg>
+                </div>
+                <div class="block-unit" onclick="rotateBlock(this)">
+                    <svg class="arrow-svg" style="transform: rotate(90deg);" viewBox="0 0 100 100">
+                        <path d="M 50 15 L 80 50 L 60 50 L 60 85 L 40 85 L 40 50 L 20 50 Z" 
+                              fill="#ffffff" stroke="#94a3b8" stroke-width="2" />
+                    </svg>
+                </div>
+                <div class="block-unit" onclick="rotateBlock(this)">
+                    <svg class="arrow-svg" style="transform: rotate(180deg);" viewBox="0 0 100 100">
+                        <path d="M 50 15 L 80 50 L 60 50 L 60 85 L 40 85 L 40 50 L 20 50 Z" 
+                              fill="#ffffff" stroke="#94a3b8" stroke-width="2" />
+                    </svg>
+                </div>
+            </div>
+
+            <!-- Distance Scale Comparison -->
+            <div class="distance-preview-row">
+                <div class="preview-col">
+                    <span class="preview-col-label">Far (35%)</span>
+                    <div class="scale-box">
+                        <div class="block-unit" style="transform: scale(0.35); pointer-events: none;">
+                            <svg class="arrow-svg" viewBox="0 0 100 100">
+                                <path d="M 50 15 L 80 50 L 60 50 L 60 85 L 40 85 L 40 50 L 20 50 Z" fill="#ffffff" />
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+                <div class="preview-col">
+                    <span class="preview-col-label">Extreme (20%)</span>
+                    <div class="scale-box">
+                        <div class="block-unit" style="transform: scale(0.20); pointer-events: none;">
+                            <svg class="arrow-svg" viewBox="0 0 100 100">
+                                <path d="M 50 15 L 80 50 L 60 50 L 60 85 L 40 85 L 40 50 L 20 50 Z" fill="#ffffff" />
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+                <div class="preview-col" style="align-items: flex-end;">
+                    <span class="preview-col-label">Distance Readability</span>
+                    <span class="metric-stars" style="color: #ef4444;">★★☆☆☆</span>
+                </div>
+            </div>
+
+            <div class="card-specs">
+                <ul class="pros-list cons-list">
+                    <li>Symmetrical mass: head and shaft share similar pixel width from afar.</li>
+                    <li>At 20%, resolves into an ambiguous cross/pill shape.</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Candidate 1: The Heavy Delta Wedge (Super-Apex) -->
+        <div class="mockup-card recommended">
+            <span class="badge-recommended">★ Highest Distance Clarity</span>
+            <div class="card-header">
+                <h3 class="card-title">1. Heavy Delta Wedge</h3>
+                <p class="card-subtitle">85% visual mass concentrated at the forward apex with concave notched tail</p>
+            </div>
+
+            <div class="stage-box">
+                <div class="block-unit" onclick="rotateBlock(this)">
+                    <svg class="arrow-svg" viewBox="0 0 100 100">
+                        <!-- Heavy Delta: Massive triangle with deep rear chevron notch -->
+                        <path d="M 50 10 L 88 78 L 50 60 L 12 78 Z" 
+                              fill="url(#grad-delta)" stroke="#ffffff" stroke-width="2.5" />
+                        <!-- Forward beacon pip -->
+                        <circle cx="50" cy="24" r="4" fill="#ffffff" />
+                    </svg>
+                </div>
+                <div class="block-unit" onclick="rotateBlock(this)">
+                    <svg class="arrow-svg" style="transform: rotate(90deg);" viewBox="0 0 100 100">
+                        <path d="M 50 10 L 88 78 L 50 60 L 12 78 Z" 
+                              fill="url(#grad-delta)" stroke="#ffffff" stroke-width="2.5" />
+                        <circle cx="50" cy="24" r="4" fill="#ffffff" />
+                    </svg>
+                </div>
+                <div class="block-unit" onclick="rotateBlock(this)">
+                    <svg class="arrow-svg" style="transform: rotate(180deg);" viewBox="0 0 100 100">
+                        <path d="M 50 10 L 88 78 L 50 60 L 12 78 Z" 
+                              fill="url(#grad-delta)" stroke="#ffffff" stroke-width="2.5" />
+                        <circle cx="50" cy="24" r="4" fill="#ffffff" />
+                    </svg>
+                </div>
+            </div>
+
+            <div class="distance-preview-row">
+                <div class="preview-col">
+                    <span class="preview-col-label">Far (35%)</span>
+                    <div class="scale-box">
+                        <div class="block-unit" style="transform: scale(0.35); pointer-events: none;">
+                            <svg class="arrow-svg" viewBox="0 0 100 100">
+                                <path d="M 50 10 L 88 78 L 50 60 L 12 78 Z" fill="#00f0ff" stroke="#fff" stroke-width="3" />
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+                <div class="preview-col">
+                    <span class="preview-col-label">Extreme (20%)</span>
+                    <div class="scale-box">
+                        <div class="block-unit" style="transform: scale(0.20); pointer-events: none;">
+                            <svg class="arrow-svg" viewBox="0 0 100 100">
+                                <path d="M 50 10 L 88 78 L 50 60 L 12 78 Z" fill="#00f0ff" stroke="#fff" stroke-width="4" />
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+                <div class="preview-col" style="align-items: flex-end;">
+                    <span class="preview-col-label">Distance Readability</span>
+                    <span class="metric-stars">★★★★★</span>
+                </div>
+            </div>
+
+            <div class="card-specs">
+                <ul class="pros-list">
+                    <li>Extreme asymmetry: Single sharp apex vs wide notched tail.</li>
+                    <li>Even blurred to a 6-pixel triangle, the direction is 100% unmistakable.</li>
+                    <li>Sleek, futuristic sci-fi look that matches the game's aesthetic.</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Candidate 2: Triple Runway Chevrons -->
+        <div class="mockup-card">
+            <div class="card-header">
+                <h3 class="card-title">2. Triple Runway Chevrons</h3>
+                <p class="card-subtitle">Repeating nested aerodynamic chevrons creating kinetic optical flow</p>
+            </div>
+
+            <div class="stage-box">
+                <div class="block-unit" onclick="rotateBlock(this)">
+                    <svg class="arrow-svg" viewBox="0 0 100 100">
+                        <!-- 3 nested chevrons with progressive sizing -->
+                        <path d="M 50 12 L 80 40 L 70 48 L 50 30 L 30 48 L 20 40 Z" fill="#ffffff" />
+                        <path d="M 50 36 L 80 64 L 70 72 L 50 54 L 30 72 L 20 64 Z" fill="#a5f3fc" />
+                        <path d="M 50 60 L 80 88 L 70 96 L 50 78 L 30 96 L 20 88 Z" fill="#38bdf8" />
+                    </svg>
+                </div>
+                <div class="block-unit" onclick="rotateBlock(this)">
+                    <svg class="arrow-svg" style="transform: rotate(90deg);" viewBox="0 0 100 100">
+                        <path d="M 50 12 L 80 40 L 70 48 L 50 30 L 30 48 L 20 40 Z" fill="#ffffff" />
+                        <path d="M 50 36 L 80 64 L 70 72 L 50 54 L 30 72 L 20 64 Z" fill="#a5f3fc" />
+                        <path d="M 50 60 L 80 88 L 70 96 L 50 78 L 30 96 L 20 88 Z" fill="#38bdf8" />
+                    </svg>
+                </div>
+                <div class="block-unit" onclick="rotateBlock(this)">
+                    <svg class="arrow-svg" style="transform: rotate(180deg);" viewBox="0 0 100 100">
+                        <path d="M 50 12 L 80 40 L 70 48 L 50 30 L 30 48 L 20 40 Z" fill="#ffffff" />
+                        <path d="M 50 36 L 80 64 L 70 72 L 50 54 L 30 72 L 20 64 Z" fill="#a5f3fc" />
+                        <path d="M 50 60 L 80 88 L 70 96 L 50 78 L 30 96 L 20 88 Z" fill="#38bdf8" />
+                    </svg>
+                </div>
+            </div>
+
+            <div class="distance-preview-row">
+                <div class="preview-col">
+                    <span class="preview-col-label">Far (35%)</span>
+                    <div class="scale-box">
+                        <div class="block-unit" style="transform: scale(0.35); pointer-events: none;">
+                            <svg class="arrow-svg" viewBox="0 0 100 100">
+                                <path d="M 50 12 L 80 40 L 70 48 L 50 30 L 30 48 L 20 40 Z" fill="#ffffff" />
+                                <path d="M 50 36 L 80 64 L 70 72 L 50 54 L 30 72 L 20 64 Z" fill="#a5f3fc" />
+                                <path d="M 50 60 L 80 88 L 70 96 L 50 78 L 30 96 L 20 88 Z" fill="#38bdf8" />
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+                <div class="preview-col">
+                    <span class="preview-col-label">Extreme (20%)</span>
+                    <div class="scale-box">
+                        <div class="block-unit" style="transform: scale(0.20); pointer-events: none;">
+                            <svg class="arrow-svg" viewBox="0 0 100 100">
+                                <path d="M 50 12 L 80 40 L 70 48 L 50 30 L 30 48 L 20 40 Z" fill="#ffffff" />
+                                <path d="M 50 36 L 80 64 L 70 72 L 50 54 L 30 72 L 20 64 Z" fill="#a5f3fc" />
+                                <path d="M 50 60 L 80 88 L 70 96 L 50 78 L 30 96 L 20 88 Z" fill="#38bdf8" />
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+                <div class="preview-col" style="align-items: flex-end;">
+                    <span class="preview-col-label">Distance Readability</span>
+                    <span class="metric-stars">★★★★☆</span>
+                </div>
+            </div>
+
+            <div class="card-specs">
+                <ul class="pros-list">
+                    <li>Multiple directional cues (>>>) reinforce orientation subconsciously.</li>
+                    <li>Resembles racing boosts / airport runways.</li>
+                    <li>Lines are thinner, slightly sensitive to aggressive antialiasing.</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Candidate 3: Luminescent Apex (Dual-Tone Beacon) -->
+        <div class="mockup-card recommended">
+            <span class="badge-recommended">★ Best Contrast</span>
+            <div class="card-header">
+                <h3 class="card-title">3. Luminescent Apex Beacon</h3>
+                <p class="card-subtitle">Intense luminous white forward arrowhead with contrasting gradient body</p>
+            </div>
+
+            <div class="stage-box">
+                <div class="block-unit" onclick="rotateBlock(this)">
+                    <svg class="arrow-svg" viewBox="0 0 100 100">
+                        <!-- Darker contrasting shaft -->
+                        <path d="M 42 45 L 58 45 L 54 84 L 46 84 Z" fill="#0284c7" />
+                        <!-- Brilliant high-luminance head with outer drop aura -->
+                        <path d="M 50 10 L 85 46 L 66 46 L 50 32 L 34 46 L 15 46 Z" 
+                              fill="#ffffff" stroke="#38bdf8" stroke-width="2" />
+                        <circle cx="50" cy="24" r="5" fill="#00f0ff" />
+                    </svg>
+                </div>
+                <div class="block-unit" onclick="rotateBlock(this)">
+                    <svg class="arrow-svg" style="transform: rotate(90deg);" viewBox="0 0 100 100">
+                        <path d="M 42 45 L 58 45 L 54 84 L 46 84 Z" fill="#0284c7" />
+                        <path d="M 50 10 L 85 46 L 66 46 L 50 32 L 34 46 L 15 46 Z" 
+                              fill="#ffffff" stroke="#38bdf8" stroke-width="2" />
+                        <circle cx="50" cy="24" r="5" fill="#00f0ff" />
+                    </svg>
+                </div>
+                <div class="block-unit" onclick="rotateBlock(this)">
+                    <svg class="arrow-svg" style="transform: rotate(180deg);" viewBox="0 0 100 100">
+                        <path d="M 42 45 L 58 45 L 54 84 L 46 84 Z" fill="#0284c7" />
+                        <path d="M 50 10 L 85 46 L 66 46 L 50 32 L 34 46 L 15 46 Z" 
+                              fill="#ffffff" stroke="#38bdf8" stroke-width="2" />
+                        <circle cx="50" cy="24" r="5" fill="#00f0ff" />
+                    </svg>
+                </div>
+            </div>
+
+            <div class="distance-preview-row">
+                <div class="preview-col">
+                    <span class="preview-col-label">Far (35%)</span>
+                    <div class="scale-box">
+                        <div class="block-unit" style="transform: scale(0.35); pointer-events: none;">
+                            <svg class="arrow-svg" viewBox="0 0 100 100">
+                                <path d="M 42 45 L 58 45 L 54 84 L 46 84 Z" fill="#0284c7" />
+                                <path d="M 50 10 L 85 46 L 66 46 L 50 32 L 34 46 L 15 46 Z" fill="#ffffff" />
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+                <div class="preview-col">
+                    <span class="preview-col-label">Extreme (20%)</span>
+                    <div class="scale-box">
+                        <div class="block-unit" style="transform: scale(0.20); pointer-events: none;">
+                            <svg class="arrow-svg" viewBox="0 0 100 100">
+                                <path d="M 42 45 L 58 45 L 54 84 L 46 84 Z" fill="#0284c7" />
+                                <path d="M 50 10 L 85 46 L 66 46 L 50 32 L 34 46 L 15 46 Z" fill="#ffffff" />
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+                <div class="preview-col" style="align-items: flex-end;">
+                    <span class="preview-col-label">Distance Readability</span>
+                    <span class="metric-stars">★★★★★</span>
+                </div>
+            </div>
+
+            <div class="card-specs">
+                <ul class="pros-list">
+                    <li>Dual-luminance trick: Eyes track the bright light leading the dark body.</li>
+                    <li>Eliminates tail ambiguity because the tail is intentionally lower contrast.</li>
+                    <li>Looks spectacular under Three.js bloom and lighting shaders.</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Candidate 4: The Wide Swept Delta-Wing (Stealth Dart) -->
+        <div class="mockup-card">
+            <div class="card-header">
+                <h3 class="card-title">4. Swept Delta Wing</h3>
+                <p class="card-subtitle">Aggressive swept wings with massive forward-to-rear silhouette contrast</p>
+            </div>
+
+            <div class="stage-box">
+                <div class="block-unit" onclick="rotateBlock(this)">
+                    <svg class="arrow-svg" viewBox="0 0 100 100">
+                        <path d="M 50 8 L 92 68 L 74 72 L 50 48 L 26 72 L 8 68 Z" 
+                              fill="url(#grad-stealth)" stroke="#ffffff" stroke-width="2" />
+                        <path d="M 50 20 L 70 54 L 50 42 L 30 54 Z" fill="#ffffff" opacity="0.6" />
+                    </svg>
+                </div>
+                <div class="block-unit" onclick="rotateBlock(this)">
+                    <svg class="arrow-svg" style="transform: rotate(90deg);" viewBox="0 0 100 100">
+                        <path d="M 50 8 L 92 68 L 74 72 L 50 48 L 26 72 L 8 68 Z" 
+                              fill="url(#grad-stealth)" stroke="#ffffff" stroke-width="2" />
+                        <path d="M 50 20 L 70 54 L 50 42 L 30 54 Z" fill="#ffffff" opacity="0.6" />
+                    </svg>
+                </div>
+                <div class="block-unit" onclick="rotateBlock(this)">
+                    <svg class="arrow-svg" style="transform: rotate(180deg);" viewBox="0 0 100 100">
+                        <path d="M 50 8 L 92 68 L 74 72 L 50 48 L 26 72 L 8 68 Z" 
+                              fill="url(#grad-stealth)" stroke="#ffffff" stroke-width="2" />
+                        <path d="M 50 20 L 70 54 L 50 42 L 30 54 Z" fill="#ffffff" opacity="0.6" />
+                    </svg>
+                </div>
+            </div>
+
+            <div class="distance-preview-row">
+                <div class="preview-col">
+                    <span class="preview-col-label">Far (35%)</span>
+                    <div class="scale-box">
+                        <div class="block-unit" style="transform: scale(0.35); pointer-events: none;">
+                            <svg class="arrow-svg" viewBox="0 0 100 100">
+                                <path d="M 50 8 L 92 68 L 74 72 L 50 48 L 26 72 L 8 68 Z" fill="#38bdf8" />
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+                <div class="preview-col">
+                    <span class="preview-col-label">Extreme (20%)</span>
+                    <div class="scale-box">
+                        <div class="block-unit" style="transform: scale(0.20); pointer-events: none;">
+                            <svg class="arrow-svg" viewBox="0 0 100 100">
+                                <path d="M 50 8 L 92 68 L 74 72 L 50 48 L 26 72 L 8 68 Z" fill="#38bdf8" />
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+                <div class="preview-col" style="align-items: flex-end;">
+                    <span class="preview-col-label">Distance Readability</span>
+                    <span class="metric-stars">★★★★☆</span>
+                </div>
+            </div>
+
+            <div class="card-specs">
+                <ul class="pros-list">
+                    <li>Massive wingspan (92px) gives huge profile difference between sides.</li>
+                    <li>Zero shaft to cause confusion; looks like a fighter jet.</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Candidate 5: Solid Tapered Harpoon with Dark Stroke -->
+        <div class="mockup-card">
+            <div class="card-header">
+                <h3 class="card-title">5. Bold Tapered Harpoon</h3>
+                <p class="card-subtitle">Thick, reinforced chevron with wide head, tapered stem, and dark contour</p>
+            </div>
+
+            <div class="stage-box">
+                <div class="block-unit" onclick="rotateBlock(this)">
+                    <svg class="arrow-svg" viewBox="0 0 100 100">
+                        <path d="M 50 8 L 86 44 L 62 44 L 56 86 L 44 86 L 38 44 L 14 44 Z" 
+                              fill="#ffffff" stroke="#0f172a" stroke-width="6" paint-order="stroke fill" />
+                        <path d="M 50 14 L 80 44 L 60 44 L 54 82 L 46 82 L 40 44 L 20 44 Z" 
+                              fill="url(#grad-harpoon)" />
+                    </svg>
+                </div>
+                <div class="block-unit" onclick="rotateBlock(this)">
+                    <svg class="arrow-svg" style="transform: rotate(90deg);" viewBox="0 0 100 100">
+                        <path d="M 50 8 L 86 44 L 62 44 L 56 86 L 44 86 L 38 44 L 14 44 Z" 
+                              fill="#ffffff" stroke="#0f172a" stroke-width="6" paint-order="stroke fill" />
+                        <path d="M 50 14 L 80 44 L 60 44 L 54 82 L 46 82 L 40 44 L 20 44 Z" 
+                              fill="url(#grad-harpoon)" />
+                    </svg>
+                </div>
+                <div class="block-unit" onclick="rotateBlock(this)">
+                    <svg class="arrow-svg" style="transform: rotate(180deg);" viewBox="0 0 100 100">
+                        <path d="M 50 8 L 86 44 L 62 44 L 56 86 L 44 86 L 38 44 L 14 44 Z" 
+                              fill="#ffffff" stroke="#0f172a" stroke-width="6" paint-order="stroke fill" />
+                        <path d="M 50 14 L 80 44 L 60 44 L 54 82 L 46 82 L 40 44 L 20 44 Z" 
+                              fill="url(#grad-harpoon)" />
+                    </svg>
+                </div>
+            </div>
+
+            <div class="distance-preview-row">
+                <div class="preview-col">
+                    <span class="preview-col-label">Far (35%)</span>
+                    <div class="scale-box">
+                        <div class="block-unit" style="transform: scale(0.35); pointer-events: none;">
+                            <svg class="arrow-svg" viewBox="0 0 100 100">
+                                <path d="M 50 8 L 86 44 L 62 44 L 56 86 L 44 86 L 38 44 L 14 44 Z" fill="#ffffff" />
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+                <div class="preview-col">
+                    <span class="preview-col-label">Extreme (20%)</span>
+                    <div class="scale-box">
+                        <div class="block-unit" style="transform: scale(0.20); pointer-events: none;">
+                            <svg class="arrow-svg" viewBox="0 0 100 100">
+                                <path d="M 50 8 L 86 44 L 62 44 L 56 86 L 44 86 L 38 44 L 14 44 Z" fill="#ffffff" />
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+                <div class="preview-col" style="align-items: flex-end;">
+                    <span class="preview-col-label">Distance Readability</span>
+                    <span class="metric-stars">★★★★☆</span>
+                </div>
+            </div>
+
+            <div class="card-specs">
+                <ul class="pros-list">
+                    <li>Dark 6px perimeter halo guarantees contrast against any block material.</li>
+                    <li>Head is 2.8x wider than the stem for strong directional weighting.</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Candidate 6: The Apex Dot + Diamond Spear -->
+        <div class="mockup-card">
+            <div class="card-header">
+                <h3 class="card-title">6. Apex Beacon Diamond</h3>
+                <p class="card-subtitle">Diamond spearhead led by a high-intensity detached forward beacon</p>
+            </div>
+
+            <div class="stage-box">
+                <div class="block-unit" onclick="rotateBlock(this)">
+                    <svg class="arrow-svg" viewBox="0 0 100 100">
+                        <!-- Apex beacon dot -->
+                        <circle cx="50" cy="14" r="8" fill="#ffffff" stroke="#00f0ff" stroke-width="2" />
+                        <!-- Diamond arrow body -->
+                        <path d="M 50 28 L 82 58 L 50 88 L 18 58 Z" fill="url(#grad-diamond)" />
+                        <circle cx="50" cy="58" r="4" fill="#ffffff" />
+                    </svg>
+                </div>
+                <div class="block-unit" onclick="rotateBlock(this)">
+                    <svg class="arrow-svg" style="transform: rotate(90deg);" viewBox="0 0 100 100">
+                        <circle cx="50" cy="14" r="8" fill="#ffffff" stroke="#00f0ff" stroke-width="2" />
+                        <path d="M 50 28 L 82 58 L 50 88 L 18 58 Z" fill="url(#grad-diamond)" />
+                        <circle cx="50" cy="58" r="4" fill="#ffffff" />
+                    </svg>
+                </div>
+                <div class="block-unit" onclick="rotateBlock(this)">
+                    <svg class="arrow-svg" style="transform: rotate(180deg);" viewBox="0 0 100 100">
+                        <circle cx="50" cy="14" r="8" fill="#ffffff" stroke="#00f0ff" stroke-width="2" />
+                        <path d="M 50 28 L 82 58 L 50 88 L 18 58 Z" fill="url(#grad-diamond)" />
+                        <circle cx="50" cy="58" r="4" fill="#ffffff" />
+                    </svg>
+                </div>
+            </div>
+
+            <div class="distance-preview-row">
+                <div class="preview-col">
+                    <span class="preview-col-label">Far (35%)</span>
+                    <div class="scale-box">
+                        <div class="block-unit" style="transform: scale(0.35); pointer-events: none;">
+                            <svg class="arrow-svg" viewBox="0 0 100 100">
+                                <circle cx="50" cy="14" r="10" fill="#ffffff" />
+                                <path d="M 50 28 L 82 58 L 50 88 L 18 58 Z" fill="#00f0ff" />
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+                <div class="preview-col">
+                    <span class="preview-col-label">Extreme (20%)</span>
+                    <div class="scale-box">
+                        <div class="block-unit" style="transform: scale(0.20); pointer-events: none;">
+                            <svg class="arrow-svg" viewBox="0 0 100 100">
+                                <circle cx="50" cy="14" r="12" fill="#ffffff" />
+                                <path d="M 50 28 L 82 58 L 50 88 L 18 58 Z" fill="#00f0ff" />
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+                <div class="preview-col" style="align-items: flex-end;">
+                    <span class="preview-col-label">Distance Readability</span>
+                    <span class="metric-stars">★★★☆☆</span>
+                </div>
+            </div>
+
+            <div class="card-specs">
+                <ul class="pros-list">
+                    <li>Detached apex dot gives a clear leading target point.</li>
+                    <li>Symmetrical diamond body might be slightly ambiguous if apex is obscured.</li>
+                </ul>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Interactive Simulated 3D Tower Grid -->
+    <div class="tower-section">
+        <div class="tower-header">
+            <h2>Simulated 3D Puzzle Tower at Game Distance</h2>
+            <p>
+                Test your scanning speed across a full cluster of blocks at actual gameplay camera distance.
+                Use the switcher below to change arrow style across the entire tower!
+            </p>
+        </div>
+
+        <div class="color-selector-row">
+            <button class="color-pill active" onclick="setTowerStyle('baseline')">0. Current Baseline</button>
+            <button class="color-pill" onclick="setTowerStyle('delta')">★ 1. Heavy Delta Wedge</button>
+            <button class="color-pill" onclick="setTowerStyle('chevrons')">2. Runway Chevrons</button>
+            <button class="color-pill" onclick="setTowerStyle('luminescent')">★ 3. Luminescent Apex</button>
+            <button class="color-pill" onclick="setTowerStyle('stealth')">4. Swept Delta</button>
+            <button class="color-pill" onclick="setTowerStyle('harpoon')">5. Bold Harpoon</button>
+        </div>
+
+        <div class="tower-stage">
+            <div class="simulated-grid" id="sim-grid">
+                <!-- 12 simulated blocks in isometric perspective -->
+            </div>
+        </div>
+
+        <div class="vote-banner">
+            <h3>Ready to Decide?</h3>
+            <p>
+                Notice how <strong>Option 1 (Heavy Delta Wedge)</strong> and <strong>Option 3 (Luminescent Apex Beacon)</strong> remain instantly legible even from far away without straining your eyes.
+                Tell me which candidate or combination you prefer and I'll implement it into the 3D geometry engine!
+            </p>
+        </div>
+    </div>
+
+    <!-- SVG Gradients Definition -->
+    <svg style="position: absolute; width: 0; height: 0;" aria-hidden="true">
+        <defs>
+            <linearGradient id="grad-delta" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#ffffff" />
+                <stop offset="35%" stop-color="#a5f3fc" />
+                <stop offset="100%" stop-color="#00f0ff" />
+            </linearGradient>
+            <linearGradient id="grad-stealth" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#ffffff" />
+                <stop offset="30%" stop-color="#7dd3fc" />
+                <stop offset="100%" stop-color="#0284c7" />
+            </linearGradient>
+            <linearGradient id="grad-harpoon" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#ffffff" />
+                <stop offset="40%" stop-color="#fed7aa" />
+                <stop offset="100%" stop-color="#f97316" />
+            </linearGradient>
+            <linearGradient id="grad-diamond" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#ffffff" />
+                <stop offset="50%" stop-color="#00f0ff" />
+                <stop offset="100%" stop-color="#0369a1" />
+            </linearGradient>
+        </defs>
+    </svg>
+
+    <script>
+        // Interactive Controls Logic
+        const zoomSlider = document.getElementById('zoom-slider');
+        const zoomVal = document.getElementById('zoom-val');
+        let currentZoom = 70;
+        let currentMode = 'flat';
+
+        function updateZoom(val) {
+            currentZoom = val;
+            zoomSlider.value = val;
+            zoomVal.textContent = val + '%';
+
+            const stageBoxes = document.querySelectorAll('.mockup-card .stage-box');
+            stageBoxes.forEach(box => {
+                const units = box.querySelectorAll('.block-unit');
+                units.forEach(u => {
+                    const baseSize = 72;
+                    const newSize = Math.round(baseSize * (val / 100));
+                    u.style.width = newSize + 'px';
+                    u.style.height = newSize + 'px';
+                    const svg = u.querySelector('.arrow-svg');
+                    if (svg) {
+                        svg.style.width = Math.round(46 * (val / 100)) + 'px';
+                        svg.style.height = Math.round(46 * (val / 100)) + 'px';
+                    }
+                });
+            });
+
+            // Update preset buttons state
+            document.querySelectorAll('.btn-group .btn-ctrl').forEach(b => b.classList.remove('active'));
+            if (val === 100) document.querySelectorAll('.btn-group .btn-ctrl')[0].classList.add('active');
+            else if (val === 70) document.querySelectorAll('.btn-group .btn-ctrl')[1].classList.add('active');
+            else if (val === 35) document.querySelectorAll('.btn-group .btn-ctrl')[2].classList.add('active');
+            else if (val === 20) document.querySelectorAll('.btn-group .btn-ctrl')[3].classList.add('active');
+        }
+
+        zoomSlider.addEventListener('input', (e) => {
+            updateZoom(parseInt(e.target.value));
+        });
+
+        function setZoom(val) {
+            updateZoom(val);
+        }
+
+        function setViewMode(mode) {
+            currentMode = mode;
+            document.getElementById('btn-mode-flat').classList.toggle('active', mode === 'flat');
+            document.getElementById('btn-mode-3d').classList.toggle('active', mode === '3d');
+
+            document.querySelectorAll('.stage-box').forEach(box => {
+                box.classList.toggle('mode-3d', mode === '3d');
+            });
+        }
+
+        function rotateAll(deg) {
+            document.querySelectorAll('.stage-box .block-unit').forEach(u => {
+                const svg = u.querySelector('.arrow-svg');
+                if (svg) {
+                    svg.style.transform = `rotate(${deg}deg)`;
+                    svg.dataset.rotation = deg;
+                }
+            });
+        }
+
+        function randomizeRotations() {
+            const dirs = [0, 90, 180, 270];
+            document.querySelectorAll('.stage-box .block-unit').forEach(u => {
+                const svg = u.querySelector('.arrow-svg');
+                if (svg) {
+                    const deg = dirs[Math.floor(Math.random() * dirs.length)];
+                    svg.style.transform = `rotate(${deg}deg)`;
+                    svg.dataset.rotation = deg;
+                }
+            });
+        }
+
+        function rotateBlock(unit) {
+            const svg = unit.querySelector('.arrow-svg');
+            if (!svg) return;
+            let current = parseInt(svg.dataset.rotation || 0);
+            current = (current + 90) % 360;
+            svg.style.transform = `rotate(${current}deg)`;
+            svg.dataset.rotation = current;
+        }
+
+        // Tower Simulation Grid
+        const arrowTemplates = {
+            baseline: `<svg class="arrow-svg" viewBox="0 0 100 100"><path d="M 50 15 L 80 50 L 60 50 L 60 85 L 40 85 L 40 50 L 20 50 Z" fill="#ffffff" stroke="#94a3b8" stroke-width="2" /></svg>`,
+            delta: `<svg class="arrow-svg" viewBox="0 0 100 100"><path d="M 50 10 L 88 78 L 50 60 L 12 78 Z" fill="#ffffff" stroke="#00f0ff" stroke-width="3" /><circle cx="50" cy="24" r="5" fill="#00f0ff" /></svg>`,
+            chevrons: `<svg class="arrow-svg" viewBox="0 0 100 100"><path d="M 50 12 L 80 40 L 70 48 L 50 30 L 30 48 L 20 40 Z" fill="#ffffff" /><path d="M 50 36 L 80 64 L 70 72 L 50 54 L 30 72 L 20 64 Z" fill="#a5f3fc" /><path d="M 50 60 L 80 88 L 70 96 L 50 78 L 30 96 L 20 88 Z" fill="#38bdf8" /></svg>`,
+            luminescent: `<svg class="arrow-svg" viewBox="0 0 100 100"><path d="M 42 45 L 58 45 L 54 84 L 46 84 Z" fill="#0284c7" /><path d="M 50 10 L 85 46 L 66 46 L 50 32 L 34 46 L 15 46 Z" fill="#ffffff" stroke="#38bdf8" stroke-width="2" /><circle cx="50" cy="24" r="5" fill="#00f0ff" /></svg>`,
+            stealth: `<svg class="arrow-svg" viewBox="0 0 100 100"><path d="M 50 8 L 92 68 L 74 72 L 50 48 L 26 72 L 8 68 Z" fill="#ffffff" stroke="#0284c7" stroke-width="2" /></svg>`,
+            harpoon: `<svg class="arrow-svg" viewBox="0 0 100 100"><path d="M 50 8 L 86 44 L 62 44 L 56 86 L 44 86 L 38 44 L 14 44 Z" fill="#ffffff" stroke="#0f172a" stroke-width="6" paint-order="stroke fill" /></svg>`
+        };
+
+        const towerBlocksData = [
+            { theme: 'theme-blue', rot: 0 },
+            { theme: 'theme-purple', rot: 90 },
+            { theme: 'theme-orange', rot: 270 },
+            { theme: 'theme-teal', rot: 180 },
+            { theme: 'theme-purple', rot: 0 },
+            { theme: 'theme-orange', rot: 90 },
+            { theme: 'theme-blue', rot: 180 },
+            { theme: 'theme-teal', rot: 270 },
+            { theme: 'theme-orange', rot: 0 },
+            { theme: 'theme-blue', rot: 90 },
+            { theme: 'theme-teal', rot: 180 },
+            { theme: 'theme-purple', rot: 270 },
+        ];
+
+        let currentTowerStyle = 'baseline';
+
+        function buildTower() {
+            const grid = document.getElementById('sim-grid');
+            grid.innerHTML = '';
+            towerBlocksData.forEach((b, idx) => {
+                const div = document.createElement('div');
+                div.className = `sim-block ${b.theme}`;
+                div.title = `Block #${idx + 1} - Click to rotate`;
+                div.innerHTML = arrowTemplates[currentTowerStyle];
+                const svg = div.querySelector('.arrow-svg');
+                svg.style.transform = `rotate(${b.rot}deg)`;
+                svg.style.width = '38px';
+                svg.style.height = '38px';
+                div.addEventListener('click', () => {
+                    b.rot = (b.rot + 90) % 360;
+                    svg.style.transform = `rotate(${b.rot}deg)`;
+                });
+                grid.appendChild(div);
+            });
+        }
+
+        function setTowerStyle(style) {
+            currentTowerStyle = style;
+            document.querySelectorAll('.color-pill').forEach(p => p.classList.remove('active'));
+            event.target.classList.add('active');
+            buildTower();
+        }
+
+        // Initialize
+        updateZoom(70);
+        buildTower();
+    </script>
+</body>
+</html>

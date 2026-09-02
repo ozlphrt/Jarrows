@@ -119,6 +119,21 @@ function buildOccupiedCells(blocks, excludeBlock = null) {
  * Updated to support 3D stacking - checks Y levels for overlaps
  */
 export function validateStructure(blocks, gridSize) {
+    if (!Array.isArray(blocks)) return { valid: true };
+
+    // Deduplicate any repeated block references in blocks array
+    const seenBlocks = new Set();
+    for (let i = blocks.length - 1; i >= 0; i--) {
+        const b = blocks[i];
+        if (!b) continue;
+        if (seenBlocks.has(b)) {
+            console.warn(`validateStructure: Pruned duplicate block reference at (${b.gridX}, ${b.gridZ}, yOffset=${b.yOffset})`);
+            blocks.splice(i, 1);
+        } else {
+            seenBlocks.add(b);
+        }
+    }
+
     // Track occupied cells with their Y ranges
     const occupiedCells = new Map(); // key: "x,z" -> array of {block, yBottom, yTop}
     
@@ -149,8 +164,8 @@ export function validateStructure(blocks, gridSize) {
                 // Check if Y ranges overlap with any existing block at this X,Z
                 const existingBlocks = occupiedCells.get(key);
                 for (const existing of existingBlocks) {
-                    // Check if Y ranges overlap
-                    if (yRangesOverlap(yBottom, yTop, existing.yBottom, existing.yTop)) {
+                    // Check if Y ranges overlap (ignoring self-comparison)
+                    if (existing.block !== block && yRangesOverlap(yBottom, yTop, existing.yBottom, existing.yTop)) {
                         // Enhanced debug info
                         const blockInfo = `block at (${block.gridX}, ${block.gridZ}), yOffset=${yBottom}, height=${blockHeight}`;
                         const existingInfo = `block at (${existing.block.gridX}, ${existing.block.gridZ}), yOffset=${existing.yBottom}, height=${existing.yTop - existing.yBottom}`;
@@ -171,11 +186,27 @@ export function validateStructure(blocks, gridSize) {
 }
 
 /**
- * Fix overlapping blocks by moving them apart
- * Returns: { fixed: boolean, movedBlocks: Block[] }
+ * Fix overlapping blocks by moving them apart or pruning unresolvable duplicate/stacked blocks
+ * Returns: { fixed: boolean, movedBlocks: Block[], prunedBlocks: Block[], failedOverlaps: any[] }
  */
 export function fixOverlappingBlocks(blocks, gridSize) {
+    if (!Array.isArray(blocks)) return { fixed: true, movedBlocks: [], prunedBlocks: [], failedOverlaps: [] };
+
     const movedBlocks = [];
+    const prunedBlocks = [];
+
+    // Step 1: Remove exact duplicate block references
+    const seen = new Set();
+    for (let i = blocks.length - 1; i >= 0; i--) {
+        const b = blocks[i];
+        if (!b) continue;
+        if (seen.has(b)) {
+            console.warn(`fixOverlappingBlocks: Removed duplicate block reference at (${b.gridX}, ${b.gridZ}, yOffset=${b.yOffset})`);
+            blocks.splice(i, 1);
+        } else {
+            seen.add(b);
+        }
+    }
 
     function getBlockYRange(block, yOverride = null) {
         const cubeSize = block.cubeSize || 1;
@@ -241,118 +272,167 @@ export function fixOverlappingBlocks(blocks, gridSize) {
         return false;
     }
 
-    // Identify overlaps (collect ALL, not just first)
-    const overlaps = [];
-    const occupiedCells = new Map(); // key: "x,z" -> array of {block, yBottom, yTop}
-    for (const block of blocks) {
-        if (block.isFalling || block.isAnimating || block.isRemoved || block.isExploding || block.removalStartTime) continue;
-        const { yBottom, yTop } = getBlockYRange(block);
-        const cells = getBlockCells(block);
+    // Helper to safely prune an unresolvable overlapping block
+    function pruneBlock(blockToPrune) {
+        if (!blockToPrune || blockToPrune.isRemoved) return;
+        console.warn(`fixOverlappingBlocks: Pruning unresolvable overlapping block at (${blockToPrune.gridX}, ${blockToPrune.gridZ}, yOffset=${blockToPrune.yOffset})`);
 
-        for (const cell of cells) {
-            const key = `${cell.x},${cell.z}`;
-            const list = occupiedCells.get(key) || [];
-            for (const existing of list) {
-                if (yRangesOverlap(yBottom, yTop, existing.yBottom, existing.yTop)) {
-                    overlaps.push({ block1: block, block2: existing.block, cell: { x: cell.x, z: cell.z } });
+        if (blockToPrune.group && blockToPrune.group.parent) {
+            blockToPrune.group.parent.remove(blockToPrune.group);
+        }
+        if (Array.isArray(blockToPrune.cubes)) {
+            for (const cube of blockToPrune.cubes) {
+                if (cube && cube.geometry) cube.geometry.dispose();
+                if (cube && cube.material) {
+                    if (Array.isArray(cube.material)) cube.material.forEach(m => m && m.dispose && m.dispose());
+                    else if (cube.material.dispose) cube.material.dispose();
                 }
             }
-            list.push({ block, yBottom, yTop });
-            occupiedCells.set(key, list);
         }
+        if (blockToPrune.arrow) {
+            blockToPrune.arrow.traverse((child) => {
+                if (child.geometry && child.geometry.dispose) child.geometry.dispose();
+                if (child.material) {
+                    if (Array.isArray(child.material)) child.material.forEach(m => m && m.dispose && m.dispose());
+                    else if (child.material.dispose) child.material.dispose();
+                }
+            });
+        }
+        if (blockToPrune.directionIndicators) {
+            blockToPrune.directionIndicators.traverse((child) => {
+                if (child.geometry && child.geometry.dispose) child.geometry.dispose();
+                if (child.material) {
+                    if (Array.isArray(child.material)) child.material.forEach(m => m && m.dispose && m.dispose());
+                    else if (child.material.dispose) child.material.dispose();
+                }
+            });
+        }
+
+        blockToPrune.isRemoved = true;
+        const idx = blocks.indexOf(blockToPrune);
+        if (idx !== -1) {
+            blocks.splice(idx, 1);
+        }
+
+        if (typeof window !== 'undefined' && window.activeBlocks && window.activeBlocks.has(blockToPrune)) {
+            window.activeBlocks.delete(blockToPrune);
+        }
+
+        prunedBlocks.push(blockToPrune);
     }
 
-    // Fix overlaps: try snapping, then search downwards / surface levels
-    const failedOverlaps = [];
-    for (const overlap of overlaps) {
-        const b1 = overlap.block1;
-        const b2 = overlap.block2;
-        if (!b1 || !b2) continue;
+    // Run up to 2 passes to resolve direct and cascading overlaps
+    let failedOverlaps = [];
+    for (let pass = 0; pass < 2; pass++) {
+        failedOverlaps = [];
+        const overlaps = [];
+        const occupiedCells = new Map(); // key: "x,z" -> array of {block, yBottom, yTop}
 
-        // Heuristic: if vertical+horizontal overlap, move the horizontal block (more likely to be "resting" incorrectly).
-        // Otherwise move the one with higher Y.
-        const b1Y = snapLayerY(b1.yOffset || 0);
-        const b2Y = snapLayerY(b2.yOffset || 0);
-        let blockToMove = b1;
-        if (b1.isVertical !== b2.isVertical) {
-            blockToMove = b1.isVertical ? b2 : b1;
-        } else {
-            blockToMove = b1Y >= b2Y ? b1 : b2;
-        }
+        for (const block of blocks) {
+            if (block.isFalling || block.isAnimating || block.isRemoved || block.isExploding || block.removalStartTime) continue;
+            const { yBottom, yTop } = getBlockYRange(block);
+            const cells = getBlockCells(block);
 
-        const { cubeSize } = getBlockYRange(blockToMove);
-        const base = snapLayerY(blockToMove.yOffset || 0);
-
-        // Candidate list: snapped base, downward steps to 0, then only supported layer tops
-        const candidates = [base];
-        const maxLayers = Math.max(1, Math.round(base / cubeSize));
-        for (let i = 1; i <= maxLayers; i++) {
-            candidates.push(Math.max(0, base - i * cubeSize));
-        }
-        candidates.push(0);
-
-        // Also candidate tops of overlapping or neighboring blocks below
-        const otherBlock = blockToMove === b1 ? b2 : b1;
-        const otherHeight = otherBlock.isVertical ? (otherBlock.length * cubeSize) : cubeSize;
-        const otherTop = snapLayerY(otherBlock.yOffset || 0) + otherHeight;
-        candidates.push(otherTop);
-
-        let chosen = null;
-        for (const c of candidates) {
-            if (isSafeAtYOffset(blockToMove, c, blocks) && hasSupportAtYOffset(blockToMove, c, blocks)) {
-                chosen = c;
-                break;
+            for (const cell of cells) {
+                const key = `${cell.x},${cell.z}`;
+                const list = occupiedCells.get(key) || [];
+                for (const existing of list) {
+                    if (existing.block !== block && yRangesOverlap(yBottom, yTop, existing.yBottom, existing.yTop)) {
+                        overlaps.push({ block1: block, block2: existing.block, cell: { x: cell.x, z: cell.z } });
+                    }
+                }
+                list.push({ block, yBottom, yTop });
+                occupiedCells.set(key, list);
             }
         }
 
-        if (chosen !== null && Math.abs((blockToMove.yOffset || 0) - chosen) > 1e-9) {
-            blockToMove.yOffset = chosen;
-            if (typeof blockToMove.updateWorldPosition === 'function') {
-                blockToMove.updateWorldPosition();
+        if (overlaps.length === 0) break;
+
+        for (const overlap of overlaps) {
+            const b1 = overlap.block1;
+            const b2 = overlap.block2;
+            if (!b1 || !b2 || b1.isRemoved || b2.isRemoved) continue;
+
+            // Heuristic: if vertical+horizontal overlap, move the horizontal block.
+            // Otherwise move the one with higher Y (or b2 if identical).
+            const b1Y = snapLayerY(b1.yOffset || 0);
+            const b2Y = snapLayerY(b2.yOffset || 0);
+            let blockToMove = b1;
+            if (b1.isVertical !== b2.isVertical) {
+                blockToMove = b1.isVertical ? b2 : b1;
+            } else {
+                blockToMove = b1Y >= b2Y ? b1 : b2;
             }
-            if (!movedBlocks.includes(blockToMove)) movedBlocks.push(blockToMove);
-        } else if (chosen === null) {
-            // Could not find a safe position - this overlap failed to fix
-            failedOverlaps.push({
-                block1: { gridX: b1.gridX, gridZ: b1.gridZ, yOffset: b1Y, isVertical: b1.isVertical, length: b1.length },
-                block2: { gridX: b2.gridX, gridZ: b2.gridZ, yOffset: b2Y, isVertical: b2.isVertical, length: b2.length },
-                cell: overlap.cell,
-                attemptedBlock: { gridX: blockToMove.gridX, gridZ: blockToMove.gridZ, yOffset: base }
-            });
+
+            const { cubeSize } = getBlockYRange(blockToMove);
+            const base = snapLayerY(blockToMove.yOffset || 0);
+
+            // Candidate list: snapped base, downward steps to 0, then only supported layer tops
+            const candidates = [base];
+            const maxLayers = Math.max(1, Math.round(base / cubeSize));
+            for (let i = 1; i <= maxLayers; i++) {
+                candidates.push(Math.max(0, base - i * cubeSize));
+            }
+            candidates.push(0);
+
+            // Also candidate tops of overlapping or neighboring blocks below
+            const otherBlock = blockToMove === b1 ? b2 : b1;
+            const otherHeight = otherBlock.isVertical ? (otherBlock.length * cubeSize) : cubeSize;
+            const otherTop = snapLayerY(otherBlock.yOffset || 0) + otherHeight;
+            candidates.push(otherTop);
+
+            let chosen = null;
+            for (const c of candidates) {
+                if (isSafeAtYOffset(blockToMove, c, blocks) && hasSupportAtYOffset(blockToMove, c, blocks)) {
+                    chosen = c;
+                    break;
+                }
+            }
+
+            if (chosen !== null && Math.abs((blockToMove.yOffset || 0) - chosen) > 1e-9) {
+                blockToMove.yOffset = chosen;
+                if (typeof blockToMove.updateWorldPosition === 'function') {
+                    blockToMove.updateWorldPosition();
+                }
+                if (!movedBlocks.includes(blockToMove)) movedBlocks.push(blockToMove);
+            } else if (chosen === null) {
+                // If this block cannot be safely relocated without overlap, prune it so the puzzle is playable
+                pruneBlock(blockToMove);
+            }
         }
     }
 
     // Only report fixed if structure is actually valid afterwards.
     const recheck = validateStructure(blocks, gridSize);
-    if (!recheck.valid && failedOverlaps.length > 0) {
-        console.warn(`fixOverlappingBlocks: Could not resolve ${failedOverlaps.length} overlap(s):`, failedOverlaps);
+    if (!recheck.valid) {
+        console.warn(`fixOverlappingBlocks: Structure still has invalid overlaps: ${recheck.reason}`);
     }
-    return { fixed: recheck.valid, movedBlocks, failedOverlaps };
+    return { fixed: recheck.valid, movedBlocks, prunedBlocks, failedOverlaps };
 }
 
 /**
  * Check and fix all overlapping blocks in the puzzle
- * Can be called manually for debugging
+ * Can be called manually for debugging or automatically before moves/after generation
  */
 export function checkAndFixAllOverlaps(blocks, gridSize) {
     const structureCheck = validateStructure(blocks, gridSize);
     if (structureCheck.valid) {
-        return { fixed: false, message: 'No overlaps detected' };
+        return { fixed: false, message: 'No overlaps detected', movedBlocks: [], prunedBlocks: [] };
     }
     
     console.warn('Overlaps detected, attempting to fix...');
     const fixResult = fixOverlappingBlocks(blocks, gridSize);
     
     if (fixResult.fixed) {
-        // Re-validate to ensure all overlaps are fixed
-        const recheck = validateStructure(blocks, gridSize);
-        if (recheck.valid) {
-            return { fixed: true, message: `Fixed ${fixResult.movedBlocks.length} overlapping block(s)`, movedBlocks: fixResult.movedBlocks };
-        } else {
-            return { fixed: false, message: `Partially fixed, but still have overlaps: ${recheck.reason}`, movedBlocks: fixResult.movedBlocks };
-        }
+        const movedCount = fixResult.movedBlocks ? fixResult.movedBlocks.length : 0;
+        const prunedCount = fixResult.prunedBlocks ? fixResult.prunedBlocks.length : 0;
+        const parts = [];
+        if (movedCount > 0) parts.push(`moved ${movedCount} block(s)`);
+        if (prunedCount > 0) parts.push(`pruned ${prunedCount} overlapping block(s)`);
+        const detail = parts.length > 0 ? parts.join(', ') : 'deduplicated';
+        return { fixed: true, message: `Fixed overlapping blocks: ${detail}`, movedBlocks: fixResult.movedBlocks, prunedBlocks: fixResult.prunedBlocks };
     } else {
-        return { fixed: false, message: 'Could not fix overlaps automatically', movedBlocks: [] };
+        return { fixed: false, message: 'Could not fix all overlaps automatically', movedBlocks: fixResult.movedBlocks || [], prunedBlocks: fixResult.prunedBlocks || [] };
     }
 }
 
