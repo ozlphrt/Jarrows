@@ -62,6 +62,9 @@ let updateCheckInterval = null;
 // --- CRITICAL GAME STATE AND CONFIGURATION (Moved to top to prevent TDZ errors) ---
 let isGeneratingLevel = false;
 if (typeof window !== 'undefined') window.isGeneratingLevel = false;
+let isGeneratingTimeout = null;
+let isLevelPlayable = false;
+let levelBlocksSpawned = false;
 let towerPositionOffset = new THREE.Vector3(0, 0, 0);
 
 // Task 1.2: Camera shake variables
@@ -1605,10 +1608,14 @@ window.fixOverlaps = () => {
 
 // Expose debug function to jump to a specific level
 window.debugJumpToLevel = async (level) => {
-    if (isGeneratingLevel) {
-        console.warn('Cannot jump to level while generating');
-        return;
+    if (isGeneratingTimeout) {
+        clearTimeout(isGeneratingTimeout);
+        isGeneratingTimeout = null;
     }
+    isGeneratingLevel = false;
+    isLevelPlayable = false;
+    levelBlocksSpawned = false;
+    levelInitialBlockCount = 0;
     if (isNaN(level) || level < 0) {
         console.error('Invalid level:', level);
         return;
@@ -4226,9 +4233,16 @@ function createHeadOnCollisionBlocks(targetBlockCount = 10, level = 1) {
 
 // Generate solvable puzzle using reverse generation (guaranteed solvable)
 async function generateSolvablePuzzle(level = 1, isRestart = false) {
-    if (isGeneratingLevel) {
-        return;
+    if (isGeneratingTimeout) {
+        clearTimeout(isGeneratingTimeout);
+        isGeneratingTimeout = null;
     }
+    isGeneratingLevel = true;
+    if (typeof window !== 'undefined') window.isGeneratingLevel = true;
+    isLevelPlayable = false;
+    levelBlocksSpawned = false;
+    levelCompleteShown = false;
+    levelInitialBlockCount = 0;
 
     // Get target block count for this level
     const targetBlockCount = getBlocksForLevel(level);
@@ -4418,6 +4432,10 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
             timeChallengeStartNewLevel(headOnBlocks);
             console.log('[Time Challenge] Level started, timeChallengeActive:', timeChallengeActive, 'timeLeftSec:', timeLeftSec);
         }
+
+        levelInitialBlockCount = blocks.length;
+        levelBlocksSpawned = blocks.length > 0;
+        isLevelPlayable = blocks.length > 0;
 
         isGeneratingLevel = false;
         if (typeof window !== 'undefined') window.isGeneratingLevel = false;
@@ -4918,9 +4936,11 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
     if (!structureCheck.valid) {
         console.error(`✗ Structure validation failed: ${structureCheck.reason}`);
         console.error('  Regenerating puzzle...');
-        // Regenerate if validation fails - preserve isRestart flag
-        isGeneratingLevel = false;
-        if (typeof window !== 'undefined') window.isGeneratingLevel = false;
+        // Regenerate if validation fails - preserve isRestart flag and keep isGeneratingLevel true
+        if (isGeneratingTimeout) {
+            clearTimeout(isGeneratingTimeout);
+            isGeneratingTimeout = null;
+        }
         await generateSolvablePuzzle(level, isRestart);
         return;
     }
@@ -5059,9 +5079,18 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
     // Explicitly update dial now
     updateProgressDial();
 
+    // Mark blocks as spawned and level playable
+    levelBlocksSpawned = blocks.length > 0;
+    isLevelPlayable = blocks.length > 0;
+
     // Keep isGeneratingLevel true for a bit longer to prevent support checking from running
     // Blocks need time to fully initialize before support checking resumes
-    setTimeout(() => {
+    if (isGeneratingTimeout) {
+        clearTimeout(isGeneratingTimeout);
+        isGeneratingTimeout = null;
+    }
+    isGeneratingTimeout = setTimeout(() => {
+        isGeneratingTimeout = null;
         // #region agent log
         const oldIsGeneratingLevel = isGeneratingLevel;
         const oldTargetRadius = targetRadius;
@@ -5121,18 +5150,32 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
     }
     } catch (err) {
         console.error('[generateSolvablePuzzle] Critical error during level generation:', err);
-        isGeneratingLevel = false;
-        if (typeof window !== 'undefined') window.isGeneratingLevel = false;
+        if (isGeneratingTimeout) {
+            clearTimeout(isGeneratingTimeout);
+            isGeneratingTimeout = null;
+        }
         if (blocks.length === 0) {
             console.warn('[generateSolvablePuzzle] Recovering with fallback generation...');
             try {
                 const recoveryBlocks = createSolvableBlocks(0, null, Math.max(10, Math.min(30, targetBlockCount)), level, false, null, 0);
                 await placeBlocksBatch(recoveryBlocks, 50, 0, 0);
                 validateStructure(blocks, gridSize);
+                levelInitialBlockCount = blocks.length;
+                levelBlocksSpawned = blocks.length > 0;
+                isLevelPlayable = blocks.length > 0;
             } catch (recErr) {
                 console.error('[generateSolvablePuzzle] Fallback recovery error:', recErr);
+                isLevelPlayable = false;
+                levelBlocksSpawned = false;
+                levelCompleteShown = true; // prevent instant victory modal popup if recovery failed
             }
+        } else {
+            levelInitialBlockCount = blocks.length;
+            levelBlocksSpawned = blocks.length > 0;
+            isLevelPlayable = blocks.length > 0;
         }
+        isGeneratingLevel = false;
+        if (typeof window !== 'undefined') window.isGeneratingLevel = false;
     }
 }
 
@@ -6570,6 +6613,15 @@ const nextLevelButton = document.getElementById('next-level-button');
 if (nextLevelButton) {
     nextLevelButton.addEventListener('click', async () => {
         hideLevelCompleteModal();
+        if (isGeneratingTimeout) {
+            clearTimeout(isGeneratingTimeout);
+            isGeneratingTimeout = null;
+        }
+        isGeneratingLevel = false;
+        isLevelPlayable = false;
+        levelBlocksSpawned = false;
+        levelInitialBlockCount = 0;
+        levelCompleteShown = false;
         const previousLevel = currentLevel;
         currentLevel++;
         console.log(`[Next Level] Incremented from ${previousLevel} to ${currentLevel}`);
@@ -11205,32 +11257,55 @@ function animate() {
     }
 
 
-    if (activeBlocks.size > 0) {
-        for (let i = blocks.length - 1; i >= 0; i--) {
-            const block = blocks[i];
-            if (!block) continue;
-            
-            if (block.isRemoved) {
-                if (!block.removalStartTime) { trackBlockRemoved(); timeChallengeAwardForBlockRemoved(block.length); }
-                if (block.group.parent) block.group.parent.remove(block.group);
-                if (block.physicsBody && block.physicsBody.body) {
-                    import('./physics.js').then(({ removePhysicsBody }) => removePhysicsBody(physics, block.physicsBody.body));
-                }
-                if (window.puzzleSolution && window.solutionStep < window.puzzleSolution.length) {
-                    window.solutionStep++;
-                    setTimeout(() => highlightNextBlock(), 100);
-                }
-                activeBlocks.delete(block);
-                towerBoundsDirty = true;
-                markNeedsRender(500);
-                blocks.splice(i, 1);
+    // Unconditional block cleanup - purge any removed blocks every frame
+    for (let i = blocks.length - 1; i >= 0; i--) {
+        const block = blocks[i];
+        if (!block) {
+            blocks.splice(i, 1);
+            continue;
+        }
+        
+        if (block.isRemoved) {
+            if (!block.removalStartTime) { trackBlockRemoved(); timeChallengeAwardForBlockRemoved(block.length); }
+            if (block.group && block.group.parent) block.group.parent.remove(block.group);
+            if (block.physicsBody && block.physicsBody.body) {
+                import('./physics.js').then(({ removePhysicsBody }) => removePhysicsBody(physics, block.physicsBody.body));
             }
+            if (window.puzzleSolution && window.solutionStep < window.puzzleSolution.length) {
+                window.solutionStep++;
+                setTimeout(() => highlightNextBlock(), 100);
+            }
+            activeBlocks.delete(block);
+            towerBoundsDirty = true;
+            markNeedsRender(500);
+            blocks.splice(i, 1);
         }
     }
 
+    // While a level is active with blocks, ensure level is flagged as spawned and playable
+    if (blocks.length > 0 && !isGeneratingLevel) {
+        levelBlocksSpawned = true;
+        isLevelPlayable = true;
+    }
+
     // 11. Level Completion
-    if (blocks.length === 0 && currentLevel >= 0 && !isGeneratingLevel && !levelCompleteShown && !timeUpShown) {
+    const remainingActiveBlocks = blocks.filter(b => b && !b.isRemoved && !b.removalStartTime && !b.isExploding && !b.isAnimating && !b.isFalling).length;
+    const hasPendingAnimations = blocks.some(b => b && (b.isAnimating || b.isExploding || b.isFalling || (b.removalStartTime && !b.isRemoved)));
+
+    const canCompleteLevel = (
+        levelBlocksSpawned &&
+        remainingActiveBlocks === 0 &&
+        !hasPendingAnimations &&
+        !isGeneratingLevel &&
+        !levelCompleteShown &&
+        !timeUpShown &&
+        currentLevel >= 0
+    );
+    if (canCompleteLevel) {
+        blocks.length = 0;
+        activeBlocks.clear();
         levelCompleteShown = true;
+        isLevelPlayable = false;
         stopTimer();
         try {
             const nextLevel = currentLevel + 1;
@@ -11744,6 +11819,11 @@ window.loadDebugLayout = async function (layoutData) {
 
     centerTowerVertically();
     calculateInitialCameraPosition();
+    levelInitialBlockCount = blocks.length;
+    levelBlocksSpawned = blocks.length > 0;
+    isLevelPlayable = blocks.length > 0;
+    isGeneratingLevel = false;
+    levelCompleteShown = false;
     updateProgressDial();
     markNeedsRender(1000);
     console.log('[DEBUG] Layout loaded successfully');

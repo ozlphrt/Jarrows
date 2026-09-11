@@ -4,6 +4,16 @@
  */
 
 export const changelog = {
+    "8.32.1": {
+        title: "Level Progression Loop Resolution & Robust Victory State Synchronization",
+        date: "2026-09-12",
+        changes: [
+            "Level Progression Loop Fix: Resolved race condition where asynchronous generation timeouts caused consecutive level-complete modals to cycle infinitely without spawning playable blocks",
+            "Unconditional Removed Block Cleanup: Spliced removed blocks from active tracking arrays on every animation frame regardless of movement state, eliminating ghost blocks",
+            "Robust Victory State Synchronization: Level completion check now strictly verifies that all playable blocks are cleared and removal animations have fully finished before triggering the completion modal",
+            "Lifecycle State Guards: Initialized playable state flags across all level transitions, restarts, and debug layout loaders"
+        ]
+    },
     "8.32.0": {
         title: "Animated Spin Countdown Over Button, Balanced Ash Colors & Fluid Detonation Physics",
         date: "2026-09-11",
