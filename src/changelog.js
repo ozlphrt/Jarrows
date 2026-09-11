@@ -4,6 +4,13 @@
  */
 
 export const changelog = {
+    "8.32.2": {
+        title: "Fix Tile Spawning on Online Production Hosting",
+        date: "2026-09-12",
+        changes: [
+            "Block Spawning Fix: Eliminated fatal ReferenceError in direction indicator diagnostics that crashed block instantiation when hosted outside localhost, restoring full tile generation on GitHub Pages and production domains"
+        ]
+    },
     "8.32.1": {
         title: "Level Progression Loop Resolution & Robust Victory State Synchronization",
         date: "2026-09-12",

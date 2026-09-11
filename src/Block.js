@@ -2156,14 +2156,6 @@ export class Block {
         this.group.updateMatrix();
         this.group.updateMatrixWorld(true);
 
-        // Debug: Verify indicators are created
-        if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
-            console.log('Direction indicators created:', {
-                dotMesh: !!dotMesh,
-                circleMesh: !!circleMesh,
-                indicatorsGroup: indicatorsGroup.children.length
-            });
-        }
     }
 
     // Update block color (material and arrow)
