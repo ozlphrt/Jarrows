@@ -32,7 +32,7 @@ export function getBlockCells(block) {
 const Y_SNAP_EPS = 0.35;
 const Y_OVERLAP_EPS = 0.05; // touching at boundary is NOT overlap
 
-function snapLayerY(y) {
+export function snapLayerY(y) {
     const r = Math.round(y);
     return Math.abs(y - r) < Y_SNAP_EPS ? r : y;
 }
@@ -280,32 +280,18 @@ export function fixOverlappingBlocks(blocks, gridSize) {
         if (blockToPrune.group && blockToPrune.group.parent) {
             blockToPrune.group.parent.remove(blockToPrune.group);
         }
-        if (Array.isArray(blockToPrune.cubes)) {
-            for (const cube of blockToPrune.cubes) {
-                if (cube && cube.geometry) cube.geometry.dispose();
-                if (cube && cube.material) {
-                    if (Array.isArray(cube.material)) cube.material.forEach(m => m && m.dispose && m.dispose());
-                    else if (cube.material.dispose) cube.material.dispose();
+        if (typeof blockToPrune.disposeObject3DResources === 'function') {
+            if (Array.isArray(blockToPrune.cubes)) {
+                for (const cube of blockToPrune.cubes) {
+                    blockToPrune.disposeObject3DResources(cube);
                 }
             }
-        }
-        if (blockToPrune.arrow) {
-            blockToPrune.arrow.traverse((child) => {
-                if (child.geometry && child.geometry.dispose) child.geometry.dispose();
-                if (child.material) {
-                    if (Array.isArray(child.material)) child.material.forEach(m => m && m.dispose && m.dispose());
-                    else if (child.material.dispose) child.material.dispose();
-                }
-            });
-        }
-        if (blockToPrune.directionIndicators) {
-            blockToPrune.directionIndicators.traverse((child) => {
-                if (child.geometry && child.geometry.dispose) child.geometry.dispose();
-                if (child.material) {
-                    if (Array.isArray(child.material)) child.material.forEach(m => m && m.dispose && m.dispose());
-                    else if (child.material.dispose) child.material.dispose();
-                }
-            });
+            if (blockToPrune.arrow) {
+                blockToPrune.disposeObject3DResources(blockToPrune.arrow);
+            }
+            if (blockToPrune.directionIndicators) {
+                blockToPrune.disposeObject3DResources(blockToPrune.directionIndicators);
+            }
         }
 
         blockToPrune.isRemoved = true;

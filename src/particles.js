@@ -292,13 +292,13 @@ export function createParticleSystem(maxParticles, scene) {
                 sprite.material.color.setRGB(v, v, Math.min(1, v + 0.04));
                 state.startOpacity = 0.65;
             } else if (opts.isDarkSoot) {
-                var dsh = 0.10 + Math.random() * 0.12;
-                sprite.material.color.setRGB(dsh, dsh * 1.02, dsh * 1.05);
-                state.startOpacity = 0.75 + Math.random() * 0.20;
+                var dsh = 0.10 + Math.random() * 0.06; // Soft charcoal soot
+                sprite.material.color.setRGB(dsh, dsh * 1.01, dsh * 1.02);
+                state.startOpacity = 0.65 + Math.random() * 0.15;
             } else {
-                var sh = 0.22 + Math.random() * 0.20;
-                sprite.material.color.setRGB(sh, sh * 1.04, sh * 1.10);
-                state.startOpacity = 0.55 + Math.random() * 0.25;
+                var sh = 0.18 + Math.random() * 0.08; // Natural volumetric ash smoke
+                sprite.material.color.setRGB(sh, sh * 1.02, sh * 1.04);
+                state.startOpacity = 0.55 + Math.random() * 0.15;
             }
             sprite.material.opacity = 0.0;
 

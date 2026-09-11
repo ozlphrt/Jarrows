@@ -4,6 +4,17 @@
  */
 
 export const changelog = {
+    "8.32.0": {
+        title: "Animated Spin Countdown Over Button, Balanced Ash Colors & Fluid Detonation Physics",
+        date: "2026-09-11",
+        changes: [
+            "Animated Spin Countdown Over Button: Repositioned kinetic countdown from screen top to hover directly over the bottom-left spin button, keeping the tower and upper tiles 100% visible and unobstructed",
+            "Natural Slate-Charcoal Ash Color: Tuned ash shader coloration to a soft, balanced slate-charcoal grey with directional falloff for natural combustion dissolution",
+            "Vivid Crimson Indicators: Enhanced length-1 indicators with deeper, richer crimson contrast against porcelain block bodies",
+            "Smooth Detonation Dissolution: Resolved stuttering tile disappearance by deferring post-blast gravity recalculations until dissolution finishes, ensuring smooth particle dissipation",
+            "Tile Color Stability on Spin: Removed residual emissive block body artifacts during and after temporary spin shuffles"
+        ]
+    },
     "8.27.1": {
         title: "4-Tier Studio Lighting Exposure & iPhone Shading Readability",
         date: "2026-09-02",

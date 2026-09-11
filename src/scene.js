@@ -519,7 +519,7 @@ export function setupThermalMaterial(material) {
                             // 3. Dark Ashy Soot Field (Wide, silky smooth feathered falloff into clean block surfaces)
                             if (effectiveDist <= uAshRadius[bi] + 1.25 && uAshIntensity[bi] > 0.001) {
                                 float ashInner = uAshRadius[bi] - effectiveDist;
-                                float ashFacing = 0.58 + 0.42 * pow(max(1e-4, directFacing), 0.5);
+                                float ashFacing = 0.45 + 0.55 * pow(max(1e-4, directFacing), 0.5);
                                 float af = smoothstep(-1.25, 0.85, ashInner) * uAshIntensity[bi] * ashFacing;
                                 maxAshFactor = max(maxAshFactor, af);
                             }
@@ -544,8 +544,8 @@ export function setupThermalMaterial(material) {
                     }
 
                     if (maxAshFactor > 0.001) {
-                        vec3 darkAshColor = vec3(0.032, 0.035, 0.040); // Deep matte burnt charcoal soot
-                        gl_FragColor.rgb = mix(gl_FragColor.rgb, darkAshColor, maxAshFactor * 0.96);
+                        vec3 darkAshColor = vec3(0.065, 0.070, 0.078); // Balanced slate-charcoal ash dust (preserves 3D surface bevels & lighting)
+                        gl_FragColor.rgb = mix(gl_FragColor.rgb, darkAshColor, maxAshFactor * 0.68);
                     }
 
                     if (maxHeat > 0.001) {
@@ -558,7 +558,11 @@ export function setupThermalMaterial(material) {
         }
     };
 
-    material.customProgramCacheKey = () => 'thermal_mat';
+    const prevThermalCacheKey = material.customProgramCacheKey;
+    material.customProgramCacheKey = () => {
+        const base = typeof prevThermalCacheKey === 'function' ? prevThermalCacheKey.call(material) : (material.type || 'mat');
+        return base + '_thermal';
+    };
 }
 
 /**
@@ -678,7 +682,7 @@ export function setupPulsingMaterial(material, options = {}) {
                         }
                     }
                     if (pulseAsh > 0.001) {
-                        totalEmissiveRadiance *= max(0.0, 1.0 - pulseAsh * 2.0);
+                        totalEmissiveRadiance *= max(0.15, 1.0 - pulseAsh * 0.85);
                     }
                 }
                 `
@@ -785,8 +789,8 @@ export function setupGlowQuadMaterial(material, options = {}) {
                 }
             }
             if (maxAshFactor > 0.001) {
-                diffuseColor.a *= max(0.0, 1.0 - maxAshFactor * 1.8);
-                diffuseColor.rgb *= max(0.0, 1.0 - maxAshFactor * 1.8);
+                diffuseColor.a *= max(0.12, 1.0 - maxAshFactor * 0.88);
+                diffuseColor.rgb *= max(0.12, 1.0 - maxAshFactor * 0.88);
             }
             `
         );

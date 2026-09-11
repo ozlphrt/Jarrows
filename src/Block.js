@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createPhysicsBlock, removePhysicsBody, isPhysicsStepping, deferBodyCreation, deferBodyModification } from './physics.js';
 import { playSound, isAudioEnabled } from './audio.js';
 import { setupPulsingMaterial, setupGlowQuadMaterial, setupThermalMaterial } from './scene.js';
@@ -8,6 +9,29 @@ import { setupPulsingMaterial, setupGlowQuadMaterial, setupThermalMaterial } fro
 // Global geometry pool to reuse RoundedBoxGeometry instances
 const GeometryPool = new Map();
 const TextureCache = new Map();
+const ArrowGeometryPool = new Map();
+const ArrowRawGeometryPool = new Map();
+const DotGeometryPool = new Map();
+const CircleGeometryPool = new Map();
+const MergedIndicatorGeometryPool = new Map();
+const IndicatorMaterialPool = new Map();
+const BasePorcelainMaterialPool = new Map();
+
+/**
+ * Authoritative length-based indicator palette:
+ * - Length 1: Deep Regal Crimson (#a8111a) - rich, dark, velvety blood-crimson with maximum contrast
+ * - Length 2: Deep Electric Cyan / Azure (#0096c7) - rich, vivid chroma, zero pale mint washout
+ * - Length 3: Warm Golden Amber / Marigold (#ea8c00) - deep contrast against white, never pale
+ */
+export const INDICATOR_LENGTH_COLORS = [
+    0xa8111a, // Length 1: Dark Crimson Red
+    0x0096c7, // Length 2: Cyan
+    0xea8c00  // Length 3: Yellow / Golden Amber
+];
+
+if (typeof window !== 'undefined') {
+    window.INDICATOR_LENGTH_COLORS = INDICATOR_LENGTH_COLORS;
+}
 
 /**
  * Creates a diagonal yellow/black stripe texture for bomb blocks.
@@ -60,9 +84,9 @@ function getOrCreateScorchTexture() {
     grad.addColorStop(0.0, 'rgba(255, 255, 255, 1.0)'); // White-hot thermal core
     grad.addColorStop(0.15, 'rgba(255, 215, 60, 0.98)'); // Radiant molten gold
     grad.addColorStop(0.38, 'rgba(255, 70, 0, 0.92)');  // Fiery crimson orange
-    grad.addColorStop(0.65, 'rgba(160, 25, 10, 0.85)'); // Smoldering ember
-    grad.addColorStop(0.85, 'rgba(24, 26, 32, 0.90)');  // Charred soot
-    grad.addColorStop(1.0, 'rgba(24, 26, 32, 0.0)');   // Soft feathered border
+    grad.addColorStop(0.65, 'rgba(140, 20, 10, 0.85)'); // Smoldering ember
+    grad.addColorStop(0.85, 'rgba(45, 48, 55, 0.88)');   // Soft slate-charcoal ash soot
+    grad.addColorStop(1.0, 'rgba(45, 48, 55, 0.0)');     // Soft feathered border
 
     ctx.fillStyle = grad;
     ctx.beginPath();
@@ -70,7 +94,7 @@ function getOrCreateScorchTexture() {
     ctx.fill();
 
     // Add organic singed flecks and fissures
-    ctx.fillStyle = 'rgba(12, 14, 18, 0.55)';
+    ctx.fillStyle = 'rgba(32, 36, 42, 0.65)';
     for (let i = 0; i < 45; i++) {
         const ang = Math.random() * Math.PI * 2;
         const rad = 40 + Math.random() * 75;
@@ -314,6 +338,386 @@ function getCubeGeometry(width, height, depth, radius, segments) {
 }
 
 /**
+ * Check if a geometry is managed by the global GeometryPool
+ * @param {THREE.BufferGeometry} geometry 
+ * @returns {boolean}
+ */
+export function isPooledGeometry(geometry) {
+    if (!geometry) return false;
+    for (const pooled of GeometryPool.values()) {
+        if (pooled === geometry) return true;
+    }
+    for (const pooled of ArrowGeometryPool.values()) {
+        if (pooled === geometry) return true;
+    }
+    for (const pooled of ArrowRawGeometryPool.values()) {
+        if (pooled === geometry) return true;
+    }
+    for (const pooled of DotGeometryPool.values()) {
+        if (pooled === geometry) return true;
+    }
+    for (const pooled of CircleGeometryPool.values()) {
+        if (pooled === geometry) return true;
+    }
+    for (const pooled of MergedIndicatorGeometryPool.values()) {
+        if (pooled === geometry) return true;
+    }
+    return false;
+}
+
+/**
+ * Check if a material is managed by global pools
+ * @param {THREE.Material} material 
+ * @returns {boolean}
+ */
+export function isPooledMaterial(material) {
+    if (!material) return false;
+    for (const pooled of IndicatorMaterialPool.values()) {
+        if (pooled === material) return true;
+    }
+    for (const pooled of BasePorcelainMaterialPool.values()) {
+        if (pooled === material) return true;
+    }
+    return false;
+}
+
+function getArrowRawExtrudeGeometry(style = 2) {
+    if (ArrowRawGeometryPool.has(style)) return ArrowRawGeometryPool.get(style);
+
+    let arrowShape = new THREE.Shape();
+    let extrudeSettings;
+
+    if (style === 1) {
+        const width = 0.25, length = 0.35, thickness = 0.06;
+        arrowShape.moveTo(0, length);
+        arrowShape.lineTo(width, length - width);
+        arrowShape.lineTo(width - thickness, length - width);
+        arrowShape.lineTo(0, length - thickness);
+        arrowShape.lineTo(-width + thickness, length - width);
+        arrowShape.lineTo(-width, length - width);
+        arrowShape.lineTo(0, length);
+        arrowShape.moveTo(thickness / 2, length - width);
+        arrowShape.lineTo(thickness / 2, -length * 0.3);
+        arrowShape.lineTo(-thickness / 2, -length * 0.3);
+        arrowShape.lineTo(-thickness / 2, length - width);
+        extrudeSettings = { depth: 0.06, bevelEnabled: true, bevelThickness: 0.02, bevelSize: 0.02, bevelSegments: 2 };
+    } else if (style === 2) {
+        arrowShape.moveTo(0, 0.38);
+        arrowShape.lineTo(0.32, -0.16);
+        arrowShape.lineTo(0.18, -0.20);
+        arrowShape.lineTo(0, -0.02);
+        arrowShape.lineTo(-0.18, -0.20);
+        arrowShape.lineTo(-0.32, -0.16);
+        arrowShape.lineTo(0, 0.38);
+        extrudeSettings = { depth: 0.06, bevelEnabled: true, bevelThickness: 0.025, bevelSize: 0.02, bevelSegments: 3, curveSegments: 8 };
+    } else if (style === 3) {
+        arrowShape.moveTo(0, 0.35);
+        arrowShape.lineTo(-0.15, 0.05);
+        arrowShape.lineTo(-0.08, 0.05);
+        arrowShape.lineTo(0, 0.2);
+        arrowShape.lineTo(0.08, 0.05);
+        arrowShape.lineTo(0.15, 0.05);
+        arrowShape.lineTo(0, 0.35);
+        extrudeSettings = { depth: 0.05, bevelEnabled: false };
+    } else if (style === 4) {
+        arrowShape.moveTo(0, 0.3);
+        arrowShape.lineTo(-0.3, -0.05);
+        arrowShape.lineTo(-0.06, -0.05);
+        arrowShape.lineTo(-0.06, -0.25);
+        arrowShape.lineTo(0.06, -0.25);
+        arrowShape.lineTo(0.06, -0.05);
+        arrowShape.lineTo(0.3, -0.05);
+        arrowShape.lineTo(0, 0.3);
+        const hole = new THREE.Path();
+        hole.moveTo(0, 0.22);
+        hole.lineTo(-0.17, 0.02);
+        hole.lineTo(0, 0.12);
+        hole.lineTo(0.17, 0.02);
+        hole.lineTo(0, 0.22);
+        arrowShape.holes.push(hole);
+        extrudeSettings = { depth: 0.06, bevelEnabled: false };
+    } else if (style === 5) {
+        arrowShape.moveTo(0, 0.35);
+        arrowShape.lineTo(-0.25, 0.05);
+        arrowShape.lineTo(-0.12, 0.05);
+        arrowShape.lineTo(-0.12, -0.25);
+        arrowShape.lineTo(0.12, -0.25);
+        arrowShape.lineTo(0.12, 0.05);
+        arrowShape.lineTo(0.25, 0.05);
+        arrowShape.lineTo(0, 0.35);
+        extrudeSettings = { depth: 0.08, bevelEnabled: true, bevelThickness: 0.03, bevelSize: 0.03, bevelSegments: 5 };
+    } else if (style === 6) {
+        arrowShape.moveTo(0, 0.38);
+        arrowShape.lineTo(-0.2, 0.05);
+        arrowShape.quadraticCurveTo(-0.2, -0.02, -0.1, -0.02);
+        arrowShape.lineTo(-0.09, -0.02);
+        arrowShape.lineTo(-0.09, -0.22);
+        arrowShape.quadraticCurveTo(-0.09, -0.28, 0, -0.28);
+        arrowShape.quadraticCurveTo(0.09, -0.28, 0.09, -0.22);
+        arrowShape.lineTo(0.09, -0.02);
+        arrowShape.lineTo(0.1, -0.02);
+        arrowShape.quadraticCurveTo(0.2, -0.02, 0.2, 0.05);
+        arrowShape.lineTo(0, 0.38);
+        extrudeSettings = { depth: 0.09, bevelEnabled: true, bevelThickness: 0.035, bevelSize: 0.035, bevelSegments: 4 };
+    } else if (style === 7) {
+        arrowShape.moveTo(0, 0.36);
+        arrowShape.lineTo(-0.22, -0.02);
+        arrowShape.lineTo(-0.11, -0.02);
+        arrowShape.lineTo(-0.11, -0.06);
+        arrowShape.lineTo(-0.08, -0.06);
+        arrowShape.lineTo(-0.08, -0.24);
+        arrowShape.quadraticCurveTo(-0.08, -0.27, 0, -0.27);
+        arrowShape.quadraticCurveTo(0.08, -0.27, 0.08, -0.24);
+        arrowShape.lineTo(0.08, -0.06);
+        arrowShape.lineTo(0.11, -0.06);
+        arrowShape.lineTo(0.11, -0.02);
+        arrowShape.lineTo(0.22, -0.02);
+        arrowShape.lineTo(0, 0.36);
+        extrudeSettings = { depth: 0.08, bevelEnabled: true, bevelThickness: 0.03, bevelSize: 0.03, bevelSegments: 3 };
+    } else {
+        arrowShape.moveTo(0, 0.4);
+        arrowShape.lineTo(-0.24, 0.02);
+        arrowShape.lineTo(-0.1, 0.02);
+        arrowShape.lineTo(-0.1, -0.24);
+        arrowShape.lineTo(0.1, -0.24);
+        arrowShape.lineTo(0.1, 0.02);
+        arrowShape.lineTo(0.24, 0.02);
+        arrowShape.lineTo(0, 0.4);
+        extrudeSettings = { depth: 0.08, bevelEnabled: true, bevelThickness: 0.03, bevelSize: 0.03, bevelSegments: 2 };
+    }
+
+    const raw = new THREE.ExtrudeGeometry(arrowShape, extrudeSettings);
+    ArrowRawGeometryPool.set(style, raw);
+    return raw;
+}
+
+/**
+ * Creates or retrieves a pooled, indexed 3-in-1 merged geometry combining top arrow, forward dot, and backward circle.
+ * Hardware-indexed via mergeVertices to maximize GPU post-transform vertex cache efficiency and eliminate ~1,000 draw calls.
+ */
+function getOrCreateMergedIndicatorGeometry(arrowStyle, length, isVertical, dirX, dirZ, cubeSize, dotExtrudeSettings) {
+    const normDirX = dirX === 0 ? 0 : (dirX > 0 ? 1 : -1);
+    const normDirZ = dirZ === 0 ? 0 : (dirZ > 0 ? 1 : -1);
+    const key = `3in1_${arrowStyle}_${length}_${isVertical}_${normDirX}_${normDirZ}_${cubeSize}`;
+    if (MergedIndicatorGeometryPool.has(key)) {
+        return MergedIndicatorGeometryPool.get(key);
+    }
+
+    let blockWidth, blockHeight, blockDepth;
+    const isXAligned = Math.abs(normDirX) > 0;
+    const centerOffset = (length - 1) * cubeSize / 2;
+
+    if (isVertical) {
+        blockWidth = cubeSize;
+        blockHeight = length * cubeSize;
+        blockDepth = cubeSize;
+    } else if (isXAligned) {
+        blockWidth = length * cubeSize;
+        blockHeight = cubeSize;
+        blockDepth = cubeSize;
+    } else {
+        blockWidth = cubeSize;
+        blockHeight = cubeSize;
+        blockDepth = length * cubeSize;
+    }
+
+    const surfaceOffset = 0.005;
+
+    // 1. Top arrow transform relative to block group origin
+    let arrowCenterOffset = 0.09;
+    if (arrowStyle === 1) arrowCenterOffset = 0.1225;
+    else if (arrowStyle === 2) arrowCenterOffset = 0.09;
+    else if (arrowStyle === 3) arrowCenterOffset = 0.075;
+    else if (arrowStyle === 4) arrowCenterOffset = 0.025;
+    else if (arrowStyle === 5) arrowCenterOffset = 0.05;
+    else if (arrowStyle === 6) arrowCenterOffset = 0.05;
+    else if (arrowStyle === 7) arrowCenterOffset = 0.045;
+    else if (arrowStyle === 8) arrowCenterOffset = 0.08;
+
+    let arrowZ = -0.0125;
+    if (arrowStyle === 1) arrowZ = -0.015;
+    else if (arrowStyle === 2) arrowZ = -0.0125;
+    else if (arrowStyle === 4) arrowZ = -0.015;
+    else if (arrowStyle === 5) arrowZ = -0.025;
+    else if (arrowStyle === 6) arrowZ = -0.03;
+    else if (arrowStyle === 7) arrowZ = -0.025;
+    else if (arrowStyle === 8) arrowZ = -0.0275;
+
+    const arrowGroupMatrix = new THREE.Matrix4();
+    const arrowGroupPos = new THREE.Vector3();
+    if (isVertical) {
+        arrowGroupPos.set(0, length * cubeSize + 0.02, 0);
+    } else if (isXAligned) {
+        // Place top arrow on front cube pointing in travel direction
+        arrowGroupPos.set((normDirX >= 0 ? 1 : -1) * centerOffset, cubeSize + 0.02, 0);
+    } else {
+        // Place top arrow on front cube pointing in travel direction
+        arrowGroupPos.set(0, cubeSize + 0.02, (normDirZ >= 0 ? 1 : -1) * centerOffset);
+    }
+    const arrowAngle = Math.atan2(normDirX, normDirZ) + Math.PI;
+    const arrowGroupQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, arrowAngle, 'XYZ'));
+    arrowGroupMatrix.compose(arrowGroupPos, arrowGroupQuat, new THREE.Vector3(1, 1, 1));
+
+    const arrowMeshMatrix = new THREE.Matrix4().compose(
+        new THREE.Vector3(0, -arrowCenterOffset, arrowZ),
+        new THREE.Quaternion(),
+        new THREE.Vector3(0.85, 0.85, 0.85)
+    );
+    const finalArrowMatrix = new THREE.Matrix4().multiplyMatrices(arrowGroupMatrix, arrowMeshMatrix);
+
+    const rawArrow = getArrowRawExtrudeGeometry(arrowStyle);
+    const gA = rawArrow.clone().applyMatrix4(finalArrowMatrix);
+
+    // 2. Dot geometry
+    const dotRadius = 0.2;
+    const dotShape = new THREE.Shape();
+    dotShape.arc(0, 0, dotRadius, 0, Math.PI * 2, false);
+    const dotExtrude = Object.assign({}, dotExtrudeSettings, { curveSegments: 8 });
+    const dotGeo = new THREE.ExtrudeGeometry(dotShape, dotExtrude);
+
+    // 3. Circle geometry
+    const circleRadius = 0.25;
+    const circleShape = new THREE.Shape();
+    circleShape.arc(0, 0, circleRadius, 0, Math.PI * 2, false);
+    const hole = new THREE.Path();
+    hole.arc(0, 0, circleRadius - 0.06, 0, Math.PI * 2, true);
+    circleShape.holes.push(hole);
+    const circleGeo = new THREE.ExtrudeGeometry(circleShape, dotExtrude);
+
+    const dotMatrix = new THREE.Matrix4();
+    const circleMatrix = new THREE.Matrix4();
+    const pos = new THREE.Vector3();
+    const euler = new THREE.Euler();
+    const quat = new THREE.Quaternion();
+    const scale = new THREE.Vector3(1, 1, 1);
+
+    if (isVertical) {
+        if (normDirX > 0) {
+            pos.set(blockWidth / 2 + surfaceOffset, blockHeight / 2, 0);
+            euler.set(0, -Math.PI / 2, 0);
+            dotMatrix.compose(pos, quat.setFromEuler(euler), scale);
+
+            pos.set(-blockWidth / 2 - surfaceOffset, blockHeight / 2, 0);
+            euler.set(0, Math.PI / 2, 0);
+            circleMatrix.compose(pos, quat.setFromEuler(euler), scale);
+        } else if (normDirX < 0) {
+            pos.set(-blockWidth / 2 - surfaceOffset, blockHeight / 2, 0);
+            euler.set(0, Math.PI / 2, 0);
+            dotMatrix.compose(pos, quat.setFromEuler(euler), scale);
+
+            pos.set(blockWidth / 2 + surfaceOffset, blockHeight / 2, 0);
+            euler.set(0, -Math.PI / 2, 0);
+            circleMatrix.compose(pos, quat.setFromEuler(euler), scale);
+        } else if (normDirZ > 0) {
+            pos.set(0, blockHeight / 2, blockDepth / 2 + surfaceOffset);
+            euler.set(0, Math.PI, 0);
+            dotMatrix.compose(pos, quat.setFromEuler(euler), scale);
+
+            pos.set(0, blockHeight / 2, -blockDepth / 2 - surfaceOffset);
+            euler.set(0, 0, 0);
+            circleMatrix.compose(pos, quat.setFromEuler(euler), scale);
+        } else {
+            pos.set(0, blockHeight / 2, -blockDepth / 2 - surfaceOffset);
+            euler.set(0, 0, 0);
+            dotMatrix.compose(pos, quat.setFromEuler(euler), scale);
+
+            pos.set(0, blockHeight / 2, blockDepth / 2 + surfaceOffset);
+            euler.set(0, Math.PI, 0);
+            circleMatrix.compose(pos, quat.setFromEuler(euler), scale);
+        }
+    } else {
+        if (isXAligned) {
+            if (normDirX > 0) {
+                pos.set(blockWidth / 2 + surfaceOffset, blockHeight / 2, 0);
+                euler.set(0, -Math.PI / 2, 0);
+                dotMatrix.compose(pos, quat.setFromEuler(euler), scale);
+
+                pos.set(-blockWidth / 2 - surfaceOffset, blockHeight / 2, 0);
+                euler.set(0, Math.PI / 2, 0);
+                circleMatrix.compose(pos, quat.setFromEuler(euler), scale);
+            } else {
+                pos.set(-blockWidth / 2 - surfaceOffset, blockHeight / 2, 0);
+                euler.set(0, Math.PI / 2, 0);
+                dotMatrix.compose(pos, quat.setFromEuler(euler), scale);
+
+                pos.set(blockWidth / 2 + surfaceOffset, blockHeight / 2, 0);
+                euler.set(0, -Math.PI / 2, 0);
+                circleMatrix.compose(pos, quat.setFromEuler(euler), scale);
+            }
+        } else {
+            if (normDirZ > 0) {
+                pos.set(0, blockHeight / 2, blockDepth / 2 + surfaceOffset);
+                euler.set(0, Math.PI, 0);
+                dotMatrix.compose(pos, quat.setFromEuler(euler), scale);
+
+                pos.set(0, blockHeight / 2, -blockDepth / 2 - surfaceOffset);
+                euler.set(0, 0, 0);
+                circleMatrix.compose(pos, quat.setFromEuler(euler), scale);
+            } else {
+                pos.set(0, blockHeight / 2, -blockDepth / 2 - surfaceOffset);
+                euler.set(0, 0, 0);
+                dotMatrix.compose(pos, quat.setFromEuler(euler), scale);
+
+                pos.set(0, blockHeight / 2, blockDepth / 2 + surfaceOffset);
+                euler.set(0, Math.PI, 0);
+                circleMatrix.compose(pos, quat.setFromEuler(euler), scale);
+            }
+        }
+    }
+
+    const gD = dotGeo.clone().applyMatrix4(dotMatrix);
+    const gC = circleGeo.clone().applyMatrix4(circleMatrix);
+    const merged = mergeVertices(mergeGeometries([gA, gD, gC]));
+    dotGeo.dispose();
+    circleGeo.dispose();
+    gD.dispose();
+    gC.dispose();
+    gA.dispose();
+
+    MergedIndicatorGeometryPool.set(key, merged);
+    return merged;
+}
+
+/**
+ * Safely dispose and clear all pooled geometries.
+ * Should only be called on full application teardown or level reset when no blocks exist.
+ */
+export function clearGeometryPool() {
+    for (const geom of GeometryPool.values()) {
+        if (geom && typeof geom.dispose === 'function') geom.dispose();
+    }
+    GeometryPool.clear();
+
+    for (const geom of ArrowGeometryPool.values()) {
+        if (geom && typeof geom.dispose === 'function') geom.dispose();
+    }
+    ArrowGeometryPool.clear();
+
+    for (const geom of ArrowRawGeometryPool.values()) {
+        if (geom && typeof geom.dispose === 'function') geom.dispose();
+    }
+    ArrowRawGeometryPool.clear();
+
+    for (const geom of DotGeometryPool.values()) {
+        if (geom && typeof geom.dispose === 'function') geom.dispose();
+    }
+    DotGeometryPool.clear();
+
+    for (const geom of CircleGeometryPool.values()) {
+        if (geom && typeof geom.dispose === 'function') geom.dispose();
+    }
+    CircleGeometryPool.clear();
+
+    for (const geom of MergedIndicatorGeometryPool.values()) {
+        if (geom && typeof geom.dispose === 'function') geom.dispose();
+    }
+    MergedIndicatorGeometryPool.clear();
+
+    IndicatorMaterialPool.clear();
+    BasePorcelainMaterialPool.clear();
+}
+
+/**
  * Safe telemetry logging - only sends if telemetry server is available
  * Suppresses console errors when server is not running
  */
@@ -456,7 +860,11 @@ export class Block {
         this.length = length;
         this.gridX = gridX;
         this.gridZ = gridZ;
-        this.direction = direction;
+        this.direction = { x: direction.x, z: direction.z };
+        this._indicatorBaseAngle = Math.atan2(direction.x, direction.z);
+        this._preSpinDirection = null;
+        this._pendingRevertOnLand = false;
+        this._spinAnimId = null;
         this.isVertical = isVertical;
         this.isAnimating = false;
         this.isFalling = false;
@@ -509,7 +917,7 @@ export class Block {
 
         // Create a single connected block geometry instead of separate cubes
         const radius = 0.08; // Rounding radius for edges and corners
-        const segments = 4; // Number of segments for smooth rounding
+        const segments = 2; // High performance 2-segment rounding with smooth vertex normals
 
         // Calculate block dimensions
         let blockWidth, blockHeight, blockDepth;
@@ -538,8 +946,8 @@ export class Block {
             segments
         );
 
-        // Use Classic palette as default: original natural colors
-        const colors = [0xff6b6b, 0x4ecdc4, 0xffc125]; // Red, Teal, Golden Yellow
+        // Use high-contrast indicator palette (Red, Cyan, Golden Amber)
+        const colors = INDICATOR_LENGTH_COLORS;
         const whiteColor = 0xfbf6ed; // Creamy porcelain white (warm ivory undertone, rich contrast)
 
         // Check global setting for default block color
@@ -579,27 +987,39 @@ export class Block {
                 emissiveIntensity: FROSTY_CONFIG.blockEmissiveIntensity
             });
         } else {
-            blockMaterial = new THREE.MeshPhysicalMaterial({
-                color: materialColor,
-                roughness: 0.14, // Polished high-gloss porcelain
-                metalness: 0.05,
-                clearcoat: 1.0, // Full liquid lacquer clearcoat
-                clearcoatRoughness: 0.04, // Mirror-crisp specular reflections on faces and bevels
-                opacity: 1.0, 
-                transparent: false,
-                emissive: new THREE.Color(0x000000),
-                emissiveIntensity: 0.0
-            });
-        }
-        
-        blockMaterial.userData.baseBlockColor = (materialColor instanceof THREE.Color) ? materialColor.clone() : new THREE.Color(materialColor);
-        blockMaterial.userData.originalColor = blockMaterial.userData.baseBlockColor.clone();
-        blockMaterial.userData.originalOpacity = 1.0;
-        blockMaterial.userData.originalEmissive = new THREE.Color(0x000000);
-        blockMaterial.userData.originalEmissiveIntensity = 0.0;
+            const matColorHex = (typeof materialColor === 'number') ? materialColor : (materialColor && materialColor.getHex ? materialColor.getHex() : 0xfbf6ed);
+            const matKey = `porcelain_${matColorHex}`;
+            if (BasePorcelainMaterialPool.has(matKey)) {
+                blockMaterial = BasePorcelainMaterialPool.get(matKey);
+                blockMaterial.color.setHex(matColorHex);
+                blockMaterial.emissive.setHex(0x000000);
+                blockMaterial.emissiveIntensity = 0.0;
+                blockMaterial.opacity = 1.0;
+                blockMaterial.transparent = false;
+                blockMaterial.visible = true;
+            } else {
+                blockMaterial = new THREE.MeshPhysicalMaterial({
+                    color: materialColor,
+                    roughness: 0.14, // Polished high-gloss porcelain
+                    metalness: 0.05,
+                    clearcoat: 1.0, // Full liquid lacquer clearcoat
+                    clearcoatRoughness: 0.04, // Mirror-crisp specular reflections on faces and bevels
+                    opacity: 1.0, 
+                    transparent: false,
+                    emissive: new THREE.Color(0x000000),
+                    emissiveIntensity: 0.0
+                });
+                blockMaterial.userData.baseBlockColor = (materialColor instanceof THREE.Color) ? materialColor.clone() : new THREE.Color(materialColor);
+                blockMaterial.userData.originalColor = blockMaterial.userData.baseBlockColor.clone();
+                blockMaterial.userData.originalOpacity = 1.0;
+                blockMaterial.userData.originalEmissive = new THREE.Color(0x000000);
+                blockMaterial.userData.originalEmissiveIntensity = 0.0;
 
-        // Apply continuous GPU 3D thermal blast shader hook
-        setupThermalMaterial(blockMaterial);
+                // Apply continuous GPU 3D thermal blast shader hook
+                setupThermalMaterial(blockMaterial);
+                BasePorcelainMaterialPool.set(matKey, blockMaterial);
+            }
+        }
 
         // Apply bomb styling: glowing hazard indicators (body remains white porcelain)
         if (this.isBomb) {
@@ -630,6 +1050,7 @@ export class Block {
         const blockMesh = new THREE.Mesh(blockGeometry, blockMaterial);
         blockMesh.castShadow = true;
         blockMesh.receiveShadow = true;
+        blockMesh.frustumCulled = false;
 
         // Position block mesh (centered at origin in group, vertically at half height)
         // For horizontal blocks: mesh bottom should be at yOffset, so position at half height
@@ -671,6 +1092,28 @@ export class Block {
 
         // Add to scene (will be moved to towerGroup later)
         scene.add(this.group);
+
+        // Performance optimization: freeze static transform matrices to eliminate recursive matrix updates for 1000+ blocks
+        this.group.matrixAutoUpdate = false;
+        this.group.updateMatrix();
+        this.group.updateMatrixWorld(true);
+
+        if (this.cubes && this.cubes[0]) {
+            this.cubes[0].matrixAutoUpdate = false;
+            this.cubes[0].updateMatrix();
+        }
+        if (this.arrow) {
+            this.arrow.matrixAutoUpdate = false;
+            this.arrow.updateMatrix();
+            this.arrow.traverse((child) => {
+                child.matrixAutoUpdate = false;
+                child.updateMatrix();
+            });
+        }
+        if (this.directionIndicators) {
+            this.directionIndicators.matrixAutoUpdate = true;
+            this.directionIndicators.updateMatrix();
+        }
     }
 
     // Update matrix for InstancedMesh
@@ -779,7 +1222,7 @@ export class Block {
         this.bombIndicatorMaterials = this.isBomb ? [] : null;
         this.bombGlowSprites = this.isBomb ? [] : null;
 
-        const colors = [0xff6b6b, 0x4ecdc4, 0xffc125];
+        const colors = INDICATOR_LENGTH_COLORS;
         const arrowColor = colors[this.length - 1] || colors[0];
         this.createArrow(this.arrowStyle, arrowColor);
         this.createDirectionIndicators(arrowColor, this.arrowStyle);
@@ -1050,8 +1493,25 @@ export class Block {
     createArrow(style = 1, blockColor = 0xffffff) {
         const arrowGroup = new THREE.Group();
 
+        // High-performance optimization: for all normal blocks, top arrow, forward dot, and backward circle
+        // are merged into a single hardware-indexed mesh in createDirectionIndicators to save 1,000 draw calls.
+        if (!this.isBomb && !this.isSpinGem) {
+            this.group.add(arrowGroup);
+            this.arrow = arrowGroup;
+            return;
+        }
+
         const createArrowGeometry = (style) => {
-            let arrowShape, extrudeSettings, arrowGeometry, arrowMaterial;
+            const colorHex = (typeof blockColor === 'number') ? blockColor : (blockColor && blockColor.getHex ? blockColor.getHex() : 0xffffff);
+            const matKey = `arrow_${style}_${colorHex}`;
+            const cachedGeom = ArrowGeometryPool.get(style);
+            const cachedMat = (!this.isBomb && !this.isCharred && !this.isTranslucent) ? IndicatorMaterialPool.get(matKey) : null;
+
+            if (cachedGeom && cachedMat) {
+                return { geometry: cachedGeom, material: cachedMat };
+            }
+
+            let arrowShape, extrudeSettings, arrowGeometry = cachedGeom, arrowMaterial;
 
             if (style === 1) {
                 arrowShape = new THREE.Shape();
@@ -1281,7 +1741,17 @@ export class Block {
                 });
             }
 
-            return { geometry: arrowGeometry, material: arrowMaterial };
+            if (!ArrowGeometryPool.has(style) && arrowGeometry) {
+                const indexedArrowGeometry = mergeVertices(arrowGeometry);
+                arrowGeometry.dispose();
+                arrowGeometry = indexedArrowGeometry;
+                ArrowGeometryPool.set(style, indexedArrowGeometry);
+            }
+            if (!this.isBomb && !this.isCharred && !this.isTranslucent && arrowMaterial) {
+                IndicatorMaterialPool.set(matKey, arrowMaterial);
+            }
+
+            return { geometry: arrowGeometry || ArrowGeometryPool.get(style), material: arrowMaterial };
         };
 
         const isXAligned = Math.abs(this.direction.x) > 0;
@@ -1319,7 +1789,7 @@ export class Block {
 
         const topArrow = new THREE.Group();
         const topArrowData = createArrowGeometry(style);
-        const maxColors = [0xff1744, 0x00e5ff, 0xff9100];
+        const maxColors = [0xc51120, 0x00e5ff, 0xff9100]; // Deep crimson red for bomb length 1
         const bombColorHex = maxColors[this.length - 1] || maxColors[0];
 
         if (this.isBomb && !this.isCharred && !this.isTranslucent) {
@@ -1343,6 +1813,7 @@ export class Block {
         // The main block body already casts; these small details multiply shadow-map cost on mobile.
         topArrowMesh.castShadow = false;
         topArrowMesh.receiveShadow = true;
+        topArrowMesh.frustumCulled = false;
 
         if (style === 1) topArrowMesh.position.z = -0.015;
         else if (style === 2) topArrowMesh.position.z = -0.0125;
@@ -1492,185 +1963,198 @@ export class Block {
             };
         }
 
-        const maxColors = [0xff1744, 0x00e5ff, 0xff9100];
+        const maxColors = [0xc51120, 0x00e5ff, 0xff9100]; // Deep crimson red for bomb length 1
         const bombColorHex = maxColors[this.length - 1] || maxColors[0];
         const finalIndicatorColor = (this.isBomb && !this.isCharred && !this.isTranslucent)
             ? bombColorHex
             : indicatorColor;
 
-        const dotGeometry = new THREE.ExtrudeGeometry(dotShape, dotExtrudeSettings);
-        const dotMaterial = new THREE.MeshStandardMaterial({
-            color: finalIndicatorColor,
-            side: THREE.DoubleSide
-        });
-        if (this.isBomb && !this.isCharred && !this.isTranslucent) {
-            dotMaterial.emissive = new THREE.Color(bombColorHex);
-            dotMaterial.emissiveIntensity = 1.0;
-            setupPulsingMaterial(dotMaterial, { isBomb: true, pulseOffset: this.pulseOffset });
+        let dotGeometry;
+        if (DotGeometryPool.has(arrowStyle)) {
+            dotGeometry = DotGeometryPool.get(arrowStyle);
         } else {
-            setupThermalMaterial(dotMaterial);
+            dotExtrudeSettings.curveSegments = 8;
+            dotGeometry = new THREE.ExtrudeGeometry(dotShape, dotExtrudeSettings);
+            DotGeometryPool.set(arrowStyle, dotGeometry);
         }
 
-        let dotMesh;
-        if (this.isSpinGem) {
-            dotMesh = this.createSpinIndicator(indicatorColor, true); // Small for dot
+        const colorHex = (typeof finalIndicatorColor === 'number') ? finalIndicatorColor : (finalIndicatorColor && finalIndicatorColor.getHex ? finalIndicatorColor.getHex() : 0xffffff);
+        const indMatKey = `ind_${colorHex}`;
+        let dotMaterial;
+        if (!this.isBomb && !this.isCharred && !this.isTranslucent && IndicatorMaterialPool.has(indMatKey)) {
+            dotMaterial = IndicatorMaterialPool.get(indMatKey);
+            dotMaterial.opacity = 1.0;
+            dotMaterial.transparent = false;
+            dotMaterial.visible = true;
+            if (dotMaterial.color && typeof dotMaterial.color.setHex === 'function') {
+                dotMaterial.color.setHex(colorHex);
+            }
+            if (dotMaterial.emissive && typeof dotMaterial.emissive.setHex === 'function') {
+                dotMaterial.emissive.setHex(colorHex);
+            }
+            dotMaterial.emissiveIntensity = 0.15;
+            dotMaterial.roughness = 0.28;
+            dotMaterial.metalness = 0.06;
+            dotMaterial.needsUpdate = true;
         } else {
-            dotMesh = new THREE.Mesh(dotGeometry, dotMaterial);
-            // Battery/perf: receive only (avoid extra shadow casters for tiny details)
-            dotMesh.castShadow = false;
-            dotMesh.receiveShadow = true;
+            dotMaterial = new THREE.MeshStandardMaterial({
+                color: finalIndicatorColor,
+                roughness: 0.28,
+                metalness: 0.06,
+                side: THREE.DoubleSide
+            });
+            if (this.isBomb && !this.isCharred && !this.isTranslucent) {
+                dotMaterial.emissive = new THREE.Color(bombColorHex);
+                dotMaterial.emissiveIntensity = 1.0;
+                setupPulsingMaterial(dotMaterial, { isBomb: true, pulseOffset: this.pulseOffset });
+            } else {
+                dotMaterial.emissive = new THREE.Color(colorHex);
+                dotMaterial.emissiveIntensity = 0.15;
+                setupThermalMaterial(dotMaterial);
+                IndicatorMaterialPool.set(indMatKey, dotMaterial);
+            }
         }
 
-        if (this.isBomb && !this.isCharred && !this.isTranslucent) {
-            const halo = this.create3DDotGlow(bombColorHex);
-            dotMesh.add(halo);
-            if (this.bombGlowSprites) this.bombGlowSprites.push(halo);
-        }
-
-        // Get Z offset to push indicators away from surface
-        const zOffset = 0.01;
-
-        // Create backward-facing outlined circle - 3D extruded
-        const circleRadius = 0.25;
-        const circleShape = new THREE.Shape();
-        circleShape.arc(0, 0, circleRadius, 0, Math.PI * 2, false);
-
-        // Create hole for outline effect
-        const hole = new THREE.Path();
-        const holeOffset = 0.06;
-        hole.arc(0, 0, circleRadius - holeOffset, 0, Math.PI * 2, true);
-        circleShape.holes.push(hole);
-
-        // Use same extrude settings as dot
-        const circleExtrudeSettings = dotExtrudeSettings;
-
-        const circleGeometry = new THREE.ExtrudeGeometry(circleShape, circleExtrudeSettings);
-        const circleMaterial = new THREE.MeshStandardMaterial({
-            color: finalIndicatorColor,
-            side: THREE.DoubleSide
-        });
-        if (this.isBomb && !this.isCharred && !this.isTranslucent) {
-            circleMaterial.emissive = new THREE.Color(bombColorHex);
-            circleMaterial.emissiveIntensity = 1.0;
-            setupPulsingMaterial(circleMaterial, { isBomb: true, pulseOffset: this.pulseOffset });
+        if (!this.isBomb && !this.isSpinGem) {
+            const mergedGeometry = getOrCreateMergedIndicatorGeometry(
+                arrowStyle,
+                this.length,
+                this.isVertical,
+                this.direction.x,
+                this.direction.z,
+                this.cubeSize,
+                dotExtrudeSettings
+            );
+            const indicatorsMesh = new THREE.Mesh(mergedGeometry, dotMaterial);
+            indicatorsMesh.castShadow = false;
+            indicatorsMesh.receiveShadow = true;
+            indicatorsMesh.frustumCulled = false;
+            indicatorsGroup.add(indicatorsMesh);
         } else {
-            setupThermalMaterial(circleMaterial);
-        }
-
-        let circleMesh;
-        if (this.isSpinGem) {
-            circleMesh = this.createSpinIndicator(indicatorColor);
-            // Opposite rotation for the other face? No, let's keep it same.
-        } else {
-            circleMesh = new THREE.Mesh(circleGeometry, circleMaterial);
-            // Battery/perf: receive only (avoid extra shadow casters for tiny details)
-            circleMesh.castShadow = false;
-            circleMesh.receiveShadow = true;
-        }
-
-        if (this.isBomb && !this.isCharred && !this.isTranslucent) {
-            const halo = this.create3DCircleGlow(bombColorHex);
-            circleMesh.add(halo);
-            if (this.bombGlowSprites) this.bombGlowSprites.push(halo);
-        }
-
-        // Apply Z offset to make the circle stand out from the surface
-        circleMesh.position.z = zOffset;
-
-        // Position indicators based on block orientation and direction
-        // ShapeGeometry creates shapes in XY plane (Z=0), so we need to rotate them to align with surfaces
-        // For surfaces facing X: rotate around Y to face X, then rotate around Z to align with surface
-        // For surfaces facing Z: rotate around Y to face Z, then rotate around X to align with surface
-        // For surfaces facing Y: already in correct plane, just rotate around Z
-
-        if (this.isVertical) {
-            // Vertical block: forward/backward are side faces
-            // Forward face is in the direction of this.direction
-            // Position dot on forward face
-            if (this.direction.x > 0) {
-                // East face (+X) - shape needs to be in YZ plane facing +X
-                dotMesh.position.set(blockWidth / 2 + surfaceOffset, blockHeight / 2, 0);
-                dotMesh.rotation.set(0, -Math.PI / 2, 0); // Rotate to YZ plane, face +X
-            } else if (this.direction.x < 0) {
-                // West face (-X) - shape needs to be in YZ plane facing -X
-                dotMesh.position.set(-blockWidth / 2 - surfaceOffset, blockHeight / 2, 0);
-                dotMesh.rotation.set(0, Math.PI / 2, 0); // Rotate to YZ plane, face -X
-            } else if (this.direction.z > 0) {
-                // South face (+Z) - shape needs to be in XY plane facing +Z
-                dotMesh.position.set(0, blockHeight / 2, blockDepth / 2 + surfaceOffset);
-                dotMesh.rotation.set(0, Math.PI, 0); // Rotate to face +Z
-            } else if (this.direction.z < 0) {
-                // North face (-Z) - shape needs to be in XY plane facing -Z
-                dotMesh.position.set(0, blockHeight / 2, -blockDepth / 2 - surfaceOffset);
-                dotMesh.rotation.set(0, 0, 0); // Already facing -Z (default)
+            let dotMesh;
+            if (this.isSpinGem) {
+                dotMesh = this.createSpinIndicator(indicatorColor, true); // Small for dot
+            } else {
+                dotMesh = new THREE.Mesh(dotGeometry, dotMaterial);
+                // Battery/perf: receive only (avoid extra shadow casters for tiny details)
+                dotMesh.castShadow = false;
+                dotMesh.receiveShadow = true;
             }
 
-            // Position circle on backward face (opposite direction)
-            if (this.direction.x > 0) {
-                // Backward is West face (-X)
-                circleMesh.position.set(-blockWidth / 2 - surfaceOffset, blockHeight / 2, 0);
-                circleMesh.rotation.set(0, Math.PI / 2, 0);
-            } else if (this.direction.x < 0) {
-                // Backward is East face (+X)
-                circleMesh.position.set(blockWidth / 2 + surfaceOffset, blockHeight / 2, 0);
-                circleMesh.rotation.set(0, -Math.PI / 2, 0);
-            } else if (this.direction.z > 0) {
-                // Backward is North face (-Z)
-                circleMesh.position.set(0, blockHeight / 2, -blockDepth / 2 - surfaceOffset);
-                circleMesh.rotation.set(0, 0, 0);
-            } else if (this.direction.z < 0) {
-                // Backward is South face (+Z)
-                circleMesh.position.set(0, blockHeight / 2, blockDepth / 2 + surfaceOffset);
-                circleMesh.rotation.set(0, Math.PI, 0);
+            if (this.isBomb && !this.isCharred && !this.isTranslucent) {
+                const halo = this.create3DDotGlow(bombColorHex);
+                dotMesh.add(halo);
+                if (this.bombGlowSprites) this.bombGlowSprites.push(halo);
             }
-        } else {
-            // Horizontal block - indicators go on end faces (forward/backward)
-            if (isXAligned) {
-                // Block extends in X direction, indicators on X end faces (YZ planes)
+
+            // Get Z offset to push indicators away from surface
+            const zOffset = 0.01;
+
+            // Create backward-facing outlined circle - 3D extruded
+            const circleRadius = 0.25;
+            const circleShape = new THREE.Shape();
+            circleShape.arc(0, 0, circleRadius, 0, Math.PI * 2, false);
+
+            // Create hole for outline effect
+            const hole = new THREE.Path();
+            const holeOffset = 0.06;
+            hole.arc(0, 0, circleRadius - holeOffset, 0, Math.PI * 2, true);
+            circleShape.holes.push(hole);
+
+            // Use same extrude settings as dot
+            const circleExtrudeSettings = dotExtrudeSettings;
+
+            let circleGeometry;
+            if (CircleGeometryPool.has(arrowStyle)) {
+                circleGeometry = CircleGeometryPool.get(arrowStyle);
+            } else {
+                circleExtrudeSettings.curveSegments = 8;
+                circleGeometry = new THREE.ExtrudeGeometry(circleShape, circleExtrudeSettings);
+                CircleGeometryPool.set(arrowStyle, circleGeometry);
+            }
+
+            const circleMaterial = dotMaterial;
+
+            let circleMesh;
+            if (this.isSpinGem) {
+                circleMesh = this.createSpinIndicator(indicatorColor);
+            } else {
+                circleMesh = new THREE.Mesh(circleGeometry, circleMaterial);
+                circleMesh.castShadow = false;
+                circleMesh.receiveShadow = true;
+            }
+
+            if (this.isBomb && !this.isCharred && !this.isTranslucent) {
+                const halo = this.create3DCircleGlow(bombColorHex);
+                circleMesh.add(halo);
+                if (this.bombGlowSprites) this.bombGlowSprites.push(halo);
+            }
+
+            // Apply Z offset to make the circle stand out from the surface
+            circleMesh.position.z = zOffset;
+
+            if (this.isVertical) {
                 if (this.direction.x > 0) {
-                    // Forward face is East (+X) - dot on +X end face
                     dotMesh.position.set(blockWidth / 2 + surfaceOffset, blockHeight / 2, 0);
-                    dotMesh.rotation.set(0, -Math.PI / 2, 0); // YZ plane, face +X
-
-                    // Backward face is West (-X) - circle on -X end face
+                    dotMesh.rotation.set(0, -Math.PI / 2, 0);
                     circleMesh.position.set(-blockWidth / 2 - surfaceOffset, blockHeight / 2, 0);
-                    circleMesh.rotation.set(0, Math.PI / 2, 0); // YZ plane, face -X
-                } else {
-                    // Forward face is West (-X) - dot on -X end face
+                    circleMesh.rotation.set(0, Math.PI / 2, 0);
+                } else if (this.direction.x < 0) {
                     dotMesh.position.set(-blockWidth / 2 - surfaceOffset, blockHeight / 2, 0);
-                    dotMesh.rotation.set(0, Math.PI / 2, 0); // YZ plane, face -X
-
-                    // Backward face is East (+X) - circle on +X end face
+                    dotMesh.rotation.set(0, Math.PI / 2, 0);
                     circleMesh.position.set(blockWidth / 2 + surfaceOffset, blockHeight / 2, 0);
-                    circleMesh.rotation.set(0, -Math.PI / 2, 0); // YZ plane, face +X
+                    circleMesh.rotation.set(0, -Math.PI / 2, 0);
+                } else if (this.direction.z > 0) {
+                    dotMesh.position.set(0, blockHeight / 2, blockDepth / 2 + surfaceOffset);
+                    dotMesh.rotation.set(0, Math.PI, 0);
+                    circleMesh.position.set(0, blockHeight / 2, -blockDepth / 2 - surfaceOffset);
+                    circleMesh.rotation.set(0, 0, 0);
+                } else if (this.direction.z < 0) {
+                    dotMesh.position.set(0, blockHeight / 2, -blockDepth / 2 - surfaceOffset);
+                    dotMesh.rotation.set(0, 0, 0);
+                    circleMesh.position.set(0, blockHeight / 2, blockDepth / 2 + surfaceOffset);
+                    circleMesh.rotation.set(0, Math.PI, 0);
                 }
             } else {
-                // Block extends in Z direction, indicators on Z end faces (XY planes)
-                if (this.direction.z > 0) {
-                    // Forward face is South (+Z) - dot on +Z end face
-                    dotMesh.position.set(0, blockHeight / 2, blockDepth / 2 + surfaceOffset);
-                    dotMesh.rotation.set(0, Math.PI, 0); // XY plane, face +Z
-
-                    // Backward face is North (-Z) - circle on -Z end face
-                    circleMesh.position.set(0, blockHeight / 2, -blockDepth / 2 - surfaceOffset);
-                    circleMesh.rotation.set(0, 0, 0); // XY plane, face -Z
+                if (isXAligned) {
+                    if (this.direction.x > 0) {
+                        dotMesh.position.set(blockWidth / 2 + surfaceOffset, blockHeight / 2, 0);
+                        dotMesh.rotation.set(0, -Math.PI / 2, 0);
+                        circleMesh.position.set(-blockWidth / 2 - surfaceOffset, blockHeight / 2, 0);
+                        circleMesh.rotation.set(0, Math.PI / 2, 0);
+                    } else {
+                        dotMesh.position.set(-blockWidth / 2 - surfaceOffset, blockHeight / 2, 0);
+                        dotMesh.rotation.set(0, Math.PI / 2, 0);
+                        circleMesh.position.set(blockWidth / 2 + surfaceOffset, blockHeight / 2, 0);
+                        circleMesh.rotation.set(0, -Math.PI / 2, 0);
+                    }
                 } else {
-                    // Forward face is North (-Z) - dot on -Z end face
-                    dotMesh.position.set(0, blockHeight / 2, -blockDepth / 2 - surfaceOffset);
-                    dotMesh.rotation.set(0, 0, 0); // XY plane, face -Z
-
-                    // Backward face is South (+Z) - circle on +Z end face
-                    circleMesh.position.set(0, blockHeight / 2, blockDepth / 2 + surfaceOffset);
-                    circleMesh.rotation.set(0, Math.PI, 0); // XY plane, face +Z
+                    if (this.direction.z > 0) {
+                        dotMesh.position.set(0, blockHeight / 2, blockDepth / 2 + surfaceOffset);
+                        dotMesh.rotation.set(0, Math.PI, 0);
+                        circleMesh.position.set(0, blockHeight / 2, -blockDepth / 2 - surfaceOffset);
+                        circleMesh.rotation.set(0, 0, 0);
+                    } else {
+                        dotMesh.position.set(0, blockHeight / 2, -blockDepth / 2 - surfaceOffset);
+                        dotMesh.rotation.set(0, 0, 0);
+                        circleMesh.position.set(0, blockHeight / 2, blockDepth / 2 + surfaceOffset);
+                        circleMesh.rotation.set(0, Math.PI, 0);
+                    }
                 }
             }
-        }
 
-        indicatorsGroup.add(dotMesh);
-        indicatorsGroup.add(circleMesh);
+            dotMesh.frustumCulled = false;
+            circleMesh.frustumCulled = false;
+            indicatorsGroup.add(dotMesh);
+            indicatorsGroup.add(circleMesh);
+        }
 
         this.group.add(indicatorsGroup);
         this.directionIndicators = indicatorsGroup;
+        indicatorsGroup.matrixAutoUpdate = true;
+        indicatorsGroup.updateMatrix();
+        this.group.updateMatrix();
+        this.group.updateMatrixWorld(true);
 
         // Debug: Verify indicators are created
         if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
@@ -1689,6 +2173,13 @@ export class Block {
 
 
         if (this.originalMaterial) {
+            for (const pooled of BasePorcelainMaterialPool.values()) {
+                if (pooled === this.originalMaterial) {
+                    this.originalMaterial = this.originalMaterial.clone();
+                    if (this.cubes && this.cubes[0]) this.cubes[0].material = this.originalMaterial;
+                    break;
+                }
+            }
             this.originalMaterial.color.setHex(materialColor);
             // Glazed porcelain clearcoat material (v8.31.2)
             this.originalMaterial.roughness = 0.14;
@@ -1698,7 +2189,7 @@ export class Block {
         }
 
         // Update arrow color - ALWAYS use length-based color (for visibility), ignore passed arrowColor
-        const colors = [0xff6b6b, 0x4ecdc4, 0xffc125]; // Red, Teal, Golden Yellow
+        const colors = INDICATOR_LENGTH_COLORS;
         const finalArrowColor = colors[this.length - 1] || colors[0];
         // Arrow structure: this.arrow (Group) -> topArrow (Group) -> topArrowMesh (Mesh with material)
         if (this.arrow && this.arrow.children.length > 0) {
@@ -1706,11 +2197,10 @@ export class Block {
             if (topArrow && topArrow.children && topArrow.children.length > 0) {
                 const topArrowMesh = topArrow.children[0];
                 if (topArrowMesh && topArrowMesh.material) {
-                    // Update arrow color ONLY - do not touch emissive properties
-                    // This prevents arrows from becoming luminescent when switching block colors
                     topArrowMesh.material.color.setHex(finalArrowColor);
-                    // Do NOT update emissive color or intensity - leave them as originally set
-                    // The emissive properties should remain unchanged from initial creation
+                    if (topArrowMesh.material.emissive && !this.isBomb) {
+                        topArrowMesh.material.emissive.setHex(finalArrowColor);
+                    }
                 }
             }
         }
@@ -1718,14 +2208,19 @@ export class Block {
         // Use full arrow color for indicators
         const indicatorColor = finalArrowColor;
 
-        if (this.directionIndicators && this.directionIndicators.children.length >= 2) {
-            const dotMesh = this.directionIndicators.children[0];
-            const circleMesh = this.directionIndicators.children[1];
-            if (dotMesh && dotMesh.material) {
-                dotMesh.material.color.setHex(indicatorColor);
-            }
-            if (circleMesh && circleMesh.material) {
-                circleMesh.material.color.setHex(indicatorColor);
+        if (this.directionIndicators && this.directionIndicators.children.length > 0) {
+            for (const child of this.directionIndicators.children) {
+                if (child && child.material) {
+                    if (isPooledMaterial(child.material)) {
+                        child.material = child.material.clone();
+                    }
+                    if (child.material.color) {
+                        child.material.color.setHex(indicatorColor);
+                    }
+                    if (child.material.emissive && !this.isBomb) {
+                        child.material.emissive.setHex(indicatorColor);
+                    }
+                }
             }
         }
     }
@@ -1807,7 +2302,7 @@ export class Block {
         }
 
         // Use length-based color for tint (same as arrow color) - define early so it's available for fill mesh
-        const colors = [0xff6b6b, 0x4ecdc4, 0xffc125]; // Red, Teal, Golden Yellow
+        const colors = INDICATOR_LENGTH_COLORS; // Red, Cyan, Golden Yellow
         const tintColorHex = colors[this.length - 1] || colors[0];
         const tintColorObj = new THREE.Color(tintColorHex);
 
@@ -2118,7 +2613,7 @@ export class Block {
         this.updateCoolingIndicatorState();
 
         // Get length-based tint color for particle burst and flash
-        const colors = [0xff6b6b, 0x4ecdc4, 0xffc125]; // Red, Teal, Golden Yellow
+        const colors = INDICATOR_LENGTH_COLORS; // Red, Cyan, Golden Yellow
         const tintColorHex = colors[this.length - 1] || colors[0];
         const tintColorObj = new THREE.Color(tintColorHex);
 
@@ -2450,7 +2945,7 @@ export class Block {
         this.lastFlashTime = performance.now();
 
         // Get length-based tint color for flash
-        const colors = [0xff6b6b, 0x4ecdc4, 0xffc125]; // Red, Teal, Golden Yellow
+        const colors = INDICATOR_LENGTH_COLORS; // Red, Cyan, Golden Yellow
         const tintColorHex = colors[this.length - 1] || colors[0];
         this.flashTintColor = new THREE.Color(tintColorHex);
 
@@ -2606,42 +3101,59 @@ export class Block {
         animate();
     }
 
-    // Update arrow rotation to match current direction
+    // Update arrow rotation to match current direction without destroying meshes
     updateArrowRotation() {
-        if (this.arrow && this.arrow.children.length > 0) {
+        if (!this.direction) return;
+
+        if (this._indicatorBaseAngle === undefined) {
+            this._indicatorBaseAngle = Math.atan2(this.direction.x, this.direction.z);
+        }
+
+        const currentAngle = Math.atan2(this.direction.x, this.direction.z);
+        let angleDiff = currentAngle - this._indicatorBaseAngle;
+        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+
+        // Ensure indicators exist
+        if (!this.directionIndicators) {
+            const colors = INDICATOR_LENGTH_COLORS;
+            const arrowColor = colors[this.length - 1] || colors[0];
+            this.createDirectionIndicators(arrowColor, this.arrowStyle);
+        }
+
+        if (this.directionIndicators) {
+            this.directionIndicators.rotation.y = angleDiff;
+            this.directionIndicators.updateMatrix();
+        }
+
+        if (this.arrow && this.arrow.children && this.arrow.children.length > 0) {
             const topArrow = this.arrow.children[0];
             if (topArrow) {
-                topArrow.rotation.z = Math.atan2(this.direction.x, this.direction.z) + Math.PI;
+                topArrow.rotation.z = currentAngle + Math.PI;
+                topArrow.updateMatrix();
             }
         }
 
-        // Update direction indicators position when direction changes
-        if (this.directionIndicators) {
-            // Remove old indicators and recreate with new positions
-            this.group.remove(this.directionIndicators);
-            // Use arrow color (length-based colored version) instead of block color
-            // This preserves the colored dots/circles that match the arrow
-            const colors = [0xff6b6b, 0x4ecdc4, 0xffc125]; // Red, Teal, Golden Yellow
-            const arrowColor = colors[this.length - 1] || colors[0];
-            this.createDirectionIndicators(arrowColor, this.arrowStyle);
+        this.group.updateMatrix();
+        this.group.updateMatrixWorld(true);
+        this.isDirty = true;
+        if (typeof window !== 'undefined' && typeof window.markNeedsRender === 'function') {
+            window.markNeedsRender(500);
         }
     }
 
     disposeObject3DResources(object3D) {
         if (!object3D) return;
         object3D.traverse((child) => {
-            if (child.geometry && typeof child.geometry.dispose === 'function') {
+            if (child.geometry && !isPooledGeometry(child.geometry) && typeof child.geometry.dispose === 'function') {
                 child.geometry.dispose();
             }
             if (child.material) {
-                if (Array.isArray(child.material)) {
-                    for (const material of child.material) {
-                        if (material && typeof material.dispose === 'function') {
-                            material.dispose();
-                        }
+                const mats = Array.isArray(child.material) ? child.material : [child.material];
+                for (const material of mats) {
+                    if (material && !isPooledMaterial(material) && typeof material.dispose === 'function') {
+                        material.dispose();
                     }
-                } else if (typeof child.material.dispose === 'function') {
-                    child.material.dispose();
                 }
             }
         });
@@ -2750,44 +3262,49 @@ export class Block {
             let targetEmissiveIntensity = 0.3;
 
             if (this.isCharred) {
-                // Darker, ashed, desaturated tones that preserve the original color identity (Red, Teal, Yellow)
+                // Balanced dark charcoal ashed tones (visible color identity under soot)
                 if (this.isBomb) {
-                    const ashedBombColors = [0x8C2B3E, 0x256B7A, 0x8C601E];
-                    const ashedBombEmissive = [0x3D101A, 0x0E2E38, 0x3D280A];
+                    const ashedBombColors = [0x852a34, 0x225d6b, 0x7e551e];
+                    const ashedBombEmissive = [0x3c1218, 0x122e36, 0x3d280b];
                     const idx = Math.min(this.length - 1, 2);
                     targetColorHex = ashedBombColors[idx] || ashedBombColors[0];
                     targetEmissiveHex = ashedBombEmissive[idx] || ashedBombEmissive[0];
-                    targetEmissiveIntensity = 0.16;
+                    targetEmissiveIntensity = 0.18;
                 } else {
-                    // Length 1: Ashed brick-red, Length 2: Ashed slate-teal, Length 3+: Ashed ochre-yellow
-                    const ashedColors = [0x8C4242, 0x38736E, 0x8C742E];
-                    const ashedEmissive = [0x3D1818, 0x143330, 0x3B2E10];
+                    // Length 1: Charred crimson, Length 2: Charred cyan-slate, Length 3+: Charred amber-ochre
+                    const ashedColors = [0x852a34, 0x225d6b, 0x7e551e];
+                    const ashedEmissive = [0x3c1218, 0x122e36, 0x3d280b];
                     const idx = Math.min(this.length - 1, 2);
                     targetColorHex = ashedColors[idx] || ashedColors[0];
                     targetEmissiveHex = ashedEmissive[idx] || ashedEmissive[0];
-                    targetEmissiveIntensity = 0.15;
+                    targetEmissiveIntensity = 0.18;
                 }
             } else if (this.isBomb) {
-                const maxColors = [0xff1744, 0x00e5ff, 0xff9100];
+                const maxColors = [0xc51120, 0x00e5ff, 0xff9100];
                 targetColorHex = maxColors[this.length - 1] || maxColors[0];
                 targetEmissiveHex = targetColorHex;
                 targetEmissiveIntensity = 1.0;
             } else {
-                const colors = [0xff6b6b, 0x4ecdc4, 0xffc125];
+                const colors = INDICATOR_LENGTH_COLORS;
                 targetColorHex = colors[this.length - 1] || colors[0];
-                targetEmissiveHex = 0x000000;
-                targetEmissiveIntensity = 0.0;
+                targetEmissiveHex = targetColorHex;
+                targetEmissiveIntensity = 0.15;
             }
 
+            const colors = INDICATOR_LENGTH_COLORS;
+            const defaultColor = colors[this.length - 1] || colors[0];
+            const colorHex = (typeof defaultColor === 'number') ? defaultColor : (defaultColor && defaultColor.getHex ? defaultColor.getHex() : 0xffffff);
+            const indMatKey = `ind_${colorHex}`;
+
             // Opacity & transparency for indicators:
-            // When cooling (isCharred): 80% translucent (20% opacity = 0.20), transparent = true
+            // When cooling (isCharred): 65% translucent (35% opacity = 0.35), transparent = true
             // When restored: opaque (100% opacity = 1.0), transparent = false
-            const targetOpacity = this.isCharred ? 0.20 : 1.0;
+            const targetOpacity = this.isCharred ? 0.35 : 1.0;
             const targetTransparent = this.isCharred ? true : false;
 
             // Apply color & emissive to arrow meshes
-            const arrowEmissiveHex = (this.isBomb && !this.isCharred) ? targetEmissiveHex : (this.isBomb ? targetEmissiveHex : 0x000000);
-            const arrowEmissiveIntensity = (this.isBomb && !this.isCharred) ? targetEmissiveIntensity : (this.isBomb ? 0.35 : (this.isCharred ? 0.05 : 0.0));
+            const arrowEmissiveHex = (this.isBomb && !this.isCharred) ? targetEmissiveHex : (this.isBomb ? targetEmissiveHex : (this.isCharred ? 0x222222 : targetColorHex));
+            const arrowEmissiveIntensity = (this.isBomb && !this.isCharred) ? targetEmissiveIntensity : (this.isBomb ? 0.35 : (this.isCharred ? 0.08 : 0.15));
 
             if (this.arrow) {
                 this.arrow.traverse((child) => {
@@ -2798,21 +3315,52 @@ export class Block {
                         }
                     }
                     if (child.isMesh && child.material && !child.isOrganicGlow && !(child.parent && child.parent.isOrganicGlow)) {
-                        const mats = Array.isArray(child.material) ? child.material : [child.material];
-                        mats.forEach(mat => {
-                            if (mat && mat.color && typeof mat.color.setHex === 'function') {
-                                mat.color.setHex(targetColorHex);
+                        if (this.isCharred) {
+                            if (isPooledMaterial(child.material)) {
+                                child.material = child.material.clone();
                             }
-                            if (mat && mat.emissive && typeof mat.emissive.setHex === 'function') {
-                                mat.emissive.setHex(arrowEmissiveHex);
+                            const mats = Array.isArray(child.material) ? child.material : [child.material];
+                            mats.forEach(mat => {
+                                if (mat && mat.color && typeof mat.color.setHex === 'function') {
+                                    mat.color.setHex(targetColorHex);
+                                }
+                                if (mat && mat.emissive && typeof mat.emissive.setHex === 'function') {
+                                    mat.emissive.setHex(arrowEmissiveHex);
+                                }
+                                if (mat && mat.emissiveIntensity !== undefined) {
+                                    mat.emissiveIntensity = arrowEmissiveIntensity;
+                                }
+                                mat.transparent = targetTransparent;
+                                mat.opacity = targetOpacity;
+                                mat.needsUpdate = true;
+                            });
+                        } else if (!this.isBomb && !this.isTranslucent && IndicatorMaterialPool.has(indMatKey)) {
+                            const pooledMat = IndicatorMaterialPool.get(indMatKey);
+                            const oldMat = child.material;
+                            child.material = pooledMat;
+                            if (oldMat && oldMat !== pooledMat && !isPooledMaterial(oldMat) && typeof oldMat.dispose === 'function') {
+                                oldMat.dispose();
                             }
-                            if (mat && mat.emissiveIntensity !== undefined) {
-                                mat.emissiveIntensity = arrowEmissiveIntensity;
+                        } else {
+                            if (isPooledMaterial(child.material)) {
+                                child.material = child.material.clone();
                             }
-                            mat.transparent = targetTransparent;
-                            mat.opacity = targetOpacity;
-                            mat.needsUpdate = true;
-                        });
+                            const mats = Array.isArray(child.material) ? child.material : [child.material];
+                            mats.forEach(mat => {
+                                if (mat && mat.color && typeof mat.color.setHex === 'function') {
+                                    mat.color.setHex(targetColorHex);
+                                }
+                                if (mat && mat.emissive && typeof mat.emissive.setHex === 'function') {
+                                    mat.emissive.setHex(arrowEmissiveHex);
+                                }
+                                if (mat && mat.emissiveIntensity !== undefined) {
+                                    mat.emissiveIntensity = arrowEmissiveIntensity;
+                                }
+                                mat.transparent = targetTransparent;
+                                mat.opacity = targetOpacity;
+                                mat.needsUpdate = true;
+                            });
+                        }
                     }
                 });
             }
@@ -2830,21 +3378,52 @@ export class Block {
                         }
                     }
                     if (child.isMesh && child.material && !child.isOrganicGlow && !(child.parent && child.parent.isOrganicGlow)) {
-                        const mats = Array.isArray(child.material) ? child.material : [child.material];
-                        mats.forEach(mat => {
-                            if (mat && mat.color && typeof mat.color.setHex === 'function') {
-                                mat.color.setHex(targetColorHex);
+                        if (this.isCharred) {
+                            if (isPooledMaterial(child.material)) {
+                                child.material = child.material.clone();
                             }
-                            if (mat && mat.emissive && typeof mat.emissive.setHex === 'function') {
-                                mat.emissive.setHex(indicatorEmissiveHex);
+                            const mats = Array.isArray(child.material) ? child.material : [child.material];
+                            mats.forEach(mat => {
+                                if (mat && mat.color && typeof mat.color.setHex === 'function') {
+                                    mat.color.setHex(targetColorHex);
+                                }
+                                if (mat && mat.emissive && typeof mat.emissive.setHex === 'function') {
+                                    mat.emissive.setHex(indicatorEmissiveHex);
+                                }
+                                if (mat && mat.emissiveIntensity !== undefined) {
+                                    mat.emissiveIntensity = indicatorEmissiveIntensity;
+                                }
+                                mat.transparent = targetTransparent;
+                                mat.opacity = targetOpacity;
+                                mat.needsUpdate = true;
+                            });
+                        } else if (!this.isBomb && !this.isTranslucent && IndicatorMaterialPool.has(indMatKey)) {
+                            const pooledMat = IndicatorMaterialPool.get(indMatKey);
+                            const oldMat = child.material;
+                            child.material = pooledMat;
+                            if (oldMat && oldMat !== pooledMat && !isPooledMaterial(oldMat) && typeof oldMat.dispose === 'function') {
+                                oldMat.dispose();
                             }
-                            if (mat && mat.emissiveIntensity !== undefined) {
-                                mat.emissiveIntensity = indicatorEmissiveIntensity;
+                        } else {
+                            if (isPooledMaterial(child.material)) {
+                                child.material = child.material.clone();
                             }
-                            mat.transparent = targetTransparent;
-                            mat.opacity = targetOpacity;
-                            mat.needsUpdate = true;
-                        });
+                            const mats = Array.isArray(child.material) ? child.material : [child.material];
+                            mats.forEach(mat => {
+                                if (mat && mat.color && typeof mat.color.setHex === 'function') {
+                                    mat.color.setHex(targetColorHex);
+                                }
+                                if (mat && mat.emissive && typeof mat.emissive.setHex === 'function') {
+                                    mat.emissive.setHex(indicatorEmissiveHex);
+                                }
+                                if (mat && mat.emissiveIntensity !== undefined) {
+                                    mat.emissiveIntensity = indicatorEmissiveIntensity;
+                                }
+                                mat.transparent = targetTransparent;
+                                mat.opacity = targetOpacity;
+                                mat.needsUpdate = true;
+                            });
+                        }
                     }
                 });
             }
@@ -2870,21 +3449,25 @@ export class Block {
     /**
      * Get the exact resting emissive color & intensity for this block based on its true state.
      */
+    /**
+     * Get the exact resting emissive color & intensity for this block based on its true state.
+     */
     getRestingEmissive() {
         if (this._isFrostedClusterState || this.isTranslucent) {
             return {
-                color: new THREE.Color(0x7dd3fc),
-                intensity: 0.20
+                color: new THREE.Color(FROSTY_CONFIG.blockEmissive || 0x309ccf),
+                intensity: FROSTY_CONFIG.blockEmissiveIntensity || 0.20
             };
         }
         if (this.isLocked) {
-            const colors = [0xff6b6b, 0x4ecdc4, 0xffc125];
+            const colors = INDICATOR_LENGTH_COLORS;
             const tintColorHex = colors[this.length - 1] || colors[0];
             return {
                 color: new THREE.Color(tintColorHex),
-                intensity: 0.20
+                intensity: 0.22
             };
         }
+        // Normal porcelain blocks must ALWAYS have zero emissive to preserve pure creamy white porcelain
         return {
             color: new THREE.Color(0x000000),
             intensity: 0.0
@@ -2892,150 +3475,145 @@ export class Block {
     }
 
     /**
-     * Flash the block and its indicators with a luminous emissive pulse when spinning.
+     * Flash highlight stub: Block porcelain body material must NEVER be mutated during spin to prevent color tinting
      */
     flashHighlight(duration = 320, flashColorHex = 0xffffff, peakIntensity = 0.6) {
-        if (!this.cubes || !this.cubes[0] || !this.cubes[0].material) return;
-        const mat = this.cubes[0].material;
-
         if (this._flashAnimId) {
             cancelAnimationFrame(this._flashAnimId);
             this._flashAnimId = null;
         }
-
-        const resting = this.getRestingEmissive();
-        const origEmissive = resting.color.clone();
-        const origIntensity = resting.intensity;
-
-        const flashColor = new THREE.Color(flashColorHex);
-        const startTime = performance.now();
-        const attackDuration = duration * 0.25; // Snappy attack
-
-        if (typeof window !== 'undefined' && typeof window.markNeedsRender === 'function') {
-            window.markNeedsRender(duration + 200);
+        // Ensure resting emissive is strictly enforced
+        if (this.cubes && this.cubes[0] && this.cubes[0].material && !this.isLocked && !this.isTranslucent) {
+            this.cubes[0].material.emissive.setHex(0x000000);
+            this.cubes[0].material.emissiveIntensity = 0.0;
         }
-
-        const animateFlash = () => {
-            const now = performance.now();
-            const elapsed = now - startTime;
-            const progress = Math.min(elapsed / duration, 1.0);
-
-            if (progress < 1.0) {
-                let currentIntensity;
-                if (elapsed < attackDuration) {
-                    const attackProgress = elapsed / attackDuration;
-                    currentIntensity = origIntensity + (peakIntensity - origIntensity) * attackProgress;
-                    mat.emissive.copy(flashColor);
-                } else {
-                    const decayProgress = (elapsed - attackDuration) / (duration - attackDuration);
-                    const easeDecay = 1 - Math.pow(decayProgress, 0.4);
-                    currentIntensity = origIntensity + (peakIntensity - origIntensity) * easeDecay;
-                    mat.emissive.lerpColors(flashColor, origEmissive, decayProgress);
-                }
-                mat.emissiveIntensity = currentIntensity;
-                this.isDirty = true;
-                this._flashAnimId = requestAnimationFrame(animateFlash);
-            } else {
-                const currentResting = this.getRestingEmissive();
-                mat.emissive.copy(currentResting.color);
-                mat.emissiveIntensity = currentResting.intensity;
-                this.isDirty = true;
-                this._flashAnimId = null;
-            }
-        };
-
-        this._flashAnimId = requestAnimationFrame(animateFlash);
     }
 
     /**
      * Animate arrow directly to a target direction with a fast snap + magnetic needle oscillation.
      * Used for both temporary spin and reverting to original direction.
      */
-    animateToDirection(targetDirection, duration = 450, callback = null) {
+    /**
+     * Animate arrow and direction indicators to a target direction using smooth transform rotation.
+     * Never destroys or recreates meshes, preventing missing indicator bugs.
+     */
+    animateToDirection(targetDirection, duration = 320, callback = null) {
         if (!targetDirection) {
             if (callback) callback();
             return;
         }
 
-        // Trigger visual flash pulse on the block layer
-        this.flashHighlight(duration);
+        const normTargetX = targetDirection.x === 0 ? 0 : (targetDirection.x > 0 ? 1 : -1);
+        const normTargetZ = targetDirection.z === 0 ? 0 : (targetDirection.z > 0 ? 1 : -1);
 
-        // Horizontal multi-cell blocks can only point in their axis
+        // Cancel any active spin animation on this block
+        if (this._spinAnimId) {
+            cancelAnimationFrame(this._spinAnimId);
+            this._spinAnimId = null;
+        }
+
+        // Strictly preserve clean creamy white porcelain body during spin (never mutate to indicator color)
+        if (this.cubes && this.cubes[0] && this.cubes[0].material && !this.isLocked && !this.isTranslucent) {
+            this.cubes[0].material.emissive.setHex(0x000000);
+            this.cubes[0].material.emissiveIntensity = 0.0;
+            const baseColor = asThreeColor(
+                this.cubes[0].material.userData?.baseBlockColor || this.cubes[0].material.userData?.originalColor || this.originalColor,
+                0xfbf6ed
+            );
+            this.cubes[0].material.color.copy(baseColor);
+        }
+
+        // Ensure base reference angle is defined
+        if (this._indicatorBaseAngle === undefined) {
+            this._indicatorBaseAngle = Math.atan2(this.direction.x, this.direction.z);
+        }
+
+        const targetGlobalAngle = Math.atan2(normTargetX, normTargetZ);
+        let targetRelAngle = targetGlobalAngle - this._indicatorBaseAngle;
+        while (targetRelAngle > Math.PI) targetRelAngle -= Math.PI * 2;
+        while (targetRelAngle < -Math.PI) targetRelAngle += Math.PI * 2;
+
         const isHorizontalMultiCell = !this.isVertical && this.length > 1;
+        const currentRotY = this.directionIndicators ? this.directionIndicators.rotation.y : 0;
 
-        if (!this.arrow || !this.arrow.children || this.arrow.children.length === 0) {
-            this.direction = { x: targetDirection.x, z: targetDirection.z };
-            this.updateArrowRotation();
-            if (callback) callback();
-            return;
-        }
-
-        const topArrow = this.arrow.children[0];
-        if (!topArrow) {
-            this.direction = { x: targetDirection.x, z: targetDirection.z };
-            this.updateArrowRotation();
-            if (callback) callback();
-            return;
-        }
-
-        // Calculate start and destination angles (normalized shortest path, no full 360 revolutions)
-        const startAngle = topArrow.rotation.z;
-        const targetAngle = Math.atan2(targetDirection.x, targetDirection.z) + Math.PI;
-
-        let angleDiff = targetAngle - startAngle;
+        let angleDiff = targetRelAngle - currentRotY;
         while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
         while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
 
         if (isHorizontalMultiCell && Math.abs(angleDiff) < 0.01) {
-            // If horizontal multi-cell is told to flip 180 deg
-            angleDiff = Math.PI;
+            angleDiff = Math.PI; // 180 flip along axis
         }
 
-        const destinationAngle = startAngle + angleDiff;
+        const startRotY = currentRotY;
+        const destRotY = startRotY + angleDiff;
 
-        // Update direction property immediately so game logic/validations recognize it
-        this.direction = { x: targetDirection.x, z: targetDirection.z };
+        // Update direction property immediately so game logic recognizes it
+        this.direction = { x: normTargetX, z: normTargetZ };
+
+        // Ensure indicators exist
+        if (!this.directionIndicators) {
+            const colors = INDICATOR_LENGTH_COLORS;
+            const arrowColor = colors[this.length - 1] || colors[0];
+            this.createDirectionIndicators(arrowColor, this.arrowStyle);
+        }
+
+        const topArrow = (this.arrow && this.arrow.children && this.arrow.children.length > 0)
+            ? this.arrow.children[0]
+            : null;
+        const startTopArrowZ = topArrow ? topArrow.rotation.z : 0;
+        let targetTopArrowZ = targetGlobalAngle + Math.PI;
+        let topArrowDiff = targetTopArrowZ - startTopArrowZ;
+        while (topArrowDiff > Math.PI) topArrowDiff -= Math.PI * 2;
+        while (topArrowDiff < -Math.PI) topArrowDiff += Math.PI * 2;
+        const destTopArrowZ = startTopArrowZ + topArrowDiff;
 
         const startTime = performance.now();
-        const snapDuration = Math.max(80, duration * 0.35); // Fast initial snap (~140ms)
-        const oscillationDuration = Math.max(120, duration * 0.65); // Needle oscillation settling (~280ms)
+        const animDuration = Math.max(100, duration);
 
-        const animate = () => {
+        const step = () => {
             const now = performance.now();
             const elapsed = now - startTime;
+            const progress = Math.min(elapsed / animDuration, 1.0);
+            const eased = 1 - Math.pow(1 - progress, 3); // Cubic ease-out
 
-            if (elapsed < snapDuration) {
-                // Phase 1: Snappy direct rotation (cubic ease-out)
-                const progress = elapsed / snapDuration;
-                const eased = 1 - Math.pow(1 - progress, 3);
-                topArrow.rotation.z = startAngle + (destinationAngle - startAngle) * eased;
-                requestAnimationFrame(animate);
+            if (this.directionIndicators) {
+                this.directionIndicators.rotation.y = startRotY + (destRotY - startRotY) * eased;
+                this.directionIndicators.updateMatrix();
+            }
+            if (topArrow) {
+                topArrow.rotation.z = startTopArrowZ + (destTopArrowZ - startTopArrowZ) * eased;
+                topArrow.updateMatrix();
+            }
+
+            this.group.updateMatrix();
+            this.group.updateMatrixWorld(true);
+            this.isDirty = true;
+            if (typeof window !== 'undefined' && typeof window.markNeedsRender === 'function') {
+                window.markNeedsRender(100);
+            }
+
+            if (progress < 1.0) {
+                this._spinAnimId = requestAnimationFrame(step);
             } else {
-                // Phase 2: Compass needle oscillation (spring settling around destination angle)
-                const oscElapsed = elapsed - snapDuration;
-                const oscProgress = Math.min(oscElapsed / oscillationDuration, 1);
-
-                if (oscProgress < 1) {
-                    const damping = Math.pow(1 - oscProgress, 2.5); // Exponential-like decay
-                    const amplitude = (Math.PI / 8) * (Math.abs(angleDiff) / Math.PI || 1); // Amplitude scales with turn size
-                    const cycles = 2.5; // 2.5 spring rebounds
-                    const oscillation = Math.sin(oscProgress * Math.PI * 2 * cycles) * amplitude * damping;
-                    topArrow.rotation.z = destinationAngle + oscillation;
-                    requestAnimationFrame(animate);
-                } else {
-                    // Final settle: snap to exact targetAngle
-                    topArrow.rotation.z = targetAngle;
-                    this.updateArrowRotation();
-                    if (callback) callback();
+                this._spinAnimId = null;
+                if (this.directionIndicators) {
+                    this.directionIndicators.rotation.y = destRotY;
+                    this.directionIndicators.updateMatrix();
                 }
+                if (topArrow) {
+                    topArrow.rotation.z = destTopArrowZ;
+                    topArrow.updateMatrix();
+                }
+                this.updateArrowRotation();
+                if (callback) callback();
             }
         };
 
-        animate();
+        this._spinAnimId = requestAnimationFrame(step);
     }
 
-    // Animate random spin: directly rotate to a new randomized direction with magnetic oscillation
-    animateRandomSpin(duration = 450, callback = null) {
+    // Animate random spin: rotate to a new randomized direction with clean transform animation
+    animateRandomSpin(duration = 320, callback = null) {
         const isHorizontalMultiCell = !this.isVertical && this.length > 1;
 
         if (!this.isVertical && this.length !== 1 && !isHorizontalMultiCell) {
@@ -3043,16 +3621,20 @@ export class Block {
             return;
         }
 
-        // Trigger visual flash pulse on the block layer
-        this.flashHighlight(duration);
+        // Stamp pre-spin direction on this block if not already present
+        if (!this._preSpinDirection) {
+            this._preSpinDirection = { x: this.direction.x, z: this.direction.z };
+        }
 
         // Determine target direction based on block type
         let targetDirection;
         if (isHorizontalMultiCell) {
-            // Horizontal multi-cell: flip 180 degrees (opposite direction)
-            targetDirection = { x: -this.direction.x, z: -this.direction.z };
+            // Horizontal multi-cell: flip 180 degrees (opposite direction along axis)
+            const curX = this.direction.x === 0 ? 0 : (this.direction.x > 0 ? 1 : -1);
+            const curZ = this.direction.z === 0 ? 0 : (this.direction.z > 0 ? 1 : -1);
+            targetDirection = { x: -curX, z: -curZ };
         } else {
-            // Vertical or single-cell: pick a DIFFERENT cardinal direction if possible
+            // Vertical or single-cell: pick a DIFFERENT cardinal direction
             const directions = [{ x: 1, z: 0 }, { x: -1, z: 0 }, { x: 0, z: 1 }, { x: 0, z: -1 }];
             const otherDirs = directions.filter(d => !(d.x === this.direction.x && d.z === this.direction.z));
             targetDirection = otherDirs.length > 0
@@ -3061,6 +3643,26 @@ export class Block {
         }
 
         this.animateToDirection(targetDirection, duration, callback);
+    }
+
+    // Revert temporary spin back to original direction cleanly
+    revertSpin(duration = 320, callback = null) {
+        if (!this._preSpinDirection) {
+            if (callback) callback();
+            return;
+        }
+
+        const origDir = { ...this._preSpinDirection };
+        this._preSpinDirection = null;
+
+        this.animateToDirection(origDir, duration, () => {
+            // Ensure full opacity & visibility is restored for non-translucent blocks
+            if (!this.isTranslucent && !this.isCharred) {
+                this.setIndicatorsFrosted(false);
+                this.updateCoolingIndicatorState();
+            }
+            if (callback) callback();
+        });
     }
 
     // Helper function to check rotation safety with specific directions (for recursive head-on collisions)
@@ -3337,6 +3939,7 @@ export class Block {
             centerZ - towerCenterOffset
         );
         this.group.updateMatrix(); // Ensure matrix is ready for instancing
+        this.group.updateMatrixWorld(true);
         this.isDirty = true; // Mark for InstancedMesh sync
 
         // Don't sync physics during grid movement - physics only used when falling
@@ -3715,8 +4318,8 @@ export class Block {
         if (this.isLocked || this.isCharred) return false;
         if (this.isRemoved || this.isFalling || this.isExploding) return false;
 
-        const dirX = this.direction ? this.direction.x : 0;
-        const dirZ = this.direction ? this.direction.z : 0;
+        const dirX = this.direction ? Math.round(this.direction.x) : 0;
+        const dirZ = this.direction ? Math.round(this.direction.z) : 0;
         if (dirX === 0 && dirZ === 0) return false;
 
         const thisHeight = this.isVertical ? this.length * this.cubeSize : this.cubeSize;
@@ -3728,16 +4331,21 @@ export class Block {
 
         const isXAligned = Math.abs(dirX) > 0;
         const len = this.isVertical ? 1 : this.length;
-        const maxSteps = (this.gridSize || 7) + 2;
+        const effectiveGridSize = (typeof this.gridSize === 'number' && this.gridSize > 0)
+            ? this.gridSize
+            : ((typeof window !== 'undefined' && window.gridSize) || 7);
+        const maxSteps = effectiveGridSize + 4;
+        const bGridX = Math.round(this.gridX);
+        const bGridZ = Math.round(this.gridZ);
 
         for (let step = 1; step <= maxSteps; step++) {
             let anyCubeInBounds = false;
 
             for (let i = 0; i < len; i++) {
-                const cellX = this.gridX + (step * dirX) + (this.isVertical ? 0 : (isXAligned ? i : 0));
-                const cellZ = this.gridZ + (step * dirZ) + (this.isVertical ? 0 : (isXAligned ? 0 : i));
+                const cellX = bGridX + (step * dirX) + (this.isVertical ? 0 : (isXAligned ? i : 0));
+                const cellZ = bGridZ + (step * dirZ) + (this.isVertical ? 0 : (isXAligned ? 0 : i));
 
-                if (cellX < 0 || cellX >= this.gridSize || cellZ < 0 || cellZ >= this.gridSize) {
+                if (cellX < 0 || cellX >= effectiveGridSize || cellZ < 0 || cellZ >= effectiveGridSize) {
                     continue; // Out of bounds = exiting the board!
                 }
 
@@ -3754,15 +4362,18 @@ export class Block {
                     const otherYTop = other.yOffset + otherHeight;
                     if (!yRangesOverlapForMovement(this, other, thisYBottom, thisYTop, otherYBottom, otherYTop)) continue;
 
+                    const oGridX = Math.round(other.gridX);
+                    const oGridZ = Math.round(other.gridZ);
+
                     if (other.isVertical) {
-                        if (cellX === other.gridX && cellZ === other.gridZ) {
+                        if (cellX === oGridX && cellZ === oGridZ) {
                             return false; // Obstacle blocking exit path!
                         }
                     } else {
-                        const otherIsX = Math.abs(other.direction.x) > 0;
+                        const otherIsX = Math.abs(other.direction ? other.direction.x : 0) > 0;
                         for (let j = 0; j < other.length; j++) {
-                            const ox = other.gridX + (otherIsX ? j : 0);
-                            const oz = other.gridZ + (otherIsX ? 0 : j);
+                            const ox = oGridX + (otherIsX ? j : 0);
+                            const oz = oGridZ + (otherIsX ? 0 : j);
                             if (cellX === ox && cellZ === oz) {
                                 return false; // Obstacle blocking exit path!
                             }
@@ -3790,12 +4401,19 @@ export class Block {
             return [];
         }
 
-        const newGridX = this.gridX + this.direction.x;
-        const newGridZ = this.gridZ + this.direction.z;
+        const effectiveGridSize = (typeof this.gridSize === 'number' && this.gridSize > 0)
+            ? this.gridSize
+            : ((typeof window !== 'undefined' && window.gridSize) || 7);
+        const bGridX = Math.round(this.gridX);
+        const bGridZ = Math.round(this.gridZ);
+        const dirX = this.direction ? Math.round(this.direction.x) : 0;
+        const dirZ = this.direction ? Math.round(this.direction.z) : 0;
+        const newGridX = bGridX + dirX;
+        const newGridZ = bGridZ + dirZ;
         const thisHeight = this.isVertical ? this.length * this.cubeSize : this.cubeSize;
         const thisYBottom = this.yOffset;
         const thisYTop = this.yOffset + thisHeight;
-        const isXAligned = Math.abs(this.direction.x) > 0;
+        const isXAligned = Math.abs(dirX) > 0;
         const len = this.isVertical ? 1 : this.length;
 
         // Obtain set of cells currently occupied by this block so we never evaluate our own body cells
@@ -3808,7 +4426,7 @@ export class Block {
             const checkZ = newGridZ + (this.isVertical ? 0 : (isXAligned ? 0 : i));
 
             // Must be within grid bounds and MUST NOT be one of this block's own occupied cells!
-            if (checkX < 0 || checkX >= this.gridSize || checkZ < 0 || checkZ >= this.gridSize) continue;
+            if (checkX < 0 || checkX >= effectiveGridSize || checkZ < 0 || checkZ >= effectiveGridSize) continue;
             if (myCellSet.has(`${checkX},${checkZ}`)) continue;
 
             for (const other of blocks) {
@@ -3820,15 +4438,18 @@ export class Block {
                 const otherYTop = other.yOffset + otherHeight;
                 if (!yRangesOverlapForMovement(this, other, thisYBottom, thisYTop, otherYBottom, otherYTop)) continue;
 
+                const oGridX = Math.round(other.gridX);
+                const oGridZ = Math.round(other.gridZ);
+
                 if (other.isVertical) {
-                    if (checkX === other.gridX && checkZ === other.gridZ) {
+                    if (checkX === oGridX && checkZ === oGridZ) {
                         blockers.push(other);
                     }
                 } else {
-                    const otherIsX = Math.abs(other.direction.x) > 0;
+                    const otherIsX = Math.abs(other.direction ? other.direction.x : 0) > 0;
                     for (let j = 0; j < other.length; j++) {
-                        const ox = other.gridX + (otherIsX ? j : 0);
-                        const oz = other.gridZ + (otherIsX ? 0 : j);
+                        const ox = oGridX + (otherIsX ? j : 0);
+                        const oz = oGridZ + (otherIsX ? 0 : j);
                         if (checkX === ox && checkZ === oz) {
                             blockers.push(other);
                             break;
@@ -3856,22 +4477,30 @@ export class Block {
             return 'blocked';
         }
 
+        const effectiveGridSize = (typeof this.gridSize === 'number' && this.gridSize > 0)
+            ? this.gridSize
+            : ((typeof window !== 'undefined' && window.gridSize) || 7);
+        const bGridX = Math.round(this.gridX);
+        const bGridZ = Math.round(this.gridZ);
+        const dirX = this.direction ? Math.round(this.direction.x) : 0;
+        const dirZ = this.direction ? Math.round(this.direction.z) : 0;
+
         // Fast-path: If block has an unobstructed path to exit the grid, it can NEVER be blocked!
         if (typeof this.hasClearExitPath === 'function' && this.hasClearExitPath(blocks)) {
-            const isXAligned = Math.abs(this.direction.x) > 0;
-            const nextX = this.gridX + this.direction.x;
-            const nextZ = this.gridZ + this.direction.z;
+            const isXAligned = Math.abs(dirX) > 0;
+            const nextX = bGridX + dirX;
+            const nextZ = bGridZ + dirZ;
             let willFallOnNextStep = false;
 
             if (this.isVertical) {
-                if (nextX < 0 || nextX >= this.gridSize || nextZ < 0 || nextZ >= this.gridSize) {
+                if (nextX < 0 || nextX >= effectiveGridSize || nextZ < 0 || nextZ >= effectiveGridSize) {
                     willFallOnNextStep = true;
                 }
             } else {
                 for (let i = 0; i < this.length; i++) {
                     const cx = nextX + (isXAligned ? i : 0);
                     const cz = nextZ + (isXAligned ? 0 : i);
-                    if (cx < 0 || cx >= this.gridSize || cz < 0 || cz >= this.gridSize) {
+                    if (cx < 0 || cx >= effectiveGridSize || cz < 0 || cz >= effectiveGridSize) {
                         willFallOnNextStep = true;
                         break;
                     }
@@ -3887,13 +4516,13 @@ export class Block {
             return willFallOnNextStep ? 'fall' : 'ok';
         }
 
-        const newGridX = this.gridX + this.direction.x;
-        const newGridZ = this.gridZ + this.direction.z;
+        const newGridX = bGridX + dirX;
+        const newGridZ = bGridZ + dirZ;
 
         // Debug mode: store detailed blocking information
         if (window.debugMoveMode) {
             window.debugMoveInfo = {
-                block: { gridX: this.gridX, gridZ: this.gridZ, yOffset: this.yOffset, isVertical: this.isVertical, length: this.length, direction: { ...this.direction } },
+                block: { gridX: bGridX, gridZ: bGridZ, yOffset: this.yOffset, isVertical: this.isVertical, length: this.length, direction: { ...this.direction } },
                 targetPos: { x: newGridX, z: newGridZ },
                 blockers: [],
                 yRangeChecks: []
@@ -3901,7 +4530,7 @@ export class Block {
         }
 
         if (this.isVertical) {
-            if (newGridX < 0 || newGridX >= this.gridSize || newGridZ < 0 || newGridZ >= this.gridSize) {
+            if (newGridX < 0 || newGridX >= effectiveGridSize || newGridZ < 0 || newGridZ >= effectiveGridSize) {
                 if (window.debugMoveMode) {
                     window.debugMoveInfo.result = 'fall';
                     window.debugMoveInfo.reason = `Out of bounds: (${newGridX}, ${newGridZ})`;
@@ -3927,12 +4556,14 @@ export class Block {
                 // 3D overlap check (MUST match move() logic)
                 const yRangesOverlap = yRangesOverlapForMovement(this, other, thisYBottom, thisYTop, otherYBottom, otherYTop);
 
+                const oGridX = Math.round(other.gridX);
+                const oGridZ = Math.round(other.gridZ);
+
                 if (window.debugMoveMode) {
-                    // Only log Y-range checks for blocks at the target position to reduce noise
-                    const atTargetPosition = newGridX === other.gridX && newGridZ === other.gridZ;
+                    const atTargetPosition = newGridX === oGridX && newGridZ === oGridZ;
                     if (atTargetPosition || yRangesOverlap) {
                         window.debugMoveInfo.yRangeChecks.push({
-                            other: { gridX: other.gridX, gridZ: other.gridZ, yOffset: other.yOffset, isVertical: other.isVertical, length: other.length },
+                            other: { gridX: oGridX, gridZ: oGridZ, yOffset: other.yOffset, isVertical: other.isVertical, length: other.length },
                             thisYRange: { bottom: thisYBottom, top: thisYTop, height: thisHeight },
                             otherYRange: { bottom: otherYBottom, top: otherYTop, height: otherHeight },
                             overlaps: yRangesOverlap,
@@ -3945,27 +4576,24 @@ export class Block {
                 if (!yRangesOverlap) continue;
 
                 if (other.isVertical) {
-                    if (newGridX === other.gridX && newGridZ === other.gridZ) {
-                        // Check if this is a head-on collision
-                        // Block is currently at (this.gridX, this.gridZ), collision would be at (newGridX, newGridZ)
-                        const isHeadOn = isHeadOnCollision(this, other, newGridX, newGridZ, this.gridX, this.gridZ);
+                    if (newGridX === oGridX && newGridZ === oGridZ) {
+                        const isHeadOn = isHeadOnCollision(this, other, newGridX, newGridZ, bGridX, bGridZ);
 
                         if (isHeadOn) {
                             if (window.debugMoveMode) {
                                 window.debugMoveInfo.blockers.push({
-                                    block: { gridX: other.gridX, gridZ: other.gridZ, yOffset: other.yOffset },
+                                    block: { gridX: oGridX, gridZ: oGridZ, yOffset: other.yOffset },
                                     reason: 'Head-on collision (allowed)',
                                     isHeadOn: true
                                 });
                             }
-                            // Head-on collision: block can move (will rotate and continue)
-                            continue; // Skip this collision, allow movement
+                            continue;
                         }
 
                         if (window.debugMoveMode) {
                             window.debugMoveInfo.result = 'blocked';
                             window.debugMoveInfo.blockers.push({
-                                block: { gridX: other.gridX, gridZ: other.gridZ, yOffset: other.yOffset, isVertical: other.isVertical, length: other.length, direction: { ...other.direction } },
+                                block: { gridX: oGridX, gridZ: oGridZ, yOffset: other.yOffset, isVertical: other.isVertical, length: other.length, direction: { ...other.direction } },
                                 reason: 'Vertical block at same position',
                                 isHeadOn: false
                             });
@@ -3973,38 +4601,29 @@ export class Block {
                         return 'blocked';
                     }
                 } else {
-                    const otherIsXAligned = Math.abs(other.direction.x) > 0;
+                    const otherIsXAligned = Math.abs(other.direction ? other.direction.x : 0) > 0;
                     for (let j = 0; j < other.length; j++) {
-                        let otherX = other.gridX;
-                        let otherZ = other.gridZ;
-
-                        if (otherIsXAligned) {
-                            otherX += j;
-                        } else {
-                            otherZ += j;
-                        }
+                        const otherX = oGridX + (otherIsXAligned ? j : 0);
+                        const otherZ = oGridZ + (otherIsXAligned ? 0 : j);
 
                         if (newGridX === otherX && newGridZ === otherZ) {
-                            // Check if this is a head-on collision
-                            // Block is currently at (this.gridX, this.gridZ), collision would be at (otherX, otherZ)
-                            const isHeadOn = isHeadOnCollision(this, other, otherX, otherZ, this.gridX, this.gridZ);
+                            const isHeadOn = isHeadOnCollision(this, other, otherX, otherZ, bGridX, bGridZ);
 
                             if (isHeadOn) {
                                 if (window.debugMoveMode) {
                                     window.debugMoveInfo.blockers.push({
-                                        block: { gridX: other.gridX, gridZ: other.gridZ, yOffset: other.yOffset, length: other.length, direction: { ...other.direction } },
+                                        block: { gridX: oGridX, gridZ: oGridZ, yOffset: other.yOffset, length: other.length, direction: { ...other.direction } },
                                         reason: 'Head-on collision (allowed)',
                                         isHeadOn: true
                                     });
                                 }
-                                // Head-on collision: block can move (will rotate and continue)
-                                continue; // Skip this collision, allow movement
+                                continue;
                             }
 
                             if (window.debugMoveMode) {
                                 window.debugMoveInfo.result = 'blocked';
                                 window.debugMoveInfo.blockers.push({
-                                    block: { gridX: other.gridX, gridZ: other.gridZ, yOffset: other.yOffset, isVertical: other.isVertical, length: other.length, direction: { ...other.direction } },
+                                    block: { gridX: oGridX, gridZ: oGridZ, yOffset: other.yOffset, isVertical: other.isVertical, length: other.length, direction: { ...other.direction } },
                                     cell: { x: otherX, z: otherZ },
                                     reason: 'Horizontal block occupies target cell',
                                     isHeadOn: false
@@ -4022,21 +4641,15 @@ export class Block {
             return 'ok';
         }
 
-        const isXAligned = Math.abs(this.direction.x) > 0;
+        const isXAligned = Math.abs(dirX) > 0;
         const myCells = typeof this.getOccupiedCells === 'function' ? this.getOccupiedCells() : [];
         const myCellSet = new Set(myCells.map(c => `${c.x},${c.z}`));
 
         for (let i = 0; i < this.length; i++) {
-            let checkX = newGridX;
-            let checkZ = newGridZ;
+            const checkX = newGridX + (isXAligned ? i : 0);
+            const checkZ = newGridZ + (isXAligned ? 0 : i);
 
-            if (isXAligned) {
-                checkX += i;
-            } else {
-                checkZ += i;
-            }
-
-            if (checkX < 0 || checkX >= this.gridSize || checkZ < 0 || checkZ >= this.gridSize) {
+            if (checkX < 0 || checkX >= effectiveGridSize || checkZ < 0 || checkZ >= effectiveGridSize) {
                 if (window.debugMoveMode) {
                     window.debugMoveInfo.result = 'fall';
                     window.debugMoveInfo.reason = `Out of bounds: cell ${i} at (${checkX}, ${checkZ})`;
@@ -4065,9 +4678,12 @@ export class Block {
                 // 3D overlap check (MUST match move() logic)
                 const yRangesOverlap = yRangesOverlapForMovement(this, other, thisYBottom, thisYTop, otherYBottom, otherYTop);
 
+                const oGridX = Math.round(other.gridX);
+                const oGridZ = Math.round(other.gridZ);
+
                 if (window.debugMoveMode && i === 0) {
                     window.debugMoveInfo.yRangeChecks.push({
-                        other: { gridX: other.gridX, gridZ: other.gridZ, yOffset: other.yOffset, isVertical: other.isVertical, length: other.length },
+                        other: { gridX: oGridX, gridZ: oGridZ, yOffset: other.yOffset, isVertical: other.isVertical, length: other.length },
                         thisYRange: { bottom: thisYBottom, top: thisYTop, height: thisHeight },
                         otherYRange: { bottom: otherYBottom, top: otherYTop, height: otherHeight },
                         overlaps: yRangesOverlap,
@@ -4080,28 +4696,25 @@ export class Block {
                 if (!yRangesOverlap) continue;
 
                 if (other.isVertical) {
-                    if (checkX === other.gridX && checkZ === other.gridZ) {
-                        // Check if this is a head-on collision
-                        // Block is currently at (this.gridX, this.gridZ), collision would be at (checkX, checkZ)
-                        const isHeadOn = isHeadOnCollision(this, other, checkX, checkZ, this.gridX, this.gridZ);
+                    if (checkX === oGridX && checkZ === oGridZ) {
+                        const isHeadOn = isHeadOnCollision(this, other, checkX, checkZ, bGridX, bGridZ);
 
                         if (isHeadOn) {
                             if (window.debugMoveMode) {
                                 window.debugMoveInfo.blockers.push({
-                                    block: { gridX: other.gridX, gridZ: other.gridZ, yOffset: other.yOffset },
+                                    block: { gridX: oGridX, gridZ: oGridZ, yOffset: other.yOffset },
                                     cell: { x: checkX, z: checkZ, index: i },
                                     reason: 'Head-on collision (allowed)',
                                     isHeadOn: true
                                 });
                             }
-                            // Head-on collision: block can move (will rotate and continue)
-                            continue; // Skip this collision, allow movement
+                            continue;
                         }
 
                         if (window.debugMoveMode) {
                             window.debugMoveInfo.result = 'blocked';
                             window.debugMoveInfo.blockers.push({
-                                block: { gridX: other.gridX, gridZ: other.gridZ, yOffset: other.yOffset, isVertical: other.isVertical, length: other.length, direction: { ...other.direction } },
+                                block: { gridX: oGridX, gridZ: oGridZ, yOffset: other.yOffset, isVertical: other.isVertical, length: other.length, direction: { ...other.direction } },
                                 cell: { x: checkX, z: checkZ, index: i },
                                 reason: 'Vertical block at cell position',
                                 isHeadOn: false
@@ -4110,40 +4723,31 @@ export class Block {
                         return 'blocked';
                     }
                 } else {
-                    const otherIsXAligned = Math.abs(other.direction.x) > 0;
+                    const otherIsXAligned = Math.abs(other.direction ? other.direction.x : 0) > 0;
 
                     for (let j = 0; j < other.length; j++) {
-                        let otherX = other.gridX;
-                        let otherZ = other.gridZ;
-
-                        if (otherIsXAligned) {
-                            otherX += j;
-                        } else {
-                            otherZ += j;
-                        }
+                        const otherX = oGridX + (otherIsXAligned ? j : 0);
+                        const otherZ = oGridZ + (otherIsXAligned ? 0 : j);
 
                         if (checkX === otherX && checkZ === otherZ) {
-                            // Check if this is a head-on collision
-                            // Block is currently at (this.gridX, this.gridZ), collision would be at (checkX, checkZ)
-                            const isHeadOn = isHeadOnCollision(this, other, checkX, checkZ, this.gridX, this.gridZ);
+                            const isHeadOn = isHeadOnCollision(this, other, checkX, checkZ, bGridX, bGridZ);
 
                             if (isHeadOn) {
                                 if (window.debugMoveMode) {
                                     window.debugMoveInfo.blockers.push({
-                                        block: { gridX: other.gridX, gridZ: other.gridZ, yOffset: other.yOffset, length: other.length, direction: { ...other.direction } },
+                                        block: { gridX: oGridX, gridZ: oGridZ, yOffset: other.yOffset, length: other.length, direction: { ...other.direction } },
                                         cell: { x: checkX, z: checkZ, index: i },
                                         reason: 'Head-on collision (allowed)',
                                         isHeadOn: true
                                     });
                                 }
-                                // Head-on collision: block can move (will rotate and continue)
-                                continue; // Skip this collision, allow movement
+                                continue;
                             }
 
                             if (window.debugMoveMode) {
                                 window.debugMoveInfo.result = 'blocked';
                                 window.debugMoveInfo.blockers.push({
-                                    block: { gridX: other.gridX, gridZ: other.gridZ, yOffset: other.yOffset, isVertical: other.isVertical, length: other.length, direction: { ...other.direction } },
+                                    block: { gridX: oGridX, gridZ: oGridZ, yOffset: other.yOffset, isVertical: other.isVertical, length: other.length, direction: { ...other.direction } },
                                     cell: { x: checkX, z: checkZ, index: i },
                                     reason: 'Horizontal block occupies cell',
                                     isHeadOn: false
@@ -4162,9 +4766,16 @@ export class Block {
         return 'ok';
     }
 
-    move(blocks, gridSize) {
+    move(blocks, gridSize, hasClearExit = false) {
         // Don't move if already animating, falling, locked, or charred/cooling
         if (this.isAnimating || this.isFalling || this.isLocked || this.isCharred) return;
+
+        const effectiveGridSize = (typeof gridSize === 'number' && gridSize > 0)
+            ? gridSize
+            : ((typeof this.gridSize === 'number' && this.gridSize > 0)
+                ? this.gridSize
+                : ((typeof window !== 'undefined' && window.gridSize) || 7));
+        this.gridSize = effectiveGridSize;
 
         // Snapshot state for Undo BEFORE any move logic mutates direction/yOffset/etc.
         const preMoveState = {
@@ -4187,13 +4798,11 @@ export class Block {
             });
         }
 
-        // Calculate how many steps the block can move before hitting something
-        const initialOccupiedCells = typeof this.getOccupiedCells === 'function' ? this.getOccupiedCells() : [];
-        const initialCellSet = new Set(initialOccupiedCells.map(c => `${c.x},${c.z}`));
+        const isClearExit = (hasClearExit === true) || (typeof this.hasClearExitPath === 'function' && this.hasClearExitPath(blocks));
 
         let stepsToObstacle = 0;
-        let tempGridX = this.gridX;
-        let tempGridZ = this.gridZ;
+        let tempGridX = Math.round(this.gridX);
+        let tempGridZ = Math.round(this.gridZ);
         let hitObstacle = false;
         let hitEdge = false;
         let collidedBlock = null; // Track which block we collided with
@@ -4201,449 +4810,467 @@ export class Block {
         let headOnCollisionCount = 0; // Safety counter to prevent infinite head-on collision loops
         const MAX_HEAD_ON_COLLISIONS = 10; // Maximum number of head-on collisions allowed in one move
 
-        // Count steps until blocked or edge
-        // Continue moving until block entirely leaves the board (all cubes off) or hits an obstacle
-        while (true) {
-            const nextGridX = tempGridX + this.direction.x;
-            const nextGridZ = tempGridZ + this.direction.z;
+        if (isClearExit) {
+            // Block has an unobstructed path directly off the board!
+            // Bypass all collision checks and count steps until block reaches/crosses edge.
+            hitEdge = true;
+            hitObstacle = false;
+            collidedBlock = null;
 
-            // Check if ANY cube would be off the board at the next position BEFORE moving
-            // This prevents blocks from stopping at the edge when they should fall
-            let anyCubeOff = false;
+            const len = this.isVertical ? 1 : this.length;
 
-            const margin = 1; // BASE_PLATE_MARGIN (gridlines extend 1 cell beyond main tower grid)
-            const minBound = -margin;
-            const maxBound = gridSize + margin;
+            while (true) {
+                const curDirX = this.direction ? Math.round(this.direction.x) : 0;
+                const curDirZ = this.direction ? Math.round(this.direction.z) : 0;
+                const isXAligned = Math.abs(curDirX) > 0;
+                const nextGridX = tempGridX + curDirX;
+                const nextGridZ = tempGridZ + curDirZ;
 
-            if (this.isVertical) {
-                if (nextGridX < minBound || nextGridX >= maxBound || nextGridZ < minBound || nextGridZ >= maxBound) {
-                    anyCubeOff = true;
-                }
-            } else {
-                const isXAligned = Math.abs(this.direction.x) > 0;
-                for (let i = 0; i < this.length; i++) {
-                    const checkX = nextGridX + (isXAligned ? i : 0);
-                    const checkZ = nextGridZ + (isXAligned ? 0 : i);
-                    if (checkX < minBound || checkX >= maxBound || checkZ < minBound || checkZ >= maxBound) {
+                let anyCubeOff = false;
+                for (let i = 0; i < len; i++) {
+                    const checkX = nextGridX + (this.isVertical ? 0 : (isXAligned ? i : 0));
+                    const checkZ = nextGridZ + (this.isVertical ? 0 : (isXAligned ? 0 : i));
+                    if (checkX < 0 || checkX >= effectiveGridSize || checkZ < 0 || checkZ >= effectiveGridSize) {
                         anyCubeOff = true;
                         break;
                     }
                 }
-            }
 
-            // If any cube would be off the board at next position, allow one more step then trigger fall
-            if (anyCubeOff) {
-                hitEdge = true;
-                // Allow the block to move one step toward the edge before falling
-                // This ensures blocks at n-1 position can still move to the edge and fall
                 tempGridX = nextGridX;
                 tempGridZ = nextGridZ;
                 stepsToObstacle++;
-                break; // Now fall from this position (one step closer to edge)
+
+                if (anyCubeOff) {
+                    break;
+                }
             }
+        } else {
+            // Count steps until blocked or edge
+            const bGridX = Math.round(this.gridX);
+            const bGridZ = Math.round(this.gridZ);
+            const len = this.isVertical ? 1 : this.length;
+            const initialOccupiedCells = typeof this.getOccupiedCells === 'function' ? this.getOccupiedCells() : [];
+            const initialCellSet = new Set(initialOccupiedCells.map(c => `${Math.round(c.x)},${Math.round(c.z)}`));
 
-            // Check for collisions with other blocks first
-            // Check for 3D overlaps: blocks cannot move to a position where they would overlap with another block
-            // This includes checking blocks at different Y levels that might overlap in 3D space
-            let blocked = false;
-            let collisionCellX = null; // Track the specific cell that collided (for horizontal blocks)
-            let collisionCellZ = null; // Track the specific cell that collided (for horizontal blocks)
+            while (true) {
+                const curDirX = this.direction ? Math.round(this.direction.x) : 0;
+                const curDirZ = this.direction ? Math.round(this.direction.z) : 0;
+                const isXAligned = Math.abs(curDirX) > 0;
+                const nextGridX = tempGridX + curDirX;
+                const nextGridZ = tempGridZ + curDirZ;
 
-            for (const other of blocks) {
-                // Skip blocks that are falling, removed, exploding, animating, catapulted, or being removed
-                if (other === this || other.isFalling || other.isRemoved || other.isExploding || other.removalStartTime || other.isAnimating || other.wasCatapulted || other._explosionAnimationStarted) continue;
+                let anyCubeOff = false;
+                for (let i = 0; i < len; i++) {
+                    const checkX = nextGridX + (this.isVertical ? 0 : (isXAligned ? i : 0));
+                    const checkZ = nextGridZ + (this.isVertical ? 0 : (isXAligned ? 0 : i));
+                    if (checkX < 0 || checkX >= effectiveGridSize || checkZ < 0 || checkZ >= effectiveGridSize) {
+                        anyCubeOff = true;
+                        break;
+                    }
+                }
 
-                // Calculate Y ranges for both blocks to check for 3D overlap
+                if (anyCubeOff) {
+                    hitEdge = true;
+                    tempGridX = nextGridX;
+                    tempGridZ = nextGridZ;
+                    stepsToObstacle++;
+                    break;
+                }
+
+                let blocked = false;
+                let collisionCellX = null;
+                let collisionCellZ = null;
+
                 const thisHeight = this.isVertical ? this.length * this.cubeSize : this.cubeSize;
                 const thisYBottom = this.yOffset;
                 const thisYTop = this.yOffset + thisHeight;
 
-                const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
-                const otherYBottom = other.yOffset;
-                const otherYTop = other.yOffset + otherHeight;
+                for (const other of blocks) {
+                    if (!other || other === this || other.isFalling || other.isRemoved || other.isExploding || other.removalStartTime || other.isAnimating || other.wasCatapulted || other._explosionAnimationStarted) continue;
 
-                // Check if Y ranges overlap (blocks are at different Y levels but might overlap in 3D)
-                // Use strict inequality to avoid false positives when blocks are just touching
-                // Blocks overlap if: thisYTop > otherYBottom AND thisYBottom < otherYTop
-                const yRangesOverlap = yRangesOverlapForMovement(this, other, thisYBottom, thisYTop, otherYBottom, otherYTop);
+                    const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
+                    const otherYBottom = other.yOffset;
+                    const otherYTop = other.yOffset + otherHeight;
 
-                // If Y ranges don't overlap, blocks can't collide (they're at different heights)
-                if (!yRangesOverlap) continue;
+                    const yRangesOverlap = yRangesOverlapForMovement(this, other, thisYBottom, thisYTop, otherYBottom, otherYTop);
+                    if (!yRangesOverlap) continue;
 
-                if (this.isVertical) {
-                    if (other.isVertical) {
-                        if (nextGridX === other.gridX && nextGridZ === other.gridZ) {
-                            blocked = true;
-                            collidedBlock = other;
-                            collisionCellX = nextGridX;
-                            collisionCellZ = nextGridZ;
-                        }
-                    } else {
-                        const otherIsXAligned = Math.abs(other.direction.x) > 0;
-                        for (let j = 0; j < other.length; j++) {
-                            const otherX = other.gridX + (otherIsXAligned ? j : 0);
-                            const otherZ = other.gridZ + (otherIsXAligned ? 0 : j);
-                            if (nextGridX === otherX && nextGridZ === otherZ) {
+                    const oGridX = Math.round(other.gridX);
+                    const oGridZ = Math.round(other.gridZ);
+
+                    if (this.isVertical) {
+                        if (other.isVertical) {
+                            if (nextGridX === oGridX && nextGridZ === oGridZ) {
                                 blocked = true;
                                 collidedBlock = other;
                                 collisionCellX = nextGridX;
                                 collisionCellZ = nextGridZ;
-                                break;
-                            }
-                        }
-                    }
-                } else {
-                    const isXAligned = Math.abs(this.direction.x) > 0;
-                    for (let i = 0; i < this.length; i++) {
-                        const checkX = nextGridX + (isXAligned ? i : 0);
-                        const checkZ = nextGridZ + (isXAligned ? 0 : i);
-
-                        // At step 1, don't collide with self-occupied starting cells
-                        if (tempGridX === this.gridX && tempGridZ === this.gridZ && initialCellSet.has(`${checkX},${checkZ}`)) {
-                            continue;
-                        }
-
-                        if (other.isVertical) {
-                            if (checkX === other.gridX && checkZ === other.gridZ) {
-                                blocked = true;
-                                collidedBlock = other;
-                                collisionCellX = checkX; // Track the specific cell that collided
-                                collisionCellZ = checkZ; // Track the specific cell that collided
-                                break;
                             }
                         } else {
-                            const otherIsXAligned = Math.abs(other.direction.x) > 0;
+                            const otherIsXAligned = Math.abs(other.direction ? other.direction.x : 0) > 0;
                             for (let j = 0; j < other.length; j++) {
-                                const otherX = other.gridX + (otherIsXAligned ? j : 0);
-                                const otherZ = other.gridZ + (otherIsXAligned ? 0 : j);
-                                if (checkX === otherX && checkZ === otherZ) {
+                                const otherX = oGridX + (otherIsXAligned ? j : 0);
+                                const otherZ = oGridZ + (otherIsXAligned ? 0 : j);
+                                if (nextGridX === otherX && nextGridZ === otherZ) {
                                     blocked = true;
                                     collidedBlock = other;
-                                    collisionCellX = checkX; // Track the specific cell that collided
-                                    collisionCellZ = checkZ; // Track the specific cell that collided
+                                    collisionCellX = nextGridX;
+                                    collisionCellZ = nextGridZ;
                                     break;
                                 }
                             }
                         }
-                        if (blocked) break;
-                    }
-                }
-                if (blocked) break;
-            }
-
-            if (blocked) {
-                // Check if this is a head-on collision
-                // Use the actual collision cell coordinates (for horizontal blocks, this is the specific cell that collided)
-                const collisionX = collisionCellX !== null ? collisionCellX : nextGridX;
-                const collisionZ = collisionCellZ !== null ? collisionCellZ : nextGridZ;
-
-                const isHeadOn = collidedBlock && isHeadOnCollision(this, collidedBlock, collisionX, collisionZ, tempGridX, tempGridZ);
-
-                // Log collision event for debugging
-                if (window.debugCollisionLog && collidedBlock) {
-                    const collidedBlockIndex = blocks.indexOf(collidedBlock);
-                    window.debugCollisionLog({
-                        type: isHeadOn ? 'head-on' : 'side',
-                        movingBlock: {
-                            id: `block_${blocks.indexOf(this)}_${this.gridX}_${this.gridZ}_${this.length}`,
-                            index: blocks.indexOf(this),
-                            gridX: this.gridX,
-                            gridZ: this.gridZ,
-                            yOffset: this.yOffset,
-                            direction: { ...this.direction },
-                            isVertical: this.isVertical,
-                            length: this.length,
-                        },
-                        collidedBlock: {
-                            id: `block_${collidedBlockIndex}_${collidedBlock.gridX}_${collidedBlock.gridZ}_${collidedBlock.length}`,
-                            index: collidedBlockIndex,
-                            gridX: collidedBlock.gridX,
-                            gridZ: collidedBlock.gridZ,
-                            yOffset: collidedBlock.yOffset,
-                            direction: { ...collidedBlock.direction },
-                            isVertical: collidedBlock.isVertical,
-                            length: collidedBlock.length,
-                        },
-                        collisionCell: { x: collisionX, z: collisionZ },
-                        positionBefore: { x: tempGridX, z: tempGridZ },
-                        positionAfter: { x: nextGridX, z: nextGridZ },
-                        stepsToObstacle: stepsToObstacle,
-                    });
-                }
-
-                if (isHeadOn) {
-                    // Safety check: prevent infinite head-on collision loops
-                    headOnCollisionCount++;
-                    if (headOnCollisionCount > MAX_HEAD_ON_COLLISIONS) {
-                        // Too many head-on collisions - treat as regular collision to prevent infinite loop
-                        console.warn(`Block at (${this.gridX}, ${this.gridZ}) hit maximum head-on collisions (${MAX_HEAD_ON_COLLISIONS}), stopping movement`);
-                        hitObstacle = true;
-                        break;
-                    }
-
-                    // Head-on collision detected: record collision info for animation
-                    // For both horizontal and vertical blocks, we stay at tempGridX/tempGridZ (position before collision, adjacent to other block)
-                    // This prevents overlap with the collided block
-                    const finalGridX = tempGridX;
-                    const finalGridZ = tempGridZ;
-
-                    headOnCollision = {
-                        block: collidedBlock,
-                        gridX: finalGridX,
-                        gridZ: finalGridZ,
-                        originalDirection: { x: this.direction.x, z: this.direction.z },
-                        stepsToCollision: stepsToObstacle,
-                        originalYOffset: this.yOffset // Store original Y level before drop
-                    };
-
-                    // Update grid position: stay at pre-collision position (adjacent, no overlap)
-                    // This prevents the block from being positioned at the same cell as the collided block
-                    this.gridX = finalGridX;
-                    this.gridZ = finalGridZ;
-                    // Also update tempGridX/tempGridZ so the continue loop starts from the correct position
-                    tempGridX = finalGridX;
-                    tempGridZ = finalGridZ;
-
-                    // Rotate direction immediately (for movement calculation)
-                    // Horizontal multi-cell blocks rotate 180 degrees (flip direction)
-                    // Single-cube and vertical blocks rotate clockwise
-                    const isHorizontalMultiCell = !this.isVertical && this.length > 1;
-                    if (isHorizontalMultiCell) {
-                        // Flip direction 180 degrees: negate both x and z
-                        this.direction = { x: -this.direction.x, z: -this.direction.z };
-                        this.updateArrowRotation();
                     } else {
-                        // Single-cube or vertical: rotate clockwise
-                        this.rotateDirectionClockwise();
-                    }
+                        for (let i = 0; i < this.length; i++) {
+                            const checkX = nextGridX + (isXAligned ? i : 0);
+                            const checkZ = nextGridZ + (isXAligned ? 0 : i);
 
-                    // Drop down one level after head-on collision
-                    // But first check if dropping would cause an overlap
-                    const originalYOffset = this.yOffset;
-                    const newYOffset = Math.max(0, this.yOffset - this.cubeSize);
-                    const thisHeight = this.isVertical ? this.length * this.cubeSize : this.cubeSize;
-                    const newYBottom = newYOffset;
-                    const newYTop = newYOffset + thisHeight;
+                            if (tempGridX === bGridX && tempGridZ === bGridZ && initialCellSet.has(`${checkX},${checkZ}`)) {
+                                continue;
+                            }
 
-                    // Log movement calculation for head-on collision
-                    if (window.debugMovementLog) {
-                        window.debugMovementLog({
-                            type: 'head-on-collision',
-                            blockIndex: blocks.indexOf(this),
-                            positionBefore: { x: tempGridX, z: tempGridZ, y: originalYOffset },
-                            positionAfter: { x: finalGridX, z: finalGridZ, y: newYOffset },
-                            directionBefore: { ...headOnCollision.originalDirection },
-                            directionAfter: { ...this.direction },
-                            rotationType: isHorizontalMultiCell ? '180-degree-flip' : 'clockwise',
-                        });
-                    }
-
-                    // Check if dropping would cause overlap with any block at the block's position
-                    // For horizontal blocks, check all cells; for vertical blocks, check the single cell
-                    let wouldOverlap = false;
-                    const overlappingBlocks = [];
-                    for (const other of blocks) {
-                        if (other === this || other === collidedBlock || other.isFalling || other.isRemoved || other.removalStartTime) continue;
-
-                        // Check if other block overlaps with this block's cells at the final position
-                        let cellsOverlap = false;
-                        if (this.isVertical) {
-                            // Vertical block: check if other block is at the same cell
                             if (other.isVertical) {
-                                cellsOverlap = (other.gridX === finalGridX && other.gridZ === finalGridZ);
+                                if (checkX === oGridX && checkZ === oGridZ) {
+                                    blocked = true;
+                                    collidedBlock = other;
+                                    collisionCellX = checkX;
+                                    collisionCellZ = checkZ;
+                                    break;
+                                }
                             } else {
-                                const otherIsXAligned = Math.abs(other.direction.x) > 0;
+                                const otherIsXAligned = Math.abs(other.direction ? other.direction.x : 0) > 0;
                                 for (let j = 0; j < other.length; j++) {
-                                    const otherX = other.gridX + (otherIsXAligned ? j : 0);
-                                    const otherZ = other.gridZ + (otherIsXAligned ? 0 : j);
-                                    if (otherX === finalGridX && otherZ === finalGridZ) {
-                                        cellsOverlap = true;
+                                    const otherX = oGridX + (otherIsXAligned ? j : 0);
+                                    const otherZ = oGridZ + (otherIsXAligned ? 0 : j);
+                                    if (checkX === otherX && checkZ === otherZ) {
+                                        blocked = true;
+                                        collidedBlock = other;
+                                        collisionCellX = checkX;
+                                        collisionCellZ = checkZ;
                                         break;
                                     }
                                 }
                             }
-                        } else {
-                            // Horizontal block: check if any cell of other block overlaps with any cell of this block
-                            const thisIsXAligned = Math.abs(this.direction.x) > 0;
-                            const otherIsXAligned = Math.abs(other.direction.x) > 0;
-                            for (let i = 0; i < this.length; i++) {
-                                const thisX = finalGridX + (thisIsXAligned ? i : 0);
-                                const thisZ = finalGridZ + (thisIsXAligned ? 0 : i);
-
-                                if (other.isVertical) {
-                                    if (other.gridX === thisX && other.gridZ === thisZ) {
-                                        cellsOverlap = true;
-                                        break;
-                                    }
-                                } else {
-                                    for (let j = 0; j < other.length; j++) {
-                                        const otherX = other.gridX + (otherIsXAligned ? j : 0);
-                                        const otherZ = other.gridZ + (otherIsXAligned ? 0 : j);
-                                        if (otherX === thisX && otherZ === thisZ) {
-                                            cellsOverlap = true;
-                                            break;
-                                        }
-                                    }
-                                    if (cellsOverlap) break;
-                                }
-                            }
-                        }
-
-                        if (cellsOverlap) {
-                            const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
-                            const otherYBottom = other.yOffset;
-                            const otherYTop = other.yOffset + otherHeight;
-
-                            // Check if Y ranges would overlap
-                            if (newYTop > otherYBottom && newYBottom < otherYTop) {
-                                wouldOverlap = true;
-                                overlappingBlocks.push({
-                                    index: blocks.indexOf(other),
-                                    gridX: other.gridX,
-                                    gridZ: other.gridZ,
-                                    yOffset: other.yOffset,
-                                    height: otherHeight,
-                                });
-                                break;
-                            }
+                            if (blocked) break;
                         }
                     }
+                    if (blocked) break;
+                }
 
-                    // Log overlap check result
-                    if (window.debugCollisionLog) {
+                if (blocked) {
+                    // Check if this is a head-on collision
+                    // Use the actual collision cell coordinates (for horizontal blocks, this is the specific cell that collided)
+                    const collisionX = collisionCellX !== null ? collisionCellX : nextGridX;
+                    const collisionZ = collisionCellZ !== null ? collisionCellZ : nextGridZ;
+
+                    const isHeadOn = collidedBlock && isHeadOnCollision(this, collidedBlock, collisionX, collisionZ, tempGridX, tempGridZ);
+
+                    // Log collision event for debugging
+                    if (window.debugCollisionLog && collidedBlock) {
+                        const collidedBlockIndex = blocks.indexOf(collidedBlock);
                         window.debugCollisionLog({
-                            type: 'overlap-check',
-                            blockIndex: blocks.indexOf(this),
-                            position: { x: finalGridX, z: finalGridZ, y: newYOffset },
-                            wouldOverlap: wouldOverlap,
-                            overlappingBlocks: overlappingBlocks,
+                            type: isHeadOn ? 'head-on' : 'side',
+                            movingBlock: {
+                                id: `block_${blocks.indexOf(this)}_${this.gridX}_${this.gridZ}_${this.length}`,
+                                index: blocks.indexOf(this),
+                                gridX: this.gridX,
+                                gridZ: this.gridZ,
+                                yOffset: this.yOffset,
+                                direction: { ...this.direction },
+                                isVertical: this.isVertical,
+                                length: this.length,
+                            },
+                            collidedBlock: {
+                                id: `block_${collidedBlockIndex}_${collidedBlock.gridX}_${collidedBlock.gridZ}_${collidedBlock.length}`,
+                                index: collidedBlockIndex,
+                                gridX: collidedBlock.gridX,
+                                gridZ: collidedBlock.gridZ,
+                                yOffset: collidedBlock.yOffset,
+                                direction: { ...collidedBlock.direction },
+                                isVertical: collidedBlock.isVertical,
+                                length: collidedBlock.length,
+                            },
+                            collisionCell: { x: collisionX, z: collisionZ },
+                            positionBefore: { x: tempGridX, z: tempGridZ },
+                            positionAfter: { x: nextGridX, z: nextGridZ },
+                            stepsToObstacle: stepsToObstacle,
                         });
                     }
 
-                    if (!wouldOverlap) {
-                        this.yOffset = newYOffset;
-                    } else {
-                        // Can't drop one level - stay at current level
-                        // After a head-on collision, blocks should only drop one level if supported
-                        // If that's not possible, they stay at the current level
-                        // Don't try to find a lower level - that would allow falling through blocks
-                        this.yOffset = this.yOffset;
-                    }
+                    if (isHeadOn) {
+                        // Safety check: prevent infinite head-on collision loops
+                        headOnCollisionCount++;
+                        if (headOnCollisionCount > MAX_HEAD_ON_COLLISIONS) {
+                            // Too many head-on collisions - treat as regular collision to prevent infinite loop
+                            console.warn(`Block at (${this.gridX}, ${this.gridZ}) hit maximum head-on collisions (${MAX_HEAD_ON_COLLISIONS}), stopping movement`);
+                            hitObstacle = true;
+                            break;
+                        }
 
-                    // Check if the block's current position (after head-on collision) overlaps with any other blocks
-                    // If it does, stop movement instead of continuing
-                    let positionOverlaps = false;
-                    const currentYBottom = this.yOffset;
-                    const currentYTop = this.yOffset + thisHeight;
+                        // Head-on collision detected: record collision info for animation
+                        // For both horizontal and vertical blocks, we stay at tempGridX/tempGridZ (position before collision, adjacent to other block)
+                        // This prevents overlap with the collided block
+                        const finalGridX = tempGridX;
+                        const finalGridZ = tempGridZ;
 
-                    for (const other of blocks) {
-                        if (other === this || other === collidedBlock || other.isFalling || other.isRemoved || other.isExploding || other.removalStartTime) continue;
+                        headOnCollision = {
+                            block: collidedBlock,
+                            gridX: finalGridX,
+                            gridZ: finalGridZ,
+                            originalDirection: { x: this.direction.x, z: this.direction.z },
+                            stepsToCollision: stepsToObstacle,
+                            originalYOffset: this.yOffset // Store original Y level before drop
+                        };
 
-                        // Check if other block overlaps with this block's cells at the current position
-                        // Use this.gridX and this.gridZ since those are the actual position after the head-on collision
-                        let cellsOverlap = false;
-                        if (this.isVertical) {
-                            // Vertical block: check if other block is at the same cell
-                            if (other.isVertical) {
-                                cellsOverlap = (other.gridX === this.gridX && other.gridZ === this.gridZ);
-                            } else {
-                                const otherIsXAligned = Math.abs(other.direction.x) > 0;
-                                for (let j = 0; j < other.length; j++) {
-                                    const otherX = other.gridX + (otherIsXAligned ? j : 0);
-                                    const otherZ = other.gridZ + (otherIsXAligned ? 0 : j);
-                                    if (otherX === this.gridX && otherZ === this.gridZ) {
-                                        cellsOverlap = true;
-                                        break;
-                                    }
-                                }
-                            }
+                        // Update grid position: stay at pre-collision position (adjacent, no overlap)
+                        // This prevents the block from being positioned at the same cell as the collided block
+                        this.gridX = finalGridX;
+                        this.gridZ = finalGridZ;
+                        // Also update tempGridX/tempGridZ so the continue loop starts from the correct position
+                        tempGridX = finalGridX;
+                        tempGridZ = finalGridZ;
+
+                        // Rotate direction immediately (for movement calculation)
+                        // Horizontal multi-cell blocks rotate 180 degrees (flip direction)
+                        // Single-cube and vertical blocks rotate clockwise
+                        const isHorizontalMultiCell = !this.isVertical && this.length > 1;
+                        if (isHorizontalMultiCell) {
+                            // Flip direction 180 degrees: negate both x and z
+                            this.direction = { x: -this.direction.x, z: -this.direction.z };
+                            this.updateArrowRotation();
                         } else {
-                            // Horizontal block: check if any cell of other block overlaps with any cell of this block
-                            const thisIsXAligned = Math.abs(this.direction.x) > 0;
-                            const otherIsXAligned = Math.abs(other.direction.x) > 0;
-                            for (let i = 0; i < this.length; i++) {
-                                const thisX = this.gridX + (thisIsXAligned ? i : 0);
-                                const thisZ = this.gridZ + (thisIsXAligned ? 0 : i);
+                            // Single-cube or vertical: rotate clockwise
+                            this.rotateDirectionClockwise();
+                        }
 
+                        // Drop down one level after head-on collision
+                        // But first check if dropping would cause an overlap
+                        const originalYOffset = this.yOffset;
+                        const newYOffset = Math.max(0, this.yOffset - this.cubeSize);
+                        const thisHeight = this.isVertical ? this.length * this.cubeSize : this.cubeSize;
+                        const newYBottom = newYOffset;
+                        const newYTop = newYOffset + thisHeight;
+
+                        // Log movement calculation for head-on collision
+                        if (window.debugMovementLog) {
+                            window.debugMovementLog({
+                                type: 'head-on-collision',
+                                blockIndex: blocks.indexOf(this),
+                                positionBefore: { x: tempGridX, z: tempGridZ, y: originalYOffset },
+                                positionAfter: { x: finalGridX, z: finalGridZ, y: newYOffset },
+                                directionBefore: { ...headOnCollision.originalDirection },
+                                directionAfter: { ...this.direction },
+                                rotationType: isHorizontalMultiCell ? '180-degree-flip' : 'clockwise',
+                            });
+                        }
+
+                        // Check if dropping would cause overlap with any block at the block's position
+                        // For horizontal blocks, check all cells; for vertical blocks, check the single cell
+                        let wouldOverlap = false;
+                        const overlappingBlocks = [];
+                        for (const other of blocks) {
+                            if (other === this || other === collidedBlock || other.isFalling || other.isRemoved || other.removalStartTime) continue;
+
+                            // Check if other block overlaps with this block's cells at the final position
+                            let cellsOverlap = false;
+                            if (this.isVertical) {
+                                // Vertical block: check if other block is at the same cell
                                 if (other.isVertical) {
-                                    if (other.gridX === thisX && other.gridZ === thisZ) {
-                                        cellsOverlap = true;
-                                        break;
-                                    }
+                                    cellsOverlap = (other.gridX === finalGridX && other.gridZ === finalGridZ);
                                 } else {
+                                    const otherIsXAligned = Math.abs(other.direction.x) > 0;
                                     for (let j = 0; j < other.length; j++) {
                                         const otherX = other.gridX + (otherIsXAligned ? j : 0);
                                         const otherZ = other.gridZ + (otherIsXAligned ? 0 : j);
-                                        if (otherX === thisX && otherZ === thisZ) {
+                                        if (otherX === finalGridX && otherZ === finalGridZ) {
                                             cellsOverlap = true;
                                             break;
                                         }
                                     }
-                                    if (cellsOverlap) break;
+                                }
+                            } else {
+                                // Horizontal block: check if any cell of other block overlaps with any cell of this block
+                                const thisIsXAligned = Math.abs(this.direction.x) > 0;
+                                const otherIsXAligned = Math.abs(other.direction.x) > 0;
+                                for (let i = 0; i < this.length; i++) {
+                                    const thisX = finalGridX + (thisIsXAligned ? i : 0);
+                                    const thisZ = finalGridZ + (thisIsXAligned ? 0 : i);
+
+                                    if (other.isVertical) {
+                                        if (other.gridX === thisX && other.gridZ === thisZ) {
+                                            cellsOverlap = true;
+                                            break;
+                                        }
+                                    } else {
+                                        for (let j = 0; j < other.length; j++) {
+                                            const otherX = other.gridX + (otherIsXAligned ? j : 0);
+                                            const otherZ = other.gridZ + (otherIsXAligned ? 0 : j);
+                                            if (otherX === thisX && otherZ === thisZ) {
+                                                cellsOverlap = true;
+                                                break;
+                                            }
+                                        }
+                                        if (cellsOverlap) break;
+                                    }
+                                }
+                            }
+
+                            if (cellsOverlap) {
+                                const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
+                                const otherYBottom = other.yOffset;
+                                const otherYTop = other.yOffset + otherHeight;
+
+                                // Check if Y ranges would overlap
+                                if (newYTop > otherYBottom && newYBottom < otherYTop) {
+                                    wouldOverlap = true;
+                                    overlappingBlocks.push({
+                                        index: blocks.indexOf(other),
+                                        gridX: other.gridX,
+                                        gridZ: other.gridZ,
+                                        yOffset: other.yOffset,
+                                        height: otherHeight,
+                                    });
+                                    break;
                                 }
                             }
                         }
 
-                        if (cellsOverlap) {
-                            const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
-                            const otherYBottom = other.yOffset;
-                            const otherYTop = other.yOffset + otherHeight;
+                        // Log overlap check result
+                        if (window.debugCollisionLog) {
+                            window.debugCollisionLog({
+                                type: 'overlap-check',
+                                blockIndex: blocks.indexOf(this),
+                                position: { x: finalGridX, z: finalGridZ, y: newYOffset },
+                                wouldOverlap: wouldOverlap,
+                                overlappingBlocks: overlappingBlocks,
+                            });
+                        }
 
-                            // Check if Y ranges overlap
-                            if (currentYTop > otherYBottom && currentYBottom < otherYTop) {
-                                positionOverlaps = true;
-                                break;
+                        if (!wouldOverlap) {
+                            this.yOffset = newYOffset;
+                        } else {
+                            // Can't drop one level - stay at current level
+                            // After a head-on collision, blocks should only drop one level if supported
+                            // If that's not possible, they stay at the current level
+                            // Don't try to find a lower level - that would allow falling through blocks
+                            this.yOffset = this.yOffset;
+                        }
+
+                        // Check if the block's current position (after head-on collision) overlaps with any other blocks
+                        // If it does, stop movement instead of continuing
+                        let positionOverlaps = false;
+                        const currentYBottom = this.yOffset;
+                        const currentYTop = this.yOffset + thisHeight;
+
+                        for (const other of blocks) {
+                            if (other === this || other === collidedBlock || other.isFalling || other.isRemoved || other.isExploding || other.removalStartTime) continue;
+
+                            // Check if other block overlaps with this block's cells at the current position
+                            // Use this.gridX and this.gridZ since those are the actual position after the head-on collision
+                            let cellsOverlap = false;
+                            if (this.isVertical) {
+                                // Vertical block: check if other block is at the same cell
+                                if (other.isVertical) {
+                                    cellsOverlap = (other.gridX === this.gridX && other.gridZ === this.gridZ);
+                                } else {
+                                    const otherIsXAligned = Math.abs(other.direction.x) > 0;
+                                    for (let j = 0; j < other.length; j++) {
+                                        const otherX = other.gridX + (otherIsXAligned ? j : 0);
+                                        const otherZ = other.gridZ + (otherIsXAligned ? 0 : j);
+                                        if (otherX === this.gridX && otherZ === this.gridZ) {
+                                            cellsOverlap = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                            } else {
+                                // Horizontal block: check if any cell of other block overlaps with any cell of this block
+                                const thisIsXAligned = Math.abs(this.direction.x) > 0;
+                                const otherIsXAligned = Math.abs(other.direction.x) > 0;
+                                for (let i = 0; i < this.length; i++) {
+                                    const thisX = this.gridX + (thisIsXAligned ? i : 0);
+                                    const thisZ = this.gridZ + (thisIsXAligned ? 0 : i);
+
+                                    if (other.isVertical) {
+                                        if (other.gridX === thisX && other.gridZ === thisZ) {
+                                            cellsOverlap = true;
+                                            break;
+                                        }
+                                    } else {
+                                        for (let j = 0; j < other.length; j++) {
+                                            const otherX = other.gridX + (otherIsXAligned ? j : 0);
+                                            const otherZ = other.gridZ + (otherIsXAligned ? 0 : j);
+                                            if (otherX === thisX && otherZ === thisZ) {
+                                                cellsOverlap = true;
+                                                break;
+                                            }
+                                        }
+                                        if (cellsOverlap) break;
+                                    }
+                                }
+                            }
+
+                            if (cellsOverlap) {
+                                const otherHeight = other.isVertical ? other.length * other.cubeSize : other.cubeSize;
+                                const otherYBottom = other.yOffset;
+                                const otherYTop = other.yOffset + otherHeight;
+
+                                // Check if Y ranges overlap
+                                if (currentYTop > otherYBottom && currentYBottom < otherYTop) {
+                                    positionOverlaps = true;
+                                    break;
+                                }
                             }
                         }
-                    }
 
-                    // If the current position overlaps with another block, stop movement
-                    if (positionOverlaps) {
+                        // If the current position overlaps with another block, stop movement
+                        if (positionOverlaps) {
+                            hitObstacle = true;
+                            break;
+                        }
+
+                        // Continue moving with the new rotated direction from current position
+                        // Don't update tempGridX/tempGridZ - stay at current position
+                        // The next iteration will calculate nextGridX/nextGridZ using the rotated direction
+                        continue; // Skip updating tempGridX/tempGridZ, continue with rotated direction
+                    } else {
+                        // Regular side collision: stop and shake (base plate) or lock both blocks (higher layers)
                         hitObstacle = true;
+
+                        const isBasePlate = (this.yOffset < 0.1) || (collidedBlock && collidedBlock.yOffset < 0.1);
+
+                        if (isBasePlate) {
+                            // Base plate rule: Side collision will NOT turn into translucent in the base plate,
+                            // but blocks will shake and stop after they collide.
+                            if (collidedBlock && typeof collidedBlock.shake === 'function') {
+                                collidedBlock.shake();
+                            }
+                        } else {
+                            // Higher layers: regular locking penalty
+                            let remainingTime = null;
+                            if (typeof window !== 'undefined' && window.timeLeftSec !== undefined) {
+                                remainingTime = window.timeLeftSec;
+                            }
+
+                            // Lock both blocks: the moving block (this) and the stationary block (collidedBlock)
+                            if (collidedBlock && !collidedBlock.isLocked && !collidedBlock.isFalling && !collidedBlock.isRemoved) {
+                                collidedBlock.lockBlock(this.level, remainingTime);
+                            }
+                            // Lock the moving block as well
+                            if (!this.isLocked && !this.isFalling && !this.isRemoved) {
+                                this.lockBlock(this.level, remainingTime);
+                            }
+                        }
+
                         break;
                     }
-
-                    // Continue moving with the new rotated direction from current position
-                    // Don't update tempGridX/tempGridZ - stay at current position
-                    // The next iteration will calculate nextGridX/nextGridZ using the rotated direction
-                    continue; // Skip updating tempGridX/tempGridZ, continue with rotated direction
-                } else {
-                    // Regular side collision: stop and shake (base plate) or lock both blocks (higher layers)
-                    hitObstacle = true;
-
-                    const isBasePlate = (this.yOffset < 0.1) || (collidedBlock && collidedBlock.yOffset < 0.1);
-
-                    if (isBasePlate) {
-                        // Base plate rule: Side collision will NOT turn into translucent in the base plate,
-                        // but blocks will shake and stop after they collide.
-                        if (collidedBlock && typeof collidedBlock.shake === 'function') {
-                            collidedBlock.shake();
-                        }
-                    } else {
-                        // Higher layers: regular locking penalty
-                        let remainingTime = null;
-                        if (typeof window !== 'undefined' && window.timeLeftSec !== undefined) {
-                            remainingTime = window.timeLeftSec;
-                        }
-
-                        // Lock both blocks: the moving block (this) and the stationary block (collidedBlock)
-                        if (collidedBlock && !collidedBlock.isLocked && !collidedBlock.isFalling && !collidedBlock.isRemoved) {
-                            collidedBlock.lockBlock(this.level, remainingTime);
-                        }
-                        // Lock the moving block as well
-                        if (!this.isLocked && !this.isFalling && !this.isRemoved) {
-                            this.lockBlock(this.level, remainingTime);
-                        }
-                    }
-
-                    break;
                 }
-            }
 
-            // Move to next position (only reached if no edge detected above)
-            stepsToObstacle++;
-            tempGridX = nextGridX;
-            tempGridZ = nextGridZ;
+                // Move to next position (only reached if no edge detected above)
+                stepsToObstacle++;
+                tempGridX = nextGridX;
+                tempGridZ = nextGridZ;
+            }
         }
 
         // If blocked immediately with no movement, add bounce effect
@@ -5351,9 +5978,9 @@ export class Block {
         if (highlighted) {
             // Create bright golden yellow highlighted material - make it VERY visible
             const highlightMaterial = this.originalMaterial.clone();
-            highlightMaterial.emissive = new THREE.Color(0xffc125); // Golden yellow
+            highlightMaterial.emissive = new THREE.Color(0xea8c00); // Golden amber
             highlightMaterial.emissiveIntensity = 2.0; // Very bright
-            highlightMaterial.color = new THREE.Color(0xffc125); // Change base color to golden yellow
+            highlightMaterial.color = new THREE.Color(0xea8c00); // Change base color to golden amber
             highlightMaterial.roughness = 0.1; // Make it shiny
             setupPulsingMaterial(highlightMaterial, { isHighlight: true });
             mesh.material = highlightMaterial;
@@ -5434,12 +6061,13 @@ export class Block {
                     ? this.cubes[0].material.opacity
                     : 1.0;
 
-                // Make materials transparent if needed
+                // Make materials transparent if needed (clone if pooled to avoid fading other blocks)
                 this.cubes.forEach(cube => {
                     if (cube.material) {
-                        if (!cube.material.transparent) {
-                            cube.material.transparent = true;
+                        if (isPooledMaterial(cube.material)) {
+                            cube.material = cube.material.clone();
                         }
+                        cube.material.transparent = true;
                     }
                 });
 
@@ -5447,9 +6075,12 @@ export class Block {
                 if (this.arrow) {
                     this.arrow.traverse((child) => {
                         if (child.material) {
-                            if (!child.material.transparent) {
-                                child.material.transparent = true;
+                            if (Array.isArray(child.material)) {
+                                child.material = child.material.map(m => isPooledMaterial(m) ? m.clone() : m);
+                            } else if (isPooledMaterial(child.material)) {
+                                child.material = child.material.clone();
                             }
+                            child.material.transparent = true;
                         }
                     });
                 }
@@ -5457,9 +6088,12 @@ export class Block {
                 if (this.directionIndicators) {
                     this.directionIndicators.traverse((child) => {
                         if (child.material) {
-                            if (!child.material.transparent) {
-                                child.material.transparent = true;
+                            if (Array.isArray(child.material)) {
+                                child.material = child.material.map(m => isPooledMaterial(m) ? m.clone() : m);
+                            } else if (isPooledMaterial(child.material)) {
+                                child.material = child.material.clone();
                             }
+                            child.material.transparent = true;
                         }
                     });
                 }
@@ -5607,9 +6241,9 @@ export class Block {
                     particleSystem.addFireSparks(blockCenter, 8);
                 }
 
-                // Animate block: scale down + fade out (Cinematic slow-motion 720ms when blasted by detonation)
+                // Animate block: scale down + fade out (Crisp standard 350ms dissolution)
                 const startTime = performance.now();
-                const explosionDuration = isBlasted ? 720 : 350; // 720ms cinematic slow-motion dissolution
+                const explosionDuration = 350; // Standard crisp dissolution, no slow motion
                 const originalScale = this.group.scale.clone();
                 const originalOpacity = this.cubes && this.cubes[0] && this.cubes[0].material
                     ? this.cubes[0].material.opacity
@@ -5622,6 +6256,9 @@ export class Block {
 
                 this.cubes.forEach(cube => {
                     if (cube.material) {
+                        if (isPooledMaterial(cube.material)) {
+                            cube.material = cube.material.clone();
+                        }
                         cube.material.transparent = true;
                         fadeMaterials.push(cube.material);
                         if (isBlasted) {
@@ -5634,6 +6271,11 @@ export class Block {
                 if (this.arrow) {
                     this.arrow.traverse((child) => {
                         if (child.material) {
+                            if (Array.isArray(child.material)) {
+                                child.material = child.material.map(m => isPooledMaterial(m) ? m.clone() : m);
+                            } else if (isPooledMaterial(child.material)) {
+                                child.material = child.material.clone();
+                            }
                             const mats = Array.isArray(child.material) ? child.material : [child.material];
                             mats.forEach(m => {
                                 m.transparent = true;
@@ -5650,6 +6292,11 @@ export class Block {
                 if (this.directionIndicators) {
                     this.directionIndicators.traverse((child) => {
                         if (child.material) {
+                            if (Array.isArray(child.material)) {
+                                child.material = child.material.map(m => isPooledMaterial(m) ? m.clone() : m);
+                            } else if (isPooledMaterial(child.material)) {
+                                child.material = child.material.clone();
+                            }
                             const mats = Array.isArray(child.material) ? child.material : [child.material];
                             mats.forEach(m => {
                                 m.transparent = true;
@@ -5714,6 +6361,9 @@ export class Block {
                     }
 
                     if (progress < 1.0) {
+                        if (typeof window !== 'undefined' && typeof window.markNeedsRender === 'function') {
+                            window.markNeedsRender(100);
+                        }
                         requestAnimationFrame(animateExplosion);
                     } else {
                         // Animation complete - reset emissive and remove block
@@ -5818,6 +6468,9 @@ export class Block {
         if (this.arrow) {
             this.arrow.traverse((child) => {
                 if (child.isMesh && child.material && !child.isOrganicGlow && !(child.parent && child.parent.isOrganicGlow)) {
+                    if (isPooledMaterial(child.material)) {
+                        child.material = child.material.clone();
+                    }
                     const mats = Array.isArray(child.material) ? child.material : [child.material];
                     mats.forEach(m => {
                         if (m && m.isMeshStandardMaterial) {
@@ -5831,6 +6484,9 @@ export class Block {
         if (this.directionIndicators) {
             this.directionIndicators.traverse((child) => {
                 if (child.isMesh && child.material && !child.isOrganicGlow && !(child.parent && child.parent.isOrganicGlow)) {
+                    if (isPooledMaterial(child.material)) {
+                        child.material = child.material.clone();
+                    }
                     const mats = Array.isArray(child.material) ? child.material : [child.material];
                     mats.forEach(m => {
                         if (m && m.isMeshStandardMaterial) {
@@ -5845,8 +6501,8 @@ export class Block {
         if (indicatorMaterials.length === 0) return;
 
         const startTime = performance.now();
-        const baseBombColors = [0xff1744, 0x00e5ff, 0xff9100];
-        const normalColors = [0xff6b6b, 0x4ecdc4, 0xffc125];
+        const baseBombColors = [0xc51120, 0x00e5ff, 0xff9100];
+        const normalColors = INDICATOR_LENGTH_COLORS;
         const flashColorHex = this.isBomb
             ? (baseBombColors[this.length - 1] || baseBombColors[0])
             : (normalColors[this.length - 1] || normalColors[0]);
@@ -5860,6 +6516,9 @@ export class Block {
                     indicatorMaterials[i].emissiveIntensity = 0.0;
                 }
                 this._isFlashingBlast = false;
+                if (!this.isRemoved && !this.isExploding) {
+                    this.updateCoolingIndicatorState();
+                }
                 return;
             }
 
@@ -5957,13 +6616,17 @@ export class Block {
             }
         });
 
-        // Trigger cinematic slow-motion ONLY during this block removal sequence
-        const slowMoDuration = Math.max(780, affectedBlocks.length * 40 + 650);
+        // Trigger detonation effect without slow motion
+        const blastDuration = 360;
         if (typeof window.triggerDetonationSlowMotion === 'function') {
-            window.triggerDetonationSlowMotion(slowMoDuration);
+            window.triggerDetonationSlowMotion(blastDuration);
         }
 
-        // Particle effect (White-yellow flash + high density sparks for cinematic feel)
+        if (typeof window !== 'undefined' && typeof window.markNeedsRender === 'function') {
+            window.markNeedsRender(2500);
+        }
+
+        // Particle effect (White-yellow flash + high density sparks)
         if (window.particleSystem) {
              window.particleSystem.addExplosion(bombPos, new THREE.Color(0xffffcc), 120, 6.0);
              if (typeof window.particleSystem.addFireSparks === 'function') {
@@ -5977,18 +6640,19 @@ export class Block {
         }
 
         // Trigger self-emissive flashing strobe on exploding bomb blocks
-        this.startBlastIndicatorFlash(slowMoDuration);
+        this.startBlastIndicatorFlash(blastDuration);
         affectedBlocks.forEach(block => {
             block.isExploding = true;
             block.removalStartTime = performance.now();
             if (block.isBomb) {
-                block.startBlastIndicatorFlash(slowMoDuration);
+                block.startBlastIndicatorFlash(blastDuration);
             }
         });
 
         // Detonate/Remove affected blocks starting with the lower layers first
+        const rippleStep = 28;
         affectedBlocks.forEach((block, index) => {
-            const delay = index * 30; // Fast 30ms upward ripple from bottom layers upward
+            const delay = index * rippleStep; // Smooth upward ripple
             
             setTimeout(() => {
                 if (block.isRemoved || block._explosionAnimationStarted) return;
@@ -5996,7 +6660,6 @@ export class Block {
                 if (block.isBomb && !block.isLocked && !block.isTranslucent && !block.isCharred) {
                     block.detonate(); 
                 } else {
-                    // Use explodeWithParticles for cinematic slow-motion removal
                     if (window.particleSystem) {
                         block.explodeWithParticles(window.particleSystem, 0, true);
                     } else if (typeof window.removeBlockWithAnimation === 'function') {
@@ -6008,14 +6671,15 @@ export class Block {
             }, delay);
         });
 
-        // Finally remove the bomb itself
-        this.remove();
-        if (typeof window.markSupportCheckDirty === 'function') {
-            window.markSupportCheckDirty();
+        // Dissolve the bomb block itself with rich particles rather than disappearing instantly
+        if (window.particleSystem) {
+            this.explodeWithParticles(window.particleSystem, 0, true);
+        } else {
+            this.remove();
         }
         
-        // After explosion completes and bullet-time returns to 1.0, settle tower with crisp gravity
-        const settleDelay = slowMoDuration + 100;
+        // Settle tower with crisp gravity ONLY after the entire blast crater dissolution has completed
+        const settleDelay = Math.max(380, affectedBlocks.length * rippleStep + 340);
         setTimeout(() => {
             if (typeof window.markSupportCheckDirty === 'function') {
                 window.markSupportCheckDirty();
@@ -6085,6 +6749,9 @@ export class Block {
     highlight(color = new THREE.Color(0xff0000), duration = 2000) {
         this.cubes.forEach(cube => {
             if (cube.material) {
+                if (isPooledMaterial(cube.material)) {
+                    cube.material = cube.material.clone();
+                }
                 const oldEmissive = cube.material.emissive.clone();
                 const oldIntensity = cube.material.emissiveIntensity;
                 
@@ -6103,7 +6770,7 @@ export class Block {
 
     applyLockedStyle() {
         if (!this.cubes || this.cubes.length === 0) return;
-        const colors = [0xff6b6b, 0x4ecdc4, 0xffc125];
+        const colors = INDICATOR_LENGTH_COLORS;
         const tintColorHex = colors[this.length - 1] || colors[0];
         const tintColorObj = new THREE.Color(tintColorHex);
 
@@ -6112,6 +6779,9 @@ export class Block {
 
         for (const cube of this.cubes) {
             if (cube && cube.material) {
+                if (isPooledMaterial(cube.material)) {
+                    cube.material = cube.material.clone();
+                }
                 if (!cube.material.userData) cube.material.userData = {};
                 const originalColorObj = asThreeColor(
                     cube.material.userData.baseBlockColor || cube.material.userData.originalColor || cube.material.color || this.originalColor,
@@ -6138,7 +6808,7 @@ export class Block {
     }
 
     setIndicatorsFrosted(frosted = true) {
-        const colors = [0xff6b6b, 0x4ecdc4, 0xffc125];
+        const colors = INDICATOR_LENGTH_COLORS;
         const defaultColor = colors[this.length - 1] || colors[0];
 
         this.group.traverse((child) => {
@@ -6146,6 +6816,10 @@ export class Block {
                 if (!child.material) return;
                 if (child.isOrganicGlow || (child.parent && child.parent.isOrganicGlow)) return;
                 if (!child.material.isMeshStandardMaterial) return;
+
+                if (isPooledMaterial(child.material)) {
+                    child.material = child.material.clone();
+                }
 
                 if (frosted) {
                     // Frosting implied colors: configurable etched frost with crystal ice glow
@@ -6157,7 +6831,7 @@ export class Block {
                     child.material.roughness = FROSTY_CONFIG.indicatorRoughness;
                     child.material.metalness = FROSTY_CONFIG.indicatorMetalness;
                 } else if (this.isBomb) {
-                    const maxColors = [0xff1744, 0x00e5ff, 0xff9100];
+                    const maxColors = [0xc51120, 0x00e5ff, 0xff9100];
                     const bombColorHex = maxColors[this.length - 1] || maxColors[0];
                     child.material.color.setHex(bombColorHex);
                     child.material.emissive.setHex(bombColorHex);
@@ -6166,15 +6840,22 @@ export class Block {
                     child.material.opacity = this.isCharred ? 0.20 : 1.0;
                     child.material.roughness = 0.36; // Restore original roughness
                     child.material.metalness = 0.0;
+                } else if (!this.isBomb && !this.isCharred && IndicatorMaterialPool.has(`ind_${(typeof defaultColor === 'number') ? defaultColor : defaultColor.getHex()}`)) {
+                    const pooledMat = IndicatorMaterialPool.get(`ind_${(typeof defaultColor === 'number') ? defaultColor : defaultColor.getHex()}`);
+                    const oldMat = child.material;
+                    child.material = pooledMat;
+                    if (oldMat && oldMat !== pooledMat && !isPooledMaterial(oldMat) && typeof oldMat.dispose === 'function') {
+                        oldMat.dispose();
+                    }
                 } else {
-                    // Restore original indicator colors (red, teal, yellow) based on block length/palette
+                    // Restore original indicator colors (red, cyan, yellow) based on block length/palette
                     child.material.color.setHex(defaultColor);
-                    child.material.emissive.setHex(this.isCharred ? 0x141414 : 0x000000);
-                    child.material.emissiveIntensity = this.isCharred ? 0.05 : 0.0;
+                    child.material.emissive.setHex(this.isCharred ? 0x141414 : defaultColor);
+                    child.material.emissiveIntensity = this.isCharred ? 0.05 : 0.15;
                     child.material.transparent = this.isCharred ? true : false;
                     child.material.opacity = this.isCharred ? 0.20 : 1.0;
-                    child.material.roughness = 0.36; // Restore original roughness on un-frost
-                    child.material.metalness = 0.0;
+                    child.material.roughness = 0.28;
+                    child.material.metalness = 0.06;
                 }
                 child.material.needsUpdate = true;
             }
@@ -6196,6 +6877,9 @@ export class Block {
         if (this.cubes && this.cubes.length > 0) {
             for (const cube of this.cubes) {
                 if (!cube || !cube.material) continue;
+                if (isTranslucent && isPooledMaterial(cube.material)) {
+                    cube.material = cube.material.clone();
+                }
                 const mat = cube.material;
                 if (!mat.userData) mat.userData = {};
 

@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { initPhysics, createPhysicsBlock, updatePhysics, isPhysicsStepping, hasPendingOperations, isPhysicsProcessing, removePhysicsBody } from './physics.js';
-import { Block, getTranslucentCluster, moveTranslucentCluster, updateWeldedTranslucentClusters, FROSTY_CONFIG, DEFAULT_FROSTY_CONFIG, getFrostyConfig, setFrostyConfig, regenerateIceAlphaMap } from './Block.js';
+import { Block, getTranslucentCluster, moveTranslucentCluster, updateWeldedTranslucentClusters, FROSTY_CONFIG, DEFAULT_FROSTY_CONFIG, getFrostyConfig, setFrostyConfig, regenerateIceAlphaMap, isPooledMaterial } from './Block.js';
 import { createLights, createGrid, setGradientBackground, setupFog, applyLightPreset, LIGHT_PRESETS, globalUniforms, setShadowsEnabled, setupStudioEnvironment, updateReflectionEnvironment, setReflectionPreset } from './scene.js';
-import { validateStructure, validateSolvability, calculateDifficulty, getBlockCells, fixOverlappingBlocks, checkAndFixAllOverlaps, canBlockExit } from './puzzle_validation.js';
+import { validateStructure, validateSolvability, calculateDifficulty, getBlockCells, fixOverlappingBlocks, checkAndFixAllOverlaps, canBlockExit, snapLayerY } from './puzzle_validation.js';
 import { initStats, startLevelStats, trackMove, trackSpin, trackBlockRemoved, completeLevel, getLevelComparison, getElapsedTime } from './stats/stats.js';
 import { updateLevelCompleteModal, showOfflineIndicator, hideOfflineIndicator, showPersonalHistoryModal, showProfileModal } from './stats/statsUI.js';
 import { isOnline, isLocalOnlyMode } from './stats/statsAPI.js';
@@ -208,6 +208,7 @@ window.markNeedsRender = markNeedsRender;
  */
 export function registerActiveBlock(block) {
     if (block && !block.isRemoved) {
+        if (block.group) block.group.matrixAutoUpdate = true;
         activeBlocks.add(block);
         towerBoundsDirty = true;
         markNeedsRender(500);
@@ -594,22 +595,27 @@ function loadQualityPreset() {
 }
 
 function getQualityCaps(preset) {
-    // iPhone 13 Pro tuned breakeven:
-    // - Performance: 60fps active, higher DPR cap (sharper)
-    // - Balanced: 60fps active, moderate DPR cap (recommended default)
-    // - Battery: keep interaction smooth (60fps), save power via lower DPR + aggressive idle downclock + less shadow work
-    //
-    // These are caps; actual FPS depends on device load.
+    const isExtremeBlockCount = typeof blocks !== 'undefined' && Array.isArray(blocks) && blocks.length > 400;
     if (preset === 'performance') {
-        return { activeFps: isIOS ? 60 : 60, idleFps: isIOS ? 30 : 30, dprCap: isIOS ? 2.0 : 2 };
+        return { 
+            activeFps: 60, 
+            idleFps: 60, 
+            dprCap: isIOS ? 2.0 : 2.0 
+        };
     }
     if (preset === 'battery') {
-        // Battery mode: avoid the very noticeable "30fps drag" feeling; instead reduce internal resolution a bit
-        // and rely on idle downclock + shadow gating for battery savings.
-        return { activeFps: isIOS ? 60 : 60, idleFps: isIOS ? 10 : 20, dprCap: isIOS ? 1.25 : 1.5 };
+        return { 
+            activeFps: 60, 
+            idleFps: isIOS ? 10 : 20, 
+            dprCap: isIOS ? 1.25 : 1.5 
+        };
     }
     // balanced (default)
-    return { activeFps: isIOS ? 60 : 60, idleFps: isIOS ? 15 : 24, dprCap: isIOS ? 1.45 : 1.8 };
+    return { 
+        activeFps: 60, 
+        idleFps: 60, 
+        dprCap: isIOS ? 1.45 : (isExtremeBlockCount ? 1.35 : 1.75) 
+    };
 }
 
 let qualityPreset = loadQualityPreset();
@@ -625,6 +631,8 @@ setupFog(scene, true); // Fog enabled for dark theme
 
 // Expose scene, blocks, THREE, and scene functions for global access
 window.gameScene = scene;
+window.scene = scene;
+window.qualityCaps = qualityCaps;
 window.THREE = THREE;
 window.setGradientBackground = setGradientBackground;
 window.setupFog = setupFog;
@@ -642,7 +650,7 @@ const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerH
 const renderer = new THREE.WebGLRenderer({
     // AA is expensive on mobile and in battery mode; rely on lower DPR + post AA from browser compositor
     antialias: !isMobileLike && initialQualityPreset !== 'battery',
-    powerPreference: 'default',
+    powerPreference: 'high-performance',
     alpha: true, // Enable alpha channel for transparency support
 });
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -661,6 +669,10 @@ renderer.shadowMap.type = isIOS ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
 renderer.shadowMap.autoUpdate = false;
 renderer.shadowMap.needsUpdate = true;
 document.body.appendChild(renderer.domElement);
+
+// Expose globals for profiling and diagnostics
+window.renderer = renderer;
+window.camera = camera;
 
 // Ensure canvas is clickable - explicitly set pointer-events
 renderer.domElement.style.pointerEvents = 'auto';
@@ -4305,6 +4317,7 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
 
     isGeneratingLevel = true;
     if (typeof window !== 'undefined') window.isGeneratingLevel = true;
+    try {
     levelCompleteShown = false; // Reset level complete flag for new level
 
     // Task 1.3 & 7.8.0: Reset spins to 0 ONLY when starting Level 11 (first arrival)
@@ -4366,24 +4379,10 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
         }
         // Remove from scene
         towerGroup.remove(block.group);
-        // Dispose of geometries and materials to free memory
-        if (block.cubes) {
-            block.cubes.forEach(cube => {
-                if (cube.geometry) cube.geometry.dispose();
-                if (cube.material) cube.material.dispose();
-            });
-        }
-        if (block.arrow) {
-            block.arrow.traverse((child) => {
-                if (child.geometry) child.geometry.dispose();
-                if (child.material) child.material.dispose();
-            });
-        }
-        if (block.directionIndicators) {
-            block.directionIndicators.traverse((child) => {
-                if (child.geometry) child.geometry.dispose();
-                if (child.material) child.material.dispose();
-            });
+        if (typeof block.disposeObject3DResources === 'function') {
+            if (block.cubes) block.cubes.forEach(cube => block.disposeObject3DResources(cube));
+            if (block.arrow) block.disposeObject3DResources(block.arrow);
+            if (block.directionIndicators) block.disposeObject3DResources(block.directionIndicators);
         }
     }
     blocks.length = 0;
@@ -4939,23 +4938,10 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
             // Clear current blocks
             for (const block of blocks) {
                 towerGroup.remove(block.group);
-                if (block.cubes) {
-                    block.cubes.forEach(cube => {
-                        if (cube.geometry) cube.geometry.dispose();
-                        if (cube.material) cube.material.dispose();
-                    });
-                }
-                if (block.arrow) {
-                    block.arrow.traverse((child) => {
-                        if (child.geometry) child.geometry.dispose();
-                        if (child.material) child.material.dispose();
-                    });
-                }
-                if (block.directionIndicators) {
-                    block.directionIndicators.traverse((child) => {
-                        if (child.geometry) child.geometry.dispose();
-                        if (child.material) child.material.dispose();
-                    });
+                if (typeof block.disposeObject3DResources === 'function') {
+                    if (block.cubes) block.cubes.forEach(cube => block.disposeObject3DResources(cube));
+                    if (block.arrow) block.disposeObject3DResources(block.arrow);
+                    if (block.directionIndicators) block.disposeObject3DResources(block.directionIndicators);
                 }
             }
             blocks.length = 0;
@@ -5087,6 +5073,7 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
         debugTelemetry({ location: 'main.js:generateSolvablePuzzle:isGeneratingLevelFalse', message: 'isGeneratingLevel set to false', data: { oldIsGeneratingLevel: oldIsGeneratingLevel, newIsGeneratingLevel: isGeneratingLevel, oldTargetRadius: oldTargetRadius.toFixed(2), oldCurrentRadius: oldCurrentRadius.toFixed(2), currentTargetRadius: targetRadius.toFixed(2), currentCurrentRadius: currentRadius.toFixed(2), blocksCount: blocks.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' });
         // #endregion
         console.log('  Level generation complete, support checking enabled');
+        applyQualityPreset(qualityPreset);
 
         // Force immediate auto-zoom update after spawn ends to ensure smooth transition
         // This bypasses the throttle to prevent camera jump
@@ -5132,6 +5119,21 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
     if (currentLevel === 1) {
         showGameHint("First time? Try swiping to rotate the camera!", "hint-level-1");
     }
+    } catch (err) {
+        console.error('[generateSolvablePuzzle] Critical error during level generation:', err);
+        isGeneratingLevel = false;
+        if (typeof window !== 'undefined') window.isGeneratingLevel = false;
+        if (blocks.length === 0) {
+            console.warn('[generateSolvablePuzzle] Recovering with fallback generation...');
+            try {
+                const recoveryBlocks = createSolvableBlocks(0, null, Math.max(10, Math.min(30, targetBlockCount)), level, false, null, 0);
+                await placeBlocksBatch(recoveryBlocks, 50, 0, 0);
+                validateStructure(blocks, gridSize);
+            } catch (recErr) {
+                console.error('[generateSolvablePuzzle] Fallback recovery error:', recErr);
+            }
+        }
+    }
 }
 
 /**
@@ -5142,6 +5144,7 @@ export function initBombTelemetry() {
     window.__unexpectedBombMutations = [];
 
     const bombBlocks = (blocks || []).filter(b => b && b.isBomb);
+    window.currentLevelBombBlocks = bombBlocks;
     bombBlocks.forEach(b => {
         b._initialBombId = `bomb_${b.gridX}_${b.gridZ}_y${Math.round(b.yOffset * 10)}`;
         window.__initialBombs.add(b);
@@ -5697,9 +5700,12 @@ function removeBlockWithAnimation(block) {
     const originalRotation = block.group.rotation.clone();
     const originalColors = [];
 
-    // Make materials transparent for fade effect and store original colors
+    // Make materials transparent for fade effect and store original colors (clone if pooled to avoid mutating other blocks)
     block.cubes.forEach((cube, index) => {
         if (cube.material) {
+            if (isPooledMaterial(cube.material)) {
+                cube.material = cube.material.clone();
+            }
             if (!cube.material.transparent) {
                 cube.material.transparent = true;
             }
@@ -5717,6 +5723,11 @@ function removeBlockWithAnimation(block) {
     if (block.arrow) {
         block.arrow.traverse((child) => {
             if (child.material) {
+                if (Array.isArray(child.material)) {
+                    child.material = child.material.map(m => isPooledMaterial(m) ? m.clone() : m);
+                } else if (isPooledMaterial(child.material)) {
+                    child.material = child.material.clone();
+                }
                 if (!child.material.transparent) {
                     child.material.transparent = true;
                 }
@@ -5728,6 +5739,11 @@ function removeBlockWithAnimation(block) {
     if (block.directionIndicators) {
         block.directionIndicators.traverse((child) => {
             if (child.material) {
+                if (Array.isArray(child.material)) {
+                    child.material = child.material.map(m => isPooledMaterial(m) ? m.clone() : m);
+                } else if (isPooledMaterial(child.material)) {
+                    child.material = child.material.clone();
+                }
                 if (!child.material.transparent) {
                     child.material.transparent = true;
                 }
@@ -5900,7 +5916,7 @@ function removeBlockWithAnimation(block) {
  * Auto-unlock all locked blocks if 5 or fewer blocks remain
  */
 function autoUnlockIfFewBlocksRemaining() {
-    // Count active blocks (not removed, not falling)
+    if (blocks.length > 5) return; // Fast exit to avoid filtering 1,000 blocks every frame
     const activeBlocks = blocks.filter(b => !b.isRemoved && !b.isFalling);
 
     if (activeBlocks.length <= 5) {
@@ -7647,15 +7663,15 @@ if (newGameCancel) {
 // ==========================================
 // TEMPORARY SPIN ARROWS SYSTEM
 // ==========================================
-// Dynamic Scaling: Option 2 (10.0s – 20.0s based on remaining blocks)
-// Formula: clamp(10.0s, 7.5s + 0.25s * N_remaining, 20.0s)
+// Dynamic Scaling: 12.0s – 60.0s based on remaining blocks
+// Formula: clamp(12.0s, 10.0s + 0.05s * N_remaining, 60.0s)
 function getTemporarySpinDurationMs(remainingBlockCount) {
-    const minSec = 10.0;
-    const maxSec = 20.0;
+    const minSec = 12.0;
+    const maxSec = 60.0;
     const count = typeof remainingBlockCount === 'number'
         ? remainingBlockCount
         : (blocks ? blocks.filter(b => b && !b.isRemoved && !b.isFalling && !b.removalStartTime).length : 15);
-    const calculatedSec = Math.min(maxSec, Math.max(minSec, 7.5 + 0.25 * count));
+    const calculatedSec = Math.min(maxSec, Math.max(minSec, 10.0 + 0.05 * count));
     return Math.round(calculatedSec * 1000);
 }
 
@@ -7692,7 +7708,7 @@ function clearTemporarySpinState() {
 }
 
 function revertTemporarySpin() {
-    if (!temporarySpinActive && temporarySpinOriginalDirections.size === 0) return;
+    if (!temporarySpinActive && (!blocks || !blocks.some(b => b && b._preSpinDirection))) return;
 
     console.log('[Spin] Reverting temporary arrow directions back to original positions in top-to-bottom wave...');
     if (temporarySpinTimerId) {
@@ -7715,38 +7731,56 @@ function revertTemporarySpin() {
     const TOTAL_CASCADE_MS = 2000;
     const BLOCK_SPIN_MS = 320;
 
-    // Collect blocks and group by vertical layer (yOffset)
-    const layerMap = new Map(); // Map<number, Array<{block, origDir}>>
-    for (const [block, origDir] of temporarySpinOriginalDirections.entries()) {
-        if (block && blocks && blocks.includes(block) && !block.isRemoved && !block.isFalling && !block.removalStartTime) {
-            const layerKey = Math.round((block.yOffset || 0) * 100) / 100;
-            if (!layerMap.has(layerKey)) {
-                layerMap.set(layerKey, []);
+    // Ensure all non-locked, non-translucent blocks maintain pure creamy porcelain body without dirty emissive
+    for (const block of (blocks || [])) {
+        if (block && !block.isRemoved && !block.isFalling && !block.isLocked && !block.isTranslucent) {
+            if (block.cubes && block.cubes[0] && block.cubes[0].material) {
+                block.cubes[0].material.emissive.setHex(0x000000);
+                block.cubes[0].material.emissiveIntensity = 0.0;
+                block.cubes[0].material.color.setHex(0xfbf6ed);
             }
-            layerMap.get(layerKey).push({ block, origDir });
         }
+    }
+
+    // Collect blocks that have a recorded _preSpinDirection
+    const spunBlocks = (blocks || []).filter(b => b && b._preSpinDirection && !b.isRemoved && !b.removalStartTime);
+
+    // Group blocks by vertical layer (yOffset)
+    const layerMap = new Map();
+    for (const block of spunBlocks) {
+        const layerKey = Math.round((block.yOffset || 0) * 100) / 100;
+        if (!layerMap.has(layerKey)) {
+            layerMap.set(layerKey, []);
+        }
+        layerMap.get(layerKey).push(block);
     }
 
     // Sort layer keys descending (top layer to bottom layer)
     const sortedLayers = Array.from(layerMap.keys()).sort((a, b) => b - a);
     const numLayers = sortedLayers.length;
 
+    markNeedsRender(TOTAL_CASCADE_MS + BLOCK_SPIN_MS + 500);
+
     sortedLayers.forEach((layerKey, layerIndex) => {
         const delay = numLayers > 1 ? (layerIndex / (numLayers - 1)) * (TOTAL_CASCADE_MS - BLOCK_SPIN_MS) : 0;
-        const layerItems = layerMap.get(layerKey) || [];
+        const layerBlocks = layerMap.get(layerKey) || [];
 
         setTimeout(() => {
             // Play ONE sound effect per layer
             playSound('syntheticBlockSnap', 0.35);
 
-            // Spin all blocks in this layer together
-            layerItems.forEach(({ block, origDir }) => {
+            // Revert all blocks in this layer together
+            layerBlocks.forEach(block => {
                 try {
-                    if (typeof block.animateToDirection === 'function') {
+                    if (block.isFalling) {
+                        // Defer revert until landing
+                        block._pendingRevertOnLand = true;
+                    } else if (typeof block.revertSpin === 'function') {
+                        block.revertSpin(BLOCK_SPIN_MS);
+                    } else if (typeof block.animateToDirection === 'function' && block._preSpinDirection) {
+                        const origDir = block._preSpinDirection;
+                        block._preSpinDirection = null;
                         block.animateToDirection(origDir, BLOCK_SPIN_MS);
-                    } else {
-                        block.direction = { x: origDir.x, z: origDir.z };
-                        block.updateArrowRotation();
                     }
                 } catch (e) {
                     console.error('[Spin] Error reverting block:', e);
@@ -7822,6 +7856,19 @@ function triggerFlyingSpinCountdown(sec, ratio) {
     const item = document.createElement('div');
     item.className = 'flying-spin-countdown-item';
 
+    // Position dynamically over the spin button
+    const diceButton = document.getElementById('dice-button');
+    if (diceButton) {
+        const rect = diceButton.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        // Clamp to prevent text clipping near screen edges
+        const safeCenterX = Math.max(56, Math.min(window.innerWidth - 56, centerX));
+        const bottomY = Math.max(20, window.innerHeight - rect.top + 6);
+        item.style.left = `${safeCenterX}px`;
+        item.style.bottom = `${bottomY}px`;
+        item.style.top = 'auto';
+    }
+
     let phase = 'phase-high';
     let label = 'SPIN ACTIVE';
 
@@ -7870,34 +7917,31 @@ function updateSpinCounterDisplay(triggerAwardEffect = false) {
         const totalMs = currentTemporarySpinTotalDurationMs || 15000;
         const ratio = remainingMs / totalMs;
 
-        // Trigger flying countdown numeral towards user on each second tick
+        // Trigger floating animated countdown over the spin button on each second tick
         if (remainingSec > 0 && remainingSec !== lastTemporarySpinCountdownSecond) {
             lastTemporarySpinCountdownSecond = remainingSec;
             triggerFlyingSpinCountdown(remainingSec, ratio);
         }
 
+        // Keep the spin button itself clean (normal dice icon & spin badge), timer is the animation above
         if (spinCounter) {
-            spinCounter.style.display = 'flex';
-            spinCounter.textContent = String(remainingSec);
-            spinCounter.classList.add('spin-countdown-active');
-            spinCounter.classList.remove('has-spins', 'spin-awarded-burst', 'countdown-phase-high', 'countdown-phase-med', 'countdown-phase-low');
-
-            // Dynamic color coding:
-            // High (> 45% & > 5s): Green/Teal
-            // Medium (20% - 45% & > 2s): Amber/Gold
-            // Low (<= 20% or <= 2s): Crimson/Red (urgent panic pulse)
-            if (ratio > 0.45 && remainingSec > 5) {
-                spinCounter.classList.add('countdown-phase-high');
-            } else if (ratio > 0.20 && remainingSec > 2) {
-                spinCounter.classList.add('countdown-phase-med');
+            spinCounter.classList.remove('spin-countdown-active', 'countdown-phase-high', 'countdown-phase-med', 'countdown-phase-low');
+            const hasSpins = (remainingSpins > 0) || (remainingSpins === Number.POSITIVE_INFINITY);
+            const spinsText = (remainingSpins === Number.POSITIVE_INFINITY) ? '∞' : remainingSpins.toString();
+            if (hasSpins) {
+                spinCounter.style.display = 'flex';
+                spinCounter.textContent = spinsText;
+                spinCounter.classList.add('has-spins');
             } else {
-                spinCounter.classList.add('countdown-phase-low');
+                spinCounter.style.display = 'none';
+                spinCounter.textContent = '';
+                spinCounter.classList.remove('has-spins');
             }
-
-            spinCounter.title = `Temporary spin active: ${remainingSec}s remaining (move time rewards paused)`;
+            spinCounter.title = `Temporary spin active: ${remainingSec}s remaining`;
         }
 
         if (diceButton) {
+            diceButton.title = `Temporary spin active: ${remainingSec}s remaining`;
             diceButton.classList.remove('has-spins');
         }
     } else {
@@ -7984,6 +8028,8 @@ function autoSpinAfterSpawn() {
     const numLayers = sortedLayers.length;
     const TOTAL_CASCADE_MS = 1400;
     const BLOCK_SPIN_MS = 320;
+
+    markNeedsRender(TOTAL_CASCADE_MS + BLOCK_SPIN_MS + 500);
 
     sortedLayers.forEach((layerKey, layerIndex) => {
         const delay = numLayers > 1 ? (layerIndex / (numLayers - 1)) * (TOTAL_CASCADE_MS - BLOCK_SPIN_MS) : 0;
@@ -8108,21 +8154,24 @@ function spinRandomBlocks() {
 
     updateIdleTimers();
 
-    // Requirement (a, e): Save original pre-spin directions if starting a new temporary spin window
-    if (!temporarySpinActive) {
-        temporarySpinOriginalDirections.clear();
-        for (const block of blocks) {
-            if (block && !block.isRemoved && !block.isFalling && !block.removalStartTime) {
-                temporarySpinOriginalDirections.set(block, { x: block.direction.x, z: block.direction.z });
+    // Ensure all non-locked, non-translucent blocks maintain pure creamy porcelain body without dirty emissive
+    for (const block of blocks) {
+        if (block && !block.isRemoved && !block.isFalling && !block.isLocked && !block.isTranslucent) {
+            if (block.cubes && block.cubes[0] && block.cubes[0].material) {
+                block.cubes[0].material.emissive.setHex(0x000000);
+                block.cubes[0].material.emissiveIntensity = 0.0;
+                block.cubes[0].material.color.setHex(0xfbf6ed);
             }
         }
-    } else {
-        // If already in temporary spin, ensure any new blocks are also tracked with original directions
-        for (const block of eligibleBlocks) {
-            if (!temporarySpinOriginalDirections.has(block)) {
-                temporarySpinOriginalDirections.set(block, { x: block.direction.x, z: block.direction.z });
-            }
+    }
+
+    // Stamp pre-spin directions directly on each eligible block
+    for (const block of eligibleBlocks) {
+        if (!block._preSpinDirection) {
+            block._preSpinDirection = { x: block.direction.x, z: block.direction.z };
         }
+    }
+    if (temporarySpinActive) {
         if (temporarySpinTimerId) clearTimeout(temporarySpinTimerId);
         if (temporarySpinIntervalId) clearInterval(temporarySpinIntervalId);
     }
@@ -8152,6 +8201,8 @@ function spinRandomBlocks() {
     const TOTAL_CASCADE_MS = 2000;
     const BLOCK_SPIN_MS = 320;
 
+    markNeedsRender(TOTAL_CASCADE_MS + BLOCK_SPIN_MS + 500);
+
     sortedLayers.forEach((layerKey, layerIndex) => {
         const delay = numLayers > 1 ? (layerIndex / (numLayers - 1)) * (TOTAL_CASCADE_MS - BLOCK_SPIN_MS) : 0;
         const layerBlocks = layerMap.get(layerKey) || [];
@@ -8173,7 +8224,7 @@ function spinRandomBlocks() {
         }, delay);
     });
 
-    // Requirement (a, d): Activate dynamic temporary countdown (Option 2: 10s - 20s)
+    // Activate dynamic temporary countdown (12s - 60s based on remaining blocks)
     const remainingCount = blocks ? blocks.filter(b => b && !b.isRemoved && !b.isFalling && !b.removalStartTime).length : 15;
     const durationMs = getTemporarySpinDurationMs(remainingCount);
     console.log(`[Spin] Temporary spin activated for ${Math.round(durationMs / 1000)}s (${remainingCount} blocks remaining)`);
@@ -8485,7 +8536,7 @@ function setupFramingSlider() {
         };
 
         const clampValue = (value) => {
-            return Math.max(MIN_FRAMING_OFFSET, Math.min(MAX_FRAMING_OFFSET, value));
+            return Math.max(MIN_FRAMING_OFFSET_Y, Math.min(MAX_FRAMING_OFFSET_Y, value));
         };
 
         const updateFraming = (delta) => {
@@ -8784,7 +8835,19 @@ updateCameraPosition(); // Position camera immediately to avoid default (0,0,0) 
     updateSpinCounterDisplay();
     updateTimerDisplay();
 
-    await generateSolvablePuzzle(currentLevel);
+    const debugLayoutParam = new URLSearchParams(window.location.search).get('debugLayout');
+    if (debugLayoutParam) {
+        try {
+            const resp = await fetch('/debug_input.json');
+            const layoutData = await resp.json();
+            await window.loadDebugLayout(layoutData);
+        } catch (e) {
+            console.error('Failed to load debug layout:', e);
+            await generateSolvablePuzzle(currentLevel);
+        }
+    } else {
+        await generateSolvablePuzzle(currentLevel);
+    }
 })();
 
 // Initialize button states
@@ -9004,7 +9067,7 @@ function onMouseClick(event) {
     // Store if this block will fall (to update solution tracking)
     const willFall = moveStatus === 'fall';
 
-    block.move(blocks, gridSize);
+    block.move(blocks, gridSize, hasClearExit);
     updateSupportGrid();
 
     // After a block moves, check if any other blocks lost support
@@ -9356,52 +9419,25 @@ window.detonationTimeScale = 1.0;
 window.detonationSlowMotionActive = false;
 
 /**
- * Trigger cinematic slow motion during explosion / detonation block removals.
- * Slows time down to 0.32x speed during the block disintegration moment,
- * then smoothly ramps back to 1.0x so gravity & falling physics settle normally.
+ * Trigger detonation effect without slow motion.
+ * Keeps normal 1.0x physics time scale so tower falling and particle physics remain natural and crisp.
  */
-export function triggerDetonationSlowMotion(durationMs = 850) {
-    window.detonationSlowMotionActive = true;
-    window.detonationTimeScale = 0.32; // 32% bullet-time speed for dramatic cinematic feel
+export function triggerDetonationSlowMotion(durationMs = 350) {
+    window.detonationSlowMotionActive = false;
+    window.detonationTimeScale = 1.0;
 
     if (slowMotionTimeoutId) clearTimeout(slowMotionTimeoutId);
     if (slowMotionRampInterval) clearInterval(slowMotionRampInterval);
 
-    // Keep rendering active throughout slow-motion window
+    // Keep rendering active throughout detonation window
     if (typeof markNeedsRender === 'function') {
-        markNeedsRender(durationMs + 350);
+        markNeedsRender(durationMs + 100);
     }
 
     // Camera cinematic micro-rumble
     if (typeof window.shakeCamera === 'function') {
-        window.shakeCamera(0.08, Math.min(650, durationMs * 0.75));
+        window.shakeCamera(0.08, Math.min(350, durationMs));
     }
-
-    // Hold slow motion for the duration of the block removals, then smoothly ramp back to 1.0x
-    slowMotionTimeoutId = setTimeout(() => {
-        const rampStartTime = performance.now();
-        const rampDuration = 180; // 180ms smooth cubic ramp
-        const startScale = window.detonationTimeScale;
-
-        slowMotionRampInterval = setInterval(() => {
-            const elapsed = performance.now() - rampStartTime;
-            const t = Math.min(1.0, elapsed / rampDuration);
-            // Smooth step (3t^2 - 2t^3)
-            const easedT = t * t * (3 - 2 * t);
-            window.detonationTimeScale = startScale + (1.0 - startScale) * easedT;
-
-            if (typeof markNeedsRender === 'function') {
-                markNeedsRender(100);
-            }
-
-            if (t >= 1.0) {
-                clearInterval(slowMotionRampInterval);
-                slowMotionRampInterval = null;
-                window.detonationTimeScale = 1.0;
-                window.detonationSlowMotionActive = false;
-            }
-        }, 16);
-    }, durationMs);
 }
 window.triggerDetonationSlowMotion = triggerDetonationSlowMotion;
 
@@ -9836,14 +9872,12 @@ function startBlockFallingToTarget(block, targetYOffset) {
         const dt = Math.min(50, currentFrameTime - lastFrameTime);
         lastFrameTime = currentFrameTime;
 
-        // Apply slow-motion time dilation multiplier if in blast scenario or slow-mo active
-        const currentTimeScale = (window.detonationSlowMotionActive || isBlastScenario)
-            ? (window.detonationTimeScale !== undefined ? window.detonationTimeScale : 0.32)
-            : 1.0;
+        // Falling physics at normal crisp 1.0x speed
+        const currentTimeScale = 1.0;
 
         virtualElapsed += dt * currentTimeScale;
         const progress = Math.min(virtualElapsed / baseDuration, 1);
-        const eased = progress * progress; // accelerating downward with bullet-time physics
+        const eased = progress * progress; // accelerating downward with gravity
 
         block.yOffset = startY + (targetYOffset - startY) * eased;
         block.updateWorldPosition();
@@ -9859,6 +9893,14 @@ function startBlockFallingToTarget(block, targetYOffset) {
             fallAnimationId = null;
             markSupportCheckDirty();
             checkAndTriggerFalling(blocks);
+
+            // Revert spin if this block fell while temporary spin expired
+            if (block._pendingRevertOnLand || (!temporarySpinActive && block._preSpinDirection)) {
+                block._pendingRevertOnLand = false;
+                if (typeof block.revertSpin === 'function') {
+                    block.revertSpin(280);
+                }
+            }
 
             // Translucent blocks / welded clusters revert to standard non-translucent blocks when landing on the base plate (level 0)
             if (block.yOffset < 0.1 && !block.isRemoved && !block.removalStartTime) {
@@ -10401,7 +10443,7 @@ function onTouchEnd(event) {
     // Store if this block will fall
     const willFall = moveStatus === 'fall';
 
-    block.move(blocks, gridSize);
+    block.move(blocks, gridSize, hasClearExit);
     updateSupportGrid();
 
     // After a block moves, validate structure and fix any overlaps
@@ -10524,6 +10566,10 @@ let cachedHasActiveAnimations = false;
 let cachedHasPhysicsBlocks = false;
 let cameraStillMoving = false;
 let lastBlockStateCheckTime = 0;
+let cachedBlockValueElement = null;
+let lastCachedBlockCount = -1;
+let cachedTowerHeight = 10;
+let cachedTowerHeightDirty = true;
 
 // Battery/perf: cap frame rate on iOS (avoids 120Hz ProMotion drain) and downclock further when idle.
 let ACTIVE_FRAME_MS = 1000 / qualityCaps.activeFps;
@@ -10708,7 +10754,11 @@ function animate() {
     }
 
     const currentTime = performance.now();
-    if (!isIOS && (currentTime - lastFrameTick) < (nextFrameDelayMs - 0.5)) {
+    // For 60 FPS target on 120/144Hz displays, cap frames with an allowance threshold (12ms)
+    // to prevent dropping 60Hz frames due to normal rAF timestamp jitter (~15.5 - 16.6ms).
+    // For battery mode (<50 FPS), use target threshold minus 2ms.
+    const minFrameInterval = nextFrameDelayMs <= 17 ? 12.0 : (nextFrameDelayMs - 2.0);
+    if (!isIOS && (currentTime - lastFrameTick) < minFrameInterval) {
         scheduleNextFrame();
         return;
     }
@@ -10826,9 +10876,11 @@ function animate() {
         const zoomUpdateInterval = isGeneratingLevel ? SPAWN_ZOOM_UPDATE_INTERVAL_MS : AUTO_ZOOM_UPDATE_INTERVAL_MS;
         const lastUpdate = isGeneratingLevel ? lastSpawnZoomUpdateMs : lastAutoZoomUpdateMs;
         if (currentTime - lastUpdate > zoomUpdateInterval) {
-            _towerSpaceZoomBox.makeEmpty();
-            // Update towerGroup matrix once per zoom update frame
-            towerGroup.updateMatrixWorld(true);
+            if (towerBoundsDirty || isGeneratingLevel || _towerSpaceZoomBox.isEmpty()) {
+                _towerSpaceZoomBox.makeEmpty();
+                // Update towerGroup matrix once per zoom update frame
+                towerGroup.updateMatrixWorld(true);
+            }
         }
     }
     
@@ -10869,6 +10921,11 @@ function animate() {
                               (block.removalStartTime && !block.isRemoved) || 
                               block.isLocked;
         if (!isStillActive) {
+            if (block.group) {
+                block.group.updateMatrix();
+                block.group.updateMatrixWorld(true);
+                block.group.matrixAutoUpdate = false;
+            }
             activeBlocks.delete(block);
         }
     }
@@ -10970,9 +11027,13 @@ function animate() {
                 }
                 const clampedDist = Math.max(minRadius, Math.min(MAX_RADIUS, requiredDistance));
 
-                if (isGeneratingLevel) smoothedAutoZoomRadius = clampedDist;
-                else smoothedAutoZoomRadius += (clampedDist - smoothedAutoZoomRadius) * 0.3;
-                targetRadius = smoothedAutoZoomRadius;
+                if (isGeneratingLevel) {
+                    smoothedAutoZoomRadius = clampedDist;
+                    targetRadius = smoothedAutoZoomRadius;
+                } else if (Math.abs(clampedDist - smoothedAutoZoomRadius) > 0.05) {
+                    smoothedAutoZoomRadius += (clampedDist - smoothedAutoZoomRadius) * 0.3;
+                    targetRadius = smoothedAutoZoomRadius;
+                }
             }
         }
     }
@@ -11002,7 +11063,17 @@ function animate() {
     const hasMovingTower = Math.abs(towerPositionOffset.y - targetTowerPositionOffset.y) > 0.005;
     const hasActiveTimeChallenge = isTimeBasedMode() && timeChallengeActive && !timeUpShown && !isPaused && !isTimeFrozen();
     const hasCameraShake = (currentTime - cameraShakeStartTime) < cameraShakeDuration;
-    const hasActiveBombs = Array.isArray(blocks) && blocks.some(b => b && b.isBomb && !b.isRemoved && !b.isExploding && !b.isCharred);
+    let hasActiveBombs = false;
+    if (currentLevel >= 31 && !isGeneratingLevel) {
+        const bombList = window.currentLevelBombBlocks || [];
+        for (let i = 0; i < bombList.length; i++) {
+            const b = bombList[i];
+            if (b && !b.isRemoved && !b.isExploding && !b.isCharred) {
+                hasActiveBombs = true;
+                break;
+            }
+        }
+    }
 
     const isUserActive = interacting || 
                          hasFallingBlocks || 
@@ -11055,7 +11126,6 @@ function animate() {
     if (!lightsManuallyControlled && needShadowsThisFrame && (currentTime - lastLightUpdateMs) > LIGHT_UPDATE_INTERVAL_MS) {
         lastLightUpdateMs = currentTime;
         updateLightsForCamera(lights, currentAzimuth, currentElevation, _towerGroupWorldCenter);
-        if (renderer.shadowMap) renderer.shadowMap.needsUpdate = true;
     }
 
     if (!lightsManuallyControlled && lights && targetKeyLightPosition) {
@@ -11069,7 +11139,15 @@ function animate() {
                 
                 // Tighten shadow camera frustum: bound only the active tower height
                 const tY = _towerGroupWorldCenter.y;
-                const towerHeight = Math.max(1, blocks.reduce((max, b) => Math.max(max, b.yOffset), 0) + 2);
+                if (cachedTowerHeightDirty || towerBoundsDirty) {
+                    let maxH = 0;
+                    for (let bi = 0; bi < blocks.length; bi++) {
+                        if (blocks[bi] && blocks[bi].yOffset > maxH) maxH = blocks[bi].yOffset;
+                    }
+                    cachedTowerHeight = Math.max(1, maxH + 2);
+                    cachedTowerHeightDirty = false;
+                }
+                const towerHeight = cachedTowerHeight;
                 const sB = 10; // slightly tighter side bound
                 const vO = Math.max(0, tY);
                 lights.keyLight.shadow.camera.top = towerHeight + 2;
@@ -11102,12 +11180,18 @@ function animate() {
         debrisManager.update();
         if (debrisManager.getPieceCount() > 0) debrisManager.cleanupSettled(-0.5, 10);
     }
-    const blockValueElement = document.getElementById('block-value');
-    if (blockValueElement) blockValueElement.textContent = blocks.length;
+    if (cachedBlockValueElement === null && typeof document !== 'undefined') {
+        cachedBlockValueElement = document.getElementById('block-value');
+    }
+    if (cachedBlockValueElement && lastCachedBlockCount !== blocks.length) {
+        lastCachedBlockCount = blocks.length;
+        cachedBlockValueElement.textContent = blocks.length;
+    }
 
     // 10. Support Check & Cleanup
     const supportCheckInterval = isBatteryQuality ? 200 : 100;
-    if (supportCheckDirty || (currentTime - lastSupportCheckTime > supportCheckInterval)) {
+    const hasMovingOrFalling = cachedHasFallingBlocks || cachedHasActiveAnimations;
+    if (supportCheckDirty || (hasMovingOrFalling && (currentTime - lastSupportCheckTime > supportCheckInterval))) {
         lastSupportCheckTime = currentTime;
         supportCheckDirty = false;
         checkAndTriggerFalling(blocks);
@@ -11121,24 +11205,26 @@ function animate() {
     }
 
 
-    for (let i = blocks.length - 1; i >= 0; i--) {
-        const block = blocks[i];
-        if (!block) continue;
-        
-        if (block.isRemoved) {
-            if (!block.removalStartTime) { trackBlockRemoved(); timeChallengeAwardForBlockRemoved(block.length); }
-            if (block.group.parent) block.group.parent.remove(block.group);
-            if (block.physicsBody && block.physicsBody.body) {
-                import('./physics.js').then(({ removePhysicsBody }) => removePhysicsBody(physics, block.physicsBody.body));
+    if (activeBlocks.size > 0) {
+        for (let i = blocks.length - 1; i >= 0; i--) {
+            const block = blocks[i];
+            if (!block) continue;
+            
+            if (block.isRemoved) {
+                if (!block.removalStartTime) { trackBlockRemoved(); timeChallengeAwardForBlockRemoved(block.length); }
+                if (block.group.parent) block.group.parent.remove(block.group);
+                if (block.physicsBody && block.physicsBody.body) {
+                    import('./physics.js').then(({ removePhysicsBody }) => removePhysicsBody(physics, block.physicsBody.body));
+                }
+                if (window.puzzleSolution && window.solutionStep < window.puzzleSolution.length) {
+                    window.solutionStep++;
+                    setTimeout(() => highlightNextBlock(), 100);
+                }
+                activeBlocks.delete(block);
+                towerBoundsDirty = true;
+                markNeedsRender(500);
+                blocks.splice(i, 1);
             }
-            if (window.puzzleSolution && window.solutionStep < window.puzzleSolution.length) {
-                window.solutionStep++;
-                setTimeout(() => highlightNextBlock(), 100);
-            }
-            activeBlocks.delete(block);
-            towerBoundsDirty = true;
-            markNeedsRender(500);
-            blocks.splice(i, 1);
         }
     }
 
@@ -11606,5 +11692,59 @@ window.copyLayoutToClipboard = async function () {
     }
 };
 
+window.loadDebugLayout = async function (layoutData) {
+    if (typeof layoutData === 'string') {
+        layoutData = JSON.parse(layoutData);
+    }
+    console.log('[DEBUG] Loading layout with', layoutData.blocks.length, 'blocks');
+    applyGridSize(layoutData.gridSize || 7);
+    setCurrentLevel(layoutData.level || 1);
 
+    // Clear existing blocks
+    for (const block of blocks) {
+        towerGroup.remove(block.group);
+        if (block.group && block.group.parent) block.group.parent.remove(block.group);
+    }
+    blocks.length = 0;
+    activeBlocks.clear();
 
+    for (const b of layoutData.blocks) {
+        const block = new Block(
+            b.length,
+            b.gridX,
+            b.gridZ,
+            b.direction,
+            b.isVertical,
+            currentArrowStyle,
+            scene,
+            physics,
+            layoutData.gridSize || gridSize,
+            cubeSize,
+            b.yOffset,
+            layoutData.level || currentLevel,
+            b.isBomb,
+            b.isSpinGem
+        );
+        scene.remove(block.group);
+        towerGroup.add(block.group);
+        block.group.scale.set(1, 1, 1);
+        
+        if (b.isLocked) {
+            block.isLocked = true;
+            block.applyLockedStyle();
+        }
+        if (b.isTranslucent) {
+            block.setTranslucent(true);
+        }
+        if (b.isCharred) {
+            block.setCharred(true);
+        }
+        blocks.push(block);
+    }
+
+    centerTowerVertically();
+    calculateInitialCameraPosition();
+    updateProgressDial();
+    markNeedsRender(1000);
+    console.log('[DEBUG] Layout loaded successfully');
+};
