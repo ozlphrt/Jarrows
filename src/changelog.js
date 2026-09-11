@@ -4,6 +4,17 @@
  */
 
 export const changelog = {
+    "8.33.0": {
+        title: "Robust Level Progression, Unified Button Spin Countdown & Production Stability",
+        date: "2026-09-12",
+        changes: [
+            "Production Tile Spawning Stability: Eliminated diagnostic ReferenceError in direction indicator verification that crashed block instantiation when hosted outside localhost, ensuring rock-solid tile generation on GitHub Pages and online hosting",
+            "Single Unified Spin Countdown: Replaced dual-timer overlap with a single sleek kinetic countdown badge positioned directly over the bottom-left spin button",
+            "Level Progression Loop Fix: Resolved race conditions in level transition timeouts that could cause level completion modals to loop consecutively",
+            "Unconditional Clean Splicing: Removed blocks are now spliced out on every frame regardless of active movement state, preventing ghost block remnants",
+            "Synchronized Level Clear Verification: Level completion checks now strictly wait for all active block clearing animations and detonations to complete before presenting the victory dialog"
+        ]
+    },
     "8.32.2": {
         title: "Fix Tile Spawning on Online Production Hosting",
         date: "2026-09-12",
