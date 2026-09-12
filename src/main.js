@@ -18,6 +18,7 @@ import { eventBus } from './core/EventBus.js';
 import { gameState } from './core/GameState.js';
 import { initSettingsUI, unregisterServiceWorkersAndClearCaches } from './ui/settings.js';
 import { dialogManager } from './ui/DialogManager.js';
+import { BlockInstanceManager } from './BlockInstanceManager.js';
 import appVersionRaw from '../VERSION?raw';
 import {
     getBlocksForLevel,
@@ -890,6 +891,9 @@ gridHelper = gridData.gridHelper;
 const towerGroup = new THREE.Group();
 towerGroup.name = 'towerGroup';
 scene.add(towerGroup);
+
+const instanceManager = new BlockInstanceManager(towerGroup);
+if (typeof window !== 'undefined') window.instanceManager = instanceManager;
 
 /**
  * Update grid size based on level
@@ -2636,6 +2640,9 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
     setGeneratorContext({ gridSize, cubeSize, scene, physics, currentArrowStyle, blocks });
 
     // Clear old instances
+    if (instanceManager) {
+        instanceManager.clear();
+    }
 
 
     // ABSOLUTE HARD STOP: If isRestart and level is 0, reject immediately
@@ -9376,6 +9383,9 @@ function animate() {
     lastBlockStateCheckTime = currentTime;
 
     // Update InstancedMesh matrices
+    if (instanceManager) {
+        instanceManager.update();
+    }
 
     // 6. Camera & Zoom Logic
     if (isAutoZoomEnabled && !isAutoZoomDisabled) {
