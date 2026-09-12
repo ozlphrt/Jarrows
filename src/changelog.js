@@ -4,6 +4,16 @@
  */
 
 export const changelog = {
+    "8.35.0": {
+        title: "Dense Tower Packing, Direct Vertical Support & Gap-Free Generation",
+        date: "2026-09-12",
+        changes: [
+            "Dense Gap-Free Tower Generation: Eliminated artificial layer capping (TOWER_HEIGHT_RATIO) so multi-layer towers pack solidly without empty shelves, loose spacing, or hollow interiors",
+            "Direct Vertical Support Verification: Upper layer blocks now verify direct vertical contact from the layer immediately below via 3D Y-ranges, preventing layer-skipping voids and floating overhangs",
+            "Void & Gap Filling: Allowed single-cell blocks to fill isolated gaps in puzzle generation passes, ensuring full and cohesive layer coverage",
+            "Support Preservation on Relocation: Inward edge adjustments now check direct vertical support before shifting blocks, preventing newly created gaps"
+        ]
+    },
     "8.34.0": {
         title: "Architectural Modernization, 3D Spin Button, Calibrated Physics & Streamlined HUD",
         date: "2026-09-12",

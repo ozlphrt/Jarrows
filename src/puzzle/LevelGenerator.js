@@ -323,29 +323,43 @@ export function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, target
         return occupiedCells.has(`${x},${z}`);
     }
 
-    // For level 2+, check if a block has support from lower layer (prevent floating)
+    // For level 2+, check if a block has direct support from the layer directly below (prevent floating and gaps)
+    function hasDirectSupportAt(cellX, cellZ) {
+        if (yOffset === 0) return true;
+        if (!lowerLayerCells) return false;
+        const cellKey = `${cellX},${cellZ}`;
+        if (typeof lowerLayerCells === 'object' && lowerLayerCells.yRanges) {
+            const ranges = lowerLayerCells.yRanges.get(cellKey);
+            if (ranges && ranges.some(r => Math.abs(r.yTop - yOffset) < 0.05)) {
+                return true;
+            }
+            return false;
+        }
+        const lowerCells = lowerLayerCells instanceof Set ? lowerLayerCells : (lowerLayerCells?.cells || null);
+        return !!(lowerCells && lowerCells.has(cellKey));
+    }
+
     function hasSupport(block) {
         // Level 1 blocks don't need support (they're on the ground)
         if (yOffset === 0) {
             return true;
         }
 
-        // Get the cells Set from lowerLayerCells (it might be a Set or an object with .cells)
-        const lowerCells = lowerLayerCells instanceof Set ? lowerLayerCells : (lowerLayerCells?.cells || null);
-
-        // Level 2+ blocks need at least one cell to have a block below
         if (block.isVertical) {
-            return lowerCells && lowerCells.has(`${block.gridX},${block.gridZ}`);
+            return hasDirectSupportAt(block.gridX, block.gridZ);
         } else {
             const isXAligned = Math.abs(block.direction.x) > 0;
+            let supportedCount = 0;
             for (let i = 0; i < block.length; i++) {
                 const x = block.gridX + (isXAligned ? i : 0);
                 const z = block.gridZ + (isXAligned ? 0 : i);
-                if (lowerCells && lowerCells.has(`${x},${z}`)) {
-                    return true; // At least one cell has support
+                if (hasDirectSupportAt(x, z)) {
+                    supportedCount++;
                 }
             }
-            return false; // No support found
+            // Require at least 1 cell for length 1-2, at least 2 cells for length 3 to prevent loose overhangs
+            const minRequired = block.length >= 3 ? 2 : 1;
+            return supportedCount >= minRequired;
         }
     }
 
@@ -1129,6 +1143,20 @@ export function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, target
 
         if (!canMove) continue;
 
+        // Ensure block has direct support at the new inward position for upper layers
+        if (isUpperLayer) {
+            const tempBlock = {
+                gridX: newX,
+                gridZ: newZ,
+                length: block.length,
+                isVertical: block.isVertical,
+                direction: block.direction
+            };
+            if (!hasSupport(tempBlock)) {
+                continue; // Do not move inward if it loses support or creates a floating overhang
+            }
+        }
+
         // ATOMIC OPERATION: Try to reserve new cells BEFORE releasing old ones
         // This prevents race conditions where another block could claim the new cells
         const reservation = tryReserveCells(newX, newZ, block.length, block.isVertical, block.direction);
@@ -1218,9 +1246,9 @@ export function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, target
         let blockAdded = false;
         const isXAligned = Math.abs(chosenDirection.x) > 0;
 
-        // Try length 3, then 2, then 1 (with very low probability for 1)
+        // Try length 3, then 2, then 1 to maximize block packing and fill gaps
         for (const tryLength of [3, 2, 1]) {
-            if (tryLength === 1 && Math.random() < 0.85) continue; // Only 15% chance to use single blocks
+            if (tryLength === 1 && preferLongBlocks && Math.random() < 0.5) continue;
 
             let canPlace = true;
             const testCells = [];
