@@ -145,7 +145,7 @@ html, body {
         }
 
         /* Floating corner items — pure text, no background, non-blocking */
-        #level-container, #timer-container, #block-container, #bomb-container {
+        #timer-container, #block-container, #bomb-container {
             pointer-events: none !important;
             background: none;
             backdrop-filter: none;
@@ -162,7 +162,41 @@ html, body {
             -webkit-user-select: none;
         }
 
-        .stats-item, .stats-label, .stats-value {
+        #level-container {
+            pointer-events: auto !important;
+            cursor: pointer;
+            background: none;
+            backdrop-filter: none;
+            -webkit-backdrop-filter: none;
+            padding: 8px 20px;
+            border-radius: 8px;
+            border: none;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
+            box-shadow: none;
+            user-select: none;
+            -webkit-user-select: none;
+            transition: transform 0.15s ease, opacity 0.15s ease, background 0.15s ease;
+        }
+
+        #level-container:hover {
+            opacity: 0.9;
+            background: rgba(255, 255, 255, 0.08);
+            transform: translateY(-1px);
+        }
+
+        #level-container:active {
+            transform: translateY(1px) scale(0.97);
+        }
+
+        #level-container .stats-label,
+        #level-container .stats-value {
+            pointer-events: none;
+        }
+
+        .stats-item:not(#level-container), .stats-label, .stats-value {
             pointer-events: none !important;
             user-select: none;
             -webkit-user-select: none;

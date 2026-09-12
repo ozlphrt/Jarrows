@@ -344,6 +344,8 @@ function setCurrentLevel(val) {
     currentLevel = val;
     const levelValueElement = document.getElementById('level-value');
     if (levelValueElement) levelValueElement.textContent = val;
+    const timerLevelElement = document.getElementById('timer-level');
+    if (timerLevelElement) timerLevelElement.textContent = String(val);
 }
 let levelCompleteShown = false;
 let remainingSpins = 0; // Task 7.8.0: Start with 0 free spins
@@ -1626,6 +1628,7 @@ window.debugJumpToLevel = async (level) => {
     saveProgress();
     await generateSolvablePuzzle(level, false);
 };
+window.jumpToLevel = window.debugJumpToLevel;
 
 // Migrate all users to inferno mode, preserving their highest level from any previous mode
 function migrateToInfernoMode() {

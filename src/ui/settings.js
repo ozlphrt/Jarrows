@@ -238,26 +238,357 @@ export function initSettingsUI() {
 
         const settingsToggle = document.getElementById('settings-toggle');
         const settingsMenu = document.getElementById('settings-menu');
+        const settingsContainer = document.getElementById('settings-container');
         if (settingsToggle && settingsMenu) {
             settingsToggle.addEventListener('click', function (e) {
                 e.stopPropagation();
-                const isVisible = settingsMenu.style.display === 'flex';
+                if (window.updateIdleTimers) window.updateIdleTimers();
+                const isVisible = settingsMenu.style.display === 'flex' || settingsMenu.classList.contains('show');
                 settingsMenu.style.display = isVisible ? 'none' : 'flex';
+                settingsMenu.classList.toggle('show', !isVisible);
             });
             document.addEventListener('click', function (e) {
                 if (settingsMenu && !settingsMenu.contains(e.target) && e.target !== settingsToggle) {
                     settingsMenu.style.display = 'none';
+                    settingsMenu.classList.remove('show');
+                }
+            });
+            const canvas = document.querySelector('canvas');
+            if (canvas) {
+                canvas.addEventListener('pointerdown', function () {
+                    if (settingsMenu) {
+                        settingsMenu.style.display = 'none';
+                        settingsMenu.classList.remove('show');
+                    }
+                });
+            }
+        }
+
+        function closeSettingsMenu() {
+            if (settingsMenu) {
+                settingsMenu.style.display = 'none';
+                settingsMenu.classList.remove('show');
+            }
+        }
+
+        // Auto-zoom toggle & HUD camera reset button
+        const autoZoomToggle = document.getElementById('auto-zoom-toggle');
+        const autoZoomIcon = document.getElementById('auto-zoom-icon');
+        const cameraZoomBtn = document.getElementById('camera-zoom-btn');
+        let cameraBtnFadeTimeout = null;
+
+        function updateAutoZoomIcon() {
+            if (autoZoomToggle && autoZoomIcon) {
+                if (autoZoomEnabled) {
+                    autoZoomIcon.innerHTML = '<path d="M23 7l-7 5 7 5V7z" fill="none"></path><rect x="1" y="5" width="15" height="14" rx="2" ry="2" fill="none"></rect>';
+                    autoZoomToggle.classList.add('active');
+                } else {
+                    autoZoomIcon.innerHTML = '<path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2m5.66 0H14a2 2 0 0 1 2 2v3.34l1 7.16" fill="none"></path><line x1="1" y1="1" x2="23" y2="23" fill="none"></line><path d="M23 7l-7 5 7 5V7z" fill="none"></path>';
+                    autoZoomToggle.classList.remove('active');
+                }
+            }
+        }
+        window.updateAutoZoomIcon = updateAutoZoomIcon;
+
+        window.showCameraAutoZoomButton = function () {
+            if (!cameraZoomBtn) return;
+            if (cameraBtnFadeTimeout) {
+                clearTimeout(cameraBtnFadeTimeout);
+                cameraBtnFadeTimeout = null;
+            }
+            autoZoomEnabled = false;
+            window.autoZoomEnabled = false;
+            updateAutoZoomIcon();
+            cameraZoomBtn.style.display = 'inline-flex';
+            requestAnimationFrame(() => {
+                cameraZoomBtn.style.opacity = '1';
+            });
+        };
+
+        window.hideCameraAutoZoomButton = function () {
+            if (!cameraZoomBtn) return;
+            cameraZoomBtn.style.opacity = '0';
+            if (cameraBtnFadeTimeout) clearTimeout(cameraBtnFadeTimeout);
+            cameraBtnFadeTimeout = setTimeout(() => {
+                if (cameraZoomBtn && cameraZoomBtn.style.opacity === '0') {
+                    cameraZoomBtn.style.display = 'none';
+                }
+            }, 500);
+        };
+
+        function activateAutoZoom() {
+            autoZoomEnabled = true;
+            window.autoZoomEnabled = true;
+            updateAutoZoomIcon();
+            window.hideCameraAutoZoomButton();
+            savePreferences({ isDarkTheme, useColoredBlocks, qualityPreset, autoZoomEnabled, lightPreset });
+            if (typeof window.onAutoZoomReenabled === 'function') {
+                window.onAutoZoomReenabled();
+            }
+        }
+
+        if (autoZoomToggle) {
+            updateAutoZoomIcon();
+            autoZoomToggle.addEventListener('click', function (e) {
+                e.stopPropagation();
+                if (window.updateIdleTimers) window.updateIdleTimers();
+                if (autoZoomEnabled) {
+                    autoZoomEnabled = false;
+                    window.autoZoomEnabled = false;
+                    updateAutoZoomIcon();
+                    savePreferences({ isDarkTheme, useColoredBlocks, qualityPreset, autoZoomEnabled, lightPreset });
+                } else {
+                    activateAutoZoom();
+                }
+            });
+        }
+
+        if (cameraZoomBtn) {
+            cameraZoomBtn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                activateAutoZoom();
+            });
+        }
+
+        // Lighting Cycles toggle handler
+        const lightingToggle = document.getElementById('lighting-toggle');
+        if (lightingToggle) {
+            lightingToggle.addEventListener('click', function (e) {
+                e.stopPropagation();
+                if (window.updateIdleTimers) window.updateIdleTimers();
+                const presets = ['default', 'warm', 'cool', 'dramatic', 'studio'];
+                const currentIndex = presets.indexOf(lightPreset);
+                const nextIndex = (currentIndex + 1) % presets.length;
+                lightPreset = presets[nextIndex];
+
+                const name = applyLightPreset(window.gameScene, window.lights, lightPreset);
+                const popup = document.getElementById('light-preset-popup');
+                if (popup) {
+                    popup.textContent = name || lightPreset;
+                    popup.classList.add('show');
+                    if (window.lightPopupTimeout) clearTimeout(window.lightPopupTimeout);
+                    window.lightPopupTimeout = setTimeout(() => {
+                        popup.classList.remove('show');
+                    }, 1500);
+                }
+                savePreferences({ isDarkTheme, useColoredBlocks, qualityPreset, autoZoomEnabled, lightPreset });
+            });
+        }
+
+        // Shadows toggle handler
+        const shadowsToggle = document.getElementById('shadows-toggle');
+        if (shadowsToggle) {
+            const updateShadowsIcon = () => {
+                const isEnabled = window.isShadowsEnabled ? window.isShadowsEnabled() : true;
+                if (isEnabled) {
+                    shadowsToggle.classList.add('active');
+                } else {
+                    shadowsToggle.classList.remove('active');
+                }
+            };
+            updateShadowsIcon();
+
+            shadowsToggle.addEventListener('click', function (e) {
+                e.stopPropagation();
+                if (window.updateIdleTimers) window.updateIdleTimers();
+                if (window.toggleShadows) {
+                    const state = window.toggleShadows();
+                    updateShadowsIcon();
+                    const popup = document.getElementById('shadows-popup');
+                    if (popup) {
+                        popup.textContent = state ? 'Shadows: ON' : 'Shadows: OFF';
+                        popup.classList.add('show');
+                        if (window.shadowPopupTimeout) clearTimeout(window.shadowPopupTimeout);
+                        window.shadowPopupTimeout = setTimeout(() => popup.classList.remove('show'), 1500);
+                    }
+                }
+            });
+        }
+
+        // Quality & Battery preset toggle handler
+        const qualityToggle = document.getElementById('quality-toggle');
+        if (qualityToggle) {
+            qualityToggle.addEventListener('click', function (e) {
+                e.stopPropagation();
+                if (window.updateIdleTimers) window.updateIdleTimers();
+                const presets = ['balanced', 'performance', 'battery'];
+                const current = qualityPreset || 'balanced';
+                const nextIdx = (presets.indexOf(current) + 1) % presets.length;
+                qualityPreset = presets[nextIdx];
+                window.jarrowsQualityPreset = qualityPreset;
+                if (window.applyQualityPreset) {
+                    window.applyQualityPreset(qualityPreset);
+                }
+                savePreferences({ isDarkTheme, useColoredBlocks, qualityPreset, autoZoomEnabled, lightPreset });
+                const popup = document.getElementById('quality-popup');
+                if (popup) {
+                    const labels = { balanced: 'Balanced', performance: 'Performance', battery: 'Battery Saver' };
+                    popup.textContent = labels[qualityPreset] || qualityPreset;
+                    popup.classList.add('show');
+                    if (window.qualityPopupTimeout) clearTimeout(window.qualityPopupTimeout);
+                    window.qualityPopupTimeout = setTimeout(() => popup.classList.remove('show'), 1500);
+                }
+            });
+        }
+
+        // Debug Copy Layout button
+        const debugCopyBtn = document.getElementById('debug-copy-layout-btn');
+        if (debugCopyBtn) {
+            debugCopyBtn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                if (window.updateIdleTimers) window.updateIdleTimers();
+                closeSettingsMenu();
+                if (typeof window.copyLayoutToClipboard === 'function') {
+                    window.copyLayoutToClipboard();
+                }
+            });
+        }
+
+        // Select Level Modal & Trigger Handlers
+        const selectLevelBtn = document.getElementById('select-level-btn');
+        const selectLevelModal = document.getElementById('select-level-modal');
+        const selectLevelInput = document.getElementById('select-level-input');
+        const selectLevelConfirm = document.getElementById('select-level-confirm');
+        const selectLevelCancel = document.getElementById('select-level-cancel');
+        const levelContainer = document.getElementById('level-container');
+
+        function openSelectLevelModal(e) {
+            if (e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            if (window.updateIdleTimers) window.updateIdleTimers();
+            const currentLevelText = document.getElementById('timer-level')?.textContent ||
+                                     document.getElementById('level-value')?.textContent || '1';
+            const currentLevel = parseInt(currentLevelText, 10);
+            if (selectLevelInput) {
+                selectLevelInput.value = isNaN(currentLevel) ? 1 : currentLevel;
+                setTimeout(() => {
+                    try {
+                        selectLevelInput.focus();
+                        selectLevelInput.select();
+                    } catch {}
+                }, 50);
+            }
+            if (selectLevelModal) {
+                selectLevelModal.style.display = 'flex';
+            }
+            closeSettingsMenu();
+        }
+
+        if (selectLevelBtn && selectLevelModal) {
+            selectLevelBtn.addEventListener('click', openSelectLevelModal);
+        }
+
+        if (levelContainer && selectLevelModal) {
+            levelContainer.style.setProperty('pointer-events', 'auto', 'important');
+            levelContainer.style.cursor = 'pointer';
+            levelContainer.setAttribute('title', 'Select Level');
+            levelContainer.addEventListener('click', openSelectLevelModal);
+        }
+
+        if (selectLevelCancel && selectLevelModal) {
+            selectLevelCancel.addEventListener('click', (e) => {
+                if (e) { e.preventDefault(); e.stopPropagation(); }
+                selectLevelModal.style.display = 'none';
+            });
+        }
+
+        if (selectLevelModal) {
+            selectLevelModal.addEventListener('click', (e) => {
+                if (e.target === selectLevelModal) {
+                    selectLevelModal.style.display = 'none';
+                }
+            });
+        }
+
+        if (selectLevelConfirm && selectLevelModal && selectLevelInput) {
+            const handleConfirm = () => {
+                const newLevel = parseInt(selectLevelInput.value, 10);
+                if (!isNaN(newLevel) && newLevel >= 0) {
+                    selectLevelModal.style.display = 'none';
+                    if (typeof window.jumpToLevel === 'function') {
+                        window.jumpToLevel(newLevel);
+                    } else if (typeof window.debugJumpToLevel === 'function') {
+                        window.debugJumpToLevel(newLevel);
+                    } else {
+                        window.location.href = window.location.pathname + '?level=' + newLevel;
+                    }
+                }
+            };
+
+            selectLevelConfirm.addEventListener('click', (e) => {
+                if (e) { e.preventDefault(); e.stopPropagation(); }
+                handleConfirm();
+            });
+
+            selectLevelInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleConfirm();
+                } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    selectLevelModal.style.display = 'none';
                 }
             });
         }
 
         // Share & QR Modal
-        const shareBtn = document.getElementById('share-btn');
+        const shareToggle = document.getElementById('share-toggle') || document.getElementById('share-btn');
         const sharePWAModal = document.getElementById('share-pwa-modal');
-        const shareModalClose = document.getElementById('share-modal-close');
-        if (shareBtn) shareBtn.addEventListener('click', showSharePWAModal);
+        const shareModalClose = document.getElementById('share-modal-close') || document.getElementById('share-pwa-modal-ok');
+        if (shareToggle) {
+            shareToggle.addEventListener('click', function (e) {
+                e.stopPropagation();
+                if (window.updateIdleTimers) window.updateIdleTimers();
+                closeSettingsMenu();
+                showSharePWAModal();
+            });
+        }
         if (shareModalClose && sharePWAModal) {
             shareModalClose.addEventListener('click', () => { sharePWAModal.style.display = 'none'; });
+        }
+        if (sharePWAModal) {
+            sharePWAModal.addEventListener('click', (e) => {
+                if (e.target === sharePWAModal) sharePWAModal.style.display = 'none';
+            });
+        }
+
+        function updatePWAInstallGuidance() {
+            const pwaContent = document.getElementById('pwa-install-content');
+            if (!pwaContent) return;
+
+            const isStandalone = (typeof window !== 'undefined' && (
+                window.matchMedia?.('(display-mode: standalone)')?.matches ||
+                window.navigator?.standalone ||
+                document.referrer?.includes('android-app://')
+            ));
+
+            if (isStandalone) {
+                pwaContent.innerHTML = '<p style="opacity: 0.8; margin-bottom: 12px;">✅ App is already installed!</p>';
+            } else {
+                pwaContent.innerHTML = `
+                    <div style="margin-bottom: 12px;">
+                        <p style="font-weight: 700; margin-bottom: 8px;">Install on Mobile:</p>
+                        <div style="margin-bottom: 12px;">
+                            <p style="font-weight: 600; margin-bottom: 4px; font-size: 13px;">📱 iOS (iPhone/iPad):</p>
+                            <ol style="margin: 0 0 12px 0; padding-left: 20px; line-height: 1.6; font-size: 12px;">
+                                <li>Tap the <b>Share</b> button in Safari</li>
+                                <li>Scroll down and tap <b>"Add to Home Screen"</b></li>
+                                <li>Tap <b>"Add"</b> to confirm</li>
+                            </ol>
+                        </div>
+                        <div style="margin-bottom: 12px;">
+                            <p style="font-weight: 600; margin-bottom: 4px; font-size: 13px;">🤖 Android:</p>
+                            <ol style="margin: 0; padding-left: 20px; line-height: 1.6; font-size: 12px;">
+                                <li>Tap the <b>menu</b> (three dots) in Chrome</li>
+                                <li>Tap <b>"Install app"</b> or <b>"Add to Home screen"</b></li>
+                                <li>Tap <b>"Install"</b> to confirm</li>
+                            </ol>
+                        </div>
+                    </div>
+                `;
+            }
         }
 
         function showSharePWAModal() {
@@ -272,17 +603,53 @@ export function initSettingsUI() {
                     console.error('QR Error:', err);
                 });
             }
+            updatePWAInstallGuidance();
             sharePWAModal.style.display = 'flex';
         }
 
-        // VER modal
-        const verBtn = document.getElementById('ver-btn');
+        // Build Version Modal
+        const verToggle = document.getElementById('ver-toggle') || document.getElementById('ver-btn');
         const verModal = document.getElementById('ver-modal');
         const verModalOk = document.getElementById('ver-modal-ok');
         const verModalCloseX = document.getElementById('ver-modal-close-x');
-        if (verBtn && verModal) verBtn.addEventListener('click', () => { verModal.style.display = 'flex'; });
+        const verModalCopy = document.getElementById('ver-modal-copy');
+        const verModalValue = document.getElementById('ver-modal-value');
+
+        function getBuildIdString() {
+            const v = (window.jarrowsVersion || 'v8.33.0').toString().trim();
+            const sha = (window.jarrowsGitSha || '').toString().trim();
+            return sha ? `${v} @ ${sha}` : v;
+        }
+
+        if (verToggle && verModal) {
+            verToggle.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (window.updateIdleTimers) window.updateIdleTimers();
+                closeSettingsMenu();
+                if (verModalValue) {
+                    verModalValue.textContent = getBuildIdString();
+                }
+                verModal.style.display = 'flex';
+            });
+        }
         if (verModalOk && verModal) verModalOk.addEventListener('click', () => { verModal.style.display = 'none'; });
         if (verModalCloseX && verModal) verModalCloseX.addEventListener('click', () => { verModal.style.display = 'none'; });
+        if (verModal) {
+            verModal.addEventListener('click', (e) => {
+                if (e.target === verModal) verModal.style.display = 'none';
+            });
+        }
+        if (verModalCopy) {
+            verModalCopy.addEventListener('click', async () => {
+                try {
+                    await navigator.clipboard.writeText(getBuildIdString());
+                    verModalCopy.textContent = 'Copied!';
+                    setTimeout(() => { verModalCopy.textContent = 'Copy'; }, 1000);
+                } catch {
+                    // fallback
+                }
+            });
+        }
 
         updateThemeUI();
         updateColorsIcon();
