@@ -835,7 +835,8 @@ export class Block {
             return;
         }
 
-        const createArrowGeometry = (style) => {
+        const createArrowGeometry = (rawStyle) => {
+            const style = (typeof rawStyle === 'number' && rawStyle >= 1 && rawStyle <= 8) ? rawStyle : 2;
             const colorHex = (typeof blockColor === 'number') ? blockColor : (blockColor && blockColor.getHex ? blockColor.getHex() : 0xffffff);
             const matKey = `arrow_${style}_${colorHex}`;
             const cachedGeom = ArrowGeometryPool.get(style);
@@ -1083,6 +1084,14 @@ export class Block {
             }
             if (!this.isBomb && !this.isCharred && !this.isTranslucent && arrowMaterial) {
                 IndicatorMaterialPool.set(matKey, arrowMaterial);
+            }
+            if (!arrowMaterial) {
+                arrowMaterial = new THREE.MeshStandardMaterial({
+                    color: blockColor,
+                    roughness: 0.24,
+                    metalness: 0.12,
+                    side: THREE.DoubleSide
+                });
             }
 
             return { geometry: arrowGeometry || ArrowGeometryPool.get(style), material: arrowMaterial };

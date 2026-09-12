@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // Global geometry pool to reuse RoundedBoxGeometry instances
 export const GeometryPool = new Map();
@@ -259,6 +259,7 @@ export function getOrCreateIceAlphaMap() {
  * Creates a procedural silky-smooth radial halo texture for emissive indicators.
  */
 export function createIndicatorHaloTexture() {
+    if (typeof document === 'undefined') return new THREE.Texture();
     if (TextureCache.has('indicatorHaloTexture')) return TextureCache.get('indicatorHaloTexture');
 
     const canvas = document.createElement('canvas');
@@ -286,6 +287,7 @@ export function createIndicatorHaloTexture() {
  * Creates a procedural ring halo texture with a hollow/transparent center for circle indicators.
  */
 export function createRingHaloTexture() {
+    if (typeof document === 'undefined') return new THREE.Texture();
     if (TextureCache.has('ringHaloTexture')) return TextureCache.get('ringHaloTexture');
 
     const canvas = document.createElement('canvas');

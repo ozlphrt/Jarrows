@@ -6,6 +6,13 @@ import { getInfernoDifficultyConfig } from '../inferno_difficulty.js';
 export const DEFAULT_BLAST_CELL_PERCENT = 8;
 export const MAX_BLAST_CELL_PERCENT = 20;
 
+export const directions = [
+    { x: 1, z: 0 },   // East
+    { x: -1, z: 0 },  // West
+    { x: 0, z: 1 },   // South
+    { x: 0, z: -1 }   // North
+];
+
 export function shuffleArray(array) {
     if (!array || !Array.isArray(array)) return array;
     for (let i = array.length - 1; i > 0; i--) {
@@ -20,7 +27,7 @@ const generatorContext = {
     cubeSize: 1,
     scene: null,
     physics: null,
-    currentArrowStyle: 'modern',
+    currentArrowStyle: 2,
     blocks: [],
     blastCellPercent: DEFAULT_BLAST_CELL_PERCENT
 };
@@ -663,8 +670,10 @@ export function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, target
                 const block = new Block(length, cell.x, cell.z, randomDir, isVertical, currentArrowStyle, scene, physics, gridSize, cubeSize, yOffset, level, isBomb, isSpinGem);
                 
                 // Show hints for special blocks
-                if (isBomb) showGameHint("Careful with that bomb! It clears everything in its path.", "hint-bomb");
-                if (isSpinGem) showGameHint("Spin Gems give you extra turns. Grab them!", "hint-spingem");
+                if (typeof window !== 'undefined' && typeof window.showGameHint === 'function') {
+                    if (isBomb) window.showGameHint("Careful with that bomb! It clears everything in its path.", "hint-bomb");
+                    if (isSpinGem) window.showGameHint("Spin Gems give you extra turns. Grab them!", "hint-spingem");
+                }
                 
                 // Move block from scene to towerGroup
                 if (scene) scene.remove(block.group);
