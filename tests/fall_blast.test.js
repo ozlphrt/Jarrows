@@ -58,11 +58,11 @@ describe('Fall Blast & Ash Updates', () => {
         expect(globalThis.window.triggerRadialTowerShake).toHaveBeenCalledWith(
             block,
             globalThis.window.blocks,
-            0.45,
-            420
+            0.28,
+            320
         );
-        expect(globalThis.window.shakeTower).toHaveBeenCalledWith(0.38, 380);
-        expect(globalThis.window.shakeCamera).toHaveBeenCalledWith(0.14, 280);
+        expect(globalThis.window.shakeTower).toHaveBeenCalledWith(0.22, 300);
+        expect(globalThis.window.shakeCamera).toHaveBeenCalledWith(0.08, 220);
     });
 
     it('onCrushed should call startBlastIndicatorFlash only if skipFlash is explicitly false', () => {

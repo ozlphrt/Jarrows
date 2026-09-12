@@ -125,7 +125,7 @@ const _towerShakeOffset = new THREE.Vector3();
  * @param {number} intensity - Shake amplitude
  * @param {number} duration - Shake duration in ms
  */
-export function shakeTower(intensity = 0.38, duration = 350) {
+export function shakeTower(intensity = 0.22, duration = 300) {
     towerShakeIntensity = Math.max(towerShakeIntensity, intensity);
     towerShakeDuration = Math.max(towerShakeDuration, duration);
     towerShakeStartTime = performance.now();
@@ -144,7 +144,7 @@ let activeTowerShakeAnimation = null;
  * @param {number} maxIntensity - Max shake amplitude at impact point
  * @param {number} duration - Total shake duration in ms
  */
-export function triggerRadialTowerShake(originBlock, allBlocks, maxIntensity = 0.45, duration = 380) {
+export function triggerRadialTowerShake(originBlock, allBlocks, maxIntensity = 0.28, duration = 320) {
     if (!originBlock || !allBlocks || allBlocks.length === 0) return;
 
     // Cancel any ongoing tower shake and restore positions
@@ -185,8 +185,8 @@ export function triggerRadialTowerShake(originBlock, allBlocks, maxIntensity = 0
     });
 
     const startTime = performance.now();
-    shakeCamera(0.12, duration);
-    shakeTower(maxIntensity * 0.85, duration);
+    shakeCamera(0.06, duration);
+    shakeTower(maxIntensity * 0.75, duration);
     markNeedsRender(duration + 100);
 
     function animateShake() {
@@ -8394,11 +8394,11 @@ function startBlockFallingToTarget(block, targetYOffset) {
 
             // If the block falls 2 or more layers (fallDistance >= 1.95), blast it upon landing
             if (isBlastedFall && !block.isRemoved && !block.isLocked) {
-                // Blocks falling above and blasting due to falling rapidly shake the tower and screen
-                triggerRadialTowerShake(block, blocks, 0.45, 420);
-                shakeTower(0.38, 380);
+                // Blocks falling above and blasting due to falling shake the tower and screen
+                triggerRadialTowerShake(block, blocks, 0.28, 320);
+                shakeTower(0.22, 300);
                 if (typeof window.shakeCamera === 'function') {
-                    window.shakeCamera(0.14, 280);
+                    window.shakeCamera(0.08, 220);
                 }
 
                 if (typeof block.onCrushed === 'function') {

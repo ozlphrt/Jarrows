@@ -5892,18 +5892,18 @@ export class Block {
                 ? window.blocks
                 : (window.gameBlocks || window.blocks || []);
             if (typeof window.triggerRadialTowerShake === 'function') {
-                window.triggerRadialTowerShake(this, allBlocks, 0.45, 420);
+                window.triggerRadialTowerShake(this, allBlocks, 0.28, 320);
             }
             if (typeof window.shakeTower === 'function') {
-                window.shakeTower(0.38, 380);
+                window.shakeTower(0.22, 300);
             }
             if (typeof window.shakeCamera === 'function') {
-                window.shakeCamera(0.14, 280);
+                window.shakeCamera(0.08, 220);
             }
         }
 
-        // Task 1.2 Revision: Stronger, faster shake
-        this.shakeViolently(150, 0.5).then(() => {
+        // Slightly gentler block vibration on impact
+        this.shakeViolently(120, 0.32).then(() => {
             if (this.isRemoved || this.isExploding) return;
 
             // Stronger crushing sound
