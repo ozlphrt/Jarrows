@@ -3,6 +3,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { initPhysics, createPhysicsBlock, updatePhysics, isPhysicsStepping, hasPendingOperations, isPhysicsProcessing, removePhysicsBody } from './physics.js';
 import { Block, getTranslucentCluster, moveTranslucentCluster, updateWeldedTranslucentClusters, FROSTY_CONFIG, DEFAULT_FROSTY_CONFIG, getFrostyConfig, setFrostyConfig, regenerateIceAlphaMap, isPooledMaterial } from './Block.js';
 import { createLights, createGrid, setGradientBackground, setupFog, applyLightPreset, LIGHT_PRESETS, globalUniforms, setShadowsEnabled, setupStudioEnvironment, updateReflectionEnvironment, setReflectionPreset } from './scene.js';
+
 import { validateStructure, validateSolvability, calculateDifficulty, getBlockCells, fixOverlappingBlocks, checkAndFixAllOverlaps, canBlockExit, snapLayerY } from './puzzle_validation.js';
 import { initStats, startLevelStats, trackMove, trackSpin, trackBlockRemoved, completeLevel, getLevelComparison, getElapsedTime } from './stats/stats.js';
 import { updateLevelCompleteModal, showOfflineIndicator, hideOfflineIndicator, showPersonalHistoryModal, showProfileModal } from './stats/statsUI.js';
@@ -16,6 +17,7 @@ import { DebrisManager } from './debris.js';
 import { eventBus } from './core/EventBus.js';
 import { gameState } from './core/GameState.js';
 import { initSettingsUI, unregisterServiceWorkersAndClearCaches } from './ui/settings.js';
+import { dialogManager } from './ui/DialogManager.js';
 import appVersionRaw from '../VERSION?raw';
 import {
     getBlocksForLevel,
@@ -514,42 +516,11 @@ async function initServiceWorkerUpdates() {
 
 // Changelog Modal Functions
 function showChangelogModal(version) {
-    const modal = document.getElementById('changelog-modal');
-    const content = document.getElementById('changelog-content');
-    if (!modal || !content) return;
-
-    const changelog = getChangelogForVersion(version);
-    if (!changelog) {
-        // No changelog for this version, don't show modal
-        return;
-    }
-
-    // Build changelog HTML
-    let html = `<div style="margin-bottom: 16px;">`;
-    html += `<div style="font-size: 18px; font-weight: 600; margin-bottom: 8px; opacity: 0.95;">Version ${version}</div>`;
-    if (changelog.title) {
-        html += `<div style="font-size: 16px; font-weight: 500; margin-bottom: 12px; opacity: 0.85;">${changelog.title}</div>`;
-    }
-    if (changelog.date) {
-        html += `<div style="font-size: 12px; opacity: 0.6; margin-bottom: 16px;">${changelog.date}</div>`;
-    }
-    if (changelog.changes && changelog.changes.length > 0) {
-        html += `<div style="line-height: 1.8;">`;
-        changelog.changes.forEach(change => {
-            html += `<div style="margin-bottom: 8px; opacity: 0.9;">• ${change}</div>`;
-        });
-        html += `</div>`;
-    }
-    html += `</div>`;
-
-    content.innerHTML = html;
-    modal.style.display = 'flex';
+    dialogManager.showChangelog(version);
 }
 
 function hideChangelogModal() {
-    const modal = document.getElementById('changelog-modal');
-    if (!modal) return;
-    modal.style.display = 'none';
+    dialogManager.hideChangelog();
 }
 
 // Check version and show changelog if needed
@@ -2209,10 +2180,8 @@ function timeChallengeAwardForBlockRemoved(blockLength) {
 }
 
 function showPauseModal() {
-    const modal = document.getElementById('pause-modal');
-    if (!modal) return;
+    dialogManager.showPause();
     setTimeFrozen('user_pause', true);
-    modal.style.display = 'flex';
 
     // Pause render loop too (and cancel any pending raf/timers).
     isPaused = true;
@@ -2225,9 +2194,7 @@ function showPauseModal() {
 }
 
 function hidePauseModalAndResume() {
-    const modal = document.getElementById('pause-modal');
-    if (!modal) return;
-    modal.style.display = 'none';
+    dialogManager.hidePause();
     setTimeFrozen('user_pause', false);
 
     // Resume render loop
@@ -4952,10 +4919,7 @@ function showLevelCompleteModal(completedLevel) {
 }
 
 function hideLevelCompleteModal() {
-    const modal = document.getElementById('level-complete-modal');
-    if (modal) {
-        modal.style.display = 'none';
-    }
+    dialogManager.hideLevelComplete();
     if (isTimeBasedMode() && timeChallengeActive) {
         setTimeFrozen('level_complete', false);
     }
@@ -4963,24 +4927,18 @@ function hideLevelCompleteModal() {
 
 // New Game confirmation modal functions
 function showNewGameModal() {
-    const modal = document.getElementById('new-game-modal');
-    if (modal) {
-        modal.style.display = 'flex';
-        // Pause game if it's running
-        if (isTimeBasedMode()) {
-            setTimeFrozen('new_game_confirm', true);
-        }
+    dialogManager.showNewGame();
+    // Pause game if it's running
+    if (isTimeBasedMode()) {
+        setTimeFrozen('new_game_confirm', true);
     }
 }
 
 function hideNewGameModal() {
-    const modal = document.getElementById('new-game-modal');
-    if (modal) {
-        modal.style.display = 'none';
-        // Resume game timer if it was frozen
-        if (isTimeBasedMode()) {
-            setTimeFrozen('new_game_confirm', false);
-        }
+    dialogManager.hideNewGame();
+    // Resume game timer if it was frozen
+    if (isTimeBasedMode()) {
+        setTimeFrozen('new_game_confirm', false);
     }
 }
 
