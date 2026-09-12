@@ -4,7 +4,7 @@ import { initPhysics, createPhysicsBlock, updatePhysics, isPhysicsStepping, hasP
 import { Block, getTranslucentCluster, moveTranslucentCluster, updateWeldedTranslucentClusters, FROSTY_CONFIG, DEFAULT_FROSTY_CONFIG, getFrostyConfig, setFrostyConfig, regenerateIceAlphaMap, isPooledMaterial } from './Block.js';
 import { createLights, createGrid, setGradientBackground, setupFog, applyLightPreset, LIGHT_PRESETS, globalUniforms, setShadowsEnabled, setupStudioEnvironment, updateReflectionEnvironment, setReflectionPreset } from './scene.js';
 
-import { validateStructure, validateSolvability, calculateDifficulty, getBlockCells, fixOverlappingBlocks, checkAndFixAllOverlaps, canBlockExit, snapLayerY } from './puzzle_validation.js';
+import { validateStructure, validateFullSupport, hasFullDirectSupportAt, validateSolvability, calculateDifficulty, getBlockCells, fixOverlappingBlocks, checkAndFixAllOverlaps, canBlockExit, snapLayerY } from './puzzle_validation.js';
 import { initStats, startLevelStats, trackMove, trackSpin, trackBlockRemoved, completeLevel, getLevelComparison, getElapsedTime } from './stats/stats.js';
 import { updateLevelCompleteModal, showOfflineIndicator, hideOfflineIndicator, showPersonalHistoryModal, showProfileModal } from './stats/statsUI.js';
 import { isOnline, isLocalOnlyMode } from './stats/statsAPI.js';
@@ -2550,8 +2550,10 @@ function clearProgress() {
 // Level and puzzle generation algorithms are now encapsulated in src/puzzle/LevelGenerator.js
 let blastCellPercent = DEFAULT_BLAST_CELL_PERCENT;
 
-// Place blocks in batches with optional animation
-function placeBlocksBatch(blocksToPlace, batchSize = 10, delayBetweenBatches = 10, animationDuration = 50) {
+// Place blocks in batches at their canonical size. Block groups use frozen transform
+// matrices, so scale-based spawning can leave a partial scale behind when mobile frame
+// scheduling interrupts an animation.
+function placeBlocksBatch(blocksToPlace, batchSize = 10, delayBetweenBatches = 10) {
     return new Promise((resolve) => {
         let batchesStarted = 0;
         const totalBatches = Math.ceil(blocksToPlace.length / batchSize);
@@ -2565,84 +2567,27 @@ function placeBlocksBatch(blocksToPlace, batchSize = 10, delayBetweenBatches = 1
             const startIdx = batchIndex * batchSize;
             const endIdx = Math.min(startIdx + batchSize, blocksToPlace.length);
 
-            // Add all blocks in this batch to towerGroup immediately
+            // Commit the final scale to the frozen local matrix before insertion.
             for (let i = startIdx; i < endIdx; i++) {
                 const block = blocksToPlace[i];
                 if (!block) continue;
-                
-                if (animationDuration > 0) {
-                    block.group.scale.set(0, 0, 0);
-                } else {
-                    block.group.scale.set(1, 1, 1);
-                }
+                block.group.scale.set(1, 1, 1);
+                block.group.updateMatrix();
                 towerGroup.add(block.group);
+                block.group.updateMatrixWorld(true);
                 blocks.push(block);
             }
 
-            // If no animation, move to next immediately
-            if (animationDuration <= 0) {
-                batchesStarted++;
-                if (batchesStarted < totalBatches) {
-                    if (delayBetweenBatches > 0) {
-                        setTimeout(() => spawnBatch(batchesStarted), delayBetweenBatches);
-                    } else {
-                        spawnBatch(batchesStarted);
-                    }
+            batchesStarted++;
+            if (batchesStarted < totalBatches) {
+                if (delayBetweenBatches > 0) {
+                    setTimeout(() => spawnBatch(batchesStarted), delayBetweenBatches);
                 } else {
-                    resolve();
+                    spawnBatch(batchesStarted);
                 }
-                return;
+            } else {
+                resolve();
             }
-
-            // Animate batch
-            const startTime = performance.now();
-            let nextBatchTriggered = false;
-
-            const animate = () => {
-                if (!isGeneratingLevel || blocksToPlace.length === 0) return;
-
-                const elapsed = performance.now() - startTime;
-                const progress = Math.min(elapsed / animationDuration, 1);
-                const eased = 1 - Math.pow(1 - progress, 3);
-
-                // Update scales
-                for (let i = startIdx; i < endIdx; i++) {
-                    if (blocksToPlace[i]?.group) {
-                        blocksToPlace[i].group.scale.set(eased, eased, eased);
-                    }
-                }
-
-                // OVERLAP LOGIC: Start next batch when current is 40% through
-                // This creates a smooth wave/fountain effect
-                if (progress >= 0.4 && !nextBatchTriggered) {
-                    nextBatchTriggered = true;
-                    batchesStarted++;
-                    if (batchesStarted < totalBatches) {
-                        if (delayBetweenBatches > 0) {
-                            setTimeout(() => spawnBatch(batchesStarted), delayBetweenBatches);
-                        } else {
-                            spawnBatch(batchesStarted);
-                        }
-                    }
-                }
-
-                if (progress < 1) {
-                    requestAnimationFrame(animate);
-                } else {
-                    // Finalize scales
-                    for (let i = startIdx; i < endIdx; i++) {
-                        if (blocksToPlace[i]?.group) {
-                            blocksToPlace[i].group.scale.set(1, 1, 1);
-                        }
-                    }
-                    
-                    // Resolve if this was the last batch to finish animating
-                    if (batchIndex === totalBatches - 1) {
-                        resolve();
-                    }
-                }
-            };
-            requestAnimationFrame(animate);
         };
 
         // Start first batch
@@ -2844,12 +2789,11 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
         const headOnBlocks = createHeadOnCollisionBlocks(targetBlockCount, level);
         const spawnConfig = getSpawnPlacementConfig(level, headOnBlocks.length);
 
-        // Use the same animation system as normal generation
+        // Use the same batched placement system as normal generation
         await placeBlocksBatch(
             headOnBlocks,
             spawnConfig.batchSize,
-            spawnConfig.delayBetweenBatches,
-            spawnConfig.animationDuration
+            spawnConfig.delayBetweenBatches
         );
 
         // Time-based modes: calculate initial time for this level based on actual block lengths
@@ -3203,28 +3147,13 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
                                 const upperYBottom = snapLayerY(upperBlock.yOffset || 0);
                                 const upperYTop = upperYBottom + upperHeight;
 
-                                // Ensure block at new position maintains support from lower blocks
-                                if (upperYBottom > 0) {
-                                    let hasSupportAtNewPos = false;
-                                    for (const lowerBlock of lowerBlocks) {
-                                        if (lowerBlock.isFalling || lowerBlock.isRemoved) continue;
-                                        const lowerH = lowerBlock.isVertical ? lowerBlock.length * (lowerBlock.cubeSize || 1) : (lowerBlock.cubeSize || 1);
-                                        const lowerTop = snapLayerY(lowerBlock.yOffset || 0) + lowerH;
-                                        if (Math.abs(lowerTop - upperYBottom) < 0.15) {
-                                            const lowerCells = getBlockCells(lowerBlock);
-                                            for (const upperCell of upperCells) {
-                                                const actualX = newX + (upperCell.x - upperBlock.gridX);
-                                                const actualZ = newZ + (upperCell.z - upperBlock.gridZ);
-                                                if (lowerCells.some(lc => lc.x === actualX && lc.z === actualZ)) {
-                                                    hasSupportAtNewPos = true;
-                                                    break;
-                                                }
-                                            }
-                                        }
-                                        if (hasSupportAtNewPos) break;
-                                    }
-                                    if (!hasSupportAtNewPos) continue;
-                                }
+                                // Every footprint cell must retain direct support. Accepting a single
+                                // supported cell here creates random cantilevers and hollow shelves.
+                                if (!hasFullDirectSupportAt(upperBlock, lowerBlocks, {
+                                    gridX: newX,
+                                    gridZ: newZ,
+                                    yOffset: upperYBottom
+                                })) continue;
 
                                 // Check if this position would block a lower exit
                                 let wouldBlock = false;
@@ -3335,8 +3264,7 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
     await placeBlocksBatch(
         allBlocks,
         spawnConfig.batchSize,
-        spawnConfig.delayBetweenBatches,
-        spawnConfig.animationDuration
+        spawnConfig.delayBetweenBatches
     );
 
     // Time-based modes: calculate initial time for this level based on actual block lengths
@@ -3367,6 +3295,20 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
         console.error(`✗ Structure validation failed: ${structureCheck.reason}`);
         console.error('  Regenerating puzzle...');
         // Regenerate if validation fails - preserve isRestart flag and keep isGeneratingLevel true
+        if (isGeneratingTimeout) {
+            clearTimeout(isGeneratingTimeout);
+            isGeneratingTimeout = null;
+        }
+        await generateSolvablePuzzle(level, isRestart);
+        return;
+    }
+
+    // Relocation and overlap repair both run after the layer generator's own
+    // support checks, so enforce the invariant again on the final tower.
+    const supportCheck = validateFullSupport(blocks);
+    if (!supportCheck.valid) {
+        console.error(`✗ Full-support validation failed: ${supportCheck.reason}`);
+        console.error('  Regenerating puzzle...');
         if (isGeneratingTimeout) {
             clearTimeout(isGeneratingTimeout);
             isGeneratingTimeout = null;
@@ -3429,8 +3371,7 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
             await placeBlocksBatch(
                 allBlocks,
                 regenSpawnConfig.batchSize,
-                regenSpawnConfig.delayBetweenBatches,
-                regenSpawnConfig.animationDuration
+                regenSpawnConfig.delayBetweenBatches
             );
 
             // Re-validate structure
@@ -3588,7 +3529,7 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
             console.warn('[generateSolvablePuzzle] Recovering with fallback generation...');
             try {
                 const recoveryBlocks = createSolvableBlocks(0, null, Math.max(10, Math.min(30, targetBlockCount)), level, false, null, 0);
-                await placeBlocksBatch(recoveryBlocks, 50, 0, 0);
+                await placeBlocksBatch(recoveryBlocks, 50, 0);
                 validateStructure(blocks, gridSize);
                 levelInitialBlockCount = blocks.length;
                 levelBlocksSpawned = blocks.length > 0;

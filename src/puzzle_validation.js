@@ -31,10 +31,86 @@ export function getBlockCells(block) {
 // treat values very close to an integer as that integer.
 const Y_SNAP_EPS = 0.35;
 const Y_OVERLAP_EPS = 0.05; // touching at boundary is NOT overlap
+const DIRECT_SUPPORT_EPS = 0.1;
 
 export function snapLayerY(y) {
     const r = Math.round(y);
     return Math.abs(y - r) < Y_SNAP_EPS ? r : y;
+}
+
+function buildSupportSurfaceIndex(blocks, excludeBlock = null) {
+    const surfacesByCell = new Map();
+    for (const other of blocks) {
+        if (!other || other === excludeBlock || other.isFalling || other.isRemoved || other.isExploding || other.removalStartTime) {
+            continue;
+        }
+
+        const otherCubeSize = other.cubeSize || 1;
+        const otherHeight = other.isVertical ? other.length * otherCubeSize : otherCubeSize;
+        const otherTop = snapLayerY(other.yOffset || 0) + otherHeight;
+        for (const cell of getBlockCells(other)) {
+            const key = `${cell.x},${cell.z}`;
+            const tops = surfacesByCell.get(key) || [];
+            tops.push(otherTop);
+            surfacesByCell.set(key, tops);
+        }
+    }
+    return surfacesByCell;
+}
+
+function footprintHasFullSupport(block, surfacesByCell, candidate = {}) {
+    const gridX = candidate.gridX ?? block.gridX;
+    const gridZ = candidate.gridZ ?? block.gridZ;
+    const yBottom = snapLayerY(candidate.yOffset ?? block.yOffset ?? 0);
+    if (yBottom <= Y_OVERLAP_EPS) return true;
+
+    const footprint = getBlockCells({
+        gridX,
+        gridZ,
+        isVertical: block.isVertical,
+        length: block.length,
+        direction: block.direction
+    });
+
+    return footprint.every((cell) => {
+        const tops = surfacesByCell.get(`${cell.x},${cell.z}`);
+        return !!tops && tops.some((top) => Math.abs(top - yBottom) < DIRECT_SUPPORT_EPS);
+    });
+}
+
+/**
+ * Check whether every footprint cell at a candidate position has a directly
+ * touching support surface beneath it. This is the shared invariant used by
+ * generation post-processing and overlap repair.
+ */
+export function hasFullDirectSupportAt(block, allBlocks, candidate = {}) {
+    if (!block || !Array.isArray(allBlocks)) return false;
+    const surfacesByCell = buildSupportSurfaceIndex(allBlocks, block);
+    return footprintHasFullSupport(block, surfacesByCell, candidate);
+}
+
+/**
+ * Validate the gap-free generation invariant independently from overlap
+ * validation. Gameplay may temporarily contain unsupported blocks while a
+ * fall is being scheduled, so callers opt into this check explicitly.
+ */
+export function validateFullSupport(blocks) {
+    if (!Array.isArray(blocks)) return { valid: true };
+    const surfacesByCell = buildSupportSurfaceIndex(blocks);
+
+    for (const block of blocks) {
+        if (!block || block.isFalling || block.isRemoved || block.isExploding || block.removalStartTime) continue;
+        if (!footprintHasFullSupport(block, surfacesByCell)) {
+            const yBottom = snapLayerY(block.yOffset || 0);
+            return {
+                valid: false,
+                reason: `Unsupported footprint at (${block.gridX}, ${block.gridZ}), yOffset=${yBottom}`,
+                block
+            };
+        }
+    }
+
+    return { valid: true };
 }
 
 function yRangesOverlap(aBottom, aTop, bBottom, bTop) {
@@ -247,29 +323,7 @@ export function fixOverlappingBlocks(blocks, gridSize) {
     }
 
     function hasSupportAtYOffset(blockToMove, testYOffset, allBlocks) {
-        if (testYOffset <= 0.05) return true;
-        const moveCells = getBlockCells(blockToMove);
-        const moveCellSet = cellsToKeySet(moveCells);
-
-        for (const other of allBlocks) {
-            if (!other || other === blockToMove || other.isFalling || other.isRemoved || other.isExploding || other.removalStartTime) continue;
-            const otherCells = getBlockCells(other);
-            let sharesCell = false;
-            for (const c of otherCells) {
-                if (moveCellSet.has(`${c.x},${c.z}`)) {
-                    sharesCell = true;
-                    break;
-                }
-            }
-            if (!sharesCell) continue;
-
-            const otherHeight = other.isVertical ? (other.length * (other.cubeSize || 1)) : (other.cubeSize || 1);
-            const otherTop = snapLayerY(other.yOffset || 0) + otherHeight;
-            if (Math.abs(otherTop - testYOffset) < 0.1) {
-                return true;
-            }
-        }
-        return false;
+        return hasFullDirectSupportAt(blockToMove, allBlocks, { yOffset: testYOffset });
     }
 
     // Helper to safely prune an unresolvable overlapping block

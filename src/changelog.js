@@ -4,6 +4,16 @@
  */
 
 export const changelog = {
+    "8.36.1": {
+        title: "Uniform Block Scale & Gap-Free Inferno Relocation",
+        date: "2026-09-12",
+        changes: [
+            "Uniform Mobile Block Size: Removed scale-based level spawning and commits every block at canonical scale, preventing iPhone frame scheduling from leaving blocks visibly undersized",
+            "Full-Footprint Relocation Support: Inferno dependency placement now requires direct support beneath every cell of a moved block, preventing randomized cantilevers and hollow shelves",
+            "Safe Overlap Repair: Automatic overlap correction applies the same full-footprint support invariant before relocating blocks",
+            "Final Tower Support Audit: Completed towers are validated after all post-processing and regenerated if any unsupported footprint remains"
+        ]
+    },
     "8.36.0": {
         title: "100% Strict Support, Zero Overhangs & Floating Block Elimination",
         date: "2026-09-12",

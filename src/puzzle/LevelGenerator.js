@@ -1518,8 +1518,7 @@ export function getSpawnPlacementConfig(level, totalBlocks) {
     if (level <= 5) {
         return {
             batchSize: 45,
-            delayBetweenBatches: 2,
-            animationDuration: 18
+            delayBetweenBatches: 2
         };
     }
 
@@ -1527,16 +1526,14 @@ export function getSpawnPlacementConfig(level, totalBlocks) {
     if (level <= 50) {
         return {
             batchSize: 75,
-            delayBetweenBatches: 0,
-            animationDuration: 14
+            delayBetweenBatches: 0
         };
     }
 
     // Level 51+: Sleek Turbo Build (<150ms)
     return {
         batchSize: Math.max(120, Math.min(300, Math.ceil(totalBlocks / 4))),
-        delayBetweenBatches: 0,
-        animationDuration: 10
+        delayBetweenBatches: 0
     };
 }
 

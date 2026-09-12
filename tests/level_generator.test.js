@@ -95,14 +95,14 @@ describe('LevelGenerator', () => {
             const config = getSpawnPlacementConfig(3, 30);
             expect(config.batchSize).toBe(45);
             expect(config.delayBetweenBatches).toBe(2);
-            expect(config.animationDuration).toBe(18);
+            expect(config).not.toHaveProperty('animationDuration');
         });
 
         it('should return rapid dynamic build for mid levels', () => {
             const config = getSpawnPlacementConfig(20, 200);
             expect(config.batchSize).toBe(75);
             expect(config.delayBetweenBatches).toBe(0);
-            expect(config.animationDuration).toBe(14);
+            expect(config).not.toHaveProperty('animationDuration');
         });
     });
 

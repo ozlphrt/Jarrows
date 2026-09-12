@@ -4,6 +4,8 @@ import {
     snapLayerY,
     canBlockExit,
     validateStructure,
+    validateFullSupport,
+    hasFullDirectSupportAt,
     validateSolvability,
     calculateDifficulty,
     fixOverlappingBlocks
@@ -127,6 +129,50 @@ describe('puzzle_validation module', () => {
             const solvability = validateSolvability(blocks, 3);
             expect(solvability.solvable).toBe(true);
             expect(solvability.solution.map(b => b.id)).toEqual([1, 2]);
+        });
+    });
+
+    describe('full footprint support', () => {
+        const baseBlock = (gridX, gridZ) => ({
+            gridX,
+            gridZ,
+            yOffset: 0,
+            cubeSize: 1,
+            length: 1,
+            isVertical: true,
+            direction: { x: 1, z: 0 }
+        });
+
+        const upperBlock = {
+            gridX: 0,
+            gridZ: 0,
+            yOffset: 1,
+            cubeSize: 1,
+            length: 3,
+            isVertical: false,
+            direction: { x: 1, z: 0 }
+        };
+
+        it('rejects a multi-cell block when only one footprint cell is supported', () => {
+            const blocks = [baseBlock(0, 0), upperBlock];
+
+            expect(hasFullDirectSupportAt(upperBlock, blocks)).toBe(false);
+            expect(validateFullSupport(blocks).valid).toBe(false);
+        });
+
+        it('accepts support supplied by separate blocks under every footprint cell', () => {
+            const blocks = [baseBlock(0, 0), baseBlock(1, 0), baseBlock(2, 0), upperBlock];
+
+            expect(hasFullDirectSupportAt(upperBlock, blocks)).toBe(true);
+            expect(validateFullSupport(blocks)).toEqual({ valid: true });
+        });
+
+        it('checks all footprint cells at a proposed relocated position', () => {
+            const blocks = [baseBlock(1, 0), baseBlock(2, 0), upperBlock];
+
+            expect(hasFullDirectSupportAt(upperBlock, blocks, { gridX: 1, gridZ: 0, yOffset: 1 })).toBe(false);
+            blocks.push(baseBlock(3, 0));
+            expect(hasFullDirectSupportAt(upperBlock, blocks, { gridX: 1, gridZ: 0, yOffset: 1 })).toBe(true);
         });
     });
 });

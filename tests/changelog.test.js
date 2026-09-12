@@ -2,6 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { changelog, getChangelogForVersion } from '../src/changelog.js';
 
 describe('changelog module', () => {
+    it('should contain v8.36.1 entry', () => {
+        expect(changelog['8.36.1']).toBeDefined();
+        expect(changelog['8.36.1'].changes.length).toBeGreaterThan(0);
+    });
+
     it('should contain v8.36.0 entry', () => {
         expect(changelog['8.36.0']).toBeDefined();
         expect(changelog['8.36.0'].changes.length).toBeGreaterThan(0);
