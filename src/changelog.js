@@ -4,6 +4,19 @@
  */
 
 export const changelog = {
+    "8.34.0": {
+        title: "Architectural Modernization, 3D Spin Button, Calibrated Physics & Streamlined HUD",
+        date: "2026-09-12",
+        changes: [
+            "3D Isometric Cube Spin Button: Replaced misleading browser reload/sync icon with an intuitive 3D isometric cube and orbital rotation arrow, enlarged and centered for effortless mobile touch response",
+            "Calibrated Fall & Explosion Tremors: Tuned whole-tower physical vibration, radial block ripple, and camera shake for crisp, satisfying impact feedback without disorienting screen jumps",
+            "Streamlined Settings Menu: Removed redundant diagnostic preset buttons (colors, lighting, shadows, battery quality, debug clipboard) for a focused, clean preferences HUD",
+            "Refined Level Display: Top-bar level badge is a dedicated non-interactive stat counter, while interactive level selection remains cleanly accessible via the LVL modal button",
+            "Core Architectural Modernization: Extracted over 3,600 lines into modular ES subsystems (LevelGenerator.js, DialogManager.js, BlockView.js, settings.js, EventBus.js), reducing index.html to under 1,000 lines",
+            "Automated Vitest Test Suite: Added 69 comprehensive unit and regression tests across 12 test suites covering puzzle generation, fall physics, and modal lifecycles",
+            "AudioContext Autoplay Compliance: Eliminated browser console warnings on initial load by instantiating web audio strictly upon first player gesture"
+        ]
+    },
     "8.33.0": {
         title: "Robust Level Progression, Unified Button Spin Countdown & Production Stability",
         date: "2026-09-12",
