@@ -15,6 +15,7 @@ import { createParticleSystem } from './particles.js';
 import { DebrisManager } from './debris.js';
 import { eventBus } from './core/EventBus.js';
 import { gameState } from './core/GameState.js';
+import { initSettingsUI, unregisterServiceWorkersAndClearCaches } from './ui/settings.js';
 import appVersionRaw from '../VERSION?raw';
 
 // Build-time constant injected by Vite (see vite.config.js). Falls back to '' if not defined.
@@ -58,6 +59,12 @@ function compareVersions(v1, v2) {
 // Service Worker Update Detection
 let swRegistration = null;
 let updateCheckInterval = null;
+
+// Initialize HUD controls, settings toggles, and load saved preferences
+if (import.meta.env.DEV) {
+    unregisterServiceWorkersAndClearCaches();
+}
+initSettingsUI();
 
 // -------------------------------------------------------------------
 
