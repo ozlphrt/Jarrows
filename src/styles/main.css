@@ -1925,7 +1925,7 @@ html, body {
         /* Dice button — stable, upright, zero tilting */
         #dice-button.stats-control-btn {
             background: transparent;
-            padding: 8px;
+            padding: 0;
             border-radius: 12px;
             transform: none !important;
         }
@@ -1936,8 +1936,8 @@ html, body {
         }
 
         #dice-button.stats-control-btn .btn-icon {
-            width: 26px;
-            height: 26px;
+            width: 30px;
+            height: 30px;
             transform: none !important;
         }
 
