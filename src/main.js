@@ -13,6 +13,8 @@ import { showMilestoneModal, showFeatureModal, showLevelUpdateModal } from './in
 import { getChangelogForVersion } from './changelog.js';
 import { createParticleSystem } from './particles.js';
 import { DebrisManager } from './debris.js';
+import { eventBus } from './core/EventBus.js';
+import { gameState } from './core/GameState.js';
 import appVersionRaw from '../VERSION?raw';
 
 // Build-time constant injected by Vite (see vite.config.js). Falls back to '' if not defined.
