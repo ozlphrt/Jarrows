@@ -83,8 +83,8 @@ export function getOrCreateScorchTexture() {
     grad.addColorStop(0.15, 'rgba(255, 215, 60, 0.98)'); // Radiant molten gold
     grad.addColorStop(0.38, 'rgba(255, 70, 0, 0.92)');  // Fiery crimson orange
     grad.addColorStop(0.65, 'rgba(140, 20, 10, 0.85)'); // Smoldering ember
-    grad.addColorStop(0.85, 'rgba(45, 48, 55, 0.88)');   // Soft slate-charcoal ash soot
-    grad.addColorStop(1.0, 'rgba(45, 48, 55, 0.0)');     // Soft feathered border
+    grad.addColorStop(0.85, 'rgba(18, 20, 24, 0.94)');   // Deep charcoal ash soot
+    grad.addColorStop(1.0, 'rgba(18, 20, 24, 0.0)');     // Soft feathered border
 
     ctx.fillStyle = grad;
     ctx.beginPath();
@@ -92,7 +92,7 @@ export function getOrCreateScorchTexture() {
     ctx.fill();
 
     // Add organic singed flecks and fissures
-    ctx.fillStyle = 'rgba(32, 36, 42, 0.65)';
+    ctx.fillStyle = 'rgba(14, 16, 20, 0.82)';
     for (let i = 0; i < 45; i++) {
         const ang = Math.random() * Math.PI * 2;
         const rad = 40 + Math.random() * 75;

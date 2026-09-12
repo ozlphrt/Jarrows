@@ -544,12 +544,12 @@ export function setupThermalMaterial(material) {
                     }
 
                     if (maxAshFactor > 0.001) {
-                        vec3 darkAshColor = vec3(0.065, 0.070, 0.078); // Balanced slate-charcoal ash dust (preserves 3D surface bevels & lighting)
-                        gl_FragColor.rgb = mix(gl_FragColor.rgb, darkAshColor, maxAshFactor * 0.68);
+                        vec3 darkAshColor = vec3(0.022, 0.024, 0.028); // Deeper slate-charcoal ash dust (preserves 3D surface bevels & lighting)
+                        gl_FragColor.rgb = mix(gl_FragColor.rgb, darkAshColor, maxAshFactor * 0.82);
                     }
 
                     if (maxHeat > 0.001) {
-                        gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.06, 0.07, 0.09), maxHeat * 0.90);
+                        gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.035, 0.038, 0.045), maxHeat * 0.92);
                         gl_FragColor.rgb += totalThermalGlow;
                     }
                 }

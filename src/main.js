@@ -8347,10 +8347,13 @@ function startBlockFallingToTarget(block, targetYOffset) {
 
             // If the block falls 2 or more layers (fallDistance >= 1.95), blast it upon landing
             if (isBlastedFall && !block.isRemoved && !block.isLocked) {
+                // Blocks falling above and blasting due to falling shake the tower
+                triggerRadialTowerShake(block, blocks, 0.38, 420);
+
                 if (typeof block.onCrushed === 'function') {
-                    block.onCrushed(window.particleSystem);
+                    block.onCrushed(window.particleSystem, { skipFlash: true });
                 } else if (window.particleSystem) {
-                    block.explodeWithParticles(window.particleSystem, 0, true);
+                    block.explodeWithParticles(window.particleSystem, 0, true, { skipFlash: true });
                 } else {
                     block.remove();
                 }
@@ -8401,7 +8404,7 @@ async function crushBlocksBelow(crushingBlock, landY) {
         if (other.isRemoved || other.isExploding) continue;
 
         if (typeof other.onCrushed === 'function') {
-            other.onCrushed(window.particleSystem);
+            other.onCrushed(window.particleSystem, { skipFlash: true });
         } else {
             other.remove();
         }

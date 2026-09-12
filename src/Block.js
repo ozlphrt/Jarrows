@@ -2597,22 +2597,22 @@ export class Block {
             let targetEmissiveIntensity = 0.3;
 
             if (this.isCharred) {
-                // Balanced dark charcoal ashed tones (visible color identity under soot)
+                // Balanced deeper charcoal ashed tones (visible color identity under soot)
                 if (this.isBomb) {
-                    const ashedBombColors = [0x852a34, 0x225d6b, 0x7e551e];
-                    const ashedBombEmissive = [0x3c1218, 0x122e36, 0x3d280b];
+                    const ashedBombColors = [0x6e222a, 0x1a4b56, 0x664417];
+                    const ashedBombEmissive = [0x2c0d12, 0x0c2026, 0x2b1c07];
                     const idx = Math.min(this.length - 1, 2);
                     targetColorHex = ashedBombColors[idx] || ashedBombColors[0];
                     targetEmissiveHex = ashedBombEmissive[idx] || ashedBombEmissive[0];
-                    targetEmissiveIntensity = 0.18;
+                    targetEmissiveIntensity = 0.14;
                 } else {
                     // Length 1: Charred crimson, Length 2: Charred cyan-slate, Length 3+: Charred amber-ochre
-                    const ashedColors = [0x852a34, 0x225d6b, 0x7e551e];
-                    const ashedEmissive = [0x3c1218, 0x122e36, 0x3d280b];
+                    const ashedColors = [0x6e222a, 0x1a4b56, 0x664417];
+                    const ashedEmissive = [0x2c0d12, 0x0c2026, 0x2b1c07];
                     const idx = Math.min(this.length - 1, 2);
                     targetColorHex = ashedColors[idx] || ashedColors[0];
                     targetEmissiveHex = ashedEmissive[idx] || ashedEmissive[0];
-                    targetEmissiveIntensity = 0.18;
+                    targetEmissiveIntensity = 0.14;
                 }
             } else if (this.isBomb) {
                 const maxColors = [0xc51120, 0x00e5ff, 0xff9100];
@@ -5527,7 +5527,7 @@ export class Block {
      * @param {number} delay - Delay in milliseconds before explosion
      * @returns {Promise} Promise that resolves when explosion animation completes
      */
-    explodeWithParticles(particleSystem, delay = 0, isBlasted = false) {
+    explodeWithParticles(particleSystem, delay = 0, isBlasted = false, options = {}) {
         return new Promise((resolve) => {
             if (this.isRemoved || this._explosionAnimationStarted) {
                 resolve();
@@ -5588,6 +5588,7 @@ export class Block {
                 const fadeMaterials = [];
                 const emissiveMaterials = [];
                 const indicatorMaterials = [];
+                const shouldFlash = isBlasted && !options.skipFlash;
 
                 this.cubes.forEach(cube => {
                     if (cube.material) {
@@ -5596,7 +5597,7 @@ export class Block {
                         }
                         cube.material.transparent = true;
                         fadeMaterials.push(cube.material);
-                        if (isBlasted) {
+                        if (shouldFlash) {
                             if (!cube.material.emissive) cube.material.emissive = new THREE.Color(0, 0, 0);
                             emissiveMaterials.push(cube.material);
                         }
@@ -5615,7 +5616,7 @@ export class Block {
                             mats.forEach(m => {
                                 m.transparent = true;
                                 fadeMaterials.push(m);
-                                if (isBlasted && m.isMeshStandardMaterial) {
+                                if (shouldFlash && m.isMeshStandardMaterial) {
                                     if (!m.emissive) m.emissive = new THREE.Color(0, 0, 0);
                                     indicatorMaterials.push(m);
                                 }
@@ -5636,7 +5637,7 @@ export class Block {
                             mats.forEach(m => {
                                 m.transparent = true;
                                 fadeMaterials.push(m);
-                                if (isBlasted && m.isMeshStandardMaterial) {
+                                if (shouldFlash && m.isMeshStandardMaterial) {
                                     if (!m.emissive) m.emissive = new THREE.Color(0, 0, 0);
                                     indicatorMaterials.push(m);
                                 }
@@ -5661,20 +5662,22 @@ export class Block {
                             scaleFactor = 1.08 * easedDecay;
                         }
 
-                        // Thermal emissive flash on block body in first 40% of destruction
-                        const heatT = Math.max(0, 1.0 - progress / 0.4);
-                        for (let ei = 0; ei < emissiveMaterials.length; ei++) {
-                            emissiveMaterials[ei].emissive.setRGB(0.95 * heatT, 0.50 * heatT, 0.15 * heatT);
-                            emissiveMaterials[ei].emissiveIntensity = 1.2 * heatT;
-                        }
+                        if (shouldFlash) {
+                            // Thermal emissive flash on block body in first 40% of destruction
+                            const heatT = Math.max(0, 1.0 - progress / 0.4);
+                            for (let ei = 0; ei < emissiveMaterials.length; ei++) {
+                                emissiveMaterials[ei].emissive.setRGB(0.95 * heatT, 0.50 * heatT, 0.15 * heatT);
+                                emissiveMaterials[ei].emissiveIntensity = 1.2 * heatT;
+                            }
 
-                        // High-speed flashing self-emissive strobe on indicators (arrows, dots, circles)
-                        const indHeat = Math.max(0, 1.0 - progress / 0.7);
-                        const strobePhase = Math.sin(elapsed * 0.05);
-                        const strobeIntensity = (strobePhase > 0 ? 1.6 : 0.3) * indHeat;
-                        for (let ii = 0; ii < indicatorMaterials.length; ii++) {
-                            indicatorMaterials[ii].emissive.setRGB(1.0 * indHeat, 0.85 * indHeat, 0.3 * indHeat);
-                            indicatorMaterials[ii].emissiveIntensity = strobeIntensity;
+                            // High-speed flashing self-emissive strobe on indicators (arrows, dots, circles)
+                            const indHeat = Math.max(0, 1.0 - progress / 0.7);
+                            const strobePhase = Math.sin(elapsed * 0.05);
+                            const strobeIntensity = (strobePhase > 0 ? 1.6 : 0.3) * indHeat;
+                            for (let ii = 0; ii < indicatorMaterials.length; ii++) {
+                                indicatorMaterials[ii].emissive.setRGB(1.0 * indHeat, 0.85 * indHeat, 0.3 * indHeat);
+                                indicatorMaterials[ii].emissiveIntensity = strobeIntensity;
+                            }
                         }
                     } else {
                         const eased = 1 - Math.pow(1 - progress, 3);
@@ -5872,12 +5875,21 @@ export class Block {
     /**
      * Handle block being crushed by a high-impact fall (Task 1.2)
      * @param {Object} particleSystem - The particle system to use for effects
+     * @param {Object} [options] - Crushed options (e.g. skipFlash)
      */
-    onCrushed(particleSystem) {
+    onCrushed(particleSystem, options = { skipFlash: true }) {
         if (this.isRemoved || this.isExploding || this.isLocked) return;
 
-        // Flash indicators on high-impact landing
-        this.startBlastIndicatorFlash(350);
+        const skipFlash = options.skipFlash !== false;
+        if (!skipFlash) {
+            // Flash indicators on high-impact landing
+            this.startBlastIndicatorFlash(350);
+        }
+
+        // Shake the entire tower with radial falloff when a block is crushed by high-impact falling
+        if (typeof window !== 'undefined' && typeof window.triggerRadialTowerShake === 'function' && Array.isArray(window.blocks)) {
+            window.triggerRadialTowerShake(this, window.blocks, 0.38, 420);
+        }
 
         // Task 1.2 Revision: Stronger, faster shake
         this.shakeViolently(150, 0.5).then(() => {
@@ -5890,12 +5902,12 @@ export class Block {
 
             if (this.isBomb && !this.isLocked && !this.isTranslucent) {
                 // Bombs detonate when crushed (if not in translucent mode)
-                this.detonate();
+                this.detonate({ skipFlash });
             } else {
                 // Normal blocks explode into particles
                 // Task 7.7.3: Crushing is a failure case (isBlasted=true)
                 if (particleSystem) {
-                    this.explodeWithParticles(particleSystem, 0, true);
+                    this.explodeWithParticles(particleSystem, 0, true, { skipFlash });
                 } else {
                     this.remove();
                 }
@@ -5903,11 +5915,13 @@ export class Block {
         });
     }
 
-    detonate() {
+    detonate(options = {}) {
         if (this.isRemoved || this._explosionAnimationStarted || this.isLocked || this.isTranslucent || this.isCharred) return;
         this._explosionAnimationStarted = true;
         this.isExploding = true;
         this.isAnimating = true; // Task 8.1.0: Consistency for progress dial
+
+        const skipFlash = !!options.skipFlash;
 
         // Task 8.1.0: Update progress dial immediately when detonation starts
         if (typeof window.updateProgressDial === 'function') {
@@ -5974,15 +5988,22 @@ export class Block {
             window.applyDetonationAftermathShock(destroyedCells, bombPos);
         }
 
-        // Trigger self-emissive flashing strobe on exploding bomb blocks
-        this.startBlastIndicatorFlash(blastDuration);
-        affectedBlocks.forEach(block => {
-            block.isExploding = true;
-            block.removalStartTime = performance.now();
-            if (block.isBomb) {
-                block.startBlastIndicatorFlash(blastDuration);
-            }
-        });
+        if (!skipFlash) {
+            // Trigger self-emissive flashing strobe on exploding bomb blocks
+            this.startBlastIndicatorFlash(blastDuration);
+            affectedBlocks.forEach(block => {
+                block.isExploding = true;
+                block.removalStartTime = performance.now();
+                if (block.isBomb) {
+                    block.startBlastIndicatorFlash(blastDuration);
+                }
+            });
+        } else {
+            affectedBlocks.forEach(block => {
+                block.isExploding = true;
+                block.removalStartTime = performance.now();
+            });
+        }
 
         // Detonate/Remove affected blocks starting with the lower layers first
         const rippleStep = 28;
