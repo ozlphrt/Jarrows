@@ -357,9 +357,9 @@ export function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, target
                     supportedCount++;
                 }
             }
-            // Require at least 1 cell for length 1-2, at least 2 cells for length 3 to prevent loose overhangs
-            const minRequired = block.length >= 3 ? 2 : 1;
-            return supportedCount >= minRequired;
+            // Require 100% of cells to have direct solid support beneath them for upper layers
+            // This eliminates cantilevered overhangs, floating blocks, and hollow caverns between layers
+            return supportedCount === block.length;
         }
     }
 
@@ -931,7 +931,7 @@ export function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, target
             if (Math.random() > config.outwardPercentage) continue;
 
             const length = Math.random() < 0.9 ? (Math.floor(Math.random() * 2) + 2) : 1;
-            const isVertical = length > 1 && Math.random() < 0.7;
+            const isVertical = length > 1 && Math.random() < (yOffset === 0 ? 0.35 : 0.6);
             const direction = { x: 0, z: -1 }; // North
 
             // Only place vertical blocks or single blocks at edges
@@ -972,7 +972,7 @@ export function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, target
             if (Math.random() > config.outwardPercentage) continue;
 
             const length = Math.random() < 0.9 ? (Math.floor(Math.random() * 2) + 2) : 1;
-            const isVertical = length > 1 && Math.random() < 0.7;
+            const isVertical = length > 1 && Math.random() < (yOffset === 0 ? 0.35 : 0.6);
             const direction = { x: 0, z: 1 }; // South
 
             if (isVertical || length === 1) {
@@ -1012,7 +1012,7 @@ export function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, target
             if (Math.random() > config.outwardPercentage) continue;
 
             const length = Math.random() < 0.9 ? (Math.floor(Math.random() * 2) + 2) : 1;
-            const isVertical = length > 1 && Math.random() < 0.7;
+            const isVertical = length > 1 && Math.random() < (yOffset === 0 ? 0.35 : 0.6);
             const direction = { x: -1, z: 0 }; // West
 
             if (isVertical || length === 1) {
@@ -1052,7 +1052,7 @@ export function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, target
             if (Math.random() > config.outwardPercentage) continue;
 
             const length = Math.random() < 0.9 ? (Math.floor(Math.random() * 2) + 2) : 1;
-            const isVertical = length > 1 && Math.random() < 0.7;
+            const isVertical = length > 1 && Math.random() < (yOffset === 0 ? 0.35 : 0.6);
             const direction = { x: 1, z: 0 }; // East
 
             if (isVertical || length === 1) {
@@ -1370,7 +1370,7 @@ export function createSolvableBlocks(yOffset = 0, lowerLayerCells = null, target
             for (const dir of dirs) {
                 // Try length 2 first (single blocks only if absolutely necessary)
                 for (const tryLength of [2, 3, 1]) {
-                    if (tryLength === 1 && Math.random() < 0.9) continue; // Only 10% chance for single
+                    // Allow length 1 to fill all remaining supported voids cleanly
 
                     const isXAligned = Math.abs(dir.x) > 0;
                     let canPlace = true;

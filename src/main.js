@@ -3004,16 +3004,9 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
             // If we've placed enough blocks, stop
             if (allBlocks.length >= targetBlockCount) break;
 
-            // If we didn't place any blocks this layer but we have support, try next layer
-            // Don't stop early - continue if we have support cells available
+            // If we couldn't place any blocks with direct support on this layer, stop rather than leaving an empty layer gap
             if (layerBlocks.length === 0 && remainingBlocks > 0) {
-                const supportedCells = lowerLayerCells?.cells?.size || 0;
-                if (supportedCells === 0) {
-                    // No support at all - can't continue
-                    break;
-                }
-                // We have support but couldn't place blocks - might be Y-range conflicts
-                // Continue to next layer - it might work better
+                break;
             }
         }
 
@@ -3025,8 +3018,17 @@ async function generateSolvablePuzzle(level = 1, isRestart = false) {
                 const yOffset = currentLayer * cubeSize;
                 remainingBlocks = targetBlockCount - allBlocks.length;
 
-                // Check support
-                const supportedCells = lowerLayerCells?.cells?.size || 0;
+                // Count cells with direct surface support at yOffset
+                let supportedCells = 0;
+                if (lowerLayerCells && lowerLayerCells.yRanges) {
+                    for (const [, ranges] of lowerLayerCells.yRanges.entries()) {
+                        if (ranges.some(r => Math.abs(r.yTop - yOffset) < 0.05)) {
+                            supportedCells++;
+                        }
+                    }
+                } else if (lowerLayerCells?.cells) {
+                    supportedCells = lowerLayerCells.cells.size;
+                }
                 if (supportedCells === 0) {
                     break;
                 }

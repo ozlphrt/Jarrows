@@ -4,6 +4,16 @@
  */
 
 export const changelog = {
+    "8.36.0": {
+        title: "100% Strict Support, Zero Overhangs & Floating Block Elimination",
+        date: "2026-09-12",
+        changes: [
+            "100% Strict Vertical Support: Upper layer horizontal blocks now require all cells to have direct solid support beneath them, completely eliminating cantilevered overhangs and floating blocks",
+            "Unrestricted Single-Block Void Filling: Removed the 90% rejection of single-cell blocks in Step 4, ensuring all supported voids are filled solidly without leaving empty pockets",
+            "Cohesive Ground Foundation: Balanced base layer vertical block probability to 35%, ensuring a flat, dense foundation for upper layers",
+            "Layer Skipping Prevention: Prevented generator from advancing layers when zero blocks are placed, eliminating empty horizontal sandwich voids"
+        ]
+    },
     "8.35.0": {
         title: "Dense Tower Packing, Direct Vertical Support & Gap-Free Generation",
         date: "2026-09-12",
