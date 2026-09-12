@@ -148,27 +148,12 @@ describe('settings module', () => {
             expect(settingsMenu.classList.contains('show')).toBe(false);
         });
 
-        it('should allow clicking top-bar level-container to open select-level-modal', () => {
-            const timerLevel = globalThis.document.getElementById('timer-level');
-            timerLevel.textContent = '24';
-
+        it('should leave top-bar level-container as a pure stat display without click handlers', () => {
             initSettingsUI();
 
             const levelContainer = globalThis.document.getElementById('level-container');
-            const selectLevelModal = globalThis.document.getElementById('select-level-modal');
-            const selectLevelInput = globalThis.document.getElementById('select-level-input');
-
-            expect(levelContainer.setAttribute).toHaveBeenCalledWith('title', 'Select Level');
-            expect(levelContainer.style.setProperty).toHaveBeenCalledWith('pointer-events', 'auto', 'important');
-
-            levelContainer.dispatchEvent({
-                type: 'click',
-                preventDefault: vi.fn(),
-                stopPropagation: vi.fn()
-            });
-
-            expect(selectLevelModal.style.display).toBe('flex');
-            expect(selectLevelInput.value).toBe(24);
+            expect(levelContainer.setAttribute).not.toHaveBeenCalledWith('title', 'Select Level');
+            expect(levelContainer.style.setProperty).not.toHaveBeenCalledWith('pointer-events', 'auto', 'important');
         });
 
         it('should jump to chosen level when confirm button is clicked', () => {

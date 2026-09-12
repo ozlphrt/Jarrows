@@ -444,13 +444,12 @@ export function initSettingsUI() {
             });
         }
 
-        // Select Level Modal & Trigger Handlers
+        // Select Level Modal & Trigger Handlers (LVL button in settings menu)
         const selectLevelBtn = document.getElementById('select-level-btn');
         const selectLevelModal = document.getElementById('select-level-modal');
         const selectLevelInput = document.getElementById('select-level-input');
         const selectLevelConfirm = document.getElementById('select-level-confirm');
         const selectLevelCancel = document.getElementById('select-level-cancel');
-        const levelContainer = document.getElementById('level-container');
 
         function openSelectLevelModal(e) {
             if (e) {
@@ -478,13 +477,6 @@ export function initSettingsUI() {
 
         if (selectLevelBtn && selectLevelModal) {
             selectLevelBtn.addEventListener('click', openSelectLevelModal);
-        }
-
-        if (levelContainer && selectLevelModal) {
-            levelContainer.style.setProperty('pointer-events', 'auto', 'important');
-            levelContainer.style.cursor = 'pointer';
-            levelContainer.setAttribute('title', 'Select Level');
-            levelContainer.addEventListener('click', openSelectLevelModal);
         }
 
         if (selectLevelCancel && selectLevelModal) {
