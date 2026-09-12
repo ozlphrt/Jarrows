@@ -5886,9 +5886,20 @@ export class Block {
             this.startBlastIndicatorFlash(350);
         }
 
-        // Shake the entire tower with radial falloff when a block is crushed by high-impact falling
-        if (typeof window !== 'undefined' && typeof window.triggerRadialTowerShake === 'function' && Array.isArray(window.blocks)) {
-            window.triggerRadialTowerShake(this, window.blocks, 0.38, 420);
+        // Shake the entire tower with radial falloff and rapid tremor when a block is crushed by high-impact falling
+        if (typeof window !== 'undefined') {
+            const allBlocks = (Array.isArray(window.blocks) && window.blocks.length > 0)
+                ? window.blocks
+                : (window.gameBlocks || window.blocks || []);
+            if (typeof window.triggerRadialTowerShake === 'function') {
+                window.triggerRadialTowerShake(this, allBlocks, 0.45, 420);
+            }
+            if (typeof window.shakeTower === 'function') {
+                window.shakeTower(0.38, 380);
+            }
+            if (typeof window.shakeCamera === 'function') {
+                window.shakeCamera(0.14, 280);
+            }
         }
 
         // Task 1.2 Revision: Stronger, faster shake

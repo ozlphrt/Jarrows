@@ -114,16 +114,37 @@ function shakeCamera(intensity, duration) {
 }
 window.shakeCamera = shakeCamera;
 
+// Tower shake variables (rapid whole-tower physical tremor)
+let towerShakeIntensity = 0;
+let towerShakeStartTime = 0;
+let towerShakeDuration = 0;
+const _towerShakeOffset = new THREE.Vector3();
+
+/**
+ * Rapidly shake the entire tower group (high frequency physical vibration).
+ * @param {number} intensity - Shake amplitude
+ * @param {number} duration - Shake duration in ms
+ */
+export function shakeTower(intensity = 0.38, duration = 350) {
+    towerShakeIntensity = Math.max(towerShakeIntensity, intensity);
+    towerShakeDuration = Math.max(towerShakeDuration, duration);
+    towerShakeStartTime = performance.now();
+    if (typeof markNeedsRender === 'function') {
+        markNeedsRender(duration + 100);
+    }
+}
+window.shakeTower = shakeTower;
+
 let activeTowerShakeAnimation = null;
 
 /**
- * Shake the entire tower with distance-based radial falloff and irregular/random motion.
+ * Shake the entire tower with distance-based radial falloff and rapid irregular motion.
  * @param {Block} originBlock - The block that was tapped/pushed
  * @param {Block[]} allBlocks - All active puzzle blocks
  * @param {number} maxIntensity - Max shake amplitude at impact point
  * @param {number} duration - Total shake duration in ms
  */
-export function triggerRadialTowerShake(originBlock, allBlocks, maxIntensity = 0.28, duration = 380) {
+export function triggerRadialTowerShake(originBlock, allBlocks, maxIntensity = 0.45, duration = 380) {
     if (!originBlock || !allBlocks || allBlocks.length === 0) return;
 
     // Cancel any ongoing tower shake and restore positions
@@ -153,35 +174,36 @@ export function triggerRadialTowerShake(originBlock, allBlocks, maxIntensity = 0
             (origZ - originPos.z) ** 2
         );
         // Radial falloff: full power at impact, decaying smoothly with distance
-        const intensity = maxIntensity / (1.0 + dist * 0.45);
+        const intensity = maxIntensity / (1.0 + dist * 0.4);
         // Unique random seeds for irregular motion per block
         const seedX = Math.random() * Math.PI * 2;
         const seedY = Math.random() * Math.PI * 2;
         const seedZ = Math.random() * Math.PI * 2;
-        const freqMult = 0.85 + Math.random() * 0.35;
+        const freqMult = 0.9 + Math.random() * 0.3;
 
         return { block: b, origX, origY, origZ, intensity, seedX, seedY, seedZ, freqMult };
     });
 
     const startTime = performance.now();
-    shakeCamera(0.06, duration);
+    shakeCamera(0.12, duration);
+    shakeTower(maxIntensity * 0.85, duration);
     markNeedsRender(duration + 100);
 
     function animateShake() {
         const now = performance.now();
         const elapsed = now - startTime;
         const progress = Math.min(1.0, elapsed / duration);
-        const decay = Math.pow(1 - progress, 1.4); // Smooth non-linear decay
+        const decay = Math.pow(1 - progress, 1.3); // Smooth non-linear decay
 
         if (progress < 1.0) {
             targets.forEach(t => {
                 if (t.block.isRemoved || t.block.isFalling || t.block.isAnimating) return;
 
-                // Irregular multi-harmonic wave with random jitter
+                // Rapid multi-harmonic wave with random jitter (high frequency ~40-50Hz)
                 const tMs = elapsed * t.freqMult;
-                const waveX = Math.sin(tMs * 0.075 + t.seedX) * 0.65 + Math.sin(tMs * 0.16 + t.seedX * 1.5) * 0.35 + (Math.random() - 0.5) * 0.4;
-                const waveY = (Math.sin(tMs * 0.09 + t.seedY) * 0.5 + (Math.random() - 0.5) * 0.3) * 0.4;
-                const waveZ = Math.cos(tMs * 0.08 + t.seedZ) * 0.65 + Math.cos(tMs * 0.15 + t.seedZ * 1.5) * 0.35 + (Math.random() - 0.5) * 0.4;
+                const waveX = Math.sin(tMs * 0.28 + t.seedX) * 0.65 + Math.sin(tMs * 0.55 + t.seedX * 1.5) * 0.35 + (Math.random() - 0.5) * 0.5;
+                const waveY = (Math.sin(tMs * 0.32 + t.seedY) * 0.5 + (Math.random() - 0.5) * 0.35) * 0.4;
+                const waveZ = Math.cos(tMs * 0.28 + t.seedZ) * 0.65 + Math.cos(tMs * 0.52 + t.seedZ * 1.5) * 0.35 + (Math.random() - 0.5) * 0.5;
 
                 const dx = waveX * t.intensity * decay;
                 const dy = waveY * t.intensity * decay;
@@ -337,6 +359,7 @@ const cubeSize = 1;
 const towerCenter = new THREE.Vector3(3.5, 0, 3.5);
 let blocks = [];
 window.gameBlocks = blocks; // Expose globally
+window.blocks = blocks;
 let base, gridHelper;
 
 let currentLevel = 0;
@@ -1484,18 +1507,36 @@ function updateCameraPosition() {
 
     // Task 1.2: Apply camera shake offset if active
     const now = performance.now();
+    _cameraShakeOffset.set(0, 0, 0);
     if (now - cameraShakeStartTime < cameraShakeDuration) {
         const p = 1 - (now - cameraShakeStartTime) / cameraShakeDuration; // Decay factor
+        const amp = cameraShakeIntensity * Math.pow(p, 1.2);
         _cameraShakeOffset.set(
-            (Math.random() - 0.5) * 2 * cameraShakeIntensity * p,
-            (Math.random() - 0.5) * 2 * cameraShakeIntensity * p,
-            (Math.random() - 0.5) * 2 * cameraShakeIntensity * p
+            (Math.random() - 0.5) * 2 * amp,
+            (Math.random() - 0.5) * 2 * amp,
+            (Math.random() - 0.5) * 2 * amp
         );
         camera.position.add(_cameraShakeOffset);
     }
 
+    // Apply rapid whole-tower physical shake offset if active
+    _towerShakeOffset.set(0, 0, 0);
+    if (now - towerShakeStartTime < towerShakeDuration) {
+        const p = 1 - (now - towerShakeStartTime) / towerShakeDuration;
+        const decay = Math.pow(p, 1.2);
+        const elapsed = now - towerShakeStartTime;
+        // High-frequency rapid tremor (~45Hz) with sharp irregular lateral jitter
+        const freq = 0.28;
+        const phaseX = elapsed * freq;
+        const phaseZ = elapsed * (freq * 1.15) + 1.2;
+        const shakeX = (Math.sin(phaseX) * 0.75 + (Math.random() - 0.5) * 0.5) * towerShakeIntensity * decay;
+        const shakeY = (Math.sin(elapsed * freq * 1.4) * 0.35 + (Math.random() - 0.5) * 0.25) * towerShakeIntensity * decay;
+        const shakeZ = (Math.cos(phaseZ) * 0.75 + (Math.random() - 0.5) * 0.5) * towerShakeIntensity * decay;
+        _towerShakeOffset.set(shakeX, shakeY, shakeZ);
+    }
+
     // Update tower group position
-    towerGroup.position.copy(towerCenter.clone().add(towerPositionOffset));
+    towerGroup.position.copy(towerCenter.clone().add(towerPositionOffset).add(_towerShakeOffset));
     towerGroup.rotation.set(0, 0, 0); // Always locked to zero
 
     // #region agent log
@@ -8350,8 +8391,12 @@ function startBlockFallingToTarget(block, targetYOffset) {
 
             // If the block falls 2 or more layers (fallDistance >= 1.95), blast it upon landing
             if (isBlastedFall && !block.isRemoved && !block.isLocked) {
-                // Blocks falling above and blasting due to falling shake the tower
-                triggerRadialTowerShake(block, blocks, 0.38, 420);
+                // Blocks falling above and blasting due to falling rapidly shake the tower and screen
+                triggerRadialTowerShake(block, blocks, 0.45, 420);
+                shakeTower(0.38, 380);
+                if (typeof window.shakeCamera === 'function') {
+                    window.shakeCamera(0.14, 280);
+                }
 
                 if (typeof block.onCrushed === 'function') {
                     block.onCrushed(window.particleSystem, { skipFlash: true });
@@ -8359,10 +8404,6 @@ function startBlockFallingToTarget(block, targetYOffset) {
                     block.explodeWithParticles(window.particleSystem, 0, true, { skipFlash: true });
                 } else {
                     block.remove();
-                }
-
-                if (typeof window.shakeCamera === 'function') {
-                    window.shakeCamera(0.08, 160);
                 }
             }
         }
@@ -9488,14 +9529,17 @@ function animate() {
     if (de < SNAP_EPS) currentElevation = targetElevation;
 
     cameraStillMoving = (dr >= SNAP_EPS) || (da >= SNAP_EPS) || (de >= SNAP_EPS);
-    if (cameraStillMoving) updateCameraPosition();
+    const hasCameraShake = (currentTime - cameraShakeStartTime) < cameraShakeDuration;
+    const hasTowerShake = (currentTime - towerShakeStartTime) < towerShakeDuration;
+    if (cameraStillMoving || hasCameraShake || hasTowerShake || settleFramesRemaining > 0) {
+        updateCameraPosition();
+    }
 
     // 7. Idle & Battery Logic (Wake-on-Demand State Check)
     const hasFallingBlocks = cachedHasFallingBlocks;
     const hasActiveAnimations = cachedHasActiveAnimations;
     const hasMovingTower = Math.abs(towerPositionOffset.y - targetTowerPositionOffset.y) > 0.005;
     const hasActiveTimeChallenge = isTimeBasedMode() && timeChallengeActive && !timeUpShown && !isPaused && !isTimeFrozen();
-    const hasCameraShake = (currentTime - cameraShakeStartTime) < cameraShakeDuration;
     let hasActiveBombs = false;
     if (currentLevel >= 31 && !isGeneratingLevel) {
         const bombList = window.currentLevelBombBlocks || [];
@@ -9516,6 +9560,7 @@ function animate() {
                          hasDebris || 
                          hasMovingTower ||
                          hasCameraShake ||
+                         hasTowerShake ||
                          hasActiveTimeChallenge ||
                          (activeBlocks.size > 0) ||
                          (currentTime < renderKeepAliveUntilMs);

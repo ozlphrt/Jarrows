@@ -20,6 +20,8 @@ describe('Fall Blast & Ash Updates', () => {
         globalThis.cancelAnimationFrame = vi.fn((id) => clearTimeout(id));
         globalThis.window = {
             triggerRadialTowerShake: vi.fn(),
+            shakeTower: vi.fn(),
+            shakeCamera: vi.fn(),
             blocks: [],
             markNeedsRender: vi.fn(),
             playSound: vi.fn(),
@@ -45,7 +47,7 @@ describe('Fall Blast & Ash Updates', () => {
         );
     }
 
-    it('onCrushed should default to skipFlash: true, avoiding startBlastIndicatorFlash', () => {
+    it('onCrushed should default to skipFlash: true, avoiding startBlastIndicatorFlash and rapidly shaking tower', () => {
         const block = createTestBlock();
         const flashSpy = vi.spyOn(block, 'startBlastIndicatorFlash');
         vi.spyOn(block, 'shakeViolently').mockResolvedValue();
@@ -56,9 +58,11 @@ describe('Fall Blast & Ash Updates', () => {
         expect(globalThis.window.triggerRadialTowerShake).toHaveBeenCalledWith(
             block,
             globalThis.window.blocks,
-            0.38,
+            0.45,
             420
         );
+        expect(globalThis.window.shakeTower).toHaveBeenCalledWith(0.38, 380);
+        expect(globalThis.window.shakeCamera).toHaveBeenCalledWith(0.14, 280);
     });
 
     it('onCrushed should call startBlastIndicatorFlash only if skipFlash is explicitly false', () => {
