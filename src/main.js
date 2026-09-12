@@ -11269,7 +11269,7 @@ function animate() {
             if (!block.removalStartTime) { trackBlockRemoved(); timeChallengeAwardForBlockRemoved(block.length); }
             if (block.group && block.group.parent) block.group.parent.remove(block.group);
             if (block.physicsBody && block.physicsBody.body) {
-                import('./physics.js').then(({ removePhysicsBody }) => removePhysicsBody(physics, block.physicsBody.body));
+                removePhysicsBody(physics, block.physicsBody.body);
             }
             if (window.puzzleSolution && window.solutionStep < window.puzzleSolution.length) {
                 window.solutionStep++;
@@ -11288,9 +11288,19 @@ function animate() {
         isLevelPlayable = true;
     }
 
-    // 11. Level Completion
-    const remainingActiveBlocks = blocks.filter(b => b && !b.isRemoved && !b.removalStartTime && !b.isExploding && !b.isAnimating && !b.isFalling).length;
-    const hasPendingAnimations = blocks.some(b => b && (b.isAnimating || b.isExploding || b.isFalling || (b.removalStartTime && !b.isRemoved)));
+    // 11. Level Completion (single-pass zero-allocation scan)
+    let remainingActiveBlocks = 0;
+    let hasPendingAnimations = false;
+    for (let bi = 0; bi < blocks.length; bi++) {
+        const b = blocks[bi];
+        if (!b) continue;
+        if (!b.isRemoved && !b.removalStartTime && !b.isExploding && !b.isAnimating && !b.isFalling) {
+            remainingActiveBlocks++;
+        }
+        if (b.isAnimating || b.isExploding || b.isFalling || (b.removalStartTime && !b.isRemoved)) {
+            hasPendingAnimations = true;
+        }
+    }
 
     const canCompleteLevel = (
         levelBlocksSpawned &&
