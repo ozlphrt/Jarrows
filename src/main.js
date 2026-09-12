@@ -6281,11 +6281,14 @@ function triggerFlyingSpinCounter(count, label = 'FREE SPINS AVAILABLE') {
 
     item.innerHTML = `
         <div class="flying-spin-icon-wrap">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4">
-                <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" stroke-linecap="round" stroke-linejoin="round"></path>
-                <path d="M3 21v-5h5" stroke-linecap="round" stroke-linejoin="round"></path>
-                <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" stroke-linecap="round" stroke-linejoin="round"></path>
-                <path d="M21 3v5h-5" stroke-linecap="round" stroke-linejoin="round"></path>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 2.8 L18.5 6.5 L18.5 13.5 L12 17.2 L5.5 13.5 L5.5 6.5 Z" stroke-width="1.8" stroke-linejoin="round"></path>
+                <path d="M12 2.8 L12 17.2" stroke-width="1.8"></path>
+                <path d="M12 10 L18.5 6.5" stroke-width="1.8"></path>
+                <path d="M12 10 L5.5 6.5" stroke-width="1.8"></path>
+                <path d="M3.5 16.5 C5.5 19.8 12 21.5 17.5 18.5" stroke-width="2" stroke-linecap="round"></path>
+                <path d="M17.5 18.5 L17.5 15" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+                <path d="M17.5 18.5 L14 19.5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
             </svg>
         </div>
         <div class="flying-spin-number">${countStr}</div>
