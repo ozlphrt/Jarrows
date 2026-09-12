@@ -347,9 +347,12 @@ function resetAudioIdleTimer() {
     }, AUDIO_IDLE_SLEEP_MS);
 }
 
+let userGestureReceived = false;
+
 // Resume AudioContext if suspended or interrupted (e.g. returning from another app or background tab)
 async function resumeAudioContext() {
     if (!audioEnabled) return;
+    if (!userGestureReceived) return;
     if (!audioContext) {
         initAudioContext();
     }
@@ -376,6 +379,7 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
     window.addEventListener('pageshow', resumeAudioContext);
     // Pre-warm / unlock on first user gesture
     const unlockHandler = () => {
+        userGestureReceived = true;
         resumeAudioContext();
         window.removeEventListener('pointerdown', unlockHandler);
         window.removeEventListener('touchstart', unlockHandler);
@@ -425,6 +429,7 @@ async function loadSound(name, path) {
 async function playSound(name, volume = 0.5) {
     if (!audioEnabled) return null;
 
+    userGestureReceived = true;
     // Ensure AudioContext is ready and active
     await resumeAudioContext();
 
