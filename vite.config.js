@@ -121,7 +121,20 @@ export default ({ command }) => {
     },
     build: {
       outDir: 'dist',
-      assetsDir: 'assets'
+      assetsDir: 'assets',
+      chunkSizeWarningLimit: 2500,
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes('@dimforge/rapier3d-compat')) {
+              return 'rapier';
+            }
+            if (id.includes('three')) {
+              return 'three-vendor';
+            }
+          }
+        }
+      }
     },
     optimizeDeps: {
       exclude: ['@dimforge/rapier3d-compat']
