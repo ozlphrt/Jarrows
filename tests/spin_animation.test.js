@@ -3,11 +3,20 @@ import * as THREE from 'three';
 import { Block } from '../src/Block.js';
 import {
     SpinAnimationCoordinator,
+    capSpinDurationToTimeLeft,
     getSpinAnimationProfile,
-    getSpinLayerDelay
+    getSpinLayerDelay,
+    getTemporarySpinDurationMs
 } from '../src/spin/SpinAnimationCoordinator.js';
 
 describe('spin animation coordinator', () => {
+    it('never gives temporary spin more time than the game timer', () => {
+        expect(getTemporarySpinDurationMs(800, 240)).toBe(50000);
+        expect(getTemporarySpinDurationMs(800, 7.345)).toBe(7345);
+        expect(getTemporarySpinDurationMs(10, 30)).toBe(12000);
+        expect(capSpinDurationToTimeLeft(12000, 0)).toBe(0);
+    });
+
     it('selects bounded workloads from the live block count', () => {
         expect(getSpinAnimationProfile(499).mode).toBe('central-60fps');
         expect(getSpinAnimationProfile(500).mode).toBe('central-30fps');

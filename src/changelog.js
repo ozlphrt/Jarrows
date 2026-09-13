@@ -4,6 +4,14 @@
  */
 
 export const changelog = {
+    "8.36.3": {
+        title: "Spin Timer Game-Time Cap",
+        date: "2026-09-13",
+        changes: [
+            "Game-Time-Bounded Spin: Temporary spin duration is capped by the remaining gameplay timer after spin cost is deducted",
+            "Live Deadline Synchronization: Later time penalties shorten an active spin deadline so its countdown can never outlast the game clock"
+        ]
+    },
     "8.36.2": {
         title: "High-Level Spin Stability",
         date: "2026-09-13",

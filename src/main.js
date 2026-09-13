@@ -19,7 +19,12 @@ import { gameState } from './core/GameState.js';
 import { initSettingsUI, unregisterServiceWorkersAndClearCaches } from './ui/settings.js';
 import { dialogManager } from './ui/DialogManager.js';
 import { BlockInstanceManager } from './BlockInstanceManager.js';
-import { SpinAnimationCoordinator, getSpinAnimationProfile } from './spin/SpinAnimationCoordinator.js';
+import {
+    SpinAnimationCoordinator,
+    capSpinDurationToTimeLeft,
+    getSpinAnimationProfile,
+    getTemporarySpinDurationMs
+} from './spin/SpinAnimationCoordinator.js';
 import appVersionRaw from '../VERSION?raw';
 import {
     getBlocksForLevel,
@@ -6078,17 +6083,7 @@ if (newGameCancel) {
 // ==========================================
 // TEMPORARY SPIN ARROWS SYSTEM
 // ==========================================
-// Dynamic Scaling: 12.0s – 60.0s based on remaining blocks
-// Formula: clamp(12.0s, 10.0s + 0.05s * N_remaining, 60.0s)
-function getTemporarySpinDurationMs(remainingBlockCount) {
-    const minSec = 12.0;
-    const maxSec = 60.0;
-    const count = typeof remainingBlockCount === 'number'
-        ? remainingBlockCount
-        : (blocks ? blocks.filter(b => b && !b.isRemoved && !b.isFalling && !b.removalStartTime).length : 15);
-    const calculatedSec = Math.min(maxSec, Math.max(minSec, 10.0 + 0.05 * count));
-    return Math.round(calculatedSec * 1000);
-}
+// Dynamic Scaling: 12.0s – 60.0s based on remaining blocks, capped by game time.
 
 let temporarySpinActive = false;
 let temporarySpinEndTime = 0;
@@ -6162,6 +6157,21 @@ function runCoordinatedSpinWave(blockTargets, phase = 'spin') {
 
 function isTemporarySpinActive() {
     return temporarySpinActive;
+}
+
+function capTemporarySpinDeadlineToGameTimer() {
+    if (!temporarySpinActive || !isTimeBasedMode()) return;
+
+    const now = performance.now();
+    const currentRemainingMs = Math.max(0, temporarySpinEndTime - now);
+    const cappedRemainingMs = capSpinDurationToTimeLeft(currentRemainingMs, timeLeftSec);
+    if (cappedRemainingMs >= currentRemainingMs) return;
+
+    temporarySpinEndTime = now + cappedRemainingMs;
+    if (temporarySpinTimerId) clearTimeout(temporarySpinTimerId);
+    temporarySpinTimerId = setTimeout(() => {
+        revertTemporarySpin();
+    }, cappedRemainingMs);
 }
 
 function clearTemporarySpinState() {
@@ -6353,8 +6363,12 @@ function updateSpinCounterDisplay(triggerAwardEffect = false) {
     const diceButton = document.getElementById('dice-button');
 
     if (temporarySpinActive) {
+        capTemporarySpinDeadlineToGameTimer();
         const remainingMs = Math.max(0, temporarySpinEndTime - performance.now());
-        const remainingSec = Math.ceil(remainingMs / 1000);
+        const spinRemainingSec = Math.ceil(remainingMs / 1000);
+        const remainingSec = isTimeBasedMode()
+            ? Math.min(spinRemainingSec, Math.max(0, Math.ceil(timeLeftSec)))
+            : spinRemainingSec;
         const totalMs = currentTemporarySpinTotalDurationMs || 15000;
         const ratio = remainingMs / totalMs;
 
@@ -6605,7 +6619,10 @@ function spinRandomBlocks() {
 
     // Activate dynamic temporary countdown (12s - 60s based on remaining blocks)
     const remainingCount = blocks ? blocks.filter(b => b && !b.isRemoved && !b.isFalling && !b.removalStartTime).length : 15;
-    const durationMs = getTemporarySpinDurationMs(remainingCount);
+    const durationMs = getTemporarySpinDurationMs(
+        remainingCount,
+        isTimeBasedMode() ? timeLeftSec : Infinity
+    );
     console.log(`[Spin] Temporary spin activated for ${Math.round(durationMs / 1000)}s (${remainingCount} blocks remaining)`);
 
     temporarySpinActive = true;

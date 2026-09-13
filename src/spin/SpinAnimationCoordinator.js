@@ -1,6 +1,19 @@
 export const SPIN_SMOOTH_LIMIT = 500;
 export const SPIN_SNAP_LIMIT = 750;
 
+export function capSpinDurationToTimeLeft(durationMs, availableTimeSec) {
+    const safeDurationMs = Math.max(0, Math.round(Number(durationMs) || 0));
+    if (!Number.isFinite(availableTimeSec)) return safeDurationMs;
+    const availableTimeMs = Math.max(0, Math.floor(availableTimeSec * 1000));
+    return Math.min(safeDurationMs, availableTimeMs);
+}
+
+export function getTemporarySpinDurationMs(remainingBlockCount, availableTimeSec = Infinity) {
+    const count = Math.max(0, Number(remainingBlockCount) || 0);
+    const calculatedSec = Math.min(60, Math.max(12, 10 + (0.05 * count)));
+    return capSpinDurationToTimeLeft(calculatedSec * 1000, availableTimeSec);
+}
+
 export function getSpinAnimationProfile(blockCount) {
     const count = Math.max(0, Number(blockCount) || 0);
 
