@@ -4,6 +4,16 @@
  */
 
 export const changelog = {
+    "8.36.2": {
+        title: "High-Level Spin Stability",
+        date: "2026-09-13",
+        changes: [
+            "Shared Tower Spin Animator: Replaced hundreds of independent per-block animation loops with one coordinated frame scheduler for both spin and automatic revert",
+            "Adaptive High-Level Workload: Towers with 500+ blocks animate at a bounded 30 FPS, while towers above 750 blocks use a quick layered snap that updates each indicator once",
+            "Indicator-Only Transforms: Spin animations no longer recalculate unchanged block-body world matrices, sharply reducing main-thread work on older iPhones",
+            "Spin Performance Metrics: Records animation mode, frame workload, elapsed time, block count, and layer count for device diagnostics"
+        ]
+    },
     "8.36.1": {
         title: "Uniform Block Scale & Gap-Free Inferno Relocation",
         date: "2026-09-12",

@@ -2824,30 +2824,19 @@ export class Block {
         }
     }
 
-    /**
-     * Animate arrow directly to a target direction with a fast snap + magnetic needle oscillation.
-     * Used for both temporary spin and reverting to original direction.
-     */
-    /**
-     * Animate arrow and direction indicators to a target direction using smooth transform rotation.
-     * Never destroys or recreates meshes, preventing missing indicator bugs.
-     */
-    animateToDirection(targetDirection, duration = 320, callback = null) {
-        if (!targetDirection) {
-            if (callback) callback();
-            return;
-        }
+    // Prepare a direction change without starting an independent animation loop.
+    prepareDirectionAnimation(targetDirection) {
+        if (!targetDirection) return null;
 
         const normTargetX = targetDirection.x === 0 ? 0 : (targetDirection.x > 0 ? 1 : -1);
         const normTargetZ = targetDirection.z === 0 ? 0 : (targetDirection.z > 0 ? 1 : -1);
 
-        // Cancel any active spin animation on this block
         if (this._spinAnimId) {
             cancelAnimationFrame(this._spinAnimId);
             this._spinAnimId = null;
         }
 
-        // Strictly preserve clean creamy white porcelain body during spin (never mutate to indicator color)
+        // Keep the shared porcelain material stable while only the indicators rotate.
         if (this.cubes && this.cubes[0] && this.cubes[0].material && !this.isLocked && !this.isTranslucent) {
             this.cubes[0].material.emissive.setHex(0x000000);
             this.cubes[0].material.emissiveIntensity = 0.0;
@@ -2858,7 +2847,6 @@ export class Block {
             this.cubes[0].material.color.copy(baseColor);
         }
 
-        // Ensure base reference angle is defined
         if (this._indicatorBaseAngle === undefined) {
             this._indicatorBaseAngle = Math.atan2(this.direction.x, this.direction.z);
         }
@@ -2868,61 +2856,90 @@ export class Block {
         while (targetRelAngle > Math.PI) targetRelAngle -= Math.PI * 2;
         while (targetRelAngle < -Math.PI) targetRelAngle += Math.PI * 2;
 
-        const isHorizontalMultiCell = !this.isVertical && this.length > 1;
-        const currentRotY = this.directionIndicators ? this.directionIndicators.rotation.y : 0;
-
-        let angleDiff = targetRelAngle - currentRotY;
-        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-
-        if (isHorizontalMultiCell && Math.abs(angleDiff) < 0.01) {
-            angleDiff = Math.PI; // 180 flip along axis
-        }
-
-        const startRotY = currentRotY;
-        const destRotY = startRotY + angleDiff;
-
-        // Update direction property immediately so game logic recognizes it
-        this.direction = { x: normTargetX, z: normTargetZ };
-
-        // Ensure indicators exist
         if (!this.directionIndicators) {
             const colors = INDICATOR_LENGTH_COLORS;
             const arrowColor = colors[this.length - 1] || colors[0];
             this.createDirectionIndicators(arrowColor, this.arrowStyle);
         }
 
+        const isHorizontalMultiCell = !this.isVertical && this.length > 1;
+        const startRotY = this.directionIndicators ? this.directionIndicators.rotation.y : 0;
+        let angleDiff = targetRelAngle - startRotY;
+        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+        if (isHorizontalMultiCell && Math.abs(angleDiff) < 0.01) angleDiff = Math.PI;
+
         const topArrow = (this.arrow && this.arrow.children && this.arrow.children.length > 0)
             ? this.arrow.children[0]
             : null;
         const startTopArrowZ = topArrow ? topArrow.rotation.z : 0;
-        let targetTopArrowZ = targetGlobalAngle + Math.PI;
-        let topArrowDiff = targetTopArrowZ - startTopArrowZ;
+        let topArrowDiff = (targetGlobalAngle + Math.PI) - startTopArrowZ;
         while (topArrowDiff > Math.PI) topArrowDiff -= Math.PI * 2;
         while (topArrowDiff < -Math.PI) topArrowDiff += Math.PI * 2;
-        const destTopArrowZ = startTopArrowZ + topArrowDiff;
+
+        // Game logic changes immediately; the coordinator only interpolates its visual indicator.
+        this.direction = { x: normTargetX, z: normTargetZ };
+
+        return {
+            block: this,
+            startRotY,
+            destRotY: startRotY + angleDiff,
+            topArrow,
+            startTopArrowZ,
+            destTopArrowZ: startTopArrowZ + topArrowDiff
+        };
+    }
+
+    applyDirectionAnimationFrame(transition, easedProgress, isFinal = false) {
+        if (!transition) return;
+        const progress = isFinal ? 1 : Math.min(1, Math.max(0, easedProgress));
+
+        if (this.directionIndicators) {
+            this.directionIndicators.rotation.y = transition.startRotY +
+                (transition.destRotY - transition.startRotY) * progress;
+            this.directionIndicators.updateMatrix();
+        }
+        if (transition.topArrow) {
+            transition.topArrow.rotation.z = transition.startTopArrowZ +
+                (transition.destTopArrowZ - transition.startTopArrowZ) * progress;
+            transition.topArrow.updateMatrix();
+        }
+    }
+
+    getRandomSpinTargetDirection() {
+        if (!this.isVertical && this.length > 1) {
+            const curX = this.direction.x === 0 ? 0 : (this.direction.x > 0 ? 1 : -1);
+            const curZ = this.direction.z === 0 ? 0 : (this.direction.z > 0 ? 1 : -1);
+            return { x: -curX, z: -curZ };
+        }
+
+        const directions = [{ x: 1, z: 0 }, { x: -1, z: 0 }, { x: 0, z: 1 }, { x: 0, z: -1 }];
+        const otherDirs = directions.filter((direction) =>
+            !(direction.x === this.direction.x && direction.z === this.direction.z)
+        );
+        return otherDirs[Math.floor(Math.random() * otherDirs.length)];
+    }
+
+    /**
+     * Animate arrow and direction indicators to a target direction using smooth transform rotation.
+     * Never destroys or recreates meshes, preventing missing indicator bugs.
+     */
+    animateToDirection(targetDirection, duration = 320, callback = null) {
+        const transition = this.prepareDirectionAnimation(targetDirection);
+        if (!transition) {
+            if (callback) callback();
+            return;
+        }
 
         const startTime = performance.now();
         const animDuration = Math.max(100, duration);
 
-        const step = () => {
-            const now = performance.now();
+        const step = (frameTimestamp) => {
+            const now = Number.isFinite(frameTimestamp) ? frameTimestamp : performance.now();
             const elapsed = now - startTime;
             const progress = Math.min(elapsed / animDuration, 1.0);
             const eased = 1 - Math.pow(1 - progress, 3); // Cubic ease-out
-
-            if (this.directionIndicators) {
-                this.directionIndicators.rotation.y = startRotY + (destRotY - startRotY) * eased;
-                this.directionIndicators.updateMatrix();
-            }
-            if (topArrow) {
-                topArrow.rotation.z = startTopArrowZ + (destTopArrowZ - startTopArrowZ) * eased;
-                topArrow.updateMatrix();
-            }
-
-            this.group.updateMatrix();
-            this.group.updateMatrixWorld(true);
-            this.isDirty = true;
+            this.applyDirectionAnimationFrame(transition, eased, progress === 1);
             if (typeof window !== 'undefined' && typeof window.markNeedsRender === 'function') {
                 window.markNeedsRender(100);
             }
@@ -2931,15 +2948,6 @@ export class Block {
                 this._spinAnimId = requestAnimationFrame(step);
             } else {
                 this._spinAnimId = null;
-                if (this.directionIndicators) {
-                    this.directionIndicators.rotation.y = destRotY;
-                    this.directionIndicators.updateMatrix();
-                }
-                if (topArrow) {
-                    topArrow.rotation.z = destTopArrowZ;
-                    topArrow.updateMatrix();
-                }
-                this.updateArrowRotation();
                 if (callback) callback();
             }
         };
@@ -2961,23 +2969,7 @@ export class Block {
             this._preSpinDirection = { x: this.direction.x, z: this.direction.z };
         }
 
-        // Determine target direction based on block type
-        let targetDirection;
-        if (isHorizontalMultiCell) {
-            // Horizontal multi-cell: flip 180 degrees (opposite direction along axis)
-            const curX = this.direction.x === 0 ? 0 : (this.direction.x > 0 ? 1 : -1);
-            const curZ = this.direction.z === 0 ? 0 : (this.direction.z > 0 ? 1 : -1);
-            targetDirection = { x: -curX, z: -curZ };
-        } else {
-            // Vertical or single-cell: pick a DIFFERENT cardinal direction
-            const directions = [{ x: 1, z: 0 }, { x: -1, z: 0 }, { x: 0, z: 1 }, { x: 0, z: -1 }];
-            const otherDirs = directions.filter(d => !(d.x === this.direction.x && d.z === this.direction.z));
-            targetDirection = otherDirs.length > 0
-                ? otherDirs[Math.floor(Math.random() * otherDirs.length)]
-                : directions[Math.floor(Math.random() * directions.length)];
-        }
-
-        this.animateToDirection(targetDirection, duration, callback);
+        this.animateToDirection(this.getRandomSpinTargetDirection(), duration, callback);
     }
 
     // Revert temporary spin back to original direction cleanly

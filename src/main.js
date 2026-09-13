@@ -19,6 +19,7 @@ import { gameState } from './core/GameState.js';
 import { initSettingsUI, unregisterServiceWorkersAndClearCaches } from './ui/settings.js';
 import { dialogManager } from './ui/DialogManager.js';
 import { BlockInstanceManager } from './BlockInstanceManager.js';
+import { SpinAnimationCoordinator, getSpinAnimationProfile } from './spin/SpinAnimationCoordinator.js';
 import appVersionRaw from '../VERSION?raw';
 import {
     getBlocksForLevel,
@@ -6095,12 +6096,76 @@ let currentTemporarySpinTotalDurationMs = 15000;
 let temporarySpinTimerId = null;
 let temporarySpinIntervalId = null;
 const temporarySpinOriginalDirections = new Map(); // Map<Block, {x: number, z: number}>
+const spinAnimationCoordinator = new SpinAnimationCoordinator();
+
+function runCoordinatedSpinWave(blockTargets, phase = 'spin') {
+    const targets = Array.isArray(blockTargets) ? blockTargets : [];
+    const layerMap = new Map();
+
+    for (const target of targets) {
+        const block = target?.block;
+        if (!block || block.isRemoved || block.removalStartTime) continue;
+
+        if (phase === 'revert' && block.isFalling) {
+            block._pendingRevertOnLand = true;
+            continue;
+        }
+
+        const transition = block.prepareDirectionAnimation(target.direction);
+        if (!transition) continue;
+        const layerKey = Math.round((block.yOffset || 0) * 100) / 100;
+        if (!layerMap.has(layerKey)) layerMap.set(layerKey, []);
+        layerMap.get(layerKey).push(transition);
+    }
+
+    const sortedLayers = Array.from(layerMap.keys()).sort((a, b) => b - a);
+    const layers = sortedLayers.map((layerKey) => layerMap.get(layerKey));
+    const transitionCount = layers.reduce((sum, layer) => sum + layer.length, 0);
+    const profile = getSpinAnimationProfile(transitionCount);
+
+    markNeedsRender(profile.totalCascadeMs + profile.blockDurationMs + 500);
+    return spinAnimationCoordinator.start({
+        layers,
+        blockCount: transitionCount,
+        applyFrame: (transition, eased, isFinal) => {
+            transition.block.applyDirectionAnimationFrame(transition, eased, isFinal);
+        },
+        onLayerStart: () => {
+            playSound('syntheticBlockSnap', 0.35);
+        },
+        onRender: () => {
+            markNeedsRender(100);
+        },
+        onComplete: (metrics) => {
+            const result = { ...metrics, phase, layerCount: layers.length };
+            window.lastSpinAnimationMetrics = result;
+            debugTelemetry({
+                location: 'main.js:runCoordinatedSpinWave',
+                message: 'Coordinated spin completed',
+                data: result,
+                timestamp: Date.now(),
+                sessionId: 'spin-performance'
+            });
+
+            if (phase === 'revert') {
+                for (const target of targets) {
+                    const block = target?.block;
+                    if (block && !block.isTranslucent && !block.isCharred) {
+                        block.setIndicatorsFrosted(false);
+                        block.updateCoolingIndicatorState();
+                    }
+                }
+            }
+        }
+    });
+}
 
 function isTemporarySpinActive() {
     return temporarySpinActive;
 }
 
 function clearTemporarySpinState() {
+    spinAnimationCoordinator.cancel();
     if (temporarySpinTimerId) {
         clearTimeout(temporarySpinTimerId);
         temporarySpinTimerId = null;
@@ -6142,9 +6207,6 @@ function revertTemporarySpin() {
         countdownItems.forEach(i => i.remove());
     }
 
-    const TOTAL_CASCADE_MS = 2000;
-    const BLOCK_SPIN_MS = 320;
-
     // Ensure all non-locked, non-translucent blocks maintain pure creamy porcelain body without dirty emissive
     for (const block of (blocks || [])) {
         if (block && !block.isRemoved && !block.isFalling && !block.isLocked && !block.isTranslucent) {
@@ -6156,54 +6218,16 @@ function revertTemporarySpin() {
         }
     }
 
-    // Collect blocks that have a recorded _preSpinDirection
+    // Capture the original targets before clearing them for non-falling blocks.
     const spunBlocks = (blocks || []).filter(b => b && b._preSpinDirection && !b.isRemoved && !b.removalStartTime);
-
-    // Group blocks by vertical layer (yOffset)
-    const layerMap = new Map();
-    for (const block of spunBlocks) {
-        const layerKey = Math.round((block.yOffset || 0) * 100) / 100;
-        if (!layerMap.has(layerKey)) {
-            layerMap.set(layerKey, []);
-        }
-        layerMap.get(layerKey).push(block);
-    }
-
-    // Sort layer keys descending (top layer to bottom layer)
-    const sortedLayers = Array.from(layerMap.keys()).sort((a, b) => b - a);
-    const numLayers = sortedLayers.length;
-
-    markNeedsRender(TOTAL_CASCADE_MS + BLOCK_SPIN_MS + 500);
-
-    sortedLayers.forEach((layerKey, layerIndex) => {
-        const delay = numLayers > 1 ? (layerIndex / (numLayers - 1)) * (TOTAL_CASCADE_MS - BLOCK_SPIN_MS) : 0;
-        const layerBlocks = layerMap.get(layerKey) || [];
-
-        setTimeout(() => {
-            // Play ONE sound effect per layer
-            playSound('syntheticBlockSnap', 0.35);
-
-            // Revert all blocks in this layer together
-            layerBlocks.forEach(block => {
-                try {
-                    if (block.isFalling) {
-                        // Defer revert until landing
-                        block._pendingRevertOnLand = true;
-                    } else if (typeof block.revertSpin === 'function') {
-                        block.revertSpin(BLOCK_SPIN_MS);
-                    } else if (typeof block.animateToDirection === 'function' && block._preSpinDirection) {
-                        const origDir = block._preSpinDirection;
-                        block._preSpinDirection = null;
-                        block.animateToDirection(origDir, BLOCK_SPIN_MS);
-                    }
-                } catch (e) {
-                    console.error('[Spin] Error reverting block:', e);
-                }
-            });
-        }, delay);
+    const revertTargets = spunBlocks.map((block) => {
+        const direction = { ...block._preSpinDirection };
+        if (!block.isFalling) block._preSpinDirection = null;
+        return { block, direction };
     });
+    runCoordinatedSpinWave(revertTargets, 'revert');
 
-    console.log(`[Spin] Reverting blocks across ${numLayers} layers in top-to-bottom waves (completes in 2s)`);
+    console.log(`[Spin] Reverting ${revertTargets.length} blocks through the shared tower animator`);
     temporarySpinOriginalDirections.clear();
     updateSpinCounterDisplay();
 }
@@ -6431,43 +6455,16 @@ function autoSpinAfterSpawn() {
         return; // No eligible blocks to spin
     }
 
-    // Group by discrete vertical layer (yOffset)
-    const layerMap = new Map();
     for (const block of eligibleBlocks) {
-        const layerKey = Math.round((block.yOffset || 0) * 100) / 100;
-        if (!layerMap.has(layerKey)) {
-            layerMap.set(layerKey, []);
+        if (!block._preSpinDirection) {
+            block._preSpinDirection = { x: block.direction.x, z: block.direction.z };
         }
-        layerMap.get(layerKey).push(block);
     }
-
-    const sortedLayers = Array.from(layerMap.keys()).sort((a, b) => b - a);
-    const numLayers = sortedLayers.length;
-    const TOTAL_CASCADE_MS = 1400;
-    const BLOCK_SPIN_MS = 320;
-
-    markNeedsRender(TOTAL_CASCADE_MS + BLOCK_SPIN_MS + 500);
-
-    sortedLayers.forEach((layerKey, layerIndex) => {
-        const delay = numLayers > 1 ? (layerIndex / (numLayers - 1)) * (TOTAL_CASCADE_MS - BLOCK_SPIN_MS) : 0;
-        const layerBlocks = layerMap.get(layerKey) || [];
-
-        setTimeout(() => {
-            // One sound effect per layer
-            playSound('syntheticBlockSnap', 0.25);
-
-            // Spin all blocks in this layer together
-            layerBlocks.forEach(block => {
-                try {
-                    if (typeof block.animateRandomSpin === 'function') {
-                        block.animateRandomSpin(BLOCK_SPIN_MS);
-                    }
-                } catch (error) {
-                    console.error('Error spinning block:', error);
-                }
-            });
-        }, delay);
-    });
+    const spinTargets = eligibleBlocks.map((block) => ({
+        block,
+        direction: block.getRandomSpinTargetDirection()
+    }));
+    runCoordinatedSpinWave(spinTargets, 'auto-spin');
 }
 
 /**
@@ -6593,20 +6590,6 @@ function spinRandomBlocks() {
         if (temporarySpinIntervalId) clearInterval(temporarySpinIntervalId);
     }
 
-    // Group eligible blocks by discrete vertical layer (yOffset)
-    const layerMap = new Map();
-    for (const block of eligibleBlocks) {
-        const layerKey = Math.round((block.yOffset || 0) * 100) / 100;
-        if (!layerMap.has(layerKey)) {
-            layerMap.set(layerKey, []);
-        }
-        layerMap.get(layerKey).push(block);
-    }
-
-    // Sort layers from top (highest Y) down to bottom (lowest Y)
-    const sortedLayers = Array.from(layerMap.keys()).sort((a, b) => b - a);
-    const numLayers = sortedLayers.length;
-
     // Track spin for stats
     try {
         trackSpin();
@@ -6614,32 +6597,11 @@ function spinRandomBlocks() {
         console.error('[Spin] Error tracking spin:', error);
     }
 
-    // Requirement: Spin all blocks in the same layer together, 1 sound effect per layer, completes in 2.0s
-    const TOTAL_CASCADE_MS = 2000;
-    const BLOCK_SPIN_MS = 320;
-
-    markNeedsRender(TOTAL_CASCADE_MS + BLOCK_SPIN_MS + 500);
-
-    sortedLayers.forEach((layerKey, layerIndex) => {
-        const delay = numLayers > 1 ? (layerIndex / (numLayers - 1)) * (TOTAL_CASCADE_MS - BLOCK_SPIN_MS) : 0;
-        const layerBlocks = layerMap.get(layerKey) || [];
-
-        setTimeout(() => {
-            // One sound effect per layer
-            playSound('syntheticBlockSnap', 0.35);
-
-            // Spin all blocks in this layer simultaneously
-            layerBlocks.forEach(block => {
-                try {
-                    if (typeof block.animateRandomSpin === 'function') {
-                        block.animateRandomSpin(BLOCK_SPIN_MS);
-                    }
-                } catch (error) {
-                    console.error('[Spin] Error spinning block:', error);
-                }
-            });
-        }, delay);
-    });
+    const spinTargets = eligibleBlocks.map((block) => ({
+        block,
+        direction: block.getRandomSpinTargetDirection()
+    }));
+    runCoordinatedSpinWave(spinTargets, 'spin');
 
     // Activate dynamic temporary countdown (12s - 60s based on remaining blocks)
     const remainingCount = blocks ? blocks.filter(b => b && !b.isRemoved && !b.isFalling && !b.removalStartTime).length : 15;
