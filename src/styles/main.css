@@ -63,6 +63,13 @@ html, body {
             box-sizing: border-box;
         }
 
+        /* FPS is a desktop diagnostic and must not occupy the mobile interface. */
+        @media (pointer: coarse), (max-width: 767px) {
+            #fps-display {
+                display: none !important;
+            }
+        }
+
         /* Show stats bar after game initialization */
         body.game-initialized #stats-bar,
         body.game-initialized #top-bar {

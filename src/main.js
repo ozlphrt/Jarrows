@@ -8933,29 +8933,26 @@ let lastSupportCheckTime = 0;
 let fpsFrameCount = 0;
 let fpsLastUpdate = performance.now();
 let fpsUpdateInterval = 500; // Update FPS display every 500ms
-let fpsEnabled = true; // Enabled by default
+let fpsEnabled = !isMobileLike; // Keep the diagnostic overlay off mobile interfaces
 
 // Expose fpsEnabled to window for settings toggle
 if (typeof window !== 'undefined') {
     Object.defineProperty(window, 'fpsEnabled', {
         get: () => fpsEnabled,
-        set: (value) => { 
-            fpsEnabled = value; 
+        set: (value) => {
+            fpsEnabled = !isMobileLike && Boolean(value);
             const fpsDisplay = document.getElementById('fps-display');
-            if (fpsDisplay) fpsDisplay.style.display = value ? 'block' : 'none';
+            if (fpsDisplay) fpsDisplay.style.display = fpsEnabled ? 'block' : 'none';
         }
     });
 
-    // Load FPS preference from localStorage on initialization
-    try {
-        const savedFpsEnabled = localStorage.getItem('jarrows_fps_enabled');
-        if (savedFpsEnabled === 'false') {
-            fpsEnabled = false;
-        } else {
-            fpsEnabled = true;
+    // Desktop keeps its saved preference; mobile always suppresses the diagnostic overlay.
+    if (!isMobileLike) {
+        try {
+            fpsEnabled = localStorage.getItem('jarrows_fps_enabled') !== 'false';
+        } catch (e) {
+            console.warn('Failed to load FPS preference:', e);
         }
-    } catch (e) {
-        console.warn('Failed to load FPS preference:', e);
     }
 }
 

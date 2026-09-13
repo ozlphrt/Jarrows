@@ -4,6 +4,14 @@
  */
 
 export const changelog = {
+    "8.36.4": {
+        title: "Mobile FPS Overlay Removal",
+        date: "2026-09-13",
+        changes: [
+            "Mobile Interface Cleanup: FPS sampling and its diagnostic overlay are disabled on coarse-pointer mobile devices",
+            "Responsive Visibility Guard: Small-screen and touch layouts keep the FPS display hidden even if a saved preference attempts to restore it"
+        ]
+    },
     "8.36.3": {
         title: "Spin Timer Game-Time Cap",
         date: "2026-09-13",
